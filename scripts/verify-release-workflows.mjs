@@ -232,6 +232,12 @@ function verifySiteDeploy(text, astroConfig) {
   requireText(text, "pnpm --dir site install --ignore-workspace --frozen-lockfile", "deploy-site must install the isolated site package from its lockfile");
   requireText(text, "pnpm build:site", "deploy-site must build the same static site command exposed at the root");
   requireText(text, "Verify Cloudflare credentials", "deploy-site must fail closed before Cloudflare deploy");
+  requireBefore(
+    text,
+    "Verify Cloudflare credentials",
+    "pnpm --dir site install --ignore-workspace --frozen-lockfile",
+    "deploy-site must fail closed on Cloudflare credentials before site install/build",
+  );
   requireText(text, "CLOUDFLARE_API_TOKEN", "deploy-site must require CLOUDFLARE_API_TOKEN");
   requireText(text, "CLOUDFLARE_ACCOUNT_ID", "deploy-site must require CLOUDFLARE_ACCOUNT_ID");
   requireText(text, "Cloudflare Pages credentials are required to deploy fieldwork.dev.", "deploy-site must explain the blocked external credential gate");

@@ -869,6 +869,7 @@ function verifyLatestRefresh() {
   requireText(audit, "decoded Apple signing/notarization assets outside the repository workspace with chmod/cleanup", "release audit must document release-rust decoded signing asset hygiene");
   requireText(audit, "early `NPM_TOKEN` preflight before npm artifact download", "release audit must document release-npm early token preflight");
   requireText(audit, "early relay SSH-key/inventory preflight before relay artifact download", "release audit must document deploy-relay early prerequisite preflight");
+  requireText(audit, "early Cloudflare credential preflight before site install/build", "release audit must document deploy-site early credential preflight");
   requireText(audit, "iOS App Store Connect upload JSON outside the repository workspace plus signing/upload cleanup", "release audit must document iOS release upload asset hygiene");
   requireText(audit, "Android generated Firebase/signing-file cleanup", "release audit must document Android release secret cleanup");
   requireText(audit, "relay SSH key chmod/cleanup", "release audit must document relay deploy SSH key cleanup");
@@ -1065,7 +1066,7 @@ function verifyLatestRefresh() {
   requireText(audit, "fails closed before network access without that flag", "release audit must record domain refresh fail-closed behavior");
   requireText(audit, "Cloudflare Pages deploy scaffold", "release audit must record focused site deploy verification");
   requireText(audit, "isolated site lockfile install", "release audit must record site lockfile install coverage");
-  requireText(audit, "fail-closed Cloudflare credentials", "release audit must record site deploy credential-gate coverage");
+  requireText(audit, "fail-closed Cloudflare credentials before site install/build", "release audit must record site deploy credential-gate coverage");
   requireText(audit, "`fieldwork-dev` Pages project", "release audit must record Cloudflare Pages project coverage");
   requireText(audit, "weekly Dependabot matrix", "release audit must record focused Dependabot verification");
   requireText(audit, "Cargo, root npm package metadata, the isolated `site/` npm lockfile, Android Gradle, and GitHub Actions", "release audit must record exact Dependabot ecosystem coverage");
