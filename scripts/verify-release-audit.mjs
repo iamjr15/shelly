@@ -867,6 +867,7 @@ function verifyLatestRefresh() {
   requireText(audit, "local run without `artifacts/` or `FIELDWORK_ARTIFACT_DIR` fails closed as\n  expected", "release audit must document fail-closed missing artifact directory behavior");
   requireText(audit, "`pnpm test:release-artifacts` remains the deterministic local\n  verifier substitute", "release audit must document local release artifact substitute");
   requireText(audit, "decoded Apple signing/notarization assets outside the repository workspace with chmod/cleanup", "release audit must document release-rust decoded signing asset hygiene");
+  requireText(audit, "early `NPM_TOKEN` preflight before npm artifact download", "release audit must document release-npm early token preflight");
   requireText(audit, "iOS App Store Connect upload JSON outside the repository workspace plus signing/upload cleanup", "release audit must document iOS release upload asset hygiene");
   requireText(audit, "Android generated Firebase/signing-file cleanup", "release audit must document Android release secret cleanup");
   requireText(audit, "relay SSH key chmod/cleanup", "release audit must document relay deploy SSH key cleanup");
@@ -988,6 +989,7 @@ function verifyLatestRefresh() {
   requireText(audit, "Bare registry-state invocations now fail closed unless an explicit\nrelease-state expectation flag is provided", "release audit must record bare npm registry-state fail-closed behavior");
   requireText(audit, "fail-before-network bare registry invocation", "release audit must record bare npm registry-state no-network guard");
   requireText(audit, "missing-token publish rejection before npm is invoked", "release audit must record missing-token npm publish rejection before npm invocation");
+  requireText(audit, "early `NPM_TOKEN` preflight before npm artifact download", "release audit must record release-npm token preflight before artifact download");
   requireText(audit, "post-placeholder platform-published state", "release audit must record post-placeholder npm registry-state checking");
   requireText(audit, "post-release latest-version/provenance state", "release audit must record post-release npm version/provenance checking");
   requireText(audit, "post-publish public registry verification", "release audit must record post-publish npm registry verification");

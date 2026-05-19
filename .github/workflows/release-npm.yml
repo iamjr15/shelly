@@ -30,6 +30,15 @@ jobs:
           registry-url: https://registry.npmjs.org
       - uses: sigstore/cosign-installer@v3
 
+      - name: Verify npm token
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN is required to publish Fieldwork npm packages."
+            exit 1
+          fi
+
       - name: Download GitHub Release artifacts
         if: github.event_name == 'workflow_dispatch'
         env:

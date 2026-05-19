@@ -89,7 +89,9 @@ function verifyNpmRelease(text) {
   requireText(text, "node scripts/verify-npm-packages.mjs --require-binaries", "release-npm must verify package binaries before publish");
   rejectText(text, "pnpm install --no-frozen-lockfile", "release-npm must not create a transient unpinned root install before provenance publish");
   rejectText(text, "rm -f pnpm-lock.yaml", "release-npm must not create and delete a transient root lockfile");
+  requireText(text, "Verify npm token", "release-npm must fail closed before artifact work when NPM_TOKEN is absent");
   requireText(text, "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}", "release-npm must publish with the npm token secret");
+  requireText(text, "NPM_TOKEN is required to publish Fieldwork npm packages.", "release-npm missing-token failure must explain the external publish gate");
   requireText(text, "node scripts/publish-npm-packages.mjs", "release-npm must use the repo-owned children-first publish script");
   requireText(text, "Verify npm registry after publish", "release-npm must verify npm registry state after publish");
   requireText(text, "require('./packages/cli/package.json').version", "release-npm must derive the post-publish npm version from the meta package");
