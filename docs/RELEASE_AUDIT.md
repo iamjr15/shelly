@@ -253,7 +253,7 @@ outside this shell:
 | Pre-commit developer gate | `.pre-commit-config.yaml` runs `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`, `cargo nextest run --workspace --no-fail-fast`, and `node scripts/verify-secret-boundaries.mjs` through local system hooks; `scripts/verify-community-scaffold.mjs` pins those hooks as always-run workspace/security gates | Locally verified |
 | Daemon service install/restart scaffold | `crates/cli/src/service.rs`, CLI daemon commands, IPC health wait, CLI auto-spawn reuse of validated colocated `fieldworkd` resolution, focused service context/path unit tests including colocated executable `fieldworkd` validation, macOS Gatekeeper rejection, and install rollback when service start fails, fake-command `service-manager` rendering tests for LaunchAgent `KeepAlive`/`SuccessfulExit=false` and systemd `Restart=on-failure`/`RestartSec=5`, local handoff restart-restore smoke, and `scripts/verify-daemon-service.mjs` | Static/source verified; launchd/systemd survival and macOS sleep/wake gates still need signed/notarized artifact, real sleep/wake cycle, or Linux user-service host |
 | Daemon log retention | `crates/daemon/src/logging.rs`, `logging::tests::prune_old_log_files_removes_only_expired_daemon_logs`, and `scripts/verify-daemon-service.mjs` verify seven-day startup pruning for `daemon.log*` files only | Locally verified |
-| Desktop cold-start performance thresholds | `scripts/measure-desktop-performance.mjs` and `pnpm measure:desktop-performance` build on release binaries, run one explicit warm-up sample to remove build-machine first-exec noise, then fail if any measured `fieldwork version` sample exceeds 50 ms or any measured daemon ready-to-handshake sample exceeds 200 ms; latest pass measured CLI max `4.13ms` and daemon max `43.63ms` over 25 measured samples | Locally verified |
+| Desktop cold-start performance thresholds | `scripts/measure-desktop-performance.mjs` and `pnpm measure:desktop-performance` build on release binaries, run one explicit warm-up sample to remove build-machine first-exec noise, then fail if any measured `fieldwork version` sample exceeds 50 ms or any measured daemon ready-to-handshake sample exceeds 200 ms; latest pass measured CLI max `4.62ms` and daemon max `43.68ms` over 25 measured samples | Locally verified |
 | Development doc | `docs/DEVELOPMENT.md` documents the 15-minute source-build path, common local checks, protocol/ring/snapshot/mobile-core focused tests, local handoff smoke, desktop release/performance commands, website checks, UniFFI bindgen, iOS/Android development flows, mobile privacy/telemetry facts, daemon logs, and user-service lifecycle; `scripts/verify-development-doc.mjs` pins those claims and CI wiring | Locally verified |
 | Docs synchronized | `scripts/verify-docs-sync.mjs` requires `README.md`, `PLAN.md`, `FUTURE.md`, `docs/PROTOCOL.md`, `docs/PRIVACY.md`, `docs/ARCHITECTURE.md`, `docs/INSTALL.md`, and `docs/RELEASE_AUDIT.md` to exist and carry the current v1 install, protocol, privacy, architecture, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts; `docs/DEVELOPMENT.md`, `docs/OPERATIONS.md`, and `docs/SECURITY.md` remain covered by the focused release, infra, security-model, telemetry, and privacy verifiers | Current |
 | README screenshots and 60-second demo video | README embeds the three screenshot-style SVG captures and links `docs/assets/fieldwork-demo-v1.mp4`; `scripts/render-demo-video.mjs` regenerates the MP4 from those assets plus fixed release-boundary slates, and `pnpm check:demo-video` verifies an H.264 1920x1080 artifact with approximately 60-second duration | Locally verified |
@@ -518,8 +518,8 @@ The first rerun hit local temp-volume exhaustion while unpacking `openssl-src`
 under an isolated temp `HOME`; after removing the generated
 `/tmp/fieldwork-target-checks` directory and using the normal Cargo
 cache/target paths, the same gate passed without product-code changes. The
-performance run reported CLI median `3.13ms`, p95 `3.97ms`, max `4.13ms`, and
-daemon ready-to-handshake median `40.82ms`, p95 `43.29ms`, max `43.63ms` over
+performance run reported CLI median `3.32ms`, p95 `4.13ms`, max `4.62ms`, and
+daemon ready-to-handshake median `40.97ms`, p95 `43.46ms`, max `43.68ms` over
 25 measured release-build samples; npm binary readiness passed
 with staged artifacts; `publish-npm-packages.mjs --check-ready` confirmed the
 children-first order `fieldwork-darwin-arm64 -> fieldwork-darwin-x64 ->
@@ -871,8 +871,8 @@ Observed results:
   `application/x-protobuf` `/v1/traces` POST for `/v1/version`, and the exported
   protobuf body did not contain injected terminal/session/token sentinel strings.
 - Desktop performance passed after one explicit warm-up sample, with CLI median
-  `3.13ms`, p95 `3.97ms`, max `4.13ms`, and daemon ready-to-handshake median
-  `40.82ms`, p95 `43.29ms`, max `43.63ms` over 25 measured release-build
+  `3.32ms`, p95 `4.13ms`, max `4.62ms`, and daemon ready-to-handshake median
+  `40.97ms`, p95 `43.46ms`, max `43.68ms` over 25 measured release-build
   samples.
 - Site check/build produced 5 static pages with no Astro diagnostics.
 - Agent-browser screenshot smoke captured `/`, `/install`, `/architecture`,
