@@ -1063,6 +1063,8 @@ function verifyLatestRefresh() {
   requireText(audit, "`cargo deny check`: exited successfully with `advisories ok, bans ok,\n  licenses ok, sources ok`", "release audit must record the current cargo-deny category result");
   requireText(audit, "duplicate-crate findings were warnings only", "release audit must distinguish cargo-deny duplicate warnings from deny failures");
   requireText(audit, "`cargo audit`: exited successfully with allowed warnings only (`adler`,\n  `bincode`, `paste`, `lru`)", "release audit must record the current cargo-audit warning set");
+  requireText(audit, "`cargo update -p lru@0.12.5 --dry-run` found no\n  compatible lockfile move", "release audit must record the lru advisory dry-run update check");
+  requireText(audit, "Fieldwork does not call `lru::IterMut` directly", "release audit must record direct lru IterMut non-use");
   requireText(audit, "decode generated base32 tokens back to 32 bytes", "release audit must record 32-byte base32 pair-token coverage");
   requireText(audit, "10-minute expiry window", "release audit must record pair-token TTL coverage");
   requireText(audit, "pre-approval single-use consumption", "release audit must record pair-token single-use coverage");

@@ -58,6 +58,9 @@ function verifyDevelopmentDoc(text) {
   requireText(text, "one explicit warm-up sample", "docs/DEVELOPMENT.md must document the desktop performance warm-up contract");
   requireText(text, "build-machine first-exec page-cache/code-signing noise", "docs/DEVELOPMENT.md must explain why the desktop performance warm-up exists");
   requireText(text, "fails if any measured release-build sample exceeds the v1 thresholds", "docs/DEVELOPMENT.md must document max-sample desktop performance enforcement");
+  requireText(text, "RUSTSEC-2026-0002", "docs/DEVELOPMENT.md must document the current lru RustSec advisory");
+  requireText(text, "cargo update -p lru@0.12.5 --dry-run", "docs/DEVELOPMENT.md must document the lru dry-run update check");
+  requireText(text, "does not use `lru::IterMut` directly", "docs/DEVELOPMENT.md must document direct lru IterMut non-use");
 
   for (const command of [
     "pnpm check:local-release",

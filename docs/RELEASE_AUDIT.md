@@ -805,6 +805,9 @@ Observed results:
   licenses ok, sources ok`; duplicate-crate findings were warnings only.
 - `cargo audit`: exited successfully with allowed warnings only (`adler`,
   `bincode`, `paste`, `lru`), as documented in `docs/DEVELOPMENT.md`.
+  Follow-up dependency inspection confirmed `lru 0.12.5` is pulled only through
+  `tattoy-wezterm-term`, `cargo update -p lru@0.12.5 --dry-run` found no
+  compatible lockfile move, and Fieldwork does not call `lru::IterMut` directly.
 - Workflow YAML parsing passed locally and is enforced by the CI workflow-static
   job.
 - Npm package checks passed for metadata, OSS notices, secret boundaries,

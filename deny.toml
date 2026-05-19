@@ -17,6 +17,10 @@ ignore = [
   # by QR/terminal dependencies. No direct Fieldwork usage.
   "RUSTSEC-2024-0436",
 ]
+# cargo audit also warns on RUSTSEC-2026-0002 for lru 0.12.5 through
+# tattoy-wezterm-term. cargo-deny treats it as a warning, not an ignored
+# advisory here. A dry-run update found no compatible lockfile move; track this
+# with the terminal-state stack and do not use lru::IterMut directly.
 
 [licenses]
 version = 2
