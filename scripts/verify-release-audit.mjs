@@ -671,7 +671,7 @@ function verifyExternalBlockers() {
     "BuildConfig.DEBUG",
     "measure the debug-app\n  Pair tap through explicit desktop approval completion",
     "local\n  15-second emulator bound",
-    "pair_flow_ms=297",
+    "pair_flow_ms=2234",
     "Physical QR camera pair-flow timing remains a release-device gate",
     "open the\n  terminal",
     "background and foreground the app",

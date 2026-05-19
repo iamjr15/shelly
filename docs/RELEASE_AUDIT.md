@@ -88,8 +88,9 @@ outside this shell:
   `pnpm test:android-emulator-flood` renders a
   `yes | head -10000`-scale stream in the actual Android terminal view, checks a
   flood screenshot nonblank, and confirms `ANDROID_EMULATOR_FLOOD` output through a
-  separately approved replay verifier; latest local run reported 8438/14400
-  nonblack screenshot samples. `pnpm test:android-emulator-multisession` opens
+  separately approved replay verifier; latest default aggregate run reported
+  8440/14400 nonblack screenshot samples.
+  `pnpm test:android-emulator-multisession` opens
   three desktop-created sessions (`fwm_a`, `fwm_b`, `fwm_c`), switches among all
   three in the app, sends Android-originated input to each, and verifies
   host-side per-session logs so `multi_a_ok`, `multi_b_ok`, and `multi_c_ok`
@@ -99,8 +100,8 @@ outside this shell:
   sessions, observes the empty dashboard, creates `fw_subscribe_session` from
   the desktop CLI, verifies the subscribed dashboard receives it within the
   local 8-second emulator bound, opens it, sends `subscription_attach_ok`, and
-  confirms the PTY receives that Android-originated input; latest local run
-  passed on `emulator-5554` with `visible_ms=2396`.
+  confirms the PTY receives that Android-originated input; latest default
+  aggregate run passed on `emulator-5554` with `visible_ms=3318`.
   `pnpm test:android-emulator-restart-restore` pairs the debug app with an
   isolated release daemon, creates an intentionally completed
   `fw_restart_session`, persists `ANDROID_RESTART_SCROLLBACK` through the
@@ -889,7 +890,8 @@ Observed results:
   terminal, background and foreground the app, send mobile-originated input into
   the PTY, and attach a separately approved verifier client to confirm the
   Android-sent output appears in replayed terminal bytes.
-  Latest local run passed on `emulator-5554` with `pair_flow_ms=297`.
+  Latest default aggregate run passed on `emulator-5554` with
+  `pair_flow_ms=2234`.
   Physical QR camera pair-flow timing remains a release-device gate.
   `pnpm test:android-emulator-background-replay`
   backgrounds an attached terminal while the PTY emits
@@ -900,8 +902,9 @@ Observed results:
   `pnpm test:android-emulator-flood` renders a
   `yes | head -10000`-scale stream in the actual Android terminal view, checks a
   flood screenshot nonblank, and confirms `ANDROID_EMULATOR_FLOOD` output through a
-  separately approved replay verifier; latest local run reported 8438/14400
-  nonblack screenshot samples. `pnpm test:android-emulator-multisession` opens
+  separately approved replay verifier; latest default aggregate run reported
+  8440/14400 nonblack screenshot samples.
+  `pnpm test:android-emulator-multisession` opens
   three desktop-created sessions (`fwm_a`, `fwm_b`, `fwm_c`), switches among all
   three in the app, sends Android-originated input to each, and verifies
   host-side per-session logs so `multi_a_ok`, `multi_b_ok`, and `multi_c_ok`
@@ -911,8 +914,8 @@ Observed results:
   sessions, observes the empty dashboard, creates `fw_subscribe_session` from
   the desktop CLI, verifies the subscribed dashboard receives it within the
   local 8-second emulator bound, opens it, sends `subscription_attach_ok`, and
-  confirms the PTY receives that Android-originated input; latest local run
-  passed on `emulator-5554` with `visible_ms=2396`.
+  confirms the PTY receives that Android-originated input; latest default
+  aggregate run passed on `emulator-5554` with `visible_ms=3318`.
   `pnpm test:android-emulator-restart-restore` pairs the actual Android app
   with an isolated release daemon, creates an intentionally completed
   `fw_restart_session`, waits for `ANDROID_RESTART_SCROLLBACK` to persist
