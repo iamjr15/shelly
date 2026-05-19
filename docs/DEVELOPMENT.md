@@ -40,6 +40,7 @@ The hooks run `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`,
 Common checks:
 
 ```sh
+pnpm check:local-release
 cargo fmt --check
 cargo clippy --workspace -- -D warnings
 cargo nextest run --workspace
@@ -67,6 +68,17 @@ pnpm check:site
 
 The current release checklist, local evidence, and external blockers are
 tracked in `docs/RELEASE_AUDIT.md`.
+
+`pnpm check:local-release` runs the deterministic source-side release gate:
+workspace/package metadata, docs, community/legal scaffolding, privacy/security
+boundaries, release workflow contracts, UniFFI binding surface, npm registry and
+publish-plan fixtures, Bun optional-dependency behavior, release-artifact
+verifier fixtures, and Android AAB verifier fixtures. It deliberately excludes
+network account checks, live publishing, iOS SDK builds, Android emulator
+runtime tests, physical-device checks, and hosted relay deployment. When the
+local platform binaries and Android AAB are staged, run
+`pnpm check:local-release -- --with-artifacts` to also verify the preserved AAB,
+staged npm binaries, publish readiness, and meta-package dry-run pack.
 
 `pnpm check:release-artifacts` is intentionally fail-closed unless
 `artifacts/` or `FIELDWORK_ARTIFACT_DIR` contains the release-rust/GitHub

@@ -83,6 +83,7 @@ function verifyPromptToArtifactChecklist() {
     "Relay control-plane transport encryption",
     "npm-only desktop distribution",
     "CI/release workflows",
+    "Local non-external release gate",
     "Daemon service install/restart scaffold",
     "Development doc",
     "Desktop cold-start performance thresholds",
@@ -95,6 +96,21 @@ function verifyPromptToArtifactChecklist() {
   ]) {
     requireText(audit, requirement, `release audit checklist is missing requirement: ${requirement}`);
   }
+  requireText(
+    audit,
+    "`scripts/check-local-release.mjs`",
+    "release audit must record the local release aggregate script",
+  );
+  requireText(
+    audit,
+    "`check:local-release`",
+    "release audit must record the local release aggregate package script",
+  );
+  requireText(
+    audit,
+    "optional `--with-artifacts` mode",
+    "release audit must record artifact-aware local release aggregate mode",
+  );
   requireText(
     audit,
     "focused service context/path unit tests",

@@ -1,0 +1,113 @@
+#!/usr/bin/env node
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import process from "node:process";
+
+const root = path.resolve(new URL("..", import.meta.url).pathname);
+const args = new Set(process.argv.slice(2).filter((arg) => arg !== "--"));
+const listOnly = args.has("--list");
+const withArtifacts = args.has("--with-artifacts");
+
+for (const arg of args) {
+  if (!["--list", "--with-artifacts"].includes(arg)) {
+    console.error(`unknown argument: ${arg}`);
+    process.exit(2);
+  }
+}
+
+const node = process.execPath;
+const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+
+const checks = [
+  ["rust workspace contract", node, ["scripts/verify-rust-workspace.mjs"]],
+  ["npm package metadata", node, ["scripts/verify-npm-packages.mjs"]],
+  ["changesets fixed group", node, ["scripts/verify-changesets-config.mjs"]],
+  ["OSS notice drift", node, ["scripts/generate-oss-notices.mjs", "--check"]],
+  ["docs sync", node, ["scripts/verify-docs-sync.mjs"]],
+  ["development doc", node, ["scripts/verify-development-doc.mjs"]],
+  ["community scaffold", node, ["scripts/verify-community-scaffold.mjs"]],
+  ["secret-boundary source scan", node, ["scripts/verify-secret-boundaries.mjs"]],
+  ["secret-boundary self-test", node, ["scripts/verify-secret-boundaries.mjs", "--self-test"]],
+  ["mobile privacy/static gates", node, ["scripts/verify-mobile-privacy.mjs"]],
+  ["store privacy answer sheet", node, ["scripts/verify-store-privacy.mjs"]],
+  ["telemetry privacy", node, ["scripts/verify-telemetry-privacy.mjs"]],
+  ["v1/FUTURE boundary", node, ["scripts/verify-v1-boundary.mjs"]],
+  ["release audit", node, ["scripts/verify-release-audit.mjs"]],
+  ["release workflows", node, ["scripts/verify-release-workflows.mjs"]],
+  ["relay provider clients", node, ["scripts/verify-relay-provider-clients.mjs"]],
+  ["security model", node, ["scripts/verify-security-model.mjs"]],
+  ["daemon service scaffold", node, ["scripts/verify-daemon-service.mjs"]],
+  ["daemon resize contract", node, ["scripts/verify-daemon-resize.mjs"]],
+  ["infra scaffold", node, ["scripts/verify-infra-scaffold.mjs"]],
+  ["site content", node, ["scripts/verify-site-content.mjs"]],
+  ["UniFFI binding surface", node, ["scripts/verify-uniffi-bindings.mjs"]],
+  ["npm dispatcher", node, ["scripts/test-npm-dispatcher.mjs"]],
+  ["npm registry-state fixtures", node, ["scripts/test-npm-registry-state.mjs"]],
+  ["external-refresh opt-in guards", node, ["scripts/test-external-status-refresh.mjs"]],
+  ["npm publish plan", node, ["scripts/test-npm-publish-plan.mjs"]],
+  ["Bun optional dependency smoke", node, ["scripts/test-bun-install.mjs"]],
+  ["Android AAB verifier self-test", node, ["scripts/test-android-aab-verifier.mjs"]],
+  ["release artifact verifier self-test", node, ["scripts/test-release-artifacts.mjs"]],
+  ["npm artifact pack self-test", node, ["scripts/test-npm-artifact-pack.mjs"]],
+];
+
+const artifactChecks = [
+  ["Android AAB artifact", pnpm, ["check:android-aab"]],
+  ["staged npm package binaries", node, ["scripts/verify-npm-packages.mjs", "--require-binaries"]],
+  ["npm publish readiness", node, ["scripts/publish-npm-packages.mjs", "--check-ready"]],
+  ["npm meta dry-run pack", npm, ["pack", "./packages/cli", "--dry-run", "--json"], { env: cleanNpmEnv() }],
+];
+
+const selected = withArtifacts ? [...checks, ...artifactChecks] : checks;
+
+if (listOnly) {
+  for (const [label, command, commandArgs] of selected) {
+    console.log(`${label}: ${formatCommand(command, commandArgs)}`);
+  }
+  process.exit(0);
+}
+
+for (const [label, command, commandArgs, options = {}] of selected) {
+  console.log(`\n==> ${label}`);
+  const result = spawnSync(command, commandArgs, {
+    cwd: root,
+    stdio: "inherit",
+    env: options.env ?? process.env,
+  });
+
+  if (result.error) {
+    console.error(`${label} failed to start: ${result.error.message}`);
+    process.exit(1);
+  }
+  if (result.status !== 0) {
+    console.error(`${label} failed with exit code ${result.status}`);
+    process.exit(result.status ?? 1);
+  }
+}
+
+console.log(`\nlocal release gate ok${withArtifacts ? " with staged artifacts" : ""}`);
+
+function formatCommand(command, commandArgs) {
+  return [command, ...commandArgs].map(shellQuote).join(" ");
+}
+
+function shellQuote(value) {
+  if (/^[A-Za-z0-9_./:=@+-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function cleanNpmEnv() {
+  const env = { ...process.env };
+  for (const key of [
+    "npm_config_supported_architectures",
+    "npm_config_npm_globalconfig",
+    "npm_config_verify_deps_before_run",
+    "npm_config__jsr_registry",
+  ]) {
+    delete env[key];
+  }
+  return env;
+}

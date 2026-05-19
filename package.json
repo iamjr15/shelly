@@ -30,6 +30,7 @@
     "check:release-workflows": "node scripts/verify-release-workflows.mjs",
     "check:release-artifacts": "node scripts/verify-release-artifacts.mjs",
     "check:secret-boundaries": "node scripts/verify-secret-boundaries.mjs",
+    "check:local-release": "node scripts/check-local-release.mjs",
     "check:infra-scaffold": "node scripts/verify-infra-scaffold.mjs",
     "check:infra-terraform": "scripts/check-infra-terraform.sh",
     "check:demo-video": "node scripts/verify-demo-video.mjs",

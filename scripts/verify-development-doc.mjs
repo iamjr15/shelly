@@ -58,6 +58,7 @@ function verifyDevelopmentDoc(text) {
   requireText(text, "fails if any measured release-build sample exceeds the v1 thresholds", "docs/DEVELOPMENT.md must document max-sample desktop performance enforcement");
 
   for (const command of [
+    "pnpm check:local-release",
     "cargo fmt --check",
     "cargo clippy --workspace -- -D warnings",
     "cargo nextest run --workspace",
@@ -81,6 +82,21 @@ function verifyDevelopmentDoc(text) {
   ]) {
     requireText(text, command, `docs/DEVELOPMENT.md common checks must include ${command}`);
   }
+  requireText(
+    text,
+    "`pnpm check:local-release` runs the deterministic source-side release gate",
+    "docs/DEVELOPMENT.md must describe the local release aggregate check",
+  );
+  requireText(
+    text,
+    "deliberately excludes\nnetwork account checks, live publishing, iOS SDK builds, Android emulator\nruntime tests, physical-device checks, and hosted relay deployment",
+    "docs/DEVELOPMENT.md must document what the local release aggregate check excludes",
+  );
+  requireText(
+    text,
+    "`pnpm check:local-release -- --with-artifacts`",
+    "docs/DEVELOPMENT.md must document the artifact-aware local release aggregate mode",
+  );
 
   for (const section of [
     "The protocol crate uses insta snapshots",
