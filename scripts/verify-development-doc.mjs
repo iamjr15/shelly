@@ -11,6 +11,7 @@ const files = {
   packageJson: read("package.json"),
   ci: read(".github/workflows/ci.yml"),
   localRelease: read("scripts/check-local-release.mjs"),
+  androidEmulatorAll: read("scripts/smoke-android-emulator-all.sh"),
   desktopPerf: read("scripts/measure-desktop-performance.mjs"),
   iosPrereqs: read("scripts/check-ios-prereqs.sh"),
   iosPrereqTests: read("scripts/test-ios-prereqs.mjs"),
@@ -76,6 +77,7 @@ function verifyDevelopmentDoc(text) {
     "node scripts/test-external-status-refresh.mjs",
     "node scripts/test-ios-prereqs.mjs",
     "pnpm test:android-unit",
+    "pnpm test:android-emulator",
     "node scripts/test-android-aab-verifier.mjs",
     "pnpm check:site",
     "pnpm render:demo-video",
@@ -278,6 +280,9 @@ function verifyDevelopmentDoc(text) {
     "pnpm test:android-emulator-multisession",
     "pnpm test:android-emulator-reconnect",
     "pnpm test:android-emulator-notification-tap",
+    "`pnpm test:android-emulator` is the aggregate direct-adb substitute suite",
+    "`pnpm test:android-emulator -- --list` prints the exact underlying adb scripts",
+    "fails closed unless exactly one boot-complete adb device is\navailable",
     "checks that `TotalTime` stays below the debug-smoke limit",
     "rejects system ANR dialogs in the UI tree",
     "requires the locked `Unlock` surface",
@@ -491,6 +496,9 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["test:external-status-refresh"] !== "node scripts/test-external-status-refresh.mjs") {
     failures.push("package.json must expose pnpm test:external-status-refresh");
   }
+  if (packageJson.scripts?.["test:android-emulator"] !== "bash scripts/smoke-android-emulator-all.sh") {
+    failures.push("package.json must expose pnpm test:android-emulator");
+  }
   if (packageJson.scripts?.["test:android-debug-smoke"] !== "bash scripts/smoke-android-debug.sh") {
     failures.push("package.json must expose pnpm test:android-debug-smoke");
   }
@@ -553,6 +561,21 @@ function verifyWiring(allFiles) {
   requireText(allFiles.ci, "node scripts/test-ios-prereqs.mjs", "CI must run the deterministic iOS prereq tests");
   requireText(allFiles.ci, "node scripts/test-android-aab-verifier.mjs", "CI must run the deterministic Android AAB verifier tests");
   requireText(allFiles.ci, "node scripts/test-external-status-refresh.mjs", "CI must run the deterministic external status refresh guard test");
+  for (const script of [
+    "scripts/smoke-android-debug.sh",
+    "scripts/smoke-android-emulator-pair.sh",
+    "scripts/smoke-android-emulator-session-subscription.sh",
+    "scripts/smoke-android-emulator-background-replay.sh",
+    "scripts/smoke-android-emulator-restart-restore.sh",
+    "scripts/smoke-android-emulator-flood.sh",
+    "scripts/smoke-android-emulator-multisession.sh",
+    "scripts/smoke-android-emulator-reconnect.sh",
+    "scripts/smoke-android-emulator-notification-tap.sh",
+  ]) {
+    requireText(allFiles.androidEmulatorAll, script, `Android emulator aggregate must run ${script}`);
+  }
+  requireText(allFiles.androidEmulatorAll, "--list", "Android emulator aggregate must expose a list mode");
+  requireText(allFiles.androidEmulatorAll, "boot-complete", "Android emulator aggregate must require a boot-complete device");
   requireText(allFiles.releaseAudit, "Development doc", "docs/RELEASE_AUDIT.md must include development doc evidence");
   requireText(allFiles.releaseAudit, "scripts/verify-development-doc.mjs", "docs/RELEASE_AUDIT.md must cite the development doc verifier");
   requireText(allFiles.desktopPerf, "FIELDWORK_PERF_WARMUP_SAMPLES", "desktop performance script must expose warm-up sample control");

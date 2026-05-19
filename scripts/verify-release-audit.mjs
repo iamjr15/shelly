@@ -13,6 +13,7 @@ const ci = read(".github/workflows/ci.yml");
 const localRelease = read("scripts/check-local-release.mjs");
 const domainStatus = read("scripts/check-domain-status.mjs");
 const githubNamespace = read("scripts/check-github-namespace.mjs");
+const androidEmulatorAll = read("scripts/smoke-android-emulator-all.sh");
 const packageJson = JSON.parse(read("package.json"));
 
 verifyCurrentVerdict();
@@ -639,6 +640,10 @@ function verifyExternalBlockers() {
     "Physical-device checks",
     "30-minute Android terminal dogfood",
     "A local API 36.1 Android emulator is only a debug substitute",
+    "pnpm test:android-emulator",
+    "aggregate direct-adb substitute suite",
+    "Its `--list` mode",
+    "fail closed unless exactly one boot-complete adb device is available",
     "pnpm test:android-debug-smoke",
     "pnpm test:android-emulator-pair",
     "pnpm test:android-emulator-session-subscription",
@@ -1430,6 +1435,9 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:external-status-refresh"] !== "node scripts/test-external-status-refresh.mjs") {
     failures.push("package.json must expose test:external-status-refresh");
   }
+  if (packageJson.scripts?.["test:android-emulator"] !== "bash scripts/smoke-android-emulator-all.sh") {
+    failures.push("package.json must expose test:android-emulator");
+  }
   if (packageJson.scripts?.["test:android-debug-smoke"] !== "bash scripts/smoke-android-debug.sh") {
     failures.push("package.json must expose test:android-debug-smoke");
   }
@@ -1457,6 +1465,21 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-emulator-notification-tap"] !== "bash scripts/smoke-android-emulator-notification-tap.sh") {
     failures.push("package.json must expose test:android-emulator-notification-tap");
   }
+  for (const script of [
+    "scripts/smoke-android-debug.sh",
+    "scripts/smoke-android-emulator-pair.sh",
+    "scripts/smoke-android-emulator-session-subscription.sh",
+    "scripts/smoke-android-emulator-background-replay.sh",
+    "scripts/smoke-android-emulator-restart-restore.sh",
+    "scripts/smoke-android-emulator-flood.sh",
+    "scripts/smoke-android-emulator-multisession.sh",
+    "scripts/smoke-android-emulator-reconnect.sh",
+    "scripts/smoke-android-emulator-notification-tap.sh",
+  ]) {
+    requireText(androidEmulatorAll, script, `Android emulator aggregate must run ${script}`);
+  }
+  requireText(androidEmulatorAll, "--list", "Android emulator aggregate must expose a list mode");
+  requireText(androidEmulatorAll, "boot-complete", "Android emulator aggregate must require a boot-complete device");
   requireText(localRelease, "scripts/verify-rust-workspace.mjs", "local release gate must include Rust workspace verification");
   requireText(localRelease, "scripts/verify-release-audit.mjs", "local release gate must include release audit verification");
   requireText(localRelease, "scripts/verify-release-workflows.mjs", "local release gate must include release workflow verification");

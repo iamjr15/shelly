@@ -58,7 +58,13 @@ outside this shell:
   Any new unchecked gate that is not added to that classified allowlist fails the
   audit instead of silently becoming release debt.
 - A local API 36.1 Android emulator is only a debug substitute for those
-  runtime/performance gates, not release-device evidence. After wiping the
+  runtime/performance gates, not release-device evidence. `pnpm test:android-emulator`
+  is now the aggregate direct-adb substitute suite for the locked debug launch, pair,
+  session-subscription, background-replay, restart-restore, flood,
+  multisession, reconnect, and notification-tap smokes. Its `--list` mode
+  prints the underlying adb scripts without requiring a device, and normal runs
+  fail closed unless exactly one boot-complete adb device is available or
+  `FIELDWORK_ANDROID_SERIAL` selects one. After wiping the
   unstable Play Store AVD data, `pnpm test:android-debug-smoke` installed the
   debug app, launched `app.fieldwork.android/.MainActivity` with `am start -W`
   `TotalTime=2467ms`, confirmed the locked `Unlock` surface through

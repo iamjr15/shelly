@@ -53,6 +53,7 @@
     "test:release-artifacts": "node scripts/test-release-artifacts.mjs",
     "test:android-aab-verifier": "node scripts/test-android-aab-verifier.mjs",
     "test:external-status-refresh": "node scripts/test-external-status-refresh.mjs",
+    "test:android-emulator": "bash scripts/smoke-android-emulator-all.sh",
     "test:android-debug-smoke": "bash scripts/smoke-android-debug.sh",
     "test:android-emulator-pair": "bash scripts/smoke-android-emulator-pair.sh",
     "test:android-emulator-session-subscription": "bash scripts/smoke-android-emulator-session-subscription.sh",
