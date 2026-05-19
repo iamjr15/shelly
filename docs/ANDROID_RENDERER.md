@@ -19,6 +19,8 @@ Local verification status:
 - XML resources lint locally with `xmllint`.
 - `apps/android/scripts/build-rust.sh` builds the Rust mobile core for `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
 - `apps/android/gradlew --no-daemon bundleRelease` builds a release AAB that includes all three ABI slices.
+- `pnpm test:android-emulator` aggregates the direct-adb emulator substitutes: debug launch timing, pair flow, dashboard subscription, terminal flood rendering, background replay, restart restore, multisession, reconnect, and notification tap routing.
+- Latest default aggregate run on 2026-05-19 passed on `emulator-5554` with locked debug launch `TotalTime=7920ms`, pair `pair_flow_ms=2234`, session subscription `visible_ms=3318`, 8440/14400 flood screenshot nonblack samples, no Fieldwork crash log entries, and adb artifacts captured under `/tmp/fieldwork-android-aggregate-*`.
 - The required 30-minute physical Android device dogfood remains blocked in this shell by the lack of an attached Android test device.
 
 Sources checked on 2026-05-18:

@@ -12,6 +12,7 @@ const docs = {
   privacy: read("docs/PRIVACY.md"),
   architecture: read("docs/ARCHITECTURE.md"),
   install: read("docs/INSTALL.md"),
+  androidRenderer: read("docs/ANDROID_RENDERER.md"),
 };
 
 verifyRequiredDocsExist();
@@ -20,6 +21,7 @@ verifyProtocolDoc();
 verifyPrivacyDoc();
 verifyArchitectureDoc();
 verifyInstallDoc();
+verifyAndroidRendererDoc();
 verifyPlanDoc();
 
 if (failures.length > 0) {
@@ -38,6 +40,7 @@ function verifyRequiredDocsExist() {
     "docs/PRIVACY.md",
     "docs/ARCHITECTURE.md",
     "docs/INSTALL.md",
+    "docs/ANDROID_RENDERER.md",
     "docs/RELEASE_AUDIT.md",
   ]) {
     const fullPath = path.join(root, rel);
@@ -48,6 +51,32 @@ function verifyRequiredDocsExist() {
     if (fs.statSync(fullPath).size < 200) {
       failures.push(`${rel} is unexpectedly small`);
     }
+  }
+}
+
+function verifyAndroidRendererDoc() {
+  for (const needle of [
+    "connectbot/termlib",
+    "org.connectbot:termlib",
+    "`0.0.35`",
+    "raw PTY byte stream",
+    "The old WebView/xterm.js path remains rejected for v1",
+    "pnpm test:android-emulator",
+    "direct-adb emulator substitutes",
+    "debug launch timing, pair flow, dashboard subscription, terminal flood rendering, background replay, restart restore, multisession, reconnect, and notification tap routing",
+    "Latest default aggregate run on 2026-05-19 passed on `emulator-5554`",
+    "`TotalTime=7920ms`",
+    "`pair_flow_ms=2234`",
+    "`visible_ms=3318`",
+    "8440/14400 flood screenshot nonblack samples",
+    "no Fieldwork crash log entries",
+    "30-minute physical Android device dogfood remains blocked",
+  ]) {
+    requireText(
+      docs.androidRenderer,
+      needle,
+      `docs/ANDROID_RENDERER.md must document current renderer evidence: ${needle}`,
+    );
   }
 }
 
