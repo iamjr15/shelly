@@ -35,7 +35,9 @@ pre-commit run --all-files
 
 The hooks run `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`,
 `cargo nextest run --workspace --no-fail-fast`, and
-`node scripts/verify-secret-boundaries.mjs` through the local toolchain.
+`node scripts/verify-secret-boundaries.mjs`, `node scripts/verify-no-ship-markers.mjs`,
+and `node scripts/verify-no-ship-markers.mjs --self-test` through the local
+toolchain.
 
 Common checks:
 

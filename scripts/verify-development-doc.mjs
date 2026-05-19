@@ -55,6 +55,11 @@ function verifyDevelopmentDoc(text) {
     requireText(text, command, `docs/DEVELOPMENT.md 15-minute path must include ${command}`);
   }
   requireText(text, "Mobile artifacts, release signing, relay deployment, and provider push are separate release gates", "docs/DEVELOPMENT.md must distinguish source build from external release gates");
+  requireText(
+    text,
+    "`node scripts/verify-secret-boundaries.mjs`, `node scripts/verify-no-ship-markers.mjs`,\nand `node scripts/verify-no-ship-markers.mjs --self-test` through the local\ntoolchain",
+    "docs/DEVELOPMENT.md must document the pre-commit no-ship hooks",
+  );
   requireText(text, "one explicit warm-up sample", "docs/DEVELOPMENT.md must document the desktop performance warm-up contract");
   requireText(text, "build-machine first-exec page-cache/code-signing noise", "docs/DEVELOPMENT.md must explain why the desktop performance warm-up exists");
   requireText(text, "fails if any measured release-build sample exceeds the v1 thresholds", "docs/DEVELOPMENT.md must document max-sample desktop performance enforcement");

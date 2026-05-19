@@ -25,3 +25,15 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: fieldwork-no-ship-markers
+        name: node scripts/verify-no-ship-markers.mjs
+        entry: node scripts/verify-no-ship-markers.mjs
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: fieldwork-no-ship-markers-self-test
+        name: node scripts/verify-no-ship-markers.mjs --self-test
+        entry: node scripts/verify-no-ship-markers.mjs --self-test
+        language: system
+        pass_filenames: false
+        always_run: true

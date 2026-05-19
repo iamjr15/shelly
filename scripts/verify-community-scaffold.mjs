@@ -130,17 +130,19 @@ function verifyPreCommitGate() {
     ["cargo-clippy-workspace", "cargo clippy --workspace -- -D warnings"],
     ["cargo-nextest-workspace", "cargo nextest run --workspace --no-fail-fast"],
     ["fieldwork-secret-boundaries", "node scripts/verify-secret-boundaries.mjs"],
+    ["fieldwork-no-ship-markers", "node scripts/verify-no-ship-markers.mjs"],
+    ["fieldwork-no-ship-markers-self-test", "node scripts/verify-no-ship-markers.mjs --self-test"],
   ]) {
     const [id, entry] = hook;
     requireText(files.preCommit, `id: ${id}`, `.pre-commit-config.yaml must include hook ${id}`);
     requireText(files.preCommit, `entry: ${entry}`, `.pre-commit-config.yaml hook ${id} must run ${entry}`);
   }
   const alwaysRunCount = [...files.preCommit.matchAll(/always_run: true/g)].length;
-  if (alwaysRunCount < 4) {
-    failures.push(".pre-commit-config.yaml must make all four release-critical hooks always_run");
+  if (alwaysRunCount < 6) {
+    failures.push(".pre-commit-config.yaml must make all six release-critical hooks always_run");
   }
   const noFilenameCount = [...files.preCommit.matchAll(/pass_filenames: false/g)].length;
-  if (noFilenameCount < 4) {
+  if (noFilenameCount < 6) {
     failures.push(".pre-commit-config.yaml must disable filename passing for all workspace hooks");
   }
 }
