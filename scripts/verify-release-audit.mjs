@@ -320,6 +320,16 @@ function verifyPromptToArtifactChecklist() {
     "local API 36.1 emulator debug launch, `uiautomator` locked-surface evidence, and nonblank emulator `screencap` check",
     "release audit must record the current Android emulator debug-launch evidence",
   );
+  for (const evidence of [
+    "default aggregate run on 2026-05-19 passed on `emulator-5554`",
+    "`TotalTime=7920ms`",
+    "`pair_flow_ms=2234`",
+    "`visible_ms=3318`",
+    "8440/14400 nonblack samples",
+    "notification tap routing",
+  ]) {
+    requireText(audit, evidence, `release audit must record aggregate Android emulator evidence: ${evidence}`);
+  }
   requireText(
     audit,
     "Direct adb restart-restore evidence on 2026-05-19",
@@ -643,7 +653,9 @@ function verifyExternalBlockers() {
     "pnpm test:android-emulator",
     "aggregate direct-adb substitute suite",
     "Its `--list` mode",
-    "fail closed unless exactly one boot-complete adb device is available",
+    "retry only a locked debug-launch timing outlier once with the same strict\n  limit",
+    "every other script failure fails closed and preserves the captured\n  wrapper output path",
+    "fails closed unless exactly one\n  boot-complete adb device is available",
     "pnpm test:android-debug-smoke",
     "pnpm test:android-emulator-pair",
     "pnpm test:android-emulator-session-subscription",
@@ -754,6 +766,7 @@ function verifyLatestRefresh() {
     "pnpm check:android-aab",
     "node scripts/test-android-aab-verifier.mjs",
     "node scripts/test-external-status-refresh.mjs",
+    "pnpm test:android-emulator",
     "pnpm check:npm-packages",
     "pnpm check:changesets",
     "pnpm check:oss-notices",
@@ -835,6 +848,7 @@ function verifyLatestRefresh() {
   requireText(audit, "adb -s emulator-5554 exec-out uiautomator dump /dev/tty", "release audit latest refresh must list direct adb UI dump");
   requireText(audit, "adb -s emulator-5554 logcat -b crash -d", "release audit latest refresh must list direct adb crash-buffer capture");
   requireText(audit, "The raw adb locked-launch refresh installed the default debug APK", "release audit must summarize the raw adb locked-launch result");
+  requireText(audit, "The default `pnpm test:android-emulator` aggregate passed on `emulator-5554`", "release audit must summarize the default Android emulator aggregate result");
   requireText(audit, "The release-workflow secret hygiene refresh also passed", "release audit must summarize release workflow secret hygiene verification");
   requireText(audit, "`release-rust.yml` decodes Apple signing/notarization assets under\n`RUNNER_TEMP`", "release audit must record release-rust temp signing cleanup");
   requireText(audit, "`release-ios.yml` keeps App\nStore Connect upload JSON outside the repository workspace", "release audit must record release-ios upload JSON hygiene");
@@ -1149,6 +1163,18 @@ function verifyLatestRefresh() {
     requireText(plan, evidence, `PLAN.md latest raw adb QA evidence must include ${evidence}`);
   }
   requireText(plan, "empty `FIELDWORK_DEBUG_PAIRING_PAYLOAD`", "PLAN.md must record restored empty Android debug pairing payload");
+  for (const evidence of [
+    "Android aggregate emulator QA note",
+    "`pnpm test:android-emulator` aggregates the direct-adb emulator substitutes",
+    "retries only a locked debug-launch timing outlier once with the same strict limit",
+    "`TotalTime=7920ms`",
+    "`pair_flow_ms=2234`",
+    "`visible_ms=3318`",
+    "8440/14400 nonblack samples",
+    "successful background replay, restart restore, multisession, reconnect, and notification tap routing",
+  ]) {
+    requireText(plan, evidence, `PLAN.md aggregate Android emulator evidence must include ${evidence}`);
+  }
   requireText(plan, "Android FCM token\nrefresh callbacks queue only trimmed pending tokens", "PLAN.md must record Android queued FCM token callbacks");
   requireText(plan, "paired-and-unlocked ViewModel sync path sends\nqueued/current tokens through mobile-core", "PLAN.md must record Android paired-and-unlocked token sync path");
   requireText(audit, "`hash_for_push` produces lowercase SHA-256 hex", "release audit must record daemon hash generation coverage");
@@ -1480,6 +1506,9 @@ function verifyVerifierIsWired() {
   }
   requireText(androidEmulatorAll, "--list", "Android emulator aggregate must expose a list mode");
   requireText(androidEmulatorAll, "boot-complete", "Android emulator aggregate must require a boot-complete device");
+  requireText(androidEmulatorAll, "above debug smoke limit", "Android emulator aggregate must only retry debug-smoke timing outliers");
+  requireText(androidEmulatorAll, "retrying once with the same strict limit", "Android emulator aggregate must document strict retry behavior");
+  requireText(androidEmulatorAll, "captured output", "Android emulator aggregate must preserve failing smoke output");
   requireText(localRelease, "scripts/verify-rust-workspace.mjs", "local release gate must include Rust workspace verification");
   requireText(localRelease, "scripts/verify-release-audit.mjs", "local release gate must include release audit verification");
   requireText(localRelease, "scripts/verify-release-workflows.mjs", "local release gate must include release workflow verification");

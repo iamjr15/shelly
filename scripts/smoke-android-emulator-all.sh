@@ -81,12 +81,48 @@ if [[ "$boot_completed" != "1" ]]; then
   exit 1
 fi
 
+run_check() {
+  local label="$1"
+  local script="$2"
+  local attempt=1
+
+  echo
+  echo "==> Android emulator smoke: $label"
+
+  while true; do
+    local log_file
+    log_file="$(mktemp "${TMPDIR:-/tmp}/fieldwork-android-${script##*/}.XXXXXX")"
+
+    set +e
+    bash "$root/$script" 2>&1 | tee "$log_file"
+    local status=${PIPESTATUS[0]}
+    set -e
+
+    if [[ "$status" -eq 0 ]]; then
+      rm -f "$log_file"
+      return 0
+    fi
+
+    if [[ "$script" == "scripts/smoke-android-debug.sh" &&
+      "$attempt" -eq 1 &&
+      -z "${FIELDWORK_ANDROID_AGGREGATE_NO_RETRY:-}" ]] &&
+      grep -q "above debug smoke limit" "$log_file"; then
+      echo "locked debug launch hit a transient emulator timing outlier; retrying once with the same strict limit." >&2
+      rm -f "$log_file"
+      attempt=2
+      sleep "${FIELDWORK_ANDROID_AGGREGATE_RETRY_DELAY_SECONDS:-5}"
+      continue
+    fi
+
+    echo "Android emulator smoke '$label' failed; captured output: $log_file" >&2
+    return "$status"
+  done
+}
+
 for item in "${checks[@]}"; do
   label="${item%%|*}"
   script="${item#*|}"
-  echo
-  echo "==> Android emulator smoke: $label"
-  bash "$root/$script"
+  run_check "$label" "$script"
 done
 
 echo

@@ -282,7 +282,14 @@ function verifyDevelopmentDoc(text) {
     "pnpm test:android-emulator-notification-tap",
     "`pnpm test:android-emulator` is the aggregate direct-adb substitute suite",
     "`pnpm test:android-emulator -- --list` prints the exact underlying adb scripts",
-    "fails closed unless exactly one boot-complete adb device is\navailable",
+    "retries only a locked debug-launch\ntiming outlier once with the same strict limit",
+    "every other script failure fails\nclosed and preserves the captured wrapper output path",
+    "fails\nclosed unless exactly one boot-complete adb device is available",
+    "latest default aggregate run on\n2026-05-19 passed on `emulator-5554`",
+    "`TotalTime=7920ms`",
+    "`pair_flow_ms=2234`",
+    "`visible_ms=3318`",
+    "8440/14400 nonblack samples",
     "checks that `TotalTime` stays below the debug-smoke limit",
     "rejects system ANR dialogs in the UI tree",
     "requires the locked `Unlock` surface",
@@ -576,6 +583,9 @@ function verifyWiring(allFiles) {
   }
   requireText(allFiles.androidEmulatorAll, "--list", "Android emulator aggregate must expose a list mode");
   requireText(allFiles.androidEmulatorAll, "boot-complete", "Android emulator aggregate must require a boot-complete device");
+  requireText(allFiles.androidEmulatorAll, "above debug smoke limit", "Android emulator aggregate must only retry debug-smoke timing outliers");
+  requireText(allFiles.androidEmulatorAll, "retrying once with the same strict limit", "Android emulator aggregate must document strict retry behavior");
+  requireText(allFiles.androidEmulatorAll, "captured output", "Android emulator aggregate must preserve failing smoke output");
   requireText(allFiles.releaseAudit, "Development doc", "docs/RELEASE_AUDIT.md must include development doc evidence");
   requireText(allFiles.releaseAudit, "scripts/verify-development-doc.mjs", "docs/RELEASE_AUDIT.md must cite the development doc verifier");
   requireText(allFiles.desktopPerf, "FIELDWORK_PERF_WARMUP_SAMPLES", "desktop performance script must expose warm-up sample control");

@@ -63,8 +63,15 @@ outside this shell:
   session-subscription, background-replay, restart-restore, flood,
   multisession, reconnect, and notification-tap smokes. Its `--list` mode
   prints the underlying adb scripts without requiring a device, and normal runs
-  fail closed unless exactly one boot-complete adb device is available or
-  `FIELDWORK_ANDROID_SERIAL` selects one. After wiping the
+  retry only a locked debug-launch timing outlier once with the same strict
+  limit; every other script failure fails closed and preserves the captured
+  wrapper output path. The aggregate fails closed unless exactly one
+  boot-complete adb device is available or `FIELDWORK_ANDROID_SERIAL` selects
+  one. The latest default aggregate run on 2026-05-19 passed on `emulator-5554`
+  without the relaxed launch env: locked debug launch `TotalTime=7920ms`, pair
+  `pair_flow_ms=2234`, session subscription `visible_ms=3318`, flood screenshot
+  8440/14400 nonblack samples, and successful background replay, restart
+  restore, multisession, reconnect, and notification tap routing. After wiping the
   unstable Play Store AVD data, `pnpm test:android-debug-smoke` installed the
   debug app, launched `app.fieldwork.android/.MainActivity` with `am start -W`
   `TotalTime=2467ms`, confirmed the locked `Unlock` surface through
@@ -246,8 +253,9 @@ outside this shell:
 
 ## Latest Focused Refresh
 
-After tightening npm registry-state wording, refreshing Android emulator
-debug-launch plus pair/attach/foreground-input evidence, direct adb
+After tightening npm registry-state wording, adding default aggregate Android
+emulator substitute-suite evidence, refreshing Android emulator debug-launch
+plus pair/attach/foreground-input evidence, direct adb
 pair/attach/terminal-input evidence, and raw adb locked-launch evidence,
 tightening release-workflow secret cleanup, tightening the OSS community
 scaffold verifier, adding the delayed mobile telemetry consent prompt, updating
@@ -274,6 +282,7 @@ pnpm check:security-model
 pnpm check:android-aab
 node scripts/test-android-aab-verifier.mjs
 pnpm test:android-debug-smoke
+pnpm test:android-emulator
 pnpm test:android-emulator-pair
 pnpm test:android-emulator-flood
 pnpm test:android-emulator-multisession
@@ -361,6 +370,11 @@ coverage for default-off crash reporting, declined one-time consent resolution,
 and debug-without-DSN no-start behavior. `pnpm test:android-debug-smoke` passed
 on a wiped API 36.1 AVD with debug launch, locked-surface, crash-log, and
 nonblank-screenshot evidence while preserving physical release-device gates.
+The default `pnpm test:android-emulator` aggregate passed on `emulator-5554`
+with locked debug launch `TotalTime=7920ms`, pair `pair_flow_ms=2234`, session
+subscription `visible_ms=3318`, flood screenshot 8440/14400 nonblack samples,
+and successful background replay, restart restore, multisession, reconnect, and
+notification tap routing.
 `pnpm check:android-aab` verified the preserved release AAB ABI slices,
 packaged uses-permission allowlist, and packaged manifest privacy surface; the
 Android AAB verifier self-test now covers forbidden location permission,

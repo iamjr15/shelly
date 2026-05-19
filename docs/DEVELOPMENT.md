@@ -255,9 +255,16 @@ booted emulator. It runs the locked debug launch smoke and then the pair,
 session-subscription, background-replay, restart-restore, flood, multisession,
 reconnect, and notification-tap smokes in order.
 `pnpm test:android-emulator -- --list` prints the exact underlying adb scripts
-without requiring a device. The
-aggregate still fails closed unless exactly one boot-complete adb device is
-available, or `FIELDWORK_ANDROID_SERIAL` names the target.
+without requiring a device. The aggregate retries only a locked debug-launch
+timing outlier once with the same strict limit; every other script failure fails
+closed and preserves the captured wrapper output path. The aggregate still fails
+closed unless exactly one boot-complete adb device is available, or
+`FIELDWORK_ANDROID_SERIAL` names the target. The latest default aggregate run on
+2026-05-19 passed on `emulator-5554` without the relaxed launch env: locked
+debug launch `TotalTime=7920ms`, pair `pair_flow_ms=2234`, session subscription
+`visible_ms=3318`, flood screenshot 8440/14400 nonblack samples, and successful
+background replay, restart restore, multisession, reconnect, and notification
+tap routing.
 
 A later manual adb rerun on 2026-05-19 used direct `adb install`, `am start -W`, `uiautomator`, `screencap`, and logcat. After hiding the emulator IME before tapping Pair, it launched in `TotalTime=1082ms`, paired through explicit desktop approval, listed `bash · fieldwork`, attached the terminal, and showed `echo android_adb_direct_input` plus the matching PTY output. The debug build output was then rebuilt without test-only environment flags and checked to contain `FIELDWORK_BIOMETRIC_BYPASS = false` and an empty `FIELDWORK_DEBUG_PAIRING_PAYLOAD`.
 
