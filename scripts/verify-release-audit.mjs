@@ -1050,10 +1050,10 @@ function verifyLatestRefresh() {
   requireText(audit, "clearing\n  reproducible debug/mobile Rust build output to recover disk space", "release audit must record local handoff disk-space recovery");
   requireText(audit, "removing the regenerated repo-local `target/debug` after the run", "release audit must record local handoff target/debug cleanup");
   requireText(audit, "`IosApp` and `AndroidApp`", "release audit must record both mobile client kinds in capability verification");
-  requirePattern(audit, /paired in\s+3 seconds/, "release audit must record the latest local handoff pair duration");
-  requireText(audit, "19ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
-  requireText(audit, "`cargo nextest run --workspace`: 155 tests passed.", "release audit must record the current workspace nextest count");
-  requireText(audit, "`cargo test --workspace`: 155 unit/integration tests passed, plus doctests.", "release audit must record the current workspace cargo test count");
+  requirePattern(audit, /paired in\s+2 seconds/, "release audit must record the latest local handoff pair duration");
+  requireText(audit, "18ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
+  requireText(audit, "`cargo nextest run --workspace`: 157 tests passed.", "release audit must record the current workspace nextest count");
+  requireText(audit, "`cargo test --workspace`: 157 unit/integration tests passed, plus doctests.", "release audit must record the current workspace cargo test count");
   requireText(audit, "`cargo test -p fieldwork-daemon`: 68 daemon tests passed", "release audit must record the current daemon test count");
   requireText(audit, "`cargo deny check`: exited successfully with `advisories ok, bans ok,\n  licenses ok, sources ok`", "release audit must record the current cargo-deny category result");
   requireText(audit, "duplicate-crate findings were warnings only", "release audit must distinguish cargo-deny duplicate warnings from deny failures");
@@ -1082,6 +1082,8 @@ function verifyLatestRefresh() {
   requireText(audit, "`now_ms()` UTC Unix-millisecond window checks", "release audit must record focused UTC millisecond timestamp coverage");
   requireText(audit, "all-message MessagePack client/server frame round-trip tests", "release audit must record focused MessagePack protocol coverage");
   requireText(audit, "negative bincode frame tests", "release audit must record protocol framing error coverage");
+  requireText(audit, "bincode 2 legacy-layout", "release audit must record the pinned bincode legacy-layout coverage");
+  requireText(audit, "trailing-payload rejection tests", "release audit must record trailing bincode payload rejection coverage");
   requireText(audit, "symlinked existing socket rejection", "release audit must record existing socket symlink coverage");
   requireText(audit, "private `0700` persistence parents", "release audit must record local persistence parent-mode coverage");
   requireText(audit, "`0600` database files", "release audit must record local persistence file-mode coverage");

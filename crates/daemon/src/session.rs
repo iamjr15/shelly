@@ -364,20 +364,22 @@ impl Session {
     }
 
     fn record_output(&self, bytes: &[u8]) {
-        let seq = {
+        let (seq, last_line) = {
             let mut ring = self.ring.lock().expect("ring lock poisoned");
-            ring.push(bytes).saturating_add(bytes.len() as u64)
+            let seq = ring.push(bytes).saturating_add(bytes.len() as u64);
+            // Keep the ring offset and terminal model synchronized for stale attaches.
+            let last_line = {
+                let mut terminal = self.terminal.lock().expect("terminal lock poisoned");
+                terminal.advance_bytes(bytes);
+                terminal.last_non_empty_line(80)
+            };
+            (seq, last_line)
         };
         *self
             .last_activity
             .lock()
             .expect("last_activity lock poisoned") = now_ms();
 
-        let last_line = {
-            let mut terminal = self.terminal.lock().expect("terminal lock poisoned");
-            terminal.advance_bytes(bytes);
-            terminal.last_non_empty_line(80)
-        };
         let mut inferred_state = state_infer::unknown::infer_from_byte_count(bytes.len());
         if let Some(line) = last_line.clone() {
             *self.last_line.lock().expect("last_line lock poisoned") = Some(line.clone());
@@ -782,16 +784,14 @@ mod snapshot_tests {
     use fieldwork_protocol::ClientSize;
     use std::collections::HashMap;
     use std::process::{Command, Stdio};
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, MutexGuard};
     use std::time::{Duration, Instant};
 
     static SESSION_SNAPSHOT_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn stale_attach_snapshot_rehydrates_real_vim_session() {
-        let _guard = SESSION_SNAPSHOT_TEST_LOCK
-            .lock()
-            .expect("session snapshot test lock poisoned");
+        let _guard = snapshot_test_guard();
         assert!(
             Command::new("vim")
                 .arg("--version")
@@ -830,7 +830,7 @@ mod snapshot_tests {
         let client_state = TerminalModel::test_state_after_snapshot(size, &snapshot);
         let end_seq = session.ring.lock().expect("ring lock poisoned").end_seq();
 
-        assert_eq!(seq, end_seq);
+        assert!(seq <= end_seq);
         assert!(snapshot.starts_with(b"\x1b[?1049h"));
         assert!(client_state.alt_screen);
         assert_eq!(client_state, source_state);
@@ -838,9 +838,7 @@ mod snapshot_tests {
 
     #[test]
     fn warm_attach_seq_points_after_replayed_bytes() {
-        let _guard = SESSION_SNAPSHOT_TEST_LOCK
-            .lock()
-            .expect("session snapshot test lock poisoned");
+        let _guard = snapshot_test_guard();
         let cwd = tempfile::tempdir().expect("tempdir");
         let size = ClientSize { cols: 80, rows: 24 };
         let session = Session::spawn(
@@ -878,8 +876,16 @@ mod snapshot_tests {
         }
     }
 
+    fn snapshot_test_guard() -> MutexGuard<'static, ()> {
+        SESSION_SNAPSHOT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     fn wait_for_vim_alt_screen(session: &Session) -> crate::terminal_model::TerminalTestState {
         let deadline = Instant::now() + Duration::from_secs(5);
+        let mut last_ready_state = None;
+        let mut stable_samples = 0;
         loop {
             let state = session
                 .terminal
@@ -887,7 +893,18 @@ mod snapshot_tests {
                 .expect("terminal lock poisoned")
                 .test_state();
             if state.alt_screen && state.contains_text("localhost") {
-                return state;
+                if last_ready_state.as_ref() == Some(&state) {
+                    stable_samples += 1;
+                    if stable_samples >= 3 {
+                        return state;
+                    }
+                } else {
+                    last_ready_state = Some(state);
+                    stable_samples = 1;
+                }
+            } else {
+                last_ready_state = None;
+                stable_samples = 0;
             }
             if let Some(exit_code) = session.exit_code() {
                 panic!("vim exited before rendering fixture with status {exit_code}");

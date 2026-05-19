@@ -432,8 +432,8 @@ initialization installed the signed OCI provider from the lockfile, validation
 reported `Success! The configuration is valid.`, and the shared script removed
 the ignored `.terraform` provider cache afterward without producing `tfstate` or
 `tfvars` files. The site content verifier passed, pinning the `fieldwork.dev` pages to v1 install, protocol, architecture, privacy, screenshot SVG imports, and future-scope exclusions. Domain status refresh is no longer an agent-owned routine release activity; `scripts/check-domain-status.mjs --operator-refresh` remains available for explicit operator-requested refreshes only, and the script fails closed before network access without that flag. The release-workflow verifier now also pins the Cloudflare Pages deploy scaffold for `fieldwork.dev`, including the isolated site lockfile install, root `pnpm build:site`, fail-closed Cloudflare credentials, and the `fieldwork-dev` Pages project. The release-workflow verifier now also pins the weekly Dependabot matrix for Cargo, root npm package metadata, the isolated `site/` npm lockfile, Android Gradle, and GitHub Actions. The focused daemon state-inference fixture tests passed, and the focused daemon local-agent-hook tests passed for `matching_local_agent_hook_updates_session_state` and `mismatched_local_agent_hook_is_ignored`, verifying that matching LocalCli Claude/Codex hook events update only matching PTY sessions while mismatched hook sources are ignored. The daemon
-service scaffold verifier passed, the direct bincode IPC mobile create/kill rejection test passed for `IosApp` and `AndroidApp`, the direct bincode IPC mobile agent-state hook rejection test passed for `IosApp` and `AndroidApp`, the local handoff smoke now also covers paired iroh mobile agent-state hook rejection, and the latest local handoff smoke paired in 3 seconds before exercising `claude`, `bash`, `vim`, subscribed session updates,
-mobile input, warm reconnect replay over iroh within 2 seconds from `last_seen_seq` (19ms in the latest local run), protocol-mismatch rejection, mobile create/kill/agent-state-event rejection, revocation, and restart restore.
+service scaffold verifier passed, the direct bincode IPC mobile create/kill rejection test passed for `IosApp` and `AndroidApp`, the direct bincode IPC mobile agent-state hook rejection test passed for `IosApp` and `AndroidApp`, the local handoff smoke now also covers paired iroh mobile agent-state hook rejection, and the latest local handoff smoke paired in 2 seconds before exercising `claude`, `bash`, `vim`, subscribed session updates,
+mobile input, warm reconnect replay over iroh within 2 seconds from `last_seen_seq` (18ms in the latest local run), protocol-mismatch rejection, mobile create/kill/agent-state-event rejection, revocation, and restart restore.
 The Android biometric gate refresh added focused JVM tests for first unlock,
 immediate post-unlock resume, fresh foreground resume, 5-minute stale foreground
 boundary, and terminal input refusal while locked, while preserving the
@@ -725,12 +725,13 @@ minimum attached viewport selection, empty detach state, and single-client resiz
 target selection. The public API rustdoc gate was also tightened so
 `fieldwork-protocol` and `fieldwork-mobile-core` deny `missing_docs` directly;
 `cargo clippy -p fieldwork-protocol -p fieldwork-mobile-core -- -D warnings`
-passed after that change. `cargo test -p fieldwork-protocol` now passes 15
+passed after that change. `cargo test -p fieldwork-protocol` now passes 17
 tests, including focused generated `SessionId`/`ClientId` UUIDv7 checks,
 `now_ms()` UTC Unix-millisecond window checks, the two `insta` bincode wire
 round-trip snapshot suites, focused all-message MessagePack client/server frame
 round-trip tests, and negative bincode frame tests for incomplete and oversized
-frames. This refresh preserves the all-message MessagePack client/server frame round-trip tests evidence. The PTY ring
+frames plus the bincode 2 legacy-layout and trailing-payload rejection tests.
+This refresh preserves the all-message MessagePack client/server frame round-trip tests evidence. The PTY ring
 buffer contract was corrected from "wraparound" to monotonic `u64` offsets that
 force cold resync at the impossible-in-practice overflow edge, with
 `cargo test -p fieldwork-daemon seq_overflow_forces_cold_resync_window` passing
@@ -792,8 +793,8 @@ pnpm test:local-handoff
 
 Observed results:
 
-- `cargo nextest run --workspace`: 155 tests passed.
-- `cargo test --workspace`: 155 unit/integration tests passed, plus doctests.
+- `cargo nextest run --workspace`: 157 tests passed.
+- `cargo test --workspace`: 157 unit/integration tests passed, plus doctests.
 - `cargo test -p fieldwork-daemon`: 68 daemon tests passed, including the
   local Sentry panic-capture test transport smoke, seven-day daemon-log pruning,
   and the real `vim /etc/hosts` stale-attach snapshot rehydration gate.
