@@ -110,6 +110,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: node scripts/verify-rust-workspace.mjs
+      - run: node --check scripts/check-local-release.mjs
+      - run: node scripts/check-local-release.mjs --list --with-artifacts --with-runtime
       - run: node scripts/verify-npm-packages.mjs
       - run: node scripts/verify-changesets-config.mjs
       - run: node scripts/generate-oss-notices.mjs --check

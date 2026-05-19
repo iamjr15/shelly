@@ -82,7 +82,10 @@ staged npm binaries, publish readiness, and meta-package dry-run pack. When
 release binaries, Terraform, ffmpeg/ffprobe, and site dependencies are available,
 run `pnpm check:local-release -- --with-runtime` to also verify the demo video,
 site typecheck/build, Terraform fmt/init/validate, relay TLS/OTLP loopbacks, and
-desktop cold-start thresholds. The flags can be combined.
+desktop cold-start thresholds. The flags can be combined. CI syntax-checks the
+aggregate wrapper and list-checks the combined artifact/runtime mode so wrapper
+drift is caught without duplicating the full artifact/runtime gate in pull
+requests.
 
 `pnpm check:release-artifacts` is intentionally fail-closed unless
 `artifacts/` or `FIELDWORK_ARTIFACT_DIR` contains the release-rust/GitHub

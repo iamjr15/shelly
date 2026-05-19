@@ -119,6 +119,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "CI syntax-checks the aggregate wrapper and list-checks artifact/runtime modes",
+    "release audit must record CI coverage for the local release aggregate wrapper",
+  );
+  requireText(
+    audit,
     "focused service context/path unit tests",
     "release audit must record daemon service install/path unit-test coverage",
   );
@@ -1466,6 +1471,12 @@ function verifyVerifierIsWired() {
   requireText(ci, "node scripts/verify-v1-boundary.mjs", "CI must run the v1 boundary verifier");
   requireText(ci, "node scripts/verify-security-model.mjs", "CI must run the security model verifier");
   requireText(ci, "node scripts/verify-release-audit.mjs", "CI must run the release audit verifier");
+  requireText(ci, "node --check scripts/check-local-release.mjs", "CI must syntax-check the local release aggregate verifier");
+  requireText(
+    ci,
+    "node scripts/check-local-release.mjs --list --with-artifacts --with-runtime",
+    "CI must list-check all local release aggregate modes",
+  );
   requireText(ci, "node scripts/verify-release-workflows.mjs", "CI must run the release workflow verifier");
   requireText(ci, "node scripts/verify-relay-provider-clients.mjs", "CI must run the relay provider-client verifier");
   requireText(ci, "node scripts/verify-daemon-service.mjs", "CI must run the daemon service verifier");

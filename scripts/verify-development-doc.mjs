@@ -108,6 +108,11 @@ function verifyDevelopmentDoc(text) {
     "demo video,\nsite typecheck/build, Terraform fmt/init/validate, relay TLS/OTLP loopbacks, and\ndesktop cold-start thresholds",
     "docs/DEVELOPMENT.md must document what the runtime local release aggregate mode covers",
   );
+  requireText(
+    text,
+    "CI syntax-checks the\naggregate wrapper and list-checks the combined artifact/runtime mode",
+    "docs/DEVELOPMENT.md must document CI coverage for the local release aggregate wrapper",
+  );
 
   for (const section of [
     "The protocol crate uses insta snapshots",
@@ -515,6 +520,12 @@ function verifyWiring(allFiles) {
     failures.push("package.json must expose pnpm check:demo-video");
   }
   requireText(allFiles.ci, "node scripts/verify-development-doc.mjs", "CI must run the development doc verifier");
+  requireText(allFiles.ci, "node --check scripts/check-local-release.mjs", "CI must syntax-check the local release aggregate verifier");
+  requireText(
+    allFiles.ci,
+    "node scripts/check-local-release.mjs --list --with-artifacts --with-runtime",
+    "CI must list-check all local release aggregate modes",
+  );
   requireText(allFiles.localRelease, "scripts/verify-release-audit.mjs", "local release gate must include the release audit verifier");
   requireText(allFiles.localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include deterministic release-artifact verifier coverage");
   requireText(allFiles.localRelease, "scripts/test-npm-artifact-pack.mjs", "local release gate must include deterministic npm artifact packaging coverage");
