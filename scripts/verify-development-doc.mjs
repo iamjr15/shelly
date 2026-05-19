@@ -424,6 +424,11 @@ function verifyDevelopmentDoc(text) {
   ]) {
     requireText(text, phrase, `docs/DEVELOPMENT.md telemetry facts must include ${phrase}`);
   }
+  requireText(
+    text,
+    "node scripts/verify-no-ship-markers.mjs",
+    "docs/DEVELOPMENT.md must document the CI no-ship marker verifier",
+  );
 
   for (const phrase of [
     "cargo test -p fieldwork-daemon local_agent_hook",
@@ -588,6 +593,7 @@ function verifyWiring(allFiles) {
     "node scripts/check-local-release.mjs --list --with-artifacts --with-runtime",
     "CI must list-check all local release aggregate modes",
   );
+  requireText(allFiles.ci, "node scripts/verify-no-ship-markers.mjs", "CI must run the no-ship marker verifier");
   requireText(allFiles.localRelease, "scripts/verify-release-audit.mjs", "local release gate must include the release audit verifier");
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include the no-ship marker verifier");
   requireText(allFiles.localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include deterministic release-artifact verifier coverage");

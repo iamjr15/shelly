@@ -297,6 +297,7 @@ function verifyCiWiresVerifier(text) {
   requireText(text, "node scripts/verify-secret-boundaries.mjs --self-test", "CI must run the secret-boundary self-test");
   requireText(text, "node scripts/verify-telemetry-privacy.mjs", "CI must run the telemetry privacy verifier");
   requireText(text, "node scripts/verify-v1-boundary.mjs", "CI must run the v1 boundary verifier");
+  requireText(text, "node scripts/verify-no-ship-markers.mjs", "CI must run the no-ship marker verifier");
   requireText(text, "node scripts/verify-release-audit.mjs", "CI must run the release audit verifier");
   requireText(text, "node scripts/verify-store-privacy.mjs", "CI must run the store privacy verifier");
   requireText(text, "node scripts/verify-relay-provider-clients.mjs", "CI must run the relay provider-client verifier");
