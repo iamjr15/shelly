@@ -867,6 +867,7 @@ function verifyLatestRefresh() {
   requireText(audit, "local run without `artifacts/` or `FIELDWORK_ARTIFACT_DIR` fails closed as\n  expected", "release audit must document fail-closed missing artifact directory behavior");
   requireText(audit, "`pnpm test:release-artifacts` remains the deterministic local\n  verifier substitute", "release audit must document local release artifact substitute");
   requireText(audit, "decoded Apple signing/notarization assets outside the repository workspace with chmod/cleanup", "release audit must document release-rust decoded signing asset hygiene");
+  requireText(audit, "early Darwin signing/notarization preflight before toolchain setup/build", "release audit must document release-rust early Darwin credential preflight");
   requireText(audit, "early `NPM_TOKEN` preflight before npm artifact download", "release audit must document release-npm early token preflight");
   requireText(audit, "early relay SSH-key/inventory preflight before relay artifact download", "release audit must document deploy-relay early prerequisite preflight");
   requireText(audit, "early Cloudflare credential preflight before site install/build", "release audit must document deploy-site early credential preflight");
@@ -887,6 +888,7 @@ function verifyLatestRefresh() {
   requireText(audit, "The raw adb locked-launch refresh installed the default debug APK", "release audit must summarize the raw adb locked-launch result");
   requireText(audit, "The default `pnpm test:android-emulator` aggregate passed on `emulator-5554`", "release audit must summarize the default Android emulator aggregate result");
   requireText(audit, "The release-workflow secret hygiene refresh also passed", "release audit must summarize release workflow secret hygiene verification");
+  requireText(audit, "`release-rust.yml` preflights Apple signing/notarization secrets before Darwin\ntoolchain setup and release build", "release audit must record release-rust early Darwin secret preflight");
   requireText(audit, "`release-rust.yml` decodes Apple signing/notarization assets under\n`RUNNER_TEMP`", "release audit must record release-rust temp signing cleanup");
   requireText(audit, "`release-ios.yml` keeps App\nStore Connect upload JSON outside the repository workspace", "release audit must record release-ios upload JSON hygiene");
   requireText(audit, "`release-android.yml` removes generated Firebase/signing\nfiles in an `always()` cleanup step", "release audit must record release-android generated secret cleanup");

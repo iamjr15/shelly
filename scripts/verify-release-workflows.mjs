@@ -44,6 +44,18 @@ function verifyRustRelease(text) {
     requireText(text, `package: ${platform}`, `release-rust matrix is missing ${platform}`);
   }
   requireText(text, "sigstore/cosign-installer@v3", "release-rust must install cosign");
+  requireText(text, "Verify Darwin signing prerequisites", "release-rust must fail closed before Darwin build when Apple signing/notarization secrets are absent");
+  requireBefore(
+    text,
+    "Verify Darwin signing prerequisites",
+    "dtolnay/rust-toolchain@stable",
+    "release-rust must preflight Darwin signing prerequisites before toolchain setup and release build",
+  );
+  requireText(
+    text,
+    "Apple signing/notarization secrets are required before building Darwin release artifacts.",
+    "release-rust early Darwin credential failure must explain the external signing gate",
+  );
   requireText(text, "cargo install apple-codesign --locked", "release-rust must install locked rcodesign");
   requireText(text, "Verify relay-only provider secret boundary", "release-rust must run provider secret-boundary verifier after build");
   requireText(text, "node scripts/verify-secret-boundaries.mjs", "release-rust must run provider secret-boundary verifier");

@@ -496,6 +496,7 @@ function verifyDevelopmentDoc(text) {
     'retries the public registry with `node scripts/verify-npm-registry-state.mjs --expect-meta-published --expect-platform-published --expect-latest-version="$version" --expect-provenance`',
     "The relay TLS and OTLP smoke scripts honor `FIELDWORK_RELAY_BINARY`",
     "prefer the existing `target/release/fieldwork-relay`",
+    "macOS daemon signing and notarization fail closed before Darwin toolchain setup and release build",
     "keep decoded Apple signing/notarization assets outside the repository workspace with `0600` permissions and cleanup",
     "keeps App Store Connect upload JSON outside the repository workspace and cleans signing/upload assets",
     "Android release preflights Sentry/Firebase/signing/Play secrets before toolchain setup and mobile build",

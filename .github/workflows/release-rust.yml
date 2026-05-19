@@ -37,6 +37,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Verify Darwin signing prerequisites
+        if: startsWith(matrix.target, 'aarch64-apple') || startsWith(matrix.target, 'x86_64-apple')
+        env:
+          P12_BASE64: ${{ secrets.APPLE_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_P12_PASSWORD }}
+          APP_STORE_KEY_JSON: ${{ secrets.APP_STORE_KEY_JSON }}
+        run: |
+          if [ -z "$P12_BASE64" ] || [ -z "$P12_PASSWORD" ] || [ -z "$APP_STORE_KEY_JSON" ]; then
+            echo "Apple signing/notarization secrets are required before building Darwin release artifacts."
+            exit 1
+          fi
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
