@@ -1,0 +1,39 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Protocol"
+  description="Fieldwork protocol overview: contract version 1, length-prefixed framing, pairing, attach replay, and push registration."
+>
+  <section class="page">
+    <div class="page-copy">
+      <p class="eyebrow">Protocol</p>
+      <h1>Contract version 1.</h1>
+      <p class="lede">
+        Every client starts with `Hello` and rejects contract mismatches. Local IPC uses
+        bincode; mobile transport uses MessagePack. Both paths keep the same length-prefixed
+        frame shape.
+      </p>
+    </div>
+
+    <div class="doc-list">
+      <article class="tile">
+        <h3>Framing</h3>
+        <p>Each frame is a 4-byte big-endian payload length followed by a serialized protocol message.</p>
+      </article>
+      <article class="tile">
+        <h3>Attach and replay</h3>
+        <p>`AttachSession.last_seen_seq` requests warm replay from the PTY byte ring. Stale clients receive a daemon-rendered ANSI snapshot.</p>
+      </article>
+      <article class="tile">
+        <h3>Pairing</h3>
+        <p>Pair tokens are 32 random bytes, base32 encoded, single-use, and expire after 10 minutes. The desktop must approve the request.</p>
+      </article>
+      <article class="tile">
+        <h3>Mobile capabilities</h3>
+        <p>Mobile clients can list, attach, input, resize, detach, ping, and register push tokens. Create and kill operations are rejected.</p>
+      </article>
+    </div>
+  </section>
+</BaseLayout>

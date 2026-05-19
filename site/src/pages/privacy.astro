@@ -1,0 +1,43 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Privacy"
+  description="Fieldwork privacy summary for terminal content, pairing, push notifications, telemetry, and encrypted local persistence."
+>
+  <section class="page">
+    <div class="page-copy">
+      <p class="eyebrow">Privacy</p>
+      <h1>Terminal content stays out of push and relay control planes.</h1>
+      <p class="lede">
+        Fieldwork is designed around a narrow data path: terminal bytes move only between
+        the host daemon and paired clients over encrypted transport. Push providers receive
+        fixed generic copy and opaque hashes.
+      </p>
+    </div>
+
+    <div class="doc-list">
+      <article class="tile">
+        <h3>Terminal data</h3>
+        <p>PTY input and output stay on the host unless a paired iroh client attaches to the session.</p>
+      </article>
+      <article class="tile">
+        <h3>Pairing</h3>
+        <p>The QR token is short-lived and single-use. Long-lived device access uses the paired iroh node identity and can be revoked from the desktop CLI.</p>
+      </article>
+      <article class="tile">
+        <h3>Push</h3>
+        <p>Push payloads contain only event type, fixed alert text, and opaque hashes. They never include terminal content, commands, paths, session names, or `last_line`.</p>
+      </article>
+      <article class="tile">
+        <h3>Telemetry</h3>
+        <p>Daemon telemetry is off by default. Mobile crash reporting is opt-in and disables default PII and trace sampling.</p>
+      </article>
+      <article class="tile">
+        <h3>Local storage</h3>
+        <p>Scrollback and paired-device records are encrypted locally by default. The daemon keeps persistence directories and database files private and rejects symlinked stores.</p>
+      </article>
+    </div>
+  </section>
+</BaseLayout>

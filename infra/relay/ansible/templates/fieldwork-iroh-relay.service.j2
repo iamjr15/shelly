@@ -1,0 +1,31 @@
+[Unit]
+Description=Fieldwork iroh relay fallback service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ fieldwork_relay_user }}
+Group={{ fieldwork_relay_group }}
+WorkingDirectory={{ fieldwork_relay_data_dir }}
+Environment=FIELDWORK_RELAY_MODE=iroh-relay
+Environment=FIELDWORK_IROH_RELAY_HTTP_ADDR={{ fieldwork_iroh_relay_http_addr }}
+Environment=FIELDWORK_IROH_RELAY_HTTPS_ADDR={{ fieldwork_iroh_relay_https_addr }}
+Environment=FIELDWORK_IROH_RELAY_QUIC_ADDR={{ fieldwork_iroh_relay_quic_addr }}
+Environment=FIELDWORK_IROH_RELAY_METRICS_ADDR={{ fieldwork_iroh_relay_metrics_addr }}
+Environment=FIELDWORK_IROH_RELAY_CERT_DIR={{ fieldwork_iroh_relay_cert_dir }}
+Environment=FIELDWORK_IROH_RELAY_HOSTNAME={{ fieldwork_iroh_relay_hostname }}
+Environment=FIELDWORK_IROH_RELAY_CONTACT_EMAIL={{ fieldwork_iroh_relay_contact_email }}
+Environment=FIELDWORK_IROH_RELAY_STAGING={{ fieldwork_iroh_relay_staging }}
+Environment=FIELDWORK_IROH_RELAY_HTTP_ONLY={{ fieldwork_iroh_relay_http_only }}
+ExecStart={{ fieldwork_relay_bin_dir }}/fieldwork-relay
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ fieldwork_relay_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

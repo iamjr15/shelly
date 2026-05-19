@@ -1,0 +1,142 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import cliFlow from "../../../docs/assets/fieldwork-cli-flow.svg?url";
+import pairingFlow from "../../../docs/assets/fieldwork-pairing.svg?url";
+import mobileSession from "../../../docs/assets/fieldwork-mobile-session.svg?url";
+---
+
+<BaseLayout
+  title="Fieldwork"
+  description="Open-source terminal handoff for any CLI: keep one PTY session alive on your laptop and continue it from iOS or Android."
+>
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Universal terminal handoff</p>
+      <h1>Fieldwork</h1>
+      <p class="lede">
+        Run any CLI on your laptop, leave the desk, and attach to that same live PTY
+        session from iOS or Android. Shells, TUIs, REPLs, Claude Code, and Codex all
+        keep their state in one daemon-owned session.
+      </p>
+      <div class="actions">
+        <a class="button primary" href="/install/">Install desktop CLI</a>
+        <a class="button" href="/architecture/">Read architecture</a>
+      </div>
+    </div>
+
+    <div class="terminal-scene" aria-label="Fieldwork session handoff preview">
+      <div class="terminal-window">
+        <div class="terminal-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+        <pre class="terminal-body"><code><span class="prompt">$</span> fieldwork new --dir ~/projects/api claude
+created 018f1e...  claude · api
+
+<span class="prompt">$</span> fieldwork ls
+SESSION                         STATUS
+claude · api                    Working
+bash · fieldwork                Idle
+vim · docs                      Attached
+
+<span class="dim">phone attached over iroh</span>
+Claude is waiting for input.
+Continue with the release notes?
+
+<span class="prompt">$</span> y</code></pre>
+      </div>
+
+      <div class="phone-window">
+        <h2>Sessions</h2>
+        <div class="session-row">
+          <strong>claude · api</strong>
+          <span>Awaiting input</span>
+        </div>
+        <div class="session-row">
+          <strong>bash · fieldwork</strong>
+          <span>Idle</span>
+        </div>
+        <div class="session-row">
+          <strong>vim · docs</strong>
+          <span>Attached</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band light">
+    <div class="split">
+      <div>
+        <p class="eyebrow">What ships in v1</p>
+        <h2>One daemon. Many views. Raw PTY bytes.</h2>
+      </div>
+      <div class="grid">
+        <article class="tile">
+          <h3>Arbitrary commands</h3>
+          <p>`bash`, `zsh`, `vim`, `htop`, `python`, `node`, `lazygit`, `claude`, and `codex` run as normal PTYs.</p>
+        </article>
+        <article class="tile">
+          <h3>Warm reconnect</h3>
+          <p>Clients replay from a byte offset when possible and fall back to a synthetic ANSI snapshot when stale.</p>
+        </article>
+        <article class="tile">
+          <h3>Agent-aware push</h3>
+          <p>Claude Code and Codex get first-class waiting-for-input state; unknown CLIs still hand off cleanly.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Flow</p>
+        <h2>Pair once, then attach anywhere.</h2>
+      </div>
+      <ol class="flow">
+        <li><span>Install `fieldwork`, then start the user daemon.</span></li>
+        <li><span>Run `fieldwork pair`, scan the QR code, and approve the device on desktop.</span></li>
+        <li><span>Create sessions from the laptop. Mobile can list, attach, send input, resize, detach, and register push tokens.</span></li>
+        <li><span>Push payloads contain only fixed text and opaque hashes; terminal content is fetched over the paired iroh channel after unlock.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="band light">
+    <div class="split">
+      <div class="page-copy">
+        <p class="eyebrow">Product surfaces</p>
+        <h2>Desktop install, explicit pairing, live mobile terminal.</h2>
+        <p>
+          These source-controlled captures mirror the v1 flows used in local smoke tests and release documentation.
+          Store screenshots are still a release gate because they need signed physical-device builds.
+        </p>
+      </div>
+      <div class="doc-list">
+        <img class="shot" src={cliFlow} alt="Fieldwork CLI install and session list" />
+        <img class="shot" src={pairingFlow} alt="Fieldwork QR pairing with desktop approval" />
+        <img class="shot" src={mobileSession} alt="Fieldwork mobile sessions and terminal attach" />
+      </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Docs</p>
+        <h2>Security and protocol details are public.</h2>
+      </div>
+      <div class="grid">
+        <a class="tile" href="/protocol/">
+          <h3>Protocol</h3>
+          <p>Contract version, framing, attach/replay, pairing, and push registration.</p>
+        </a>
+        <a class="tile" href="/architecture/">
+          <h3>Architecture</h3>
+          <p>Daemon, mobile core, transport, relay, persistence, and npm distribution.</p>
+        </a>
+        <a class="tile" href="/privacy/">
+          <h3>Privacy</h3>
+          <p>What stays local, what crosses iroh, and what push providers can see.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

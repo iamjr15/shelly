@@ -1,0 +1,87 @@
+---
+- name: Deploy Fieldwork relay
+  hosts: fieldwork_relays
+  become: true
+  vars_files:
+    - group_vars/all/main.yml
+
+  pre_tasks:
+    - name: Require relay binary path
+      ansible.builtin.assert:
+        that:
+          - fieldwork_relay_binary | length > 0
+        fail_msg: "Pass -e fieldwork_relay_binary=/path/to/fieldwork-relay"
+
+  tasks:
+    - name: Create relay group
+      ansible.builtin.group:
+        name: "{{ fieldwork_relay_group }}"
+        system: true
+
+    - name: Create relay user
+      ansible.builtin.user:
+        name: "{{ fieldwork_relay_user }}"
+        group: "{{ fieldwork_relay_group }}"
+        shell: /usr/sbin/nologin
+        home: "{{ fieldwork_relay_data_dir }}"
+        create_home: false
+        system: true
+
+    - name: Create relay data directory
+      ansible.builtin.file:
+        path: "{{ fieldwork_relay_data_dir }}"
+        state: directory
+        owner: "{{ fieldwork_relay_user }}"
+        group: "{{ fieldwork_relay_group }}"
+        mode: "0700"
+
+    - name: Install relay binary
+      ansible.builtin.copy:
+        src: "{{ fieldwork_relay_binary }}"
+        dest: "{{ fieldwork_relay_bin_dir }}/fieldwork-relay"
+        owner: root
+        group: root
+        mode: "0755"
+      notify: Restart fieldwork relay
+
+    - name: Allow relay to bind privileged ports
+      ansible.builtin.command:
+        cmd: "setcap cap_net_bind_service+ep {{ fieldwork_relay_bin_dir }}/fieldwork-relay"
+      changed_when: true
+
+    - name: Install HTTP control-plane service
+      ansible.builtin.template:
+        src: fieldwork-control-plane.service.j2
+        dest: /etc/systemd/system/fieldwork-control-plane.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart fieldwork relay
+
+    - name: Install iroh relay service
+      ansible.builtin.template:
+        src: fieldwork-iroh-relay.service.j2
+        dest: /etc/systemd/system/fieldwork-iroh-relay.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart fieldwork relay
+
+    - name: Enable services
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        daemon_reload: true
+      loop:
+        - fieldwork-control-plane.service
+        - fieldwork-iroh-relay.service
+
+  handlers:
+    - name: Restart fieldwork relay
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: restarted
+        daemon_reload: true
+      loop:
+        - fieldwork-control-plane.service
+        - fieldwork-iroh-relay.service

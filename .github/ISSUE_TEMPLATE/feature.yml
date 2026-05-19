@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest a scoped improvement
+title: "feature: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is blocked or painful?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should Fieldwork do?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope check
+      description: Note whether this fits v1 or belongs in FUTURE.md.

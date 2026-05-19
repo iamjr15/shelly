@@ -1,0 +1,12 @@
+packages:
+  - "packages/*"
+
+supportedArchitectures:
+  os:
+    - darwin
+    - linux
+    - current
+  cpu:
+    - arm64
+    - x64
+    - current

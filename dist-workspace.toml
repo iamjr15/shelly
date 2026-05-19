@@ -1,0 +1,22 @@
+[workspace]
+members = ["cargo:."]
+
+[dist]
+cargo-dist-version = "0.31.0"
+ci = "github"
+hosting = "github"
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-gnu",
+]
+installers = []
+publish-jobs = []
+install-updater = false
+github-attestations = true
+pr-run-mode = "plan"
+unix-archive = ".tar.gz"
+
+# Homebrew is intentionally disabled for v1: no "homebrew" installer, no tap,
+# and no publish job. npm is the only desktop install/update path.

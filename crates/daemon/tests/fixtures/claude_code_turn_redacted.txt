@@ -1,0 +1,9 @@
+[fieldwork fixture: redacted Claude Code terminal transcript]
+I'll inspect the failing test and make the smallest change.
+
+Read(src/lib.rs)
+Bash(cargo test -p fieldwork-daemon state_infer)
+
+I found the failing assertion and can update the parser without touching the protocol.
+
+Do you want me to proceed with this edit?

@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Fieldwork",
+    "license": "AGPL-3.0-or-later",
+    "url": "https://github.com/fieldwork-app/fieldwork"
+  },
+  {
+    "name": "Fieldwork App Store Distribution Notice",
+    "license": "AGPL-3.0-or-later additional permission",
+    "url": "https://github.com/fieldwork-app/fieldwork/blob/main/NOTICE"
+  },
+  {
+    "name": "SwiftTerm",
+    "license": "MIT",
+    "url": "https://github.com/migueldeicaza/SwiftTerm"
+  },
+  {
+    "name": "Sentry Cocoa",
+    "license": "MIT",
+    "url": "https://github.com/getsentry/sentry-cocoa"
+  },
+  {
+    "name": "AndroidX",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/jetpack/androidx"
+  },
+  {
+    "name": "Sentry Java and Android SDK",
+    "license": "MIT",
+    "url": "https://github.com/getsentry/sentry-java"
+  },
+  {
+    "name": "Firebase Android SDK",
+    "license": "Apache-2.0",
+    "url": "https://github.com/firebase/firebase-android-sdk"
+  },
+  {
+    "name": "CameraX",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/media/camera/camerax"
+  },
+  {
+    "name": "ML Kit Barcode Scanning",
+    "license": "Apache-2.0",
+    "url": "https://developers.google.com/ml-kit/vision/barcode-scanning"
+  },
+  {
+    "name": "ConnectBot termlib",
+    "license": "Apache-2.0",
+    "url": "https://github.com/connectbot/termlib"
+  },
+  {
+    "name": "iroh",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/n0-computer/iroh"
+  },
+  {
+    "name": "tokio",
+    "license": "MIT",
+    "url": "https://github.com/tokio-rs/tokio"
+  },
+  {
+    "name": "UniFFI",
+    "license": "MPL-2.0",
+    "url": "https://mozilla.github.io/uniffi-rs/"
+  },
+  {
+    "name": "wezterm-term",
+    "license": "MIT",
+    "url": "https://github.com/wez/wezterm"
+  },
+  {
+    "name": "portable-pty",
+    "license": "MIT",
+    "url": "https://github.com/wez/wezterm"
+  },
+  {
+    "name": "redb",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/cberner/redb"
+  },
+  {
+    "name": "serde",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/serde-rs/serde"
+  },
+  {
+    "name": "rustls",
+    "license": "Apache-2.0 OR ISC OR MIT",
+    "url": "https://github.com/rustls/rustls"
+  }
+]

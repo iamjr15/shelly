@@ -1,0 +1,38 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Architecture"
+  description="Fieldwork architecture overview: daemon-owned PTYs, raw byte streaming, iroh transport, encrypted persistence, and relay push."
+>
+  <section class="page">
+    <div class="page-copy">
+      <p class="eyebrow">Architecture</p>
+      <h1>Daemon-owned PTYs with native mobile views.</h1>
+      <p class="lede">
+        The host daemon owns every session. Desktop CLI, iOS, and Android are views into
+        the same PTY, connected through local IPC or authenticated iroh streams.
+      </p>
+    </div>
+
+    <div class="doc-list">
+      <article class="tile">
+        <h3>PTY model</h3>
+        <p>Fieldwork streams raw PTY bytes. The daemon keeps a 256 KB byte ring with monotonic sequence numbers and a `wezterm-term` terminal model for synthetic ANSI snapshots.</p>
+      </article>
+      <article class="tile">
+        <h3>Transport</h3>
+        <p>Local desktop clients use length-prefixed bincode over a hardened Unix socket. Paired mobile clients use length-prefixed MessagePack over iroh QUIC.</p>
+      </article>
+      <article class="tile">
+        <h3>Persistence</h3>
+        <p>Session summaries, scrollback, paired devices, and push tokens are stored in encrypted local `redb` databases with keys held by the OS keychain unless the user explicitly opts out. Persistence parents are private `0700`, database files are `0600`, and symlinked stores are rejected.</p>
+      </article>
+      <article class="tile">
+        <h3>Relay</h3>
+        <p>The relay handles iroh fallback and privacy-preserving push. APNs `.p8`, FCM service-account JSON, and Honeycomb credentials live only on the relay.</p>
+      </article>
+    </div>
+  </section>
+</BaseLayout>

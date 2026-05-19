@@ -1,0 +1,17 @@
+[package]
+name = "fieldwork-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Fieldwork v1 wire protocol types and framing."
+
+[dependencies]
+bincode.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+rmp-serde.workspace = true

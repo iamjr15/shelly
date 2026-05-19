@@ -1,0 +1,84 @@
+name: Release npm Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to download artifacts from"
+        required: true
+  workflow_run:
+    workflows: ["Release Rust Artifacts"]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish npm packages
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Download GitHub Release artifacts
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p artifacts
+          gh release download "${{ inputs.tag }}" \
+            --pattern 'fieldwork-*.tar.gz' \
+            --pattern 'fieldwork-*.tar.gz.sha256' \
+            --pattern 'fieldwork-*.tar.gz.bundle' \
+            --dir artifacts
+
+      - name: Download Rust workflow artifacts
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p artifacts
+          gh run download "${{ github.event.workflow_run.id }}" \
+            --pattern 'fieldwork-*' \
+            --dir artifacts
+
+      - name: Verify release artifact integrity and attestations
+        env:
+          FIELDWORK_VERIFY_COSIGN_SIGNATURE: "1"
+          FIELDWORK_RELEASE_REPOSITORY: ${{ github.repository }}
+          FIELDWORK_EXPECTED_RELEASE_TAG: ${{ github.event.inputs.tag }}
+          FIELDWORK_COSIGN_IDENTITY_REGEXP: '^https://github.com/${{ github.repository }}/\.github/workflows/release-rust\.yml@refs/tags/v.*$'
+        run: node scripts/verify-release-artifacts.mjs
+      - run: find artifacts -name '*.tar.gz' -exec tar -xzf {} -C artifacts \;
+      - run: node scripts/prepare-npm-artifacts.mjs
+      - run: node scripts/verify-npm-packages.mjs --require-binaries
+      - name: Publish with provenance in dependency order
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: node scripts/publish-npm-packages.mjs
+      - name: Verify npm registry after publish
+        run: |
+          version="$(node -p "require('./packages/cli/package.json').version")"
+          for attempt in {1..12}; do
+            if node scripts/verify-npm-registry-state.mjs \
+              --expect-meta-published \
+              --expect-platform-published \
+              --expect-latest-version="$version" \
+              --expect-provenance; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              exit 1
+            fi
+            sleep 10
+          done

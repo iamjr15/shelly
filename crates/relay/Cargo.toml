@@ -1,0 +1,40 @@
+[package]
+name = "fieldwork-relay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Fieldwork relay and push gateway."
+
+[[bin]]
+name = "fieldwork-relay"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+axum-server.workspace = true
+base64.workspace = true
+ed25519-dalek.workspace = true
+fieldwork-protocol = { path = "../protocol" }
+garde.workspace = true
+iroh-relay.workspace = true
+moka.workspace = true
+opentelemetry.workspace = true
+opentelemetry-otlp.workspace = true
+opentelemetry_sdk.workspace = true
+p256.workspace = true
+reqwest.workspace = true
+ring.workspace = true
+rusqlite.workspace = true
+rustls.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-opentelemetry.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tower.workspace = true

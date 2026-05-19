@@ -1,0 +1,101 @@
+name: Release Android
+
+on:
+  push:
+    tags:
+      - "android-v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  internal-track:
+    name: Build and upload Play internal track
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: Build Rust mobile libraries
+        run: apps/android/scripts/build-rust.sh
+      - name: Verify mobile Sentry DSN
+        env:
+          FIELDWORK_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          if [ -z "$FIELDWORK_SENTRY_DSN" ]; then
+            echo "SENTRY_DSN is required so opt-in mobile crash reporting works in release builds."
+            exit 1
+          fi
+      - name: Verify telemetry privacy wiring
+        run: node scripts/verify-telemetry-privacy.mjs
+      - name: Decode Firebase config
+        env:
+          ANDROID_GOOGLE_SERVICES_JSON: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$ANDROID_GOOGLE_SERVICES_JSON" ]; then
+            echo "ANDROID_GOOGLE_SERVICES_JSON is required so the Android app can obtain FCM registration tokens."
+            exit 1
+          fi
+          echo "$ANDROID_GOOGLE_SERVICES_JSON" > apps/android/app/google-services.json
+          chmod 600 apps/android/app/google-services.json
+      - name: Decode signing config
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PROPERTIES: ${{ secrets.ANDROID_KEYSTORE_PROPERTIES }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PROPERTIES" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PROPERTIES are required for release signing."
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > apps/android/app/release.keystore
+          echo "$ANDROID_KEYSTORE_PROPERTIES" > apps/android/keystore.properties
+          chmod 600 apps/android/app/release.keystore apps/android/keystore.properties
+      - name: Assemble release AAB
+        env:
+          FIELDWORK_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: apps/android/gradlew --no-daemon bundleRelease
+      - name: Verify mobile privacy defaults
+        run: node scripts/verify-mobile-privacy.mjs
+      - name: Verify store privacy answer sheet
+        run: node scripts/verify-store-privacy.mjs
+      - name: Verify release AAB contents
+        run: node scripts/verify-android-aab.mjs
+      - name: Verify release AAB signature
+        run: |
+          set -euo pipefail
+          jarsigner -verify -certs apps/android/app/build/outputs/bundle/release/app-release.aab | tee /tmp/fieldwork-aab-jarsigner.txt
+          grep -q "jar verified" /tmp/fieldwork-aab-jarsigner.txt
+      - name: Verify Play upload credentials
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "PLAY_SERVICE_ACCOUNT_JSON is required for Play internal-track upload."
+            exit 1
+          fi
+      - name: Upload to Play internal track
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ env.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: app.fieldwork.android
+          releaseFiles: apps/android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+      - name: Clean Android release secrets
+        if: always()
+        run: rm -f apps/android/app/google-services.json apps/android/app/release.keystore apps/android/keystore.properties

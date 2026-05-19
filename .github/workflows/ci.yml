@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      - if: matrix.os == 'ubuntu-24.04'
+        run: sudo apt-get update && sudo apt-get install -y vim
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo nextest run --workspace
+      - run: cargo test --workspace --doc
+
+  supply-chain:
+    name: Supply Chain
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-deny
+      - uses: taiki-e/install-action@cargo-audit
+      - run: cargo deny check
+      - run: cargo audit
+
+  workflow-static:
+    name: Workflow Static Checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].sort.each { |path| YAML.load_file(path) }; YAML.load_file(".github/dependabot.yml"); YAML.load_file(".pre-commit-config.yaml"); puts "workflow yaml ok"'
+
+  terraform:
+    name: Terraform Validate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+      - run: scripts/check-infra-terraform.sh
+
+  local-handoff-smoke:
+    name: Local Handoff Smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y vim
+      - run: scripts/smoke-local-handoff.sh
+
+  relay-otlp-smoke:
+    name: Relay OTLP Smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/smoke-relay-otlp-loopback.mjs
+
+  relay-tls-smoke:
+    name: Relay TLS Smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/smoke-relay-tls-loopback.sh
+
+  npm-packages:
+    name: npm Package Metadata
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: node scripts/verify-rust-workspace.mjs
+      - run: node scripts/verify-npm-packages.mjs
+      - run: node scripts/verify-changesets-config.mjs
+      - run: node scripts/generate-oss-notices.mjs --check
+      - run: node scripts/verify-docs-sync.mjs
+      - run: pnpm check:demo-video
+      - run: node scripts/verify-development-doc.mjs
+      - run: node scripts/verify-community-scaffold.mjs
+      - run: node scripts/verify-secret-boundaries.mjs
+      - run: node scripts/verify-secret-boundaries.mjs --self-test
+      - run: node scripts/verify-mobile-privacy.mjs
+      - run: node scripts/verify-store-privacy.mjs
+      - run: node scripts/verify-telemetry-privacy.mjs
+      - run: node scripts/verify-v1-boundary.mjs
+      - run: node scripts/verify-release-audit.mjs
+      - run: node scripts/verify-release-workflows.mjs
+      - run: node scripts/verify-relay-provider-clients.mjs
+      - run: node scripts/verify-security-model.mjs
+      - run: node scripts/verify-daemon-service.mjs
+      - run: node scripts/verify-daemon-resize.mjs
+      - run: node scripts/verify-infra-scaffold.mjs
+      - run: node scripts/verify-site-content.mjs
+      - run: node scripts/test-ios-prereqs.mjs
+      - run: node scripts/test-npm-dispatcher.mjs
+      - run: node scripts/test-npm-registry-state.mjs
+      - run: node scripts/test-external-status-refresh.mjs
+      - run: node scripts/test-npm-publish-plan.mjs
+      - run: node scripts/test-bun-install.mjs
+      - run: node scripts/test-android-aab-verifier.mjs
+      - run: node scripts/test-release-artifacts.mjs
+      - run: node scripts/test-npm-artifact-pack.mjs
+
+  site:
+    name: Site
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+      - run: pnpm --dir site install --ignore-workspace --frozen-lockfile
+      - run: pnpm check:site
+
+  mobile-static:
+    name: Mobile Static Checks
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: plutil -lint apps/ios/Resources/Info.plist apps/ios/Resources/Fieldwork.entitlements apps/ios/Fieldwork.xcodeproj/project.pbxproj
+      - run: swiftc -parse -target arm64-apple-macosx15.0 $(find apps/ios/Sources/App apps/ios/Sources/Core apps/ios/Sources/Features apps/ios/Sources/UI -name '*.swift')
+      - run: xmllint --noout $(find apps/android/app/src/main/res -name '*.xml') apps/android/app/src/main/AndroidManifest.xml
+
+  android-build:
+    name: Android Debug Build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: Build Rust mobile libraries
+        run: apps/android/scripts/build-rust.sh
+      - name: Verify UniFFI binding surface
+        run: node scripts/verify-uniffi-bindings.mjs
+      - name: Compile Android debug Kotlin
+        run: apps/android/gradlew --no-daemon :app:compileDebugKotlin
+      - name: Run Android unit tests
+        run: apps/android/gradlew --no-daemon :app:testDebugUnitTest
+      - name: Verify mobile privacy defaults
+        run: node scripts/verify-mobile-privacy.mjs
+      - name: Verify store privacy answer sheet
+        run: node scripts/verify-store-privacy.mjs

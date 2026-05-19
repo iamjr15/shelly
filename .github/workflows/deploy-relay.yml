@@ -1,0 +1,69 @@
+name: Deploy Relay
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag containing fieldwork-relay artifact"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy relay fleet
+    runs-on: ubuntu-24.04
+    environment: relay-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: sigstore/cosign-installer@v3
+      - name: Install Ansible
+        run: python3 -m pip install --user ansible
+      - name: Download relay artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FIELDWORK_RELEASE_PLATFORMS: linux-arm64
+          FIELDWORK_VERIFY_COSIGN_SIGNATURE: "1"
+          FIELDWORK_RELEASE_REPOSITORY: ${{ github.repository }}
+          FIELDWORK_EXPECTED_RELEASE_TAG: ${{ github.event.inputs.tag }}
+          FIELDWORK_COSIGN_IDENTITY_REGEXP: '^https://github.com/${{ github.repository }}/\.github/workflows/release-rust\.yml@refs/tags/v.*$'
+        run: |
+          mkdir -p artifacts
+          gh release download "${{ inputs.tag }}" \
+            --pattern 'fieldwork-linux-arm64.tar.gz' \
+            --pattern 'fieldwork-linux-arm64.tar.gz.sha256' \
+            --pattern 'fieldwork-linux-arm64.tar.gz.bundle' \
+            --dir artifacts
+          node scripts/verify-release-artifacts.mjs
+          tar -xzf artifacts/fieldwork-linux-arm64.tar.gz -C artifacts
+          test -x artifacts/fieldwork-linux-arm64/fieldwork-relay
+      - name: Write SSH key
+        env:
+          RELAY_SSH_KEY: ${{ secrets.RELAY_SSH_KEY }}
+        run: |
+          if [ -z "$RELAY_SSH_KEY" ]; then
+            echo "RELAY_SSH_KEY is required to deploy the relay fleet."
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          echo "$RELAY_SSH_KEY" > ~/.ssh/fieldwork-relay
+          chmod 600 ~/.ssh/fieldwork-relay
+      - name: Verify relay inventory
+        run: |
+          if ! grep -Ev '^\s*(#|$|\[)' infra/relay/ansible/inventory.ini | grep -q .; then
+            echo "infra/relay/ansible/inventory.ini must contain at least one relay host before deployment."
+            exit 1
+          fi
+      - name: Deploy with Ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "true"
+        run: |
+          ansible-playbook \
+            -i infra/relay/ansible/inventory.ini \
+            --private-key ~/.ssh/fieldwork-relay \
+            infra/relay/ansible/playbook.yml \
+            -e fieldwork_relay_binary="$PWD/artifacts/fieldwork-linux-arm64/fieldwork-relay"
+      - name: Clean relay SSH key
+        if: always()
+        run: rm -f ~/.ssh/fieldwork-relay

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@2/schema.json",
+  "changelog": ["@changesets/changelog-github", { "repo": "fieldwork-app/fieldwork" }],
+  "commit": false,
+  "fixed": [["fieldwork", "fieldwork-*"]],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "ignore": []
+}

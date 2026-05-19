@@ -1,0 +1,38 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Install"
+  description="Install Fieldwork with the npm-only desktop distribution path and run the local development flow from source."
+>
+  <section class="page">
+    <div class="page-copy">
+      <p class="eyebrow">Install</p>
+      <h1>Desktop first, phone second.</h1>
+      <p class="lede">
+        Fieldwork v1 distributes the desktop CLI and daemon through npm only.
+        Mobile apps attach to sessions created on the desktop; they do not create sessions
+        or choose commands.
+      </p>
+
+      <h2>npm install</h2>
+      <pre class="install-block"><code>npm i -g fieldwork
+fieldwork daemon install
+fieldwork pair</code></pre>
+
+      <h2>Source build</h2>
+      <pre class="install-block"><code>cargo build --workspace
+target/debug/fieldwork new bash
+target/debug/fieldwork ls
+target/debug/fieldwork attach &lt;session-id&gt;</code></pre>
+
+      <h2>Mobile builds</h2>
+      <p>
+        iOS and Android release builds are wired in CI, but store distribution requires the
+        external signing, TestFlight, Play Console, APNs, FCM, and physical-device gates tracked
+        in the repository plan.
+      </p>
+    </div>
+  </section>
+</BaseLayout>

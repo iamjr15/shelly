@@ -1,0 +1,49 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const pageTitle = title === "Fieldwork" ? title : `${title} · Fieldwork`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#10130f" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <title>{pageTitle}</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Fieldwork home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Fieldwork</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="/install/">Install</a>
+        <a href="/architecture/">Architecture</a>
+        <a href="/protocol/">Protocol</a>
+        <a href="/privacy/">Privacy</a>
+      </nav>
+    </header>
+    <main>
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <span>Your terminal sessions, from anywhere.</span>
+      <span>
+        <a href="https://github.com/fieldwork-app/fieldwork">GitHub</a>
+        <a href="/privacy/">Privacy</a>
+      </span>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,40 @@
+[Unit]
+Description=Fieldwork relay HTTP control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ fieldwork_relay_user }}
+Group={{ fieldwork_relay_group }}
+WorkingDirectory={{ fieldwork_relay_data_dir }}
+Environment=FIELDWORK_RELAY_ADDR={{ fieldwork_relay_control_addr }}
+Environment=FIELDWORK_RELAY_REQUIRE_TLS=true
+Environment=FIELDWORK_RELAY_DB_PATH={{ fieldwork_relay_db_path }}
+Environment=FIELDWORK_RELAY_METRICS_ADDR={{ fieldwork_relay_metrics_addr }}
+Environment=FIELDWORK_RELAY_OTLP_ENDPOINT={{ fieldwork_relay_otlp_endpoint }}
+Environment=FIELDWORK_RELAY_OTLP_SAMPLE_RATE={{ fieldwork_relay_otlp_sample_rate }}
+{% if fieldwork_relay_honeycomb_dataset | length > 0 %}
+Environment=FIELDWORK_RELAY_HONEYCOMB_DATASET={{ fieldwork_relay_honeycomb_dataset }}
+{% endif %}
+Environment=FIELDWORK_APNS_TEAM_ID={{ fieldwork_relay_apns_team_id }}
+Environment=FIELDWORK_APNS_KEY_ID={{ fieldwork_relay_apns_key_id }}
+Environment=FIELDWORK_APNS_TOPIC={{ fieldwork_relay_apns_topic }}
+Environment=FIELDWORK_APNS_ENDPOINT={{ fieldwork_relay_apns_endpoint }}
+Environment=FIELDWORK_FCM_ENDPOINT={{ fieldwork_relay_fcm_endpoint }}
+LoadCredential=apns.p8:{{ fieldwork_relay_apns_credential }}
+LoadCredential=fcm-service-account.json:{{ fieldwork_relay_fcm_credential }}
+LoadCredential=honeycomb-api-key:{{ fieldwork_relay_honeycomb_credential }}
+LoadCredential=control-plane.crt:{{ fieldwork_relay_control_tls_cert }}
+LoadCredential=control-plane.key:{{ fieldwork_relay_control_tls_key }}
+ExecStart={{ fieldwork_relay_bin_dir }}/fieldwork-relay
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ fieldwork_relay_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

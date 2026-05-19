@@ -1,0 +1,201 @@
+use anyhow::{Context, Result, bail};
+use figment::{Figment, providers::Env};
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct Config {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_dir: Option<PathBuf>,
+    #[serde(default)]
+    pub scrollback_encryption: ScrollbackEncryptionConfig,
+    #[serde(default)]
+    pub telemetry: TelemetryConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ScrollbackEncryptionConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct TelemetryConfig {
+    #[serde(default)]
+    pub opt_in: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sentry_dsn: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct EnvConfig {
+    log_dir: Option<PathBuf>,
+}
+
+impl Default for ScrollbackEncryptionConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+impl Config {
+    pub fn load() -> Result<Self> {
+        Self::load_from_path(&default_config_path())
+    }
+
+    pub(crate) fn load_from_path(path: &Path) -> Result<Self> {
+        let mut config = read_config_file(path)?;
+        apply_env_overrides(&mut config)?;
+        Ok(config)
+    }
+}
+
+impl TelemetryConfig {
+    pub fn sentry_enabled(&self) -> bool {
+        self.opt_in
+            && self
+                .sentry_dsn
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+    }
+}
+
+fn apply_env_overrides(config: &mut Config) -> Result<()> {
+    let env_config: EnvConfig = Figment::new()
+        .merge(Env::prefixed("FIELDWORK_"))
+        .extract()
+        .context("load daemon config from environment")?;
+    if let Some(log_dir) = env_config.log_dir {
+        config.log_dir = Some(log_dir);
+    }
+
+    if let Some(value) = env_var("FIELDWORK_TELEMETRY_OPT_IN") {
+        config.telemetry.opt_in = parse_bool(&value)?;
+    }
+
+    if let Some(value) = env_var("FIELDWORK_SENTRY_DSN") {
+        config.telemetry.sentry_dsn = Some(value);
+    }
+
+    if let Some(value) = env_var("FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED") {
+        config.scrollback_encryption.enabled =
+            parse_bool_with_name(&value, "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED")?;
+    }
+
+    Ok(())
+}
+
+fn read_config_file(path: &Path) -> Result<Config> {
+    if !path.exists() {
+        return Ok(Config::default());
+    }
+
+    let contents = std::fs::read_to_string(path)
+        .with_context(|| format!("read daemon config {}", path.display()))?;
+    toml::from_str(&contents).with_context(|| format!("parse daemon config {}", path.display()))
+}
+
+fn env_var(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|value| !value.is_empty())
+}
+
+fn parse_bool(value: &str) -> Result<bool> {
+    parse_bool_with_name(value, "FIELDWORK_TELEMETRY_OPT_IN")
+}
+
+fn parse_bool_with_name(value: &str, name: &str) -> Result<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        other => bail!("invalid boolean value for {name}: {other}"),
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_config_path() -> PathBuf {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+
+    if cfg!(target_os = "macos") {
+        return home
+            .join("Library")
+            .join("Application Support")
+            .join("app.fieldwork")
+            .join("config.toml");
+    }
+
+    if let Some(config_home) = std::env::var_os("XDG_CONFIG_HOME") {
+        return PathBuf::from(config_home)
+            .join("fieldwork")
+            .join("config.toml");
+    }
+
+    home.join(".config").join("fieldwork").join("config.toml")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TelemetryConfig, read_config_file};
+
+    #[test]
+    fn sentry_requires_explicit_opt_in_and_dsn() {
+        assert!(
+            !TelemetryConfig {
+                opt_in: false,
+                sentry_dsn: Some("https://public@example.invalid/1".to_string()),
+            }
+            .sentry_enabled()
+        );
+        assert!(
+            !TelemetryConfig {
+                opt_in: true,
+                sentry_dsn: None,
+            }
+            .sentry_enabled()
+        );
+        assert!(
+            TelemetryConfig {
+                opt_in: true,
+                sentry_dsn: Some("https://public@example.invalid/1".to_string()),
+            }
+            .sentry_enabled()
+        );
+    }
+
+    #[test]
+    fn loads_toml_config_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+log_dir = "/tmp/fieldwork-logs"
+
+[telemetry]
+opt_in = true
+sentry_dsn = "https://public@example.invalid/1"
+
+[scrollback_encryption]
+enabled = false
+"#,
+        )
+        .unwrap();
+
+        let config = read_config_file(&path).unwrap();
+
+        assert_eq!(
+            config.log_dir.unwrap(),
+            std::path::PathBuf::from("/tmp/fieldwork-logs")
+        );
+        assert!(config.telemetry.opt_in);
+        assert_eq!(
+            config.telemetry.sentry_dsn.as_deref(),
+            Some("https://public@example.invalid/1")
+        );
+        assert!(!config.scrollback_encryption.enabled);
+    }
+}

@@ -1,0 +1,4 @@
+{"type":"turn_started","turn_id":"redacted-turn-1"}
+{"type":"event","status":"working","message":"redacted"}
+{"type":"approval_requested","request_id":"redacted-approval-1","summary":"redacted"}
+{"type":"turn_finished","turn_id":"redacted-turn-1"}

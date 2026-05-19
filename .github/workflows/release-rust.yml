@@ -1,0 +1,163 @@
+name: Release Rust Artifacts
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.package }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            package: darwin-arm64
+            build: cargo
+          - os: macos-14
+            target: x86_64-apple-darwin
+            package: darwin-x64
+            build: cargo
+          - os: ubuntu-24.04
+            target: aarch64-unknown-linux-gnu
+            package: linux-arm64
+            build: zigbuild
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            package: linux-x64
+            build: zigbuild
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Install zigbuild
+        if: matrix.build == 'zigbuild'
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Install Zig
+        if: matrix.build == 'zigbuild'
+        uses: mlugg/setup-zig@v2
+
+      - name: Build Darwin
+        if: matrix.build == 'cargo'
+        run: cargo build --release --target ${{ matrix.target }} -p fieldwork-cli -p fieldwork-daemon -p fieldwork-relay
+
+      - name: Build Linux
+        if: matrix.build == 'zigbuild'
+        run: cargo zigbuild --release --target ${{ matrix.target }} -p fieldwork-cli -p fieldwork-daemon -p fieldwork-relay
+
+      - name: Verify relay-only provider secret boundary
+        run: node scripts/verify-secret-boundaries.mjs
+
+      - name: Verify telemetry privacy wiring
+        run: node scripts/verify-telemetry-privacy.mjs
+
+      - name: Install rcodesign
+        if: startsWith(matrix.target, 'aarch64-apple') || startsWith(matrix.target, 'x86_64-apple')
+        run: cargo install apple-codesign --locked
+
+      - name: Sign and notarize macOS daemon
+        if: startsWith(matrix.target, 'aarch64-apple') || startsWith(matrix.target, 'x86_64-apple')
+        env:
+          P12_BASE64: ${{ secrets.APPLE_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_P12_PASSWORD }}
+          APP_STORE_KEY_JSON: ${{ secrets.APP_STORE_KEY_JSON }}
+        run: |
+          if [ -z "$P12_BASE64" ] || [ -z "$P12_PASSWORD" ] || [ -z "$APP_STORE_KEY_JSON" ]; then
+            echo "Apple signing/notarization secrets are required for Darwin release artifacts."
+            exit 1
+          fi
+          signing_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/fieldwork-signing.XXXXXX")"
+          trap 'rm -rf "$signing_dir" target/${{ matrix.target }}/release/fieldworkd.zip' EXIT
+          cert_path="$signing_dir/cert.p12"
+          app_store_key_path="$signing_dir/app-store-key.json"
+          echo "$P12_BASE64" | base64 -d > "$cert_path"
+          echo "$APP_STORE_KEY_JSON" > "$app_store_key_path"
+          chmod 600 "$cert_path" "$app_store_key_path"
+          rcodesign sign \
+            --p12-file "$cert_path" \
+            --p12-password "$P12_PASSWORD" \
+            --code-signature-flags runtime \
+            target/${{ matrix.target }}/release/fieldworkd
+          (cd target/${{ matrix.target }}/release && zip fieldworkd.zip fieldworkd)
+          rcodesign notary-submit \
+            --api-key-path "$app_store_key_path" \
+            --wait --staple \
+            target/${{ matrix.target }}/release/fieldworkd.zip
+          codesign --verify --verbose=2 target/${{ matrix.target }}/release/fieldworkd
+
+      - name: Stage archive
+        run: |
+          mkdir -p dist/fieldwork-${{ matrix.package }}
+          cp target/${{ matrix.target }}/release/fieldwork dist/fieldwork-${{ matrix.package }}/fieldwork
+          cp target/${{ matrix.target }}/release/fieldworkd dist/fieldwork-${{ matrix.package }}/fieldworkd
+          cp target/${{ matrix.target }}/release/fieldwork-relay dist/fieldwork-${{ matrix.package }}/fieldwork-relay
+          chmod 755 dist/fieldwork-${{ matrix.package }}/fieldwork dist/fieldwork-${{ matrix.package }}/fieldworkd dist/fieldwork-${{ matrix.package }}/fieldwork-relay
+          tar -C dist -czf fieldwork-${{ matrix.package }}.tar.gz fieldwork-${{ matrix.package }}
+          LC_ALL=C LANG=C shasum -a 256 fieldwork-${{ matrix.package }}.tar.gz > fieldwork-${{ matrix.package }}.tar.gz.sha256
+          cat > fieldwork-${{ matrix.package }}.predicate.json <<EOF
+          {
+            "_type": "https://slsa.dev/provenance/v1",
+            "buildDefinition": {
+              "buildType": "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release-rust.yml",
+              "externalParameters": {
+                "releaseTag": "${GITHUB_REF_NAME}",
+                "package": "${{ matrix.package }}",
+                "target": "${{ matrix.target }}",
+                "sha256": "$(cut -d ' ' -f 1 fieldwork-${{ matrix.package }}.tar.gz.sha256)"
+              },
+              "internalParameters": {}
+            },
+            "runDetails": {
+              "builder": {
+                "id": "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              },
+              "metadata": {
+                "invocationId": "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+              }
+            }
+          }
+          EOF
+
+      - name: Attest archive
+        run: |
+          cosign attest-blob \
+            --yes \
+            --predicate fieldwork-${{ matrix.package }}.predicate.json \
+            --type slsaprovenance1 \
+            --bundle fieldwork-${{ matrix.package }}.tar.gz.bundle \
+            fieldwork-${{ matrix.package }}.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fieldwork-${{ matrix.package }}
+          path: |
+            fieldwork-${{ matrix.package }}.tar.gz
+            fieldwork-${{ matrix.package }}.tar.gz.sha256
+            fieldwork-${{ matrix.package }}.tar.gz.bundle
+          if-no-files-found: error
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            fieldwork-${{ matrix.package }}.tar.gz
+            fieldwork-${{ matrix.package }}.tar.gz.sha256
+            fieldwork-${{ matrix.package }}.tar.gz.bundle
+          generate_release_notes: true

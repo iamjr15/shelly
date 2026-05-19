@@ -1,0 +1,49 @@
+{
+  "name": "fieldwork",
+  "version": "1.0.0",
+  "description": "Your terminal sessions, from anywhere.",
+  "bin": {
+    "fieldwork": "bin/fieldwork",
+    "fieldworkd": "bin/fieldworkd"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "optionalDependencies": {
+    "fieldwork-darwin-arm64": "1.0.0",
+    "fieldwork-darwin-x64": "1.0.0",
+    "fieldwork-linux-arm64": "1.0.0",
+    "fieldwork-linux-x64": "1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/fieldwork",
+    "bin/fieldworkd",
+    "install.js",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "license": "AGPL-3.0-or-later",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fieldwork-app/fieldwork.git",
+    "directory": "packages/cli"
+  },
+  "keywords": [
+    "terminal",
+    "mobile",
+    "pty",
+    "tmux",
+    "mosh",
+    "claude-code",
+    "codex",
+    "coding-agent"
+  ],
+  "preferUnplugged": true
+}
