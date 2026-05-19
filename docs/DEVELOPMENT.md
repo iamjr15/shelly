@@ -80,9 +80,12 @@ local platform binaries and Android AAB are staged, run
 `pnpm check:local-release -- --with-artifacts` to also verify the preserved AAB,
 staged npm binaries, publish readiness, and meta-package dry-run pack. When
 release binaries, Terraform, ffmpeg/ffprobe, and site dependencies are available,
-run `pnpm check:local-release -- --with-runtime` to also verify the demo video,
-site typecheck/build, Terraform fmt/init/validate, relay TLS/OTLP loopbacks, and
-desktop cold-start thresholds. The flags can be combined. CI syntax-checks the
+run `pnpm check:local-release -- --with-runtime` to also verify the local
+handoff smoke, demo video, site typecheck/build, Terraform fmt/init/validate,
+relay TLS/OTLP loopbacks, and desktop cold-start thresholds. The flags can be
+combined. Unless `CARGO_TARGET_DIR` is already set, the aggregate runs the local
+handoff smoke with `/tmp/fieldwork-target-checks` so it does not grow the
+repo-local `target/debug` cache. CI syntax-checks the
 aggregate wrapper and list-checks the combined artifact/runtime mode so wrapper
 drift is caught without duplicating the full artifact/runtime gate in pull
 requests.

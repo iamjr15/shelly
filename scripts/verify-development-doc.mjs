@@ -105,8 +105,13 @@ function verifyDevelopmentDoc(text) {
   );
   requireText(
     text,
-    "demo video,\nsite typecheck/build, Terraform fmt/init/validate, relay TLS/OTLP loopbacks, and\ndesktop cold-start thresholds",
+    "local\nhandoff smoke, demo video, site typecheck/build, Terraform fmt/init/validate,\nrelay TLS/OTLP loopbacks, and desktop cold-start thresholds",
     "docs/DEVELOPMENT.md must document what the runtime local release aggregate mode covers",
+  );
+  requireText(
+    text,
+    "runs the local\nhandoff smoke with `/tmp/fieldwork-target-checks`",
+    "docs/DEVELOPMENT.md must document the aggregate local handoff target-dir default",
   );
   requireText(
     text,
@@ -535,6 +540,9 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "\"npm meta dry-run pack\", npm, [\"pack\", \"./packages/cli\", \"--dry-run\", \"--json\"]", "artifact-aware local release gate must include npm meta dry-run pack");
   requireText(allFiles.localRelease, "cleanNpmEnv()", "local release gate must sanitize inherited npm config for dry-run pack");
   requireText(allFiles.localRelease, "\"Android AAB artifact\", node, [\"scripts/verify-android-aab.mjs\", \"--expect-unsigned\"]", "artifact-aware local release gate must call the Android AAB verifier directly");
+  requireText(allFiles.localRelease, "\"local handoff smoke\", bash, [\"scripts/smoke-local-handoff.sh\"]", "runtime local release gate must include local handoff smoke");
+  requireText(allFiles.localRelease, "localHandoffEnv()", "runtime local release gate must run local handoff with an explicit target-dir env");
+  requireText(allFiles.localRelease, "env.CARGO_TARGET_DIR ??= \"/tmp/fieldwork-target-checks\"", "runtime local release gate must default handoff target-dir outside repo target");
   requireText(allFiles.localRelease, "\"demo video artifact\", node, [\"scripts/verify-demo-video.mjs\"]", "runtime local release gate must include demo video verification");
   requireText(allFiles.localRelease, "ASTRO_TELEMETRY_DISABLED=1 ./node_modules/.bin/astro check", "runtime local release gate must include site typecheck");
   requireText(allFiles.localRelease, "ASTRO_TELEMETRY_DISABLED=1 ./node_modules/.bin/astro build", "runtime local release gate must include site build");

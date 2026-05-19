@@ -135,6 +135,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "local handoff smoke, demo-video, site typecheck/build",
+    "release audit must record local handoff smoke in runtime aggregate mode",
+  );
+  requireText(
+    audit,
+    "defaults to `/tmp/fieldwork-target-checks` unless `CARGO_TARGET_DIR` is already set",
+    "release audit must record the aggregate local handoff target-dir default",
+  );
+  requireText(
+    audit,
     "CI syntax-checks the aggregate wrapper and list-checks artifact/runtime modes",
     "release audit must record CI coverage for the local release aggregate wrapper",
   );
@@ -208,7 +218,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "latest pass measured CLI max `4.35ms` and daemon max `45.11ms`",
+    "latest pass measured CLI max `4.07ms` and daemon max `44.88ms`",
     "release audit must record current desktop max performance evidence",
   );
   requireText(
@@ -830,9 +840,9 @@ function verifyLatestRefresh() {
   requireText(audit, "all passed except `pnpm check:ios-prereqs`", "release audit must record the latest focused result summary");
   requireText(audit, "repo-owned Xcode download, install, `xcode-select`, first-launch, rerun", "release audit must record iOS prereq recovery output");
   requireText(audit, "Desktop performance passed after one explicit warm-up sample", "release audit must record latest desktop performance result");
-  requireText(audit, "preserved AAB, staged npm binaries, npm publish readiness, meta-package dry-run\npack, demo video, site typecheck/build, Terraform fmt/init/validate, relay\nTLS/OTLP loopbacks, and desktop performance", "release audit must record latest aggregate local release gate coverage");
-  requireText(audit, "`3.31ms`, p95 `4.14ms`, max `4.35ms`", "release audit must record latest CLI desktop performance values");
-  requireText(audit, "`41.27ms`, p95 `43.05ms`, max `45.11ms`", "release audit must record latest daemon desktop performance values");
+  requireText(audit, "preserved AAB, staged npm binaries, npm publish readiness, meta-package dry-run\npack, local handoff smoke, demo video, site typecheck/build, Terraform\nfmt/init/validate, relay TLS/OTLP loopbacks, and desktop performance", "release audit must record latest aggregate local release gate coverage");
+  requireText(audit, "`3.47ms`, p95 `4.01ms`, max `4.07ms`", "release audit must record latest CLI desktop performance values");
+  requireText(audit, "`40.60ms`, p95 `43.11ms`, max `44.88ms`", "release audit must record latest daemon desktop performance values");
   requireText(audit, "npm binary readiness passed\nwith staged artifacts", "release audit must record staged npm binary readiness");
   requireText(audit, "Cross-target desktop release builds passed on 2026-05-19", "release audit must record the latest cross-target desktop release build date");
   requireText(audit, "Mach-O arm64/x86_64 and ELF x86-64/aarch64 binaries", "release audit must record cross-target binary format verification");
@@ -1021,8 +1031,8 @@ function verifyLatestRefresh() {
   requireText(audit, "clearing\n  reproducible debug/mobile Rust build output to recover disk space", "release audit must record local handoff disk-space recovery");
   requireText(audit, "removing the regenerated repo-local `target/debug` after the run", "release audit must record local handoff target/debug cleanup");
   requireText(audit, "`IosApp` and `AndroidApp`", "release audit must record both mobile client kinds in capability verification");
-  requirePattern(audit, /paired in\s+2 seconds/, "release audit must record the latest 2 second local handoff pair duration");
-  requireText(audit, "20ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
+  requirePattern(audit, /paired in\s+3 seconds/, "release audit must record the latest local handoff pair duration");
+  requireText(audit, "19ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
   requireText(audit, "`cargo nextest run --workspace`: 155 tests passed.", "release audit must record the current workspace nextest count");
   requireText(audit, "`cargo test --workspace`: 155 unit/integration tests passed, plus doctests.", "release audit must record the current workspace cargo test count");
   requireText(audit, "`cargo test -p fieldwork-daemon`: 68 daemon tests passed", "release audit must record the current daemon test count");
@@ -1459,6 +1469,9 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/publish-npm-packages.mjs\", \"--check-ready", "artifact-aware local release gate must include publish-readiness verification");
   requireText(localRelease, "cleanNpmEnv()", "local release gate must clean noisy inherited npm config before dry-run pack");
   requireText(localRelease, "\"Android AAB artifact\", node, [\"scripts/verify-android-aab.mjs\", \"--expect-unsigned\"]", "artifact-aware local release gate must call the Android AAB verifier directly");
+  requireText(localRelease, "\"local handoff smoke\", bash, [\"scripts/smoke-local-handoff.sh\"]", "runtime local release gate must include local handoff smoke");
+  requireText(localRelease, "localHandoffEnv()", "runtime local release gate must run local handoff with an explicit target-dir env");
+  requireText(localRelease, "env.CARGO_TARGET_DIR ??= \"/tmp/fieldwork-target-checks\"", "runtime local release gate must default handoff target-dir outside repo target");
   requireText(localRelease, "\"demo video artifact\", node, [\"scripts/verify-demo-video.mjs\"]", "runtime local release gate must include demo video verification");
   requireText(localRelease, "ASTRO_TELEMETRY_DISABLED=1 ./node_modules/.bin/astro check", "runtime local release gate must include site typecheck");
   requireText(localRelease, "ASTRO_TELEMETRY_DISABLED=1 ./node_modules/.bin/astro build", "runtime local release gate must include site build");

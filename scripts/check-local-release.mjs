@@ -61,6 +61,7 @@ const artifactChecks = [
 ];
 
 const runtimeChecks = [
+  ["local handoff smoke", bash, ["scripts/smoke-local-handoff.sh"], { env: localHandoffEnv() }],
   ["demo video artifact", node, ["scripts/verify-demo-video.mjs"]],
   [
     "site typecheck/build",
@@ -131,5 +132,11 @@ function cleanNpmEnv() {
   ]) {
     delete env[key];
   }
+  return env;
+}
+
+function localHandoffEnv() {
+  const env = { ...process.env };
+  env.CARGO_TARGET_DIR ??= "/tmp/fieldwork-target-checks";
   return env;
 }
