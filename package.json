@@ -50,6 +50,7 @@
     "test:npm-artifacts": "node scripts/test-npm-artifact-pack.mjs",
     "test:npm-publish-plan": "node scripts/test-npm-publish-plan.mjs",
     "test:secret-boundaries": "node scripts/verify-secret-boundaries.mjs --self-test",
+    "test:no-ship": "node scripts/verify-no-ship-markers.mjs --self-test",
     "test:bun-install": "node scripts/test-bun-install.mjs",
     "test:release-artifacts": "node scripts/test-release-artifacts.mjs",
     "test:android-aab-verifier": "node scripts/test-android-aab-verifier.mjs",

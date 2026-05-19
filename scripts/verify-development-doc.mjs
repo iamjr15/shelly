@@ -74,6 +74,7 @@ function verifyDevelopmentDoc(text) {
     "node scripts/verify-npm-packages.mjs",
     "node scripts/verify-secret-boundaries.mjs",
     "pnpm check:no-ship",
+    "pnpm test:no-ship",
     "pnpm check:release-artifacts",
     "pnpm check:uniffi-bindings",
     "node scripts/test-release-artifacts.mjs",
@@ -97,8 +98,8 @@ function verifyDevelopmentDoc(text) {
   );
   requireText(
     text,
-    "v1/FUTURE boundary and no-ship marker scans",
-    "docs/DEVELOPMENT.md must document the local no-ship marker scan",
+    "v1/FUTURE boundary plus no-ship marker scans/self-tests",
+    "docs/DEVELOPMENT.md must document the local no-ship marker scan and self-test",
   );
   requireText(
     text,
@@ -523,6 +524,9 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["check:no-ship"] !== "node scripts/verify-no-ship-markers.mjs") {
     failures.push("package.json must expose pnpm check:no-ship");
   }
+  if (packageJson.scripts?.["test:no-ship"] !== "node scripts/verify-no-ship-markers.mjs --self-test") {
+    failures.push("package.json must expose pnpm test:no-ship");
+  }
   if (packageJson.scripts?.["check:npm-registry"] !== "node scripts/verify-npm-registry-state.mjs") {
     failures.push("package.json must expose pnpm check:npm-registry");
   }
@@ -596,6 +600,7 @@ function verifyWiring(allFiles) {
   requireText(allFiles.ci, "node scripts/verify-no-ship-markers.mjs", "CI must run the no-ship marker verifier");
   requireText(allFiles.localRelease, "scripts/verify-release-audit.mjs", "local release gate must include the release audit verifier");
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include the no-ship marker verifier");
+  requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs\", \"--self-test", "local release gate must include the no-ship marker self-test");
   requireText(allFiles.localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include deterministic release-artifact verifier coverage");
   requireText(allFiles.localRelease, "scripts/test-npm-artifact-pack.mjs", "local release gate must include deterministic npm artifact packaging coverage");
   requireText(allFiles.localRelease, "scripts/test-android-pair-button-picker.mjs", "local release gate must include deterministic Android pair-button picker coverage");

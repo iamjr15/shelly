@@ -224,6 +224,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`--self-test` injects synthetic blocked markers",
+    "release audit must record deterministic no-ship marker self-test coverage",
+  );
+  requireText(
+    audit,
     "run one explicit warm-up sample to remove build-machine first-exec noise",
     "release audit must record the desktop performance warm-up contract",
   );
@@ -1413,6 +1418,9 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["check:no-ship"] !== "node scripts/verify-no-ship-markers.mjs") {
     failures.push("package.json must expose check:no-ship");
   }
+  if (packageJson.scripts?.["test:no-ship"] !== "node scripts/verify-no-ship-markers.mjs --self-test") {
+    failures.push("package.json must expose test:no-ship");
+  }
   if (packageJson.scripts?.["check:release-audit"] !== "node scripts/verify-release-audit.mjs") {
     failures.push("package.json must expose check:release-audit");
   }
@@ -1575,6 +1583,7 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/verify-rust-workspace.mjs", "local release gate must include Rust workspace verification");
   requireText(localRelease, "scripts/verify-release-audit.mjs", "local release gate must include release audit verification");
   requireText(localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include no-ship marker verification");
+  requireText(localRelease, "scripts/verify-no-ship-markers.mjs\", \"--self-test", "local release gate must include no-ship marker self-test coverage");
   requireText(localRelease, "scripts/verify-release-workflows.mjs", "local release gate must include release workflow verification");
   requireText(localRelease, "scripts/verify-secret-boundaries.mjs\", \"--self-test", "local release gate must include secret-boundary self-test coverage");
   requireText(localRelease, "scripts/test-npm-publish-plan.mjs", "local release gate must include npm publish-plan coverage");
