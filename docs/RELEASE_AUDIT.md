@@ -168,6 +168,25 @@ outside this shell:
   `/tmp/fieldwork-adb-direct-pair-20260519235638/relaunch-restore-fix-sessions.png`
   plus UI XML/logcat with `FieldworkRepository: listSessions returned 1
   sessions` and no `Camera`/`CAMERA`, Fieldwork `FATAL`, or ANR entries. A
+  later 2026-05-20 raw adb pass installed the default debug APK, launched the
+  locked app in `TotalTime=6766ms`, captured
+  `/tmp/fieldwork-adb-direct-20260520001909/default-locked.png`, UI XML,
+  app-scoped logcat, and an empty crash buffer, then rebuilt with
+  `FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true` plus debug-only
+  `FIELDWORK_ANDROID_PAIRING_PAYLOAD`, paired through explicit desktop
+  approval, accepted the runtime notification prompt, listed `bash · fieldwork`
+  with `ANDROID_ADB_MANUAL_READY`, attached the terminal, sent
+  `android_adb_manual_ok` through `adb shell input text`, and captured
+  `/tmp/fieldwork-adb-direct-20260520001909/terminal-after-input.png` showing
+  `android-direct: android_adb_manual_ok`. The app logcat showed
+  `FieldworkRepository: pair completed` and `FieldworkRepository: listSessions
+  returned 1 sessions`; crash buffers stayed empty. The default debug APK was
+  then rebuilt/reinstalled, `BuildConfig.java` again contained
+  `FIELDWORK_BIOMETRIC_BYPASS = false` and
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, the restored default build launched in
+  `TotalTime=1371ms`, and
+  `/tmp/fieldwork-adb-direct-20260520001909/default-restore-locked.png`
+  verified the locked `Unlock` surface. A
   follow-up raw adb
   locked-launch baseline on 2026-05-19 installed the default debug APK, launched
   `app.fieldwork.android/.MainActivity` with `am start -W` `TotalTime=2078ms`,
@@ -585,6 +604,26 @@ plus UI XML/logcat, and filtered logcat contained
 `FieldworkRepository: listSessions returned 1 sessions` with no
 `Camera`/`CAMERA`, Fieldwork `FATAL`, or ANR entries after the saved-pairing
 restore placeholder fix.
+A later 2026-05-20 raw adb pass installed the default debug APK, launched the
+locked app in `TotalTime=6766ms`, captured
+`/tmp/fieldwork-adb-direct-20260520001909/default-locked.png`, UI XML, app
+logcat, and an empty crash buffer, then rebuilt with
+`FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true` plus debug-only
+`FIELDWORK_ANDROID_PAIRING_PAYLOAD`, paired through explicit desktop approval,
+accepted the runtime notification prompt, listed `bash · fieldwork` with
+`ANDROID_ADB_MANUAL_READY`, attached the terminal, sent
+`android_adb_manual_ok` through `adb shell input text`, and captured
+`/tmp/fieldwork-adb-direct-20260520001909/terminal-after-input.png` showing
+`ANDROID_ADB_MANUAL_READY`, `android_adb_manual_ok`, and
+`android-direct: android_adb_manual_ok`. The app logcat showed
+`FieldworkRepository: pair completed` and `FieldworkRepository: listSessions
+returned 1 sessions`; crash buffers stayed empty. The default debug APK was
+rebuilt/reinstalled afterward, `BuildConfig.java` again contained
+`FIELDWORK_BIOMETRIC_BYPASS = false` and
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, the restored default build launched in
+`TotalTime=1371ms`, and
+`/tmp/fieldwork-adb-direct-20260520001909/default-restore-locked.png` verified
+the locked `Unlock` surface.
 The generated UniFFI binding refresh passed after verifying the Android Kotlin
 binding exposes the v1 pair/list/subscribe/attach/input/resize/detach and
 push-token API, rejects generated mobile create/kill/session-command APIs, and

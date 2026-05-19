@@ -1174,6 +1174,19 @@ function verifyLatestRefresh() {
   }
   requireText(plan, "empty `FIELDWORK_DEBUG_PAIRING_PAYLOAD`", "PLAN.md must record restored empty Android debug pairing payload");
   for (const evidence of [
+    "`/tmp/fieldwork-adb-direct-20260520001909/default-locked.png`",
+    "`TotalTime=6766ms`",
+    "`ANDROID_ADB_MANUAL_READY`",
+    "`android_adb_manual_ok`",
+    "`/tmp/fieldwork-adb-direct-20260520001909/terminal-after-input.png`",
+    "`android-direct: android_adb_manual_ok`",
+    "`TotalTime=1371ms`",
+    "`/tmp/fieldwork-adb-direct-20260520001909/default-restore-locked.png`",
+  ]) {
+    requireText(plan, evidence, `PLAN.md latest manual adb terminal evidence must include ${evidence}`);
+    requireText(audit, evidence, `release audit latest manual adb terminal evidence must include ${evidence}`);
+  }
+  for (const evidence of [
     "Android aggregate emulator QA note",
     "`pnpm test:android-emulator` aggregates the direct-adb emulator substitutes",
     "retries only a locked debug-launch timing outlier once with the same strict limit",
@@ -1291,6 +1304,11 @@ function verifyPlanUncheckedGatesAreReflected() {
     uncheckedPlanLines,
     "latest direct adb pair/attach pass paired the actual Android app through explicit desktop approval",
     "PLAN.md fresh-phone smoke gate must record direct adb pair/attach evidence",
+  );
+  requireText(
+    uncheckedPlanLines,
+    "`android_adb_manual_ok`",
+    "PLAN.md fresh-phone smoke gate must record latest direct adb terminal-input evidence",
   );
   requireText(
     uncheckedPlanLines,
