@@ -254,15 +254,15 @@ outside this shell:
 
 ## Latest Focused Refresh
 
-After tightening npm registry-state wording, adding default aggregate Android
-emulator substitute-suite evidence, refreshing Android emulator debug-launch
-plus pair/attach/foreground-input evidence, direct adb
-pair/attach/terminal-input evidence, and raw adb locked-launch evidence,
-tightening release-workflow secret cleanup, tightening the OSS community
-scaffold verifier, adding the delayed mobile telemetry consent prompt, updating
-the iOS toolchain blocker wording, and clearing reproducible build output to
-restore Xcode download headroom while preserving the release AAB, the following
-focused checks were rerun:
+After tightening npm registry-state wording, adding the npm publish missing-token
+guard, adding default aggregate Android emulator substitute-suite evidence,
+refreshing Android emulator debug-launch plus pair/attach/foreground-input
+evidence, direct adb pair/attach/terminal-input evidence, and raw adb
+locked-launch evidence, tightening release-workflow secret cleanup, tightening
+the OSS community scaffold verifier, adding the delayed mobile telemetry consent
+prompt, updating the iOS toolchain blocker wording, and clearing reproducible
+build output to restore Xcode download headroom while preserving the release
+AAB, the following focused checks were rerun:
 
 ```sh
 node --check scripts/verify-npm-registry-state.mjs
@@ -276,6 +276,12 @@ pnpm check:mobile-privacy
 pnpm check:v1-boundary
 pnpm check:release-audit
 pnpm check:local-release -- --with-artifacts --with-runtime
+pnpm test:npm-publish-plan
+pnpm check:npm-packages
+pnpm check:development-doc
+pnpm check:release-audit
+pnpm check:docs-sync
+pnpm check:local-release
 pnpm check:release-workflows
 pnpm check:secret-boundaries
 pnpm test:secret-boundaries
@@ -363,8 +369,13 @@ pnpm refresh:github-namespace -- --expect-available
 
 Observed results: all passed except `pnpm check:ios-prereqs`, which failed with
 the expected full-Xcode/iOS-SDK blocker and reported at least 70 GiB free in
-`~/Downloads`. The Android Kotlin compile and Android unit tests completed
-successfully after tightening native notification hash handling and adding
+`~/Downloads`. A later npm publish-token guard refresh passed
+`pnpm test:npm-publish-plan`, `pnpm check:npm-packages`,
+`pnpm check:development-doc`, `pnpm check:release-audit`,
+`pnpm check:docs-sync`, and `pnpm check:local-release`; the publish-plan test
+now verifies missing `NODE_AUTH_TOKEN` fails before `npm` is invoked while
+keeping the children-first provenance publish plan available without a token.
+The Android Kotlin compile and Android unit tests completed successfully after tightening native notification hash handling and adding
 TerminalController coverage for locked-input refusal, latest-`lastSeenSeq`
 `Lag` reattach, attached-stream-error reattach, delayed telemetry-consent triggering, FieldworkViewModel
 coverage proving terminal attach and lag reattach run repository work off the main thread, and MobileTelemetry

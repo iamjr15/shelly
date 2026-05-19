@@ -442,7 +442,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "pair/attach/foreground-input evidence",
+    "pair/attach/foreground-input\nevidence",
     "release audit latest refresh must record strengthened Android emulator pair evidence",
   );
   requireText(
@@ -845,7 +845,12 @@ function verifyLatestRefresh() {
   requireText(audit, "iOS App Store Connect upload JSON outside the repository workspace plus signing/upload cleanup", "release audit must document iOS release upload asset hygiene");
   requireText(audit, "Android generated Firebase/signing-file cleanup", "release audit must document Android release secret cleanup");
   requireText(audit, "relay SSH key chmod/cleanup", "release audit must document relay deploy SSH key cleanup");
-  requireText(audit, "raw adb locked-launch evidence", "release audit latest refresh must record raw adb locked-launch evidence");
+  requireText(audit, "raw adb\nlocked-launch evidence", "release audit latest refresh must record raw adb locked-launch evidence");
+  requireText(audit, "adding the npm publish missing-token\nguard", "release audit latest refresh must record npm publish token-guard hardening");
+  requireText(audit, "pnpm test:npm-publish-plan", "release audit latest refresh must include npm publish-plan test");
+  requireText(audit, "pnpm check:local-release", "release audit latest refresh must include local release aggregate check");
+  requireText(audit, "A later npm publish-token guard refresh passed", "release audit latest refresh must summarize npm publish token-guard results");
+  requireText(audit, "missing `NODE_AUTH_TOKEN` fails before `npm` is invoked", "release audit latest refresh must record fail-before-npm missing-token behavior");
   requireText(audit, "tightening release-workflow secret cleanup", "release audit latest refresh must record release workflow secret cleanup refresh");
   requireText(audit, "adb -s emulator-5554 shell cmd package resolve-activity --brief app.fieldwork.android", "release audit latest refresh must list adb activity resolution");
   requireText(audit, "adb -s emulator-5554 exec-out uiautomator dump /dev/tty", "release audit latest refresh must list direct adb UI dump");
