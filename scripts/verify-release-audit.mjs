@@ -10,6 +10,7 @@ const plan = read("PLAN.md");
 const install = read("docs/INSTALL.md");
 const development = read("docs/DEVELOPMENT.md");
 const ci = read(".github/workflows/ci.yml");
+const localRelease = read("scripts/check-local-release.mjs");
 const domainStatus = read("scripts/check-domain-status.mjs");
 const githubNamespace = read("scripts/check-github-namespace.mjs");
 const packageJson = JSON.parse(read("package.json"));
@@ -1286,6 +1287,9 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["check:release-artifacts"] !== "node scripts/verify-release-artifacts.mjs") {
     failures.push("package.json must expose check:release-artifacts");
   }
+  if (packageJson.scripts?.["check:local-release"] !== "node scripts/check-local-release.mjs") {
+    failures.push("package.json must expose check:local-release");
+  }
   if (packageJson.scripts?.["check:secret-boundaries"] !== "node scripts/verify-secret-boundaries.mjs") {
     failures.push("package.json must expose check:secret-boundaries");
   }
@@ -1409,6 +1413,17 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-emulator-notification-tap"] !== "bash scripts/smoke-android-emulator-notification-tap.sh") {
     failures.push("package.json must expose test:android-emulator-notification-tap");
   }
+  requireText(localRelease, "scripts/verify-rust-workspace.mjs", "local release gate must include Rust workspace verification");
+  requireText(localRelease, "scripts/verify-release-audit.mjs", "local release gate must include release audit verification");
+  requireText(localRelease, "scripts/verify-release-workflows.mjs", "local release gate must include release workflow verification");
+  requireText(localRelease, "scripts/verify-secret-boundaries.mjs\", \"--self-test", "local release gate must include secret-boundary self-test coverage");
+  requireText(localRelease, "scripts/test-npm-publish-plan.mjs", "local release gate must include npm publish-plan coverage");
+  requireText(localRelease, "scripts/test-bun-install.mjs", "local release gate must include Bun optional-dependency coverage");
+  requireText(localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include release-artifact verifier coverage");
+  requireText(localRelease, "scripts/test-npm-artifact-pack.mjs", "local release gate must include npm artifact-pack coverage");
+  requireText(localRelease, "scripts/verify-npm-packages.mjs\", \"--require-binaries", "artifact-aware local release gate must include staged npm binary verification");
+  requireText(localRelease, "scripts/publish-npm-packages.mjs\", \"--check-ready", "artifact-aware local release gate must include publish-readiness verification");
+  requireText(localRelease, "cleanNpmEnv()", "local release gate must clean noisy inherited npm config before dry-run pack");
   requireText(ci, "node scripts/verify-rust-workspace.mjs", "CI must run the Rust workspace verifier");
   requireText(ci, "cargo fmt --check", "CI must run cargo fmt");
   requireText(ci, "cargo clippy --workspace -- -D warnings", "CI must run workspace clippy as a deny-warning gate");

@@ -10,6 +10,7 @@ const files = {
   releaseAudit: read("docs/RELEASE_AUDIT.md"),
   packageJson: read("package.json"),
   ci: read(".github/workflows/ci.yml"),
+  localRelease: read("scripts/check-local-release.mjs"),
   desktopPerf: read("scripts/measure-desktop-performance.mjs"),
   iosPrereqs: read("scripts/check-ios-prereqs.sh"),
   iosPrereqTests: read("scripts/test-ios-prereqs.mjs"),
@@ -443,6 +444,9 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["check:release-artifacts"] !== "node scripts/verify-release-artifacts.mjs") {
     failures.push("package.json must expose pnpm check:release-artifacts");
   }
+  if (packageJson.scripts?.["check:local-release"] !== "node scripts/check-local-release.mjs") {
+    failures.push("package.json must expose pnpm check:local-release");
+  }
   if (packageJson.scripts?.["check:npm-registry"] !== "node scripts/verify-npm-registry-state.mjs") {
     failures.push("package.json must expose pnpm check:npm-registry");
   }
@@ -501,6 +505,14 @@ function verifyWiring(allFiles) {
     failures.push("package.json must expose pnpm check:demo-video");
   }
   requireText(allFiles.ci, "node scripts/verify-development-doc.mjs", "CI must run the development doc verifier");
+  requireText(allFiles.localRelease, "scripts/verify-release-audit.mjs", "local release gate must include the release audit verifier");
+  requireText(allFiles.localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include deterministic release-artifact verifier coverage");
+  requireText(allFiles.localRelease, "scripts/test-npm-artifact-pack.mjs", "local release gate must include deterministic npm artifact packaging coverage");
+  requireText(allFiles.localRelease, "scripts/verify-uniffi-bindings.mjs", "local release gate must include UniFFI binding verification");
+  requireText(allFiles.localRelease, "scripts/publish-npm-packages.mjs\", \"--check-ready", "artifact-aware local release gate must include publish-readiness verification");
+  requireText(allFiles.localRelease, "scripts/verify-npm-packages.mjs\", \"--require-binaries", "artifact-aware local release gate must include staged npm binary verification");
+  requireText(allFiles.localRelease, "\"npm meta dry-run pack\", npm, [\"pack\", \"./packages/cli\", \"--dry-run\", \"--json\"]", "artifact-aware local release gate must include npm meta dry-run pack");
+  requireText(allFiles.localRelease, "cleanNpmEnv()", "local release gate must sanitize inherited npm config for dry-run pack");
   requireText(allFiles.ci, "node scripts/test-ios-prereqs.mjs", "CI must run the deterministic iOS prereq tests");
   requireText(allFiles.ci, "node scripts/test-android-aab-verifier.mjs", "CI must run the deterministic Android AAB verifier tests");
   requireText(allFiles.ci, "node scripts/test-external-status-refresh.mjs", "CI must run the deterministic external status refresh guard test");
