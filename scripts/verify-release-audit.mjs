@@ -1225,6 +1225,20 @@ function verifyLatestRefresh() {
     requireText(audit, evidence, `release audit latest manual adb terminal evidence must include ${evidence}`);
   }
   for (const evidence of [
+    "direct locked-launch refresh on a freshly booted `Medium_Phone_API_36.1` emulator",
+    "`LaunchState: COLD`",
+    "`TotalTime=2226ms`",
+    "`/tmp/fieldwork-adb-direct-20260520014809/default-locked.png`",
+    "`/tmp/fieldwork-adb-direct-20260520014809/default-ui.xml`",
+    "`/tmp/fieldwork-adb-direct-20260520014809/default-logcat.log`",
+    "`/tmp/fieldwork-adb-direct-20260520014809/default-crash.log`",
+    "1080x2400 screenshot plus `text=\"Unlock\"`",
+    "no Fieldwork `FATAL EXCEPTION` or ANR log entries",
+  ]) {
+    requireText(plan, evidence, `PLAN.md latest direct adb locked-launch evidence must include ${evidence}`);
+    requireText(audit, evidence, `release audit latest direct adb locked-launch evidence must include ${evidence}`);
+  }
+  for (const evidence of [
     "Android aggregate emulator QA note",
     "`pnpm test:android-emulator` aggregates the direct-adb emulator substitutes",
     "retries only a locked debug-launch timing outlier once with the same strict limit",
