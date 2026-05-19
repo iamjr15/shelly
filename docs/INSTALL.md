@@ -54,9 +54,16 @@ Local scrollback/device persistence is encrypted by default. Device registry row
 use hashed keys, so raw device node IDs and push tokens live only inside encrypted
 row payloads. The daemon keeps the local persistence parent private (`0700`),
 keeps database files private (`0600`), and rejects symlinked persistence
-directories or database files before opening the stores. If OS keychain-backed
-encryption is unavailable and you explicitly accept plaintext local persistence,
-use:
+directories or database files before opening the stores.
+
+On macOS, Fieldwork may ask for Keychain access when `fieldworkd` starts. The
+Keychain entries hold only local private keys: the scrollback/device database
+encryption key, the daemon's iroh identity key for pairing, and, when relay push
+is enabled, the relay-signing key. Terminal output, keystrokes, commands, paths,
+session names, and push tokens are not stored in Keychain.
+
+If OS keychain-backed encryption is unavailable and you explicitly accept
+plaintext local persistence, use:
 
 ```sh
 target/debug/fieldwork settings scrollback-encryption off

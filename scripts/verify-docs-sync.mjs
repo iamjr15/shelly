@@ -186,6 +186,8 @@ function verifyInstallDoc() {
     "Installed npm builds check the npm registry at most once per day",
     "Local scrollback/device persistence is encrypted by default",
     "Device registry rows\nuse hashed keys",
+    "Fieldwork may ask for Keychain access when `fieldworkd` starts",
+    "Terminal output, keystrokes, commands, paths,\nsession names, and push tokens are not stored in Keychain",
     "FIELDWORK_RELAY_DB_PATH",
     "Real APNs/FCM delivery requires relay-only Apple/Firebase credentials and physical-device verification",
     "Current npm packaging checks",
