@@ -57,6 +57,10 @@ outside this shell:
   `publish`, `provider`, `physical-device`, `store-console`, or `operator`).
   Any new unchecked gate that is not added to that classified allowlist fails the
   audit instead of silently becoming release debt.
+- Current unchecked `PLAN.md` gate inventory: 37 total (`ios-xcode`: 1,
+  `signing`: 4, `publish`: 3, `provider`: 5, `physical-device`: 13,
+  `store-console`: 2, `operator`: 9). The release-audit verifier recomputes
+  this inventory from `PLAN.md` so count drift fails locally.
 - A local API 36.1 Android emulator is only a debug substitute for those
   runtime/performance gates, not release-device evidence. `pnpm test:android-emulator`
   is now the aggregate direct-adb substitute suite for the locked debug launch, pair,

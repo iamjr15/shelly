@@ -43,6 +43,16 @@ function verifyCurrentVerdict() {
     "scripts/verify-release-audit.mjs` classifies\n  every unchecked `PLAN.md` gate by blocker class",
     "release audit must document the unchecked-gate classification guard",
   );
+  requireText(
+    audit,
+    "Current unchecked `PLAN.md` gate inventory: 37 total (`ios-xcode`: 1,\n  `signing`: 4, `publish`: 3, `provider`: 5, `physical-device`: 13,\n  `store-console`: 2, `operator`: 9)",
+    "release audit must record exact unchecked gate counts by blocker class",
+  );
+  requireText(
+    audit,
+    "release-audit verifier recomputes\n  this inventory from `PLAN.md` so count drift fails locally",
+    "release audit must say unchecked gate count drift fails locally",
+  );
   for (const blockerClass of [
     "`ios-xcode`",
     "`signing`",
@@ -1245,6 +1255,19 @@ function verifyPlanUncheckedGatesAreReflected() {
     .split("\n")
     .filter((line) => line.startsWith("- [ ] "));
   const uncheckedPlanLines = uncheckedPlanLineList.join("\n");
+  const expectedUncheckedCounts = {
+    "ios-xcode": 1,
+    signing: 4,
+    publish: 3,
+    provider: 5,
+    "physical-device": 13,
+    "store-console": 2,
+    operator: 9,
+  };
+  const expectedUncheckedTotal = Object.values(expectedUncheckedCounts).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
 
   const expectedUncheckedGates = [
     ["iOS xcframework", "ios-xcode"],
@@ -1285,11 +1308,35 @@ function verifyPlanUncheckedGatesAreReflected() {
     ["Set up Honeycomb account", "operator"],
     ["Block out the next 10 weeks", "operator"],
   ];
-  const expectedUncheckedGateNeedles = expectedUncheckedGates.map(([needle]) => needle);
+  const actualUncheckedCounts = Object.fromEntries(
+    Object.keys(expectedUncheckedCounts).map((blockerClass) => [blockerClass, 0]),
+  );
+
+  if (expectedUncheckedGates.length !== expectedUncheckedTotal) {
+    failures.push(
+      `release audit verifier expected unchecked gate list has ${expectedUncheckedGates.length} entries but class counts total ${expectedUncheckedTotal}`,
+    );
+  }
+  if (uncheckedPlanLineList.length !== expectedUncheckedTotal) {
+    failures.push(
+      `PLAN.md has ${uncheckedPlanLineList.length} unchecked gates; update release audit inventory if the expected ${expectedUncheckedTotal} count changed`,
+    );
+  }
 
   for (const line of uncheckedPlanLineList) {
-    if (!expectedUncheckedGateNeedles.some((gate) => line.includes(gate))) {
+    const match = expectedUncheckedGates.find(([gate]) => line.includes(gate));
+    if (!match) {
       failures.push(`unchecked PLAN.md gate is not classified in release audit verifier: ${line}`);
+    } else {
+      actualUncheckedCounts[match[1]] += 1;
+    }
+  }
+
+  for (const [blockerClass, expectedCount] of Object.entries(expectedUncheckedCounts)) {
+    if (actualUncheckedCounts[blockerClass] !== expectedCount) {
+      failures.push(
+        `PLAN.md unchecked ${blockerClass} gate count is ${actualUncheckedCounts[blockerClass]}, expected ${expectedCount}`,
+      );
     }
   }
 
