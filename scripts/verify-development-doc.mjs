@@ -448,6 +448,7 @@ function verifyDevelopmentDoc(text) {
     "platform/target-matching extracted artifact directory",
     "missing platform-root rejection",
     "deterministic local registry fixture for current, post-placeholder, post-release, version-drift, missing-provenance, and bare-invocation failure states",
+    "bare-invocation case also asserts the checker exits before any registry request",
     "The unscoped `fieldwork` meta package is operator-owned",
     "not a name-availability task for the meta package",
     "fails closed when run without explicit release-state expectation flags",

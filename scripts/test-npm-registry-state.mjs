@@ -13,8 +13,10 @@ const packages = [
 ];
 
 let registry = currentRegistryFixture();
+let registryRequests = [];
 const server = http.createServer((request, response) => {
   const name = decodeURIComponent(new URL(request.url, "http://registry.test").pathname.slice(1));
+  registryRequests.push(name);
   const metadata = registry.get(name);
   if (!metadata) {
     response.writeHead(404, { "content-type": "application/json" });
@@ -44,11 +46,18 @@ try {
     "--expect-latest-version requires a value",
     "missing latest-version value should fail with a clean CLI error",
   );
+  registryRequests = [];
   await expectFailure(
     [],
     "requires an explicit release-state expectation flag",
     "bare registry checks must fail closed instead of acting like name-availability checks",
   );
+  if (registryRequests.length !== 0) {
+    fail(
+      `bare registry checks must fail before network access; saw requests for ${registryRequests.join(", ")}`,
+      { stdout: "", stderr: "" },
+    );
+  }
 
   registry = releasedRegistryFixture();
   await expectSuccess(
