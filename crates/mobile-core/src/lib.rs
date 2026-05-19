@@ -725,9 +725,9 @@ mod android_context {
     use jni::objects::JObject;
     use jni::{EnvUnowned, Outcome};
     use std::ffi::c_void;
-    use std::sync::Once;
+    use std::sync::OnceLock;
 
-    static INIT_ANDROID_CONTEXT: Once = Once::new();
+    static ANDROID_CONTEXT_INIT: OnceLock<Result<(), String>> = OnceLock::new();
 
     #[unsafe(no_mangle)]
     pub extern "system" fn Java_app_fieldwork_android_core_FieldworkNative_installAndroidContext<
@@ -737,8 +737,8 @@ mod android_context {
         _this: JObject<'local>,
         context: JObject<'local>,
     ) {
-        INIT_ANDROID_CONTEXT.call_once(|| {
-            let result = env
+        let result = ANDROID_CONTEXT_INIT.get_or_init(|| {
+            let outcome = env
                 .with_env(|env| -> jni::errors::Result<()> {
                     let vm = env.get_java_vm()?;
                     let context = env.new_global_ref(context)?.into_raw();
@@ -752,12 +752,26 @@ mod android_context {
                 })
                 .into_outcome();
 
-            match result {
-                Outcome::Ok(()) => {}
-                Outcome::Err(error) => panic!("install Android JNI context: {error}"),
-                Outcome::Panic(payload) => std::panic::resume_unwind(payload),
+            match outcome {
+                Outcome::Ok(()) => Ok(()),
+                Outcome::Err(error) => Err(error.to_string()),
+                Outcome::Panic(_) => Err("panic while installing Android JNI context".to_string()),
             }
         });
+
+        if let Err(error) = result {
+            throw_java_runtime_exception(&mut env, error);
+        }
+    }
+
+    fn throw_java_runtime_exception(env: &mut EnvUnowned<'_>, message: &str) {
+        let message = format!("Fieldwork Android context initialization failed: {message}");
+        let _ = env
+            .with_env(|env| -> jni::errors::Result<()> {
+                let _ = env.throw(message);
+                Ok(())
+            })
+            .into_outcome();
     }
 }
 
