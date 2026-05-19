@@ -121,6 +121,11 @@ function verifyDevelopmentDoc(text) {
   );
   requireText(
     text,
+    'CARGO_HOME="$HOME/.cargo" CARGO_TARGET_DIR="$PWD/target" pnpm check:local-release -- --with-artifacts --with-runtime',
+    "docs/DEVELOPMENT.md must document the low-temp-space aggregate gate command",
+  );
+  requireText(
+    text,
     "CI syntax-checks the\naggregate wrapper and list-checks the combined artifact/runtime mode",
     "docs/DEVELOPMENT.md must document CI coverage for the local release aggregate wrapper",
   );

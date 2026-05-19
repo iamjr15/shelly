@@ -87,7 +87,9 @@ handoff smoke, demo video, site typecheck/build, Terraform fmt/init/validate,
 relay TLS/OTLP loopbacks, and desktop cold-start thresholds. The flags can be
 combined. Unless `CARGO_TARGET_DIR` is already set, the aggregate runs the local
 handoff smoke with `/tmp/fieldwork-target-checks` so it does not grow the
-repo-local `target/debug` cache. CI syntax-checks the
+repo-local `target/debug` cache. On hosts with limited temp-volume space, run
+`CARGO_HOME="$HOME/.cargo" CARGO_TARGET_DIR="$PWD/target" pnpm check:local-release -- --with-artifacts --with-runtime`
+to reuse the normal Cargo cache and repo-local target directory. CI syntax-checks the
 aggregate wrapper and list-checks the combined artifact/runtime mode so wrapper
 drift is caught without duplicating the full artifact/runtime gate in pull
 requests.

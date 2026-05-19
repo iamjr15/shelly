@@ -219,7 +219,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "latest pass measured CLI max `3.45ms` and daemon max `47.78ms`",
+    "latest pass measured CLI max `4.13ms` and daemon max `43.63ms`",
     "release audit must record current desktop max performance evidence",
   );
   requireText(
@@ -867,9 +867,11 @@ function verifyLatestRefresh() {
   requireText(audit, "all passed except `pnpm check:ios-prereqs`", "release audit must record the latest focused result summary");
   requireText(audit, "repo-owned Xcode download, install, `xcode-select`, first-launch, rerun", "release audit must record iOS prereq recovery output");
   requireText(audit, "Desktop performance passed after one explicit warm-up sample", "release audit must record latest desktop performance result");
-  requireText(audit, "preserved AAB, staged npm binaries, npm publish readiness, meta-package dry-run\npack, local handoff smoke, demo video, site typecheck/build, Terraform\nfmt/init/validate, relay TLS/OTLP loopbacks, and desktop performance", "release audit must record latest aggregate local release gate coverage");
-  requireText(audit, "`3.10ms`, p95 `3.36ms`, max `3.45ms`", "release audit must record latest CLI desktop performance values");
-  requireText(audit, "`41.15ms`, p95 `43.23ms`, max `47.78ms`", "release audit must record latest daemon desktop performance values");
+  requireText(audit, "preserved AAB, staged npm binaries, npm publish readiness,\nmeta-package dry-run pack, local handoff smoke, demo video, site typecheck/build,\nTerraform fmt/init/validate, relay TLS/OTLP loopbacks, and desktop performance", "release audit must record latest aggregate local release gate coverage");
+  requireText(audit, 'CARGO_HOME="$HOME/.cargo" CARGO_TARGET_DIR="$PWD/target" pnpm check:local-release -- --with-artifacts --with-runtime', "release audit must record the latest artifact/runtime aggregate command");
+  requireText(audit, "temp-volume exhaustion while unpacking `openssl-src`", "release audit must record the local temp-space retry reason");
+  requireText(audit, "`3.13ms`, p95 `3.97ms`, max `4.13ms`", "release audit must record latest CLI desktop performance values");
+  requireText(audit, "`40.82ms`, p95 `43.29ms`, max `43.63ms`", "release audit must record latest daemon desktop performance values");
   requireText(audit, "npm binary readiness passed\nwith staged artifacts", "release audit must record staged npm binary readiness");
   requireText(audit, "Cross-target desktop release builds passed on 2026-05-19", "release audit must record the latest cross-target desktop release build date");
   requireText(audit, "Mach-O arm64/x86_64 and ELF x86-64/aarch64 binaries", "release audit must record cross-target binary format verification");
