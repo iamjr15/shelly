@@ -238,8 +238,10 @@ function verifyPlanDoc() {
     "node scripts/check-github-namespace.mjs --operator-refresh --expect-available",
     "fieldwork-app/fieldwork",
     "not the older planned `codex app-server daemon --remote-control` form",
-    "A later direct adb rerun using `adb install`, `am start -W`, `uiautomator`, `screencap`, and logcat",
-    "`TotalTime=1082ms`",
+    "latest direct adb emulator QA refresh installed the default debug APK",
+    "`TotalTime=5297ms`",
+    "`pair_flow_ms=1043`",
+    "`TotalTime=5105ms`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
     "empty `FIELDWORK_DEBUG_PAIRING_PAYLOAD`",
   ]) {

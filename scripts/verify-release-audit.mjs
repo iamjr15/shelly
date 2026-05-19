@@ -242,6 +242,8 @@ function verifyPromptToArtifactChecklist() {
     "AAB ABI, packaged uses-permission allowlist and manifest privacy verifier",
     "release audit must record Android AAB packaged manifest verification",
   );
+  requireText(audit, "full-width Pair button is textless", "release audit must record Android pair-button locator coverage");
+  requireText(audit, "first enabled full-width\n  clickable control below it", "release audit must record UI-tree pair-button selection coverage");
   requireText(audit, "forbidden location permission", "release audit must record Android AAB forbidden-permission self-test coverage");
   requireText(audit, "missing notification permission", "release audit must record Android AAB required-permission self-test coverage");
   requireText(audit, "terminal-content metadata such as `last_line`", "release audit must record Android AAB terminal-content metadata self-test coverage");
@@ -377,9 +379,10 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "A follow-up raw adb\n  locked-launch baseline on 2026-05-19",
+    "follow-up raw adb",
     "release audit must record the follow-up raw adb locked-launch baseline",
   );
+  requireText(audit, "locked-launch baseline on 2026-05-19", "release audit must record the raw adb locked-launch baseline date");
   requireText(
     audit,
     "`TotalTime=2078ms`",
@@ -397,34 +400,33 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "`Status: ok` and `TotalTime=2297ms`",
+    "`Status: ok` and `TotalTime=5297ms`",
     "release audit must record latest raw adb launch status and timing",
   );
   for (const evidence of [
-    "`/tmp/fieldwork-adb-current.png`",
-    "`/tmp/fieldwork-adb-current-ui.xml`",
-    "`/tmp/fieldwork-adb-current-app.log`",
-    "`/tmp/fieldwork-adb-current-crash.log`",
+    "`/tmp/fieldwork-adb-direct-20260519225027/default.png`",
+    "`/tmp/fieldwork-adb-direct-20260519225027/default-ui.xml`",
+    "`/tmp/fieldwork-adb-direct-20260519225027/default-logcat.log`",
+    "`/tmp/fieldwork-adb-direct-20260519225027/default-crash.log`",
     "`FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true`",
-    "`TotalTime=1460ms`",
-    "accepted Android camera permission through adb\ninput",
-    "unlocked pairing UI, Settings UI, and Open Source\nlicense screen screenshots/UI XML/logcat under `/tmp/fieldwork-adb-bypass-*`",
-    "paired the actual Android app to an isolated\nrelease daemon through explicit desktop approval",
+    "`FIELDWORK_ANDROID_PAIRING_PAYLOAD`",
+    "`TotalTime=4589ms`",
+    "UI-tree-derived Pair tap center `540 1860`",
+    "`pair_flow_ms=1043`",
+    "paired through explicit desktop approval",
     "`FIELDWORK_ANDROID_PAIRING_PAYLOAD` injection",
-    "`TotalTime=1297ms`",
     "`ANDROID_ADB_DIRECT_READY`",
     "`fw_android_direct_ok`",
-    "`/tmp/fieldwork-adb-direct-sessions.png`",
-    "`/tmp/fieldwork-adb-direct-terminal.png`",
-    "`/tmp/fieldwork-adb-direct-input.png`",
-    "`/tmp/fieldwork-adb-direct-app.log`",
-    "`/tmp/fieldwork-adb-direct-crash.log`",
+    "`/tmp/fieldwork-adb-direct-pair-20260519225208/before-pair.png`",
+    "`/tmp/fieldwork-adb-direct-pair-20260519225208/sessions.png`",
+    "`/tmp/fieldwork-adb-direct-pair-20260519225208/terminal-before-input.png`",
+    "`/tmp/fieldwork-adb-direct-pair-20260519225208/terminal-after-input.png`",
     "`android-direct: fw_android_direct_ok`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
     '`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`',
-    "`TotalTime=1097ms`",
-    "`/tmp/fieldwork-adb-restored-locked.png`",
-    "`/tmp/fieldwork-adb-restored-locked-ui.xml`",
+    "`TotalTime=5105ms`",
+    "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-locked.png`",
+    "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-ui.xml`",
   ]) {
     requireText(audit, evidence, `release audit latest raw adb QA evidence must include ${evidence}`);
   }
@@ -765,6 +767,7 @@ function verifyLatestRefresh() {
     "pnpm check:security-model",
     "pnpm check:android-aab",
     "node scripts/test-android-aab-verifier.mjs",
+    "node scripts/test-android-pair-button-picker.mjs",
     "node scripts/test-external-status-refresh.mjs",
     "pnpm test:android-emulator",
     "pnpm check:npm-packages",
@@ -1130,39 +1133,30 @@ function verifyLatestRefresh() {
   requireText(audit, "packaged manifest privacy surface", "release audit must record Android AAB packaged manifest privacy verification");
   requireText(audit, "Firebase/Sentry opt-out metadata", "release audit must record packaged manifest opt-out metadata verification");
   requireText(plan, "focused Android JVM tests now verify locked terminal input is refused before it reaches mobile-core plus latest-`lastSeenSeq` `Lag` and attached-stream-error reattach", "PLAN.md must record focused Android locked-input and lag/stream-error reattach coverage");
-  requireText(plan, "A later direct adb rerun using `adb install`, `am start -W`, `uiautomator`, `screencap`, and logcat", "PLAN.md must record direct adb Android app evidence");
-  requireText(plan, "`TotalTime=1082ms`", "PLAN.md must record manual direct adb Android launch timing");
-  requireText(plan, "`echo android_adb_direct_input` plus matching PTY output", "PLAN.md must record direct adb Android terminal input/output evidence");
-  requireText(plan, "A follow-up raw adb locked-launch baseline launched the default debug APK in `TotalTime=2078ms`", "PLAN.md must record the raw adb locked-launch baseline");
-  requireText(plan, "`/tmp/fieldwork-adb-launch.png`, `/tmp/fieldwork-adb-ui.xml`, app-scoped logcat, and an empty crash buffer", "PLAN.md must record raw adb screenshot/UI/logcat/crash evidence");
-  requireText(plan, "debug emulator smoke evidence only, not release-device threshold evidence", "PLAN.md must keep raw adb launch evidence scoped to emulator smoke");
-  requireText(plan, "latest raw adb emulator QA refresh installed the default debug APK", "PLAN.md must record the latest raw adb emulator QA refresh");
-  requireText(plan, "`Status: ok` and `TotalTime=2297ms`", "PLAN.md must record the latest raw adb launch status and timing");
+  requireText(plan, "latest direct adb emulator QA refresh installed the default debug APK", "PLAN.md must record the latest direct adb emulator QA refresh");
+  requireText(plan, "`Status: ok` and `TotalTime=5297ms`", "PLAN.md must record the latest raw adb launch status and timing");
   for (const evidence of [
-    "`/tmp/fieldwork-adb-current.png`",
-    "`/tmp/fieldwork-adb-current-ui.xml`",
-    "`/tmp/fieldwork-adb-current-app.log`",
-    "`/tmp/fieldwork-adb-current-crash.log`",
-    "debug-only `FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true` APK",
-    "`TotalTime=1460ms`",
-    "accepted Android camera permission through adb input",
-    "unlocked pairing, Settings, and Open Source license screenshots/UI XML/logcat under `/tmp/fieldwork-adb-bypass-*`",
-    "paired the actual Android app to an isolated release daemon through explicit desktop approval",
-    "debug-only `FIELDWORK_ANDROID_PAIRING_PAYLOAD` injection",
-    "`TotalTime=1297ms`",
+    "`/tmp/fieldwork-adb-direct-20260519225027/default.png`",
+    "`/tmp/fieldwork-adb-direct-20260519225027/default-ui.xml`",
+    "`/tmp/fieldwork-adb-direct-20260519225027/default-logcat.log`",
+    "`/tmp/fieldwork-adb-direct-20260519225027/default-crash.log`",
+    "debug-only `FIELDWORK_ANDROID_PAIRING_PAYLOAD`",
+    "`TotalTime=4589ms`",
+    "UI-tree-derived Pair center `540 1860`",
+    "`pair_flow_ms=1043`",
+    "paired through explicit desktop approval",
     "`ANDROID_ADB_DIRECT_READY`",
     "`fw_android_direct_ok`",
-    "`/tmp/fieldwork-adb-direct-sessions.png`",
-    "`/tmp/fieldwork-adb-direct-terminal.png`",
-    "`/tmp/fieldwork-adb-direct-input.png`",
-    "`/tmp/fieldwork-adb-direct-app.log`",
-    "`/tmp/fieldwork-adb-direct-crash.log`",
+    "`/tmp/fieldwork-adb-direct-pair-20260519225208/before-pair.png`",
+    "`/tmp/fieldwork-adb-direct-pair-20260519225208/sessions.png`",
+    "`/tmp/fieldwork-adb-direct-pair-20260519225208/terminal-before-input.png`",
+    "`/tmp/fieldwork-adb-direct-pair-20260519225208/terminal-after-input.png`",
     "`android-direct: fw_android_direct_ok`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
     '`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`',
-    "`TotalTime=1097ms`",
-    "`/tmp/fieldwork-adb-restored-locked.png`",
-    "`/tmp/fieldwork-adb-restored-locked-ui.xml`",
+    "`TotalTime=5105ms`",
+    "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-locked.png`",
+    "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-ui.xml`",
   ]) {
     requireText(plan, evidence, `PLAN.md latest raw adb QA evidence must include ${evidence}`);
   }
@@ -1476,6 +1470,9 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-aab-verifier"] !== "node scripts/test-android-aab-verifier.mjs") {
     failures.push("package.json must expose test:android-aab-verifier");
   }
+  if (packageJson.scripts?.["test:android-pair-button-picker"] !== "node scripts/test-android-pair-button-picker.mjs") {
+    failures.push("package.json must expose test:android-pair-button-picker");
+  }
   if (packageJson.scripts?.["test:external-status-refresh"] !== "node scripts/test-external-status-refresh.mjs") {
     failures.push("package.json must expose test:external-status-refresh");
   }
@@ -1535,6 +1532,7 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/test-bun-install.mjs", "local release gate must include Bun optional-dependency coverage");
   requireText(localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include release-artifact verifier coverage");
   requireText(localRelease, "scripts/test-npm-artifact-pack.mjs", "local release gate must include npm artifact-pack coverage");
+  requireText(localRelease, "scripts/test-android-pair-button-picker.mjs", "local release gate must include Android pair-button picker coverage");
   requireText(localRelease, "scripts/verify-npm-packages.mjs\", \"--require-binaries", "artifact-aware local release gate must include staged npm binary verification");
   requireText(localRelease, "scripts/publish-npm-packages.mjs\", \"--check-ready", "artifact-aware local release gate must include publish-readiness verification");
   requireText(localRelease, "cleanNpmEnv()", "local release gate must clean noisy inherited npm config before dry-run pack");
@@ -1597,6 +1595,7 @@ function verifyVerifierIsWired() {
   requireText(ci, "node scripts/test-npm-publish-plan.mjs", "CI must run the npm publish-plan test");
   requireText(ci, "node scripts/test-bun-install.mjs", "CI must run the Bun optional-dependency smoke");
   requireText(ci, "node scripts/test-android-aab-verifier.mjs", "CI must run the deterministic Android AAB verifier tests");
+  requireText(ci, "node scripts/test-android-pair-button-picker.mjs", "CI must run the deterministic Android pair-button picker test");
   requireText(ci, "node scripts/test-release-artifacts.mjs", "CI must run the release artifact verifier tests");
   requireText(ci, "node scripts/test-npm-artifact-pack.mjs", "CI must run the npm artifact/package dry-run tests");
   requireText(ci, "node scripts/test-external-status-refresh.mjs", "CI must run the deterministic external status refresh guard test");

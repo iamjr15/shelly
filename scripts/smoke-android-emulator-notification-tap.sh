@@ -295,42 +295,7 @@ if ! grep -q 'text="Pairing payload"' "$ui_xml"; then
   exit 1
 fi
 
-read -r pair_x pair_y < <(python3 - "$ui_xml" <<'PY'
-import re
-import sys
-import xml.etree.ElementTree as ET
-
-text = open(sys.argv[1], encoding="utf-8").read()
-end = text.find("</hierarchy>")
-if end >= 0:
-    text = text[:end + len("</hierarchy>")]
-root = ET.fromstring(text)
-
-def center(bounds):
-    left, top, right, bottom = map(int, re.findall(r"\d+", bounds))
-    return (left + right) // 2, (top + bottom) // 2
-
-def has_pair_text(node):
-    return any(child.attrib.get("text") == "Pair" for child in node.iter())
-
-for node in root.iter("node"):
-    bounds = node.attrib.get("bounds", "")
-    values = list(map(int, re.findall(r"\d+", bounds)))
-    if len(values) != 4:
-        continue
-    width = values[2] - values[0]
-    if (
-        node.attrib.get("clickable") == "true"
-        and node.attrib.get("enabled") == "true"
-        and width > 500
-        and has_pair_text(node)
-    ):
-        print(*center(bounds))
-        raise SystemExit(0)
-
-raise SystemExit("pair button not found")
-PY
-)
+read -r pair_x pair_y < <(python3 "$root/scripts/pick-android-pair-button.py" "$ui_xml")
 
 adb -s "$serial" shell input tap "$pair_x" "$pair_y"
 

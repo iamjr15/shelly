@@ -38,6 +38,16 @@ if [[ "$biometric_bypass" == "true" ]]; then
 fi
 adb -s "$serial" logcat -c
 adb -s "$serial" shell am force-stop "$package"
+for _ in {1..50}; do
+  if ! adb -s "$serial" shell pidof "$package" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
+if adb -s "$serial" shell pidof "$package" >/dev/null 2>&1; then
+  echo "Android debug smoke could not stop $package before launch measurement." >&2
+  exit 1
+fi
 
 launch_log="$tmp_dir/launch.txt"
 adb -s "$serial" shell am start -W -n "$activity" | tee "$launch_log"

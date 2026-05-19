@@ -132,31 +132,31 @@ outside this shell:
   the terminal, and showed `echo android_adb_direct_input` plus the matching
   PTY output in the Android terminal screenshot. The latest direct adb pair
   refresh installed the default debug APK, launched the locked app in
-  `TotalTime=2297ms`, captured `/tmp/fieldwork-adb-current.png`,
-  `/tmp/fieldwork-adb-current-ui.xml`, `/tmp/fieldwork-adb-current-app.log`,
-  and an empty `/tmp/fieldwork-adb-current-crash.log`, rebuilt a debug-only
-  `FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true` APK for emulator no-biometric UI
-  inspection, launched it in `TotalTime=1460ms`, accepted camera permission
-  through adb input, captured pairing, Settings, and Open Source license
-  screenshots/UI XML/logcat under `/tmp/fieldwork-adb-bypass-*` with empty crash
-  buffers, then paired the actual Android app to an isolated release daemon
-  through explicit desktop approval using debug-only
-  `FIELDWORK_ANDROID_PAIRING_PAYLOAD` injection. The pair flow launched in
-  `TotalTime=1297ms`, showed `bash · fieldwork` plus
-  `ANDROID_ADB_DIRECT_READY`, attached the terminal, sent
-  `fw_android_direct_ok` from the emulator keyboard, captured
-  `/tmp/fieldwork-adb-direct-sessions.png`,
-  `/tmp/fieldwork-adb-direct-terminal.png`,
-  `/tmp/fieldwork-adb-direct-input.png`,
-  `/tmp/fieldwork-adb-direct-app.log`, and an empty
-  `/tmp/fieldwork-adb-direct-crash.log`, and a separately approved verifier
+  `TotalTime=5297ms`, captured
+  `/tmp/fieldwork-adb-direct-20260519225027/default.png`,
+  `/tmp/fieldwork-adb-direct-20260519225027/default-ui.xml`,
+  `/tmp/fieldwork-adb-direct-20260519225027/default-logcat.log`, and an empty
+  `/tmp/fieldwork-adb-direct-20260519225027/default-crash.log`, then rebuilt a
+  debug-only `FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true` APK with debug-only
+  `FIELDWORK_ANDROID_PAIRING_PAYLOAD` injection. The pair build launched in
+  `TotalTime=4589ms`, used the UI-tree-derived Pair tap center `540 1860`,
+  paired through explicit desktop approval in `pair_flow_ms=1043`, showed
+  `bash · fieldwork` plus `ANDROID_ADB_DIRECT_READY`, attached the terminal,
+  sent `fw_android_direct_ok` from the emulator keyboard, captured
+  `/tmp/fieldwork-adb-direct-pair-20260519225208/before-pair.png`,
+  `/tmp/fieldwork-adb-direct-pair-20260519225208/sessions.png`,
+  `/tmp/fieldwork-adb-direct-pair-20260519225208/terminal-before-input.png`,
+  `/tmp/fieldwork-adb-direct-pair-20260519225208/terminal-after-input.png`, UI
+  XML, logcat, and an empty crash buffer, and a separately approved verifier
   client saw `android-direct: fw_android_direct_ok` in replayed terminal bytes.
-  The default debug APK was then rebuilt, `BuildConfig.java` again contained
-  `FIELDWORK_BIOMETRIC_BYPASS = false` and
+  The default debug APK was then rebuilt and reinstalled, `BuildConfig.java`
+  again contained `FIELDWORK_BIOMETRIC_BYPASS = false` and
   `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, the restored default build launched in
-  `TotalTime=1097ms`, `/tmp/fieldwork-adb-restored-locked.png` plus
-  `/tmp/fieldwork-adb-restored-locked-ui.xml` verified the locked `Unlock`
-  surface, and the restored crash buffer was empty. A follow-up raw adb
+  `TotalTime=5105ms`,
+  `/tmp/fieldwork-adb-direct-restore-20260519225316/restored-locked.png` plus
+  `/tmp/fieldwork-adb-direct-restore-20260519225316/restored-ui.xml` verified
+  the locked `Unlock` surface, and the restored crash buffer was empty. A
+  follow-up raw adb
   locked-launch baseline on 2026-05-19 installed the default debug APK, launched
   `app.fieldwork.android/.MainActivity` with `am start -W` `TotalTime=2078ms`,
   captured `/tmp/fieldwork-adb-launch.png`, `/tmp/fieldwork-adb-ui.xml`,
@@ -282,6 +282,7 @@ pnpm test:secret-boundaries
 pnpm check:security-model
 pnpm check:android-aab
 node scripts/test-android-aab-verifier.mjs
+node scripts/test-android-pair-button-picker.mjs
 pnpm test:android-debug-smoke
 pnpm test:android-emulator
 pnpm test:android-emulator-pair
@@ -520,31 +521,31 @@ and an empty crash buffer, and verified the locked `Unlock` surface. This is a
 debug emulator smoke result only; physical release-device cold-start evidence is
 still required for the Section 13 threshold.
 The latest raw adb emulator QA refresh installed the default debug APK, launched
-with `Status: ok` and `TotalTime=2297ms`, captured
-`/tmp/fieldwork-adb-current.png`, `/tmp/fieldwork-adb-current-ui.xml`,
-`/tmp/fieldwork-adb-current-app.log`, and an empty
-`/tmp/fieldwork-adb-current-crash.log`, and verified the locked `Unlock`
-surface. The same run rebuilt the debug APK with
-`FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true`, launched the emulator-only bypass
-build in `TotalTime=1460ms`, accepted Android camera permission through adb
-input, and captured the unlocked pairing UI, Settings UI, and Open Source
-license screen screenshots/UI XML/logcat under `/tmp/fieldwork-adb-bypass-*`
-with empty crash buffers. It then paired the actual Android app to an isolated
-release daemon through explicit desktop approval using only debug-only
-`FIELDWORK_ANDROID_PAIRING_PAYLOAD` injection, launched that pair flow in
-`TotalTime=1297ms`, verified the dashboard showed `bash · fieldwork` and
-`ANDROID_ADB_DIRECT_READY`, attached the terminal, sent `fw_android_direct_ok`
-from the emulator keyboard, captured `/tmp/fieldwork-adb-direct-sessions.png`,
-`/tmp/fieldwork-adb-direct-terminal.png`,
-`/tmp/fieldwork-adb-direct-input.png`, `/tmp/fieldwork-adb-direct-app.log`, and
-an empty `/tmp/fieldwork-adb-direct-crash.log`, and confirmed a separately
-approved verifier client saw `android-direct: fw_android_direct_ok` in replayed
-terminal bytes. Afterward the default debug APK was rebuilt,
+with `Status: ok` and `TotalTime=5297ms`, captured
+`/tmp/fieldwork-adb-direct-20260519225027/default.png`,
+`/tmp/fieldwork-adb-direct-20260519225027/default-ui.xml`,
+`/tmp/fieldwork-adb-direct-20260519225027/default-logcat.log`, and an empty
+`/tmp/fieldwork-adb-direct-20260519225027/default-crash.log`, and verified the
+locked `Unlock` surface. The same direct adb run rebuilt the debug APK with
+`FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true` plus debug-only
+`FIELDWORK_ANDROID_PAIRING_PAYLOAD`, launched the pair build in
+`TotalTime=4589ms`, tapped the UI-tree-derived Pair center `540 1860`, paired
+through explicit desktop approval in `pair_flow_ms=1043`, verified the
+dashboard showed `bash · fieldwork` and `ANDROID_ADB_DIRECT_READY`, attached the
+terminal, sent `fw_android_direct_ok` from the emulator keyboard, captured
+`/tmp/fieldwork-adb-direct-pair-20260519225208/before-pair.png`,
+`/tmp/fieldwork-adb-direct-pair-20260519225208/sessions.png`,
+`/tmp/fieldwork-adb-direct-pair-20260519225208/terminal-before-input.png`,
+`/tmp/fieldwork-adb-direct-pair-20260519225208/terminal-after-input.png`, UI
+XML, logcat, and an empty crash buffer, and confirmed a separately approved
+verifier client saw `android-direct: fw_android_direct_ok` in replayed terminal
+bytes. Afterward the default debug APK was rebuilt and reinstalled,
 `BuildConfig.java` was checked to contain `FIELDWORK_BIOMETRIC_BYPASS = false`
 and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, the restored default build launched
-in `TotalTime=1097ms`, `/tmp/fieldwork-adb-restored-locked.png` plus
-`/tmp/fieldwork-adb-restored-locked-ui.xml` verified the locked `Unlock`
-surface again, and the restored crash buffer remained empty.
+in `TotalTime=5105ms`,
+`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-locked.png` plus
+`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-ui.xml` verified the
+locked `Unlock` surface again, and the restored crash buffer remained empty.
 The generated UniFFI binding refresh passed after verifying the Android Kotlin
 binding exposes the v1 pair/list/subscribe/attach/input/resize/detach and
 push-token API, rejects generated mobile create/kill/session-command APIs, and
@@ -864,6 +865,10 @@ Observed results:
   `node scripts/test-android-aab-verifier.mjs` covers synthetic unsigned and
   signed AABs, including rejection of signature entries under
   `--expect-unsigned`.
+  `node scripts/test-android-pair-button-picker.mjs` pins the current Compose
+  accessibility tree where the full-width Pair button is textless, so adb smokes
+  locate it from the `Pairing payload` field and the first enabled full-width
+  clickable control below it rather than a brittle visible-text match.
   Android Studio's bundled `jarsigner` reports `jar is unsigned` for the local
   bundle. The release workflow verifier rejects using
   `node scripts/verify-android-aab.mjs --expect-unsigned` in

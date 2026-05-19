@@ -310,7 +310,8 @@ if ! grep -q 'text="Pairing payload"' "$ui_xml"; then
   exit 1
 fi
 
-tap_text_node "$ui_xml" "Pair"
+read -r pair_x pair_y < <(python3 "$root/scripts/pick-android-pair-button.py" "$ui_xml")
+adb -s "$serial" shell input tap "$pair_x" "$pair_y"
 
 for _ in {1..600}; do
   if grep -q 'approve?' "$tmp_dir/pair.log"; then

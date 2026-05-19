@@ -49,6 +49,7 @@ const checks = [
   ["npm publish plan", node, ["scripts/test-npm-publish-plan.mjs"]],
   ["Bun optional dependency smoke", node, ["scripts/test-bun-install.mjs"]],
   ["Android AAB verifier self-test", node, ["scripts/test-android-aab-verifier.mjs"]],
+  ["Android pair-button picker self-test", node, ["scripts/test-android-pair-button-picker.mjs"]],
   ["release artifact verifier self-test", node, ["scripts/test-release-artifacts.mjs"]],
   ["npm artifact pack self-test", node, ["scripts/test-npm-artifact-pack.mjs"]],
 ];

@@ -52,6 +52,7 @@
     "test:bun-install": "node scripts/test-bun-install.mjs",
     "test:release-artifacts": "node scripts/test-release-artifacts.mjs",
     "test:android-aab-verifier": "node scripts/test-android-aab-verifier.mjs",
+    "test:android-pair-button-picker": "node scripts/test-android-pair-button-picker.mjs",
     "test:external-status-refresh": "node scripts/test-external-status-refresh.mjs",
     "test:android-emulator": "bash scripts/smoke-android-emulator-all.sh",
     "test:android-debug-smoke": "bash scripts/smoke-android-debug.sh",

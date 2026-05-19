@@ -140,6 +140,7 @@ jobs:
       - run: node scripts/test-npm-publish-plan.mjs
       - run: node scripts/test-bun-install.mjs
       - run: node scripts/test-android-aab-verifier.mjs
+      - run: node scripts/test-android-pair-button-picker.mjs
       - run: node scripts/test-release-artifacts.mjs
       - run: node scripts/test-npm-artifact-pack.mjs
 

@@ -79,6 +79,7 @@ function verifyDevelopmentDoc(text) {
     "pnpm test:android-unit",
     "pnpm test:android-emulator",
     "node scripts/test-android-aab-verifier.mjs",
+    "node scripts/test-android-pair-button-picker.mjs",
     "pnpm check:site",
     "pnpm render:demo-video",
     "pnpm check:demo-video",
@@ -266,6 +267,7 @@ function verifyDevelopmentDoc(text) {
     "local unsigned AAB state with `--expect-unsigned`",
     "synthetic unsigned and signed AABs",
     "failure when signature entries are present under `--expect-unsigned`",
+    "current Compose tree exposes the Pair button itself without stable visible text",
     "forbidden location permission",
     "missing notification permission",
     "terminal-content metadata such as `last_line`",
@@ -297,6 +299,8 @@ function verifyDevelopmentDoc(text) {
     "FIELDWORK_ANDROID_PAIRING_PAYLOAD",
     "approves the Android pairing from the desktop CLI",
     "measures the debug-app Pair tap through explicit desktop approval completion",
+    "first full-width enabled clickable control below it",
+    "pins that accessibility-tree shape",
     "local 15-second emulator bound",
     "Latest aggregate-invoked run passed on `emulator-5554` with `pair_flow_ms=2234`",
     "physical QR camera pair-flow timing",
@@ -332,19 +336,25 @@ function verifyDevelopmentDoc(text) {
     "`/tmp/fieldwork-adb-ui.xml`",
     "empty Fieldwork crash buffer",
     "latest raw adb emulator QA refresh on 2026-05-19",
-    "`TotalTime=3479ms`",
-    "`/tmp/fieldwork-adb-current.png`",
-    "`/tmp/fieldwork-adb-current-ui.xml`",
-    "`/tmp/fieldwork-adb-current-app.log`",
-    "`/tmp/fieldwork-adb-current-crash.log`",
+    "`TotalTime=5297ms`",
+    "`/tmp/fieldwork-adb-direct-20260519225027/default.png`",
+    "`/tmp/fieldwork-adb-direct-20260519225027/default-ui.xml`",
+    "`/tmp/fieldwork-adb-direct-20260519225027/default-logcat.log`",
+    "`/tmp/fieldwork-adb-direct-20260519225027/default-crash.log`",
     "`FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true`",
-    "`TotalTime=2013ms`",
-    "accepted the Android camera permission with adb input",
-    "unlocked pairing UI (`Pairing payload`, `Pair`, `Sessions`, `Settings`)",
-    "Settings UI (`No paired daemon`, `Share crash reports`, `Open Source Licenses`)",
-    "Open Source license screen screenshots/UI XML/logcat under `/tmp/fieldwork-adb-bypass-*`",
+    "`FIELDWORK_ANDROID_PAIRING_PAYLOAD`",
+    "`TotalTime=4589ms`",
+    "UI-tree-derived Pair center `540 1860`",
+    "`pair_flow_ms=1043`",
+    "`/tmp/fieldwork-adb-direct-pair-20260519225208/before-pair.png`",
+    "`/tmp/fieldwork-adb-direct-pair-20260519225208/sessions.png`",
+    "`/tmp/fieldwork-adb-direct-pair-20260519225208/terminal-before-input.png`",
+    "`/tmp/fieldwork-adb-direct-pair-20260519225208/terminal-after-input.png`",
+    "`android-direct: fw_android_direct_ok`",
+    "`TotalTime=5105ms`",
+    "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-locked.png`",
+    "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-ui.xml`",
     "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
-    "`adb devices` was empty and the Gradle daemon was stopped",
     "not release-device cold-start threshold evidence",
     "refreshSessionsRunsRepositoryWorkOffMainThread",
     "ANDROID_BACKGROUND_REPLAY_OUTPUT",
@@ -501,6 +511,9 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["test:android-aab-verifier"] !== "node scripts/test-android-aab-verifier.mjs") {
     failures.push("package.json must expose pnpm test:android-aab-verifier");
   }
+  if (packageJson.scripts?.["test:android-pair-button-picker"] !== "node scripts/test-android-pair-button-picker.mjs") {
+    failures.push("package.json must expose pnpm test:android-pair-button-picker");
+  }
   if (packageJson.scripts?.["test:external-status-refresh"] !== "node scripts/test-external-status-refresh.mjs") {
     failures.push("package.json must expose pnpm test:external-status-refresh");
   }
@@ -550,6 +563,7 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "scripts/verify-release-audit.mjs", "local release gate must include the release audit verifier");
   requireText(allFiles.localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include deterministic release-artifact verifier coverage");
   requireText(allFiles.localRelease, "scripts/test-npm-artifact-pack.mjs", "local release gate must include deterministic npm artifact packaging coverage");
+  requireText(allFiles.localRelease, "scripts/test-android-pair-button-picker.mjs", "local release gate must include deterministic Android pair-button picker coverage");
   requireText(allFiles.localRelease, "scripts/verify-uniffi-bindings.mjs", "local release gate must include UniFFI binding verification");
   requireText(allFiles.localRelease, "scripts/publish-npm-packages.mjs\", \"--check-ready", "artifact-aware local release gate must include publish-readiness verification");
   requireText(allFiles.localRelease, "scripts/verify-npm-packages.mjs\", \"--require-binaries", "artifact-aware local release gate must include staged npm binary verification");
@@ -568,6 +582,7 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "\"desktop performance thresholds\", node, [\"scripts/measure-desktop-performance.mjs\"]", "runtime local release gate must include desktop performance thresholds");
   requireText(allFiles.ci, "node scripts/test-ios-prereqs.mjs", "CI must run the deterministic iOS prereq tests");
   requireText(allFiles.ci, "node scripts/test-android-aab-verifier.mjs", "CI must run the deterministic Android AAB verifier tests");
+  requireText(allFiles.ci, "node scripts/test-android-pair-button-picker.mjs", "CI must run the deterministic Android pair-button picker test");
   requireText(allFiles.ci, "node scripts/test-external-status-refresh.mjs", "CI must run the deterministic external status refresh guard test");
   for (const script of [
     "scripts/smoke-android-debug.sh",
