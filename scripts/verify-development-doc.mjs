@@ -73,6 +73,7 @@ function verifyDevelopmentDoc(text) {
     "cargo audit",
     "node scripts/verify-npm-packages.mjs",
     "node scripts/verify-secret-boundaries.mjs",
+    "pnpm check:no-ship",
     "pnpm check:release-artifacts",
     "pnpm check:uniffi-bindings",
     "node scripts/test-release-artifacts.mjs",
@@ -93,6 +94,11 @@ function verifyDevelopmentDoc(text) {
     text,
     "`pnpm check:local-release` runs the deterministic source-side release gate",
     "docs/DEVELOPMENT.md must describe the local release aggregate check",
+  );
+  requireText(
+    text,
+    "v1/FUTURE boundary and no-ship marker scans",
+    "docs/DEVELOPMENT.md must document the local no-ship marker scan",
   );
   requireText(
     text,
@@ -509,6 +515,9 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["check:local-release"] !== "node scripts/check-local-release.mjs") {
     failures.push("package.json must expose pnpm check:local-release");
   }
+  if (packageJson.scripts?.["check:no-ship"] !== "node scripts/verify-no-ship-markers.mjs") {
+    failures.push("package.json must expose pnpm check:no-ship");
+  }
   if (packageJson.scripts?.["check:npm-registry"] !== "node scripts/verify-npm-registry-state.mjs") {
     failures.push("package.json must expose pnpm check:npm-registry");
   }
@@ -580,6 +589,7 @@ function verifyWiring(allFiles) {
     "CI must list-check all local release aggregate modes",
   );
   requireText(allFiles.localRelease, "scripts/verify-release-audit.mjs", "local release gate must include the release audit verifier");
+  requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include the no-ship marker verifier");
   requireText(allFiles.localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include deterministic release-artifact verifier coverage");
   requireText(allFiles.localRelease, "scripts/test-npm-artifact-pack.mjs", "local release gate must include deterministic npm artifact packaging coverage");
   requireText(allFiles.localRelease, "scripts/test-android-pair-button-picker.mjs", "local release gate must include deterministic Android pair-button picker coverage");

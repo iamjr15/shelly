@@ -214,6 +214,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "No-ship marker guard",
+    "release audit checklist must record the no-ship marker guard",
+  );
+  requireText(
+    audit,
+    "scripts/verify-no-ship-markers.mjs",
+    "release audit must record the no-ship marker verifier",
+  );
+  requireText(
+    audit,
     "run one explicit warm-up sample to remove build-machine first-exec noise",
     "release audit must record the desktop performance warm-up contract",
   );
@@ -1400,6 +1410,9 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["check:v1-boundary"] !== "node scripts/verify-v1-boundary.mjs") {
     failures.push("package.json must expose check:v1-boundary");
   }
+  if (packageJson.scripts?.["check:no-ship"] !== "node scripts/verify-no-ship-markers.mjs") {
+    failures.push("package.json must expose check:no-ship");
+  }
   if (packageJson.scripts?.["check:release-audit"] !== "node scripts/verify-release-audit.mjs") {
     failures.push("package.json must expose check:release-audit");
   }
@@ -1561,6 +1574,7 @@ function verifyVerifierIsWired() {
   requireText(androidEmulatorAll, "captured output", "Android emulator aggregate must preserve failing smoke output");
   requireText(localRelease, "scripts/verify-rust-workspace.mjs", "local release gate must include Rust workspace verification");
   requireText(localRelease, "scripts/verify-release-audit.mjs", "local release gate must include release audit verification");
+  requireText(localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include no-ship marker verification");
   requireText(localRelease, "scripts/verify-release-workflows.mjs", "local release gate must include release workflow verification");
   requireText(localRelease, "scripts/verify-secret-boundaries.mjs\", \"--self-test", "local release gate must include secret-boundary self-test coverage");
   requireText(localRelease, "scripts/test-npm-publish-plan.mjs", "local release gate must include npm publish-plan coverage");

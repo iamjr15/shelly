@@ -52,6 +52,7 @@ node scripts/verify-npm-packages.mjs
 node scripts/verify-changesets-config.mjs
 node scripts/generate-oss-notices.mjs --check
 node scripts/verify-secret-boundaries.mjs
+pnpm check:no-ship
 node scripts/test-npm-dispatcher.mjs
 pnpm check:release-artifacts
 node scripts/test-release-artifacts.mjs
@@ -73,8 +74,9 @@ tracked in `docs/RELEASE_AUDIT.md`.
 
 `pnpm check:local-release` runs the deterministic source-side release gate:
 workspace/package metadata, docs, community/legal scaffolding, privacy/security
-boundaries, release workflow contracts, UniFFI binding surface, npm registry and
-publish-plan fixtures, Bun optional-dependency behavior, release-artifact
+boundaries, v1/FUTURE boundary and no-ship marker scans, release workflow
+contracts, UniFFI binding surface, npm registry and publish-plan fixtures, Bun
+optional-dependency behavior, release-artifact
 verifier fixtures, and Android AAB verifier fixtures. It deliberately excludes
 network account checks, live publishing, iOS SDK builds, Android emulator
 runtime tests, physical-device checks, and hosted relay deployment. When the

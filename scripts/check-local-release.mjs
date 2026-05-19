@@ -34,6 +34,7 @@ const checks = [
   ["store privacy answer sheet", node, ["scripts/verify-store-privacy.mjs"]],
   ["telemetry privacy", node, ["scripts/verify-telemetry-privacy.mjs"]],
   ["v1/FUTURE boundary", node, ["scripts/verify-v1-boundary.mjs"]],
+  ["no-ship marker scan", node, ["scripts/verify-no-ship-markers.mjs"]],
   ["release audit", node, ["scripts/verify-release-audit.mjs"]],
   ["release workflows", node, ["scripts/verify-release-workflows.mjs"]],
   ["relay provider clients", node, ["scripts/verify-relay-provider-clients.mjs"]],
