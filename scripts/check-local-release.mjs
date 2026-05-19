@@ -19,6 +19,7 @@ for (const arg of args) {
 const node = process.execPath;
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const bash = process.platform === "win32" ? "bash.exe" : "bash";
+const ruby = process.platform === "win32" ? "ruby.exe" : "ruby";
 
 const checks = [
   ["rust workspace contract", node, ["scripts/verify-rust-workspace.mjs"]],
@@ -37,6 +38,14 @@ const checks = [
   ["no-ship marker scan", node, ["scripts/verify-no-ship-markers.mjs"]],
   ["no-ship marker self-test", node, ["scripts/verify-no-ship-markers.mjs", "--self-test"]],
   ["release audit", node, ["scripts/verify-release-audit.mjs"]],
+  [
+    "workflow YAML syntax",
+    ruby,
+    [
+      "-e",
+      'require "yaml"; Dir[".github/workflows/*.yml"].sort.each { |path| YAML.load_file(path) }; YAML.load_file(".github/dependabot.yml"); YAML.load_file(".pre-commit-config.yaml"); puts "workflow yaml ok"',
+    ],
+  ],
   ["release workflows", node, ["scripts/verify-release-workflows.mjs"]],
   ["relay provider clients", node, ["scripts/verify-relay-provider-clients.mjs"]],
   ["security model", node, ["scripts/verify-security-model.mjs"]],

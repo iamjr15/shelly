@@ -612,6 +612,8 @@ function verifyWiring(allFiles) {
   requireText(allFiles.ci, "node scripts/verify-no-ship-markers.mjs", "CI must run the no-ship marker verifier");
   requireText(allFiles.ci, "node scripts/verify-no-ship-markers.mjs --self-test", "CI must run the no-ship marker self-test");
   requireText(allFiles.localRelease, "scripts/verify-release-audit.mjs", "local release gate must include the release audit verifier");
+  requireText(allFiles.localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");
+  requireText(allFiles.localRelease, "Dir[\".github/workflows/*.yml\"].sort.each", "local release gate must parse all workflow YAML files");
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include the no-ship marker verifier");
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs\", \"--self-test", "local release gate must include the no-ship marker self-test");
   requireText(allFiles.localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include deterministic release-artifact verifier coverage");

@@ -141,6 +141,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "workflow YAML syntax parsing",
+    "release audit must record local workflow YAML syntax parsing",
+  );
+  requireText(
+    audit,
     "optional `--with-runtime` mode",
     "release audit must record runtime local release aggregate mode",
   );
@@ -1637,6 +1642,8 @@ function verifyVerifierIsWired() {
   requireText(androidEmulatorAll, "captured output", "Android emulator aggregate must preserve failing smoke output");
   requireText(localRelease, "scripts/verify-rust-workspace.mjs", "local release gate must include Rust workspace verification");
   requireText(localRelease, "scripts/verify-release-audit.mjs", "local release gate must include release audit verification");
+  requireText(localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");
+  requireText(localRelease, "Dir[\".github/workflows/*.yml\"].sort.each", "local release gate must parse all workflow YAML files");
   requireText(localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include no-ship marker verification");
   requireText(localRelease, "scripts/verify-no-ship-markers.mjs\", \"--self-test", "local release gate must include no-ship marker self-test coverage");
   requireText(localRelease, "scripts/verify-release-workflows.mjs", "local release gate must include release workflow verification");
