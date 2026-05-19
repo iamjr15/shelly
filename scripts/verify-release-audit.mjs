@@ -219,7 +219,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "latest pass measured CLI max `4.07ms` and daemon max `44.88ms`",
+    "latest pass measured CLI max `4.46ms` and daemon max `48.45ms`",
     "release audit must record current desktop max performance evidence",
   );
   requireText(
@@ -860,8 +860,8 @@ function verifyLatestRefresh() {
   requireText(audit, "repo-owned Xcode download, install, `xcode-select`, first-launch, rerun", "release audit must record iOS prereq recovery output");
   requireText(audit, "Desktop performance passed after one explicit warm-up sample", "release audit must record latest desktop performance result");
   requireText(audit, "preserved AAB, staged npm binaries, npm publish readiness, meta-package dry-run\npack, local handoff smoke, demo video, site typecheck/build, Terraform\nfmt/init/validate, relay TLS/OTLP loopbacks, and desktop performance", "release audit must record latest aggregate local release gate coverage");
-  requireText(audit, "`3.47ms`, p95 `4.01ms`, max `4.07ms`", "release audit must record latest CLI desktop performance values");
-  requireText(audit, "`40.60ms`, p95 `43.11ms`, max `44.88ms`", "release audit must record latest daemon desktop performance values");
+  requireText(audit, "`3.33ms`, p95 `4.24ms`, max `4.46ms`", "release audit must record latest CLI desktop performance values");
+  requireText(audit, "`41.03ms`, p95 `45.06ms`, max `48.45ms`", "release audit must record latest daemon desktop performance values");
   requireText(audit, "npm binary readiness passed\nwith staged artifacts", "release audit must record staged npm binary readiness");
   requireText(audit, "Cross-target desktop release builds passed on 2026-05-19", "release audit must record the latest cross-target desktop release build date");
   requireText(audit, "Mach-O arm64/x86_64 and ELF x86-64/aarch64 binaries", "release audit must record cross-target binary format verification");
