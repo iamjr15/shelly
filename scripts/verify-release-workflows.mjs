@@ -171,6 +171,18 @@ function verifyIosRelease(text, projectText) {
 
 function verifyAndroidRelease(text) {
   requireText(text, "runs-on: ubuntu-24.04", "release-android must run on Ubuntu");
+  requireText(text, "Verify Android release credentials", "release-android must fail closed before Rust/mobile build when release credentials are absent");
+  requireBefore(
+    text,
+    "Verify Android release credentials",
+    "actions/setup-java@v4",
+    "release-android must preflight release credentials before toolchain setup and mobile build",
+  );
+  requireText(
+    text,
+    "Sentry, Firebase, Android signing, and Play upload secrets are required before building the Android release.",
+    "release-android early credential failure must explain the external release gate",
+  );
   requireText(text, "apps/android/scripts/build-rust.sh", "release-android must build Rust mobile libraries");
   for (const secret of [
     "SENTRY_DSN",

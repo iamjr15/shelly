@@ -870,6 +870,7 @@ function verifyLatestRefresh() {
   requireText(audit, "early `NPM_TOKEN` preflight before npm artifact download", "release audit must document release-npm early token preflight");
   requireText(audit, "early relay SSH-key/inventory preflight before relay artifact download", "release audit must document deploy-relay early prerequisite preflight");
   requireText(audit, "early Cloudflare credential preflight before site install/build", "release audit must document deploy-site early credential preflight");
+  requireText(audit, "early Android release credential preflight before toolchain setup/mobile build", "release audit must document release-android early credential preflight");
   requireText(audit, "iOS App Store Connect upload JSON outside the repository workspace plus signing/upload cleanup", "release audit must document iOS release upload asset hygiene");
   requireText(audit, "Android generated Firebase/signing-file cleanup", "release audit must document Android release secret cleanup");
   requireText(audit, "relay SSH key chmod/cleanup", "release audit must document relay deploy SSH key cleanup");

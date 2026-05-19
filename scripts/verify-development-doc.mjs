@@ -498,6 +498,7 @@ function verifyDevelopmentDoc(text) {
     "prefer the existing `target/release/fieldwork-relay`",
     "keep decoded Apple signing/notarization assets outside the repository workspace with `0600` permissions and cleanup",
     "keeps App Store Connect upload JSON outside the repository workspace and cleans signing/upload assets",
+    "Android release preflights Sentry/Firebase/signing/Play secrets before toolchain setup and mobile build",
     "removes generated Firebase/signing files in an `always()` cleanup step",
     "cleans the decoded relay SSH key",
     "the Xcode project honors `FIELDWORK_SKIP_RUST_BUILD` before running `apps/ios/scripts/build-rust.sh`",
