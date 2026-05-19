@@ -5,8 +5,10 @@ all-features = true
 version = 2
 yanked = "warn"
 ignore = [
-  # v1 local IPC is contractually bincode over Unix sockets. Track migration only
-  # if PLAN.md changes the protocol contract.
+  # v1 local IPC and local encrypted/plaintext persistence are contractually
+  # bincode. The protocol crate centralizes bincode 2 with legacy config to keep
+  # the v1 wire layout stable; track removal only if PLAN.md changes the
+  # protocol/storage contract.
   "RUSTSEC-2025-0141",
   # Pulled by tattoy-wezterm-term through miniz_oxide 0.7. No safe upgrade is
   # available from the terminal-state stack today.

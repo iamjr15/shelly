@@ -12,7 +12,6 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-bincode.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 crossterm.workspace = true

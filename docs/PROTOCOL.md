@@ -2,7 +2,7 @@
 
 `CONTRACT_VERSION` is `1`.
 
-The implemented local IPC path uses length-prefixed bincode frames over the daemon Unix socket. The implemented iroh path uses the same length prefix with MessagePack payloads. Each frame is:
+The implemented local IPC path uses length-prefixed bincode frames over the daemon Unix socket. The protocol crate owns the bincode helpers and uses bincode 2 with its legacy configuration so v1 keeps the original fixed-int/little-endian bincode wire layout while rejecting trailing payload bytes. The implemented iroh path uses the same length prefix with MessagePack payloads. Each frame is:
 
 1. 4-byte big-endian payload length.
 2. Bincode-serialized protocol message on the Unix socket, or MessagePack-serialized protocol message on iroh streams.

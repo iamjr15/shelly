@@ -4,7 +4,9 @@ use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
     aead::{Aead, KeyInit, OsRng, rand_core::RngCore},
 };
-use fieldwork_protocol::{DeviceSummary, PushPlatform, SessionId, SessionSummary, now_ms};
+use fieldwork_protocol::{
+    DeviceSummary, PushPlatform, SessionId, SessionSummary, decode_bincode, encode_bincode, now_ms,
+};
 use redb::{Database, DatabaseError, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -171,7 +173,7 @@ impl Persistence {
     }
 
     pub fn save_session(&self, session: &StoredSession) -> Result<()> {
-        let plaintext = bincode::serialize(session).context("serialize stored session")?;
+        let plaintext = encode_bincode(session).context("serialize stored session")?;
         let payload = self.encode_payload(&plaintext)?;
         let id = session.summary.id.to_string();
 
@@ -215,7 +217,7 @@ impl Persistence {
             let (_, value) = row.context("read sessions table row")?;
             let plaintext = self.decode_payload(value.value())?;
             let session: StoredSession =
-                bincode::deserialize(&plaintext).context("decode stored session")?;
+                decode_bincode(&plaintext).context("decode stored session")?;
             sessions.push(session);
         }
         sessions.sort_by_key(|session| session.summary.created_at);
@@ -293,7 +295,7 @@ fn set_private_file_permissions(path: &Path) -> Result<()> {
 
 impl Persistence {
     pub fn save_device(&self, device: &StoredDevice) -> Result<()> {
-        let plaintext = bincode::serialize(device).context("serialize stored device")?;
+        let plaintext = encode_bincode(device).context("serialize stored device")?;
         let payload = self.encode_payload(&plaintext)?;
         let key = device_storage_key(&device.device_node_id);
 
@@ -349,7 +351,7 @@ impl Persistence {
             let (_, value) = row.context("read devices table row")?;
             let plaintext = self.decode_payload(value.value())?;
             let device: StoredDevice =
-                bincode::deserialize(&plaintext).context("decode stored device")?;
+                decode_bincode(&plaintext).context("decode stored device")?;
             devices.push(device);
         }
         devices.sort_by_key(|device| device.paired_at);
@@ -360,15 +362,14 @@ impl Persistence {
         match &self.mode {
             PersistenceMode::Encrypted { key } => {
                 let encrypted = encrypt(key, plaintext)?;
-                bincode::serialize(&encrypted).context("serialize encrypted payload")
+                encode_bincode(&encrypted).context("serialize encrypted payload")
             }
             PersistenceMode::Plaintext { .. } => {
                 let payload = PlaintextBlob {
                     plaintext: plaintext.to_vec(),
                 };
                 let mut encoded = PLAINTEXT_PREFIX.to_vec();
-                encoded
-                    .extend(bincode::serialize(&payload).context("serialize plaintext payload")?);
+                encoded.extend(encode_bincode(&payload).context("serialize plaintext payload")?);
                 Ok(encoded)
             }
         }
@@ -381,7 +382,7 @@ impl Persistence {
 
         match &self.mode {
             PersistenceMode::Encrypted { key } => {
-                if let Ok(encrypted) = bincode::deserialize::<EncryptedBlob>(payload) {
+                if let Ok(encrypted) = decode_bincode::<EncryptedBlob>(payload) {
                     return decrypt(key, &encrypted);
                 }
                 anyhow::bail!("stored payload is neither encrypted nor Fieldwork plaintext");
@@ -389,7 +390,7 @@ impl Persistence {
             PersistenceMode::Plaintext { legacy_key } => {
                 if let Some(key) = legacy_key {
                     let encrypted: EncryptedBlob =
-                        bincode::deserialize(payload).context("decode legacy encrypted payload")?;
+                        decode_bincode(payload).context("decode legacy encrypted payload")?;
                     return decrypt(key, &encrypted);
                 }
                 anyhow::bail!(
@@ -405,7 +406,7 @@ fn decode_plaintext_payload(payload: &[u8]) -> Result<Option<Vec<u8>>> {
         return Ok(None);
     };
     let plaintext: PlaintextBlob =
-        bincode::deserialize(encoded).context("decode plaintext stored payload")?;
+        decode_bincode(encoded).context("decode plaintext stored payload")?;
     Ok(Some(plaintext.plaintext))
 }
 

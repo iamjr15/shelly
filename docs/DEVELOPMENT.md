@@ -97,7 +97,7 @@ Release archives, `.sha256` files, and `.bundle` attestations. Use
 `pnpm test:release-artifacts` for deterministic local verifier coverage when
 no release artifacts are present.
 
-`cargo audit` currently exits successfully and reports RustSec warnings rather than high/critical CVEs: `adler` and `lru` through the terminal-state stack, `paste` through transitive network/image dependencies, and `bincode` because v1 local IPC is contractually bincode. `deny.toml` documents the supply-chain policy and the advisory exceptions that cargo-deny treats as blocking for the current v1 dependency graph.
+`cargo audit` currently exits successfully and reports RustSec warnings rather than high/critical CVEs: `adler` and `lru` through the terminal-state stack, `paste` through transitive network/image dependencies, and `bincode` because v1 local IPC and persisted local payload wrappers are contractually bincode. The workspace uses bincode 2 through shared protocol helpers with the legacy v1 layout pinned by tests, but the RustSec advisory still applies and remains documented in `deny.toml`.
 
 The protocol crate uses insta snapshots for every current client/server message variant. To intentionally update those snapshots after a wire-protocol change:
 

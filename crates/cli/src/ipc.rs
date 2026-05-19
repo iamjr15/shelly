@@ -1,7 +1,8 @@
 use crate::service;
 use anyhow::{Context, Result, bail};
 use fieldwork_protocol::{
-    CONTRACT_VERSION, Capabilities, ClientKind, ClientToServerMsg, ServerToClientMsg, max_frame_len,
+    CONTRACT_VERSION, Capabilities, ClientKind, ClientToServerMsg, ServerToClientMsg,
+    decode_bincode, encode_bincode, max_frame_len,
 };
 use interprocess::local_socket::traits::tokio::Stream as _;
 use interprocess::local_socket::{GenericFilePath, prelude::*, tokio::Stream};
@@ -125,7 +126,7 @@ where
         .read_exact(&mut payload)
         .await
         .context("read frame payload")?;
-    bincode::deserialize(&payload).context("decode frame")
+    decode_bincode(&payload).context("decode frame")
 }
 
 pub async fn write_msg<W, T>(writer: &mut W, message: &T) -> Result<()>
@@ -133,7 +134,7 @@ where
     W: AsyncWrite + Unpin,
     T: Serialize,
 {
-    let payload = bincode::serialize(message).context("encode frame")?;
+    let payload = encode_bincode(message).context("encode frame")?;
     if payload.len() > max_frame_len() {
         bail!("frame too large: {}", payload.len());
     }

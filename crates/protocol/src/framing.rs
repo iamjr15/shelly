@@ -12,14 +12,39 @@ pub enum FrameError {
     /// The buffer ended before a full length prefix or payload was available.
     #[error("incomplete frame")]
     Incomplete,
-    /// Bincode failed to serialize or deserialize the payload.
+    /// Bincode failed to serialize the payload.
     #[error(transparent)]
-    Bincode(#[from] Box<bincode::ErrorKind>),
+    Encode(#[from] bincode::error::EncodeError),
+    /// Bincode failed to deserialize the payload.
+    #[error(transparent)]
+    Decode(#[from] bincode::error::DecodeError),
+}
+
+/// Encodes a serializable value using the v1 bincode configuration.
+pub fn encode_bincode<T: Serialize + ?Sized>(
+    message: &T,
+) -> Result<Vec<u8>, bincode::error::EncodeError> {
+    bincode::serde::encode_to_vec(message, bincode::config::legacy())
+}
+
+/// Decodes a value using the v1 bincode configuration and rejects trailing bytes.
+pub fn decode_bincode<T: DeserializeOwned>(
+    payload: &[u8],
+) -> Result<T, bincode::error::DecodeError> {
+    let (value, bytes_read) =
+        bincode::serde::decode_from_slice(payload, bincode::config::legacy())?;
+    if bytes_read != payload.len() {
+        return Err(bincode::error::DecodeError::OtherString(format!(
+            "trailing bytes after bincode payload: {}",
+            payload.len() - bytes_read
+        )));
+    }
+    Ok(value)
 }
 
 /// Encodes a serializable protocol message with a 4-byte big-endian length prefix.
 pub fn encode_frame<T: Serialize>(message: &T) -> Result<Vec<u8>, FrameError> {
-    let payload = bincode::serialize(message)?;
+    let payload = encode_bincode(message)?;
     if payload.len() > MAX_FRAME_LEN {
         return Err(FrameError::TooLarge(payload.len()));
     }
@@ -44,7 +69,7 @@ pub fn decode_frame<T: DeserializeOwned>(frame: &[u8]) -> Result<T, FrameError> 
         return Err(FrameError::Incomplete);
     }
 
-    Ok(bincode::deserialize(&frame[4..4 + len])?)
+    Ok(decode_bincode(&frame[4..4 + len])?)
 }
 
 /// Returns the maximum allowed serialized payload length in bytes.
@@ -54,8 +79,30 @@ pub fn max_frame_len() -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameError, decode_frame, max_frame_len};
+    use super::{
+        FrameError, decode_bincode, decode_frame, encode_bincode, encode_frame, max_frame_len,
+    };
     use crate::ClientToServerMsg;
+
+    #[test]
+    fn bincode_uses_v1_legacy_wire_layout() {
+        let frame = encode_frame(&ClientToServerMsg::ListSessions).unwrap();
+
+        assert_eq!(frame, [0, 0, 0, 4, 1, 0, 0, 0]);
+    }
+
+    #[test]
+    fn bincode_decoder_rejects_trailing_payload_bytes() {
+        let mut payload = encode_bincode(&ClientToServerMsg::ListSessions).unwrap();
+        payload.push(0xff);
+        let error = decode_bincode::<ClientToServerMsg>(&payload).unwrap_err();
+
+        assert!(matches!(
+            error,
+            bincode::error::DecodeError::OtherString(message)
+                if message.starts_with("trailing bytes after bincode payload")
+        ));
+    }
 
     #[test]
     fn decode_rejects_missing_length_prefix() {

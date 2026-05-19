@@ -11,7 +11,8 @@ use anyhow::{Context, Result};
 use dashmap::DashMap;
 use fieldwork_protocol::{
     CONTRACT_VERSION, Capabilities, ClientId, ClientKind, ClientToServerMsg, ErrorCode,
-    PairingPayload, PushPlatform, ServerToClientMsg, SessionId, max_frame_len,
+    PairingPayload, PushPlatform, ServerToClientMsg, SessionId, decode_bincode, encode_bincode,
+    max_frame_len,
 };
 use interprocess::local_socket::traits::tokio::Listener as _;
 use interprocess::local_socket::{
@@ -840,7 +841,7 @@ where
         .read_exact(&mut payload)
         .await
         .context("read frame payload")?;
-    bincode::deserialize(&payload).context("decode frame")
+    decode_bincode(&payload).context("decode frame")
 }
 
 async fn write_msg<W, T>(writer: &Arc<Mutex<W>>, message: &T) -> Result<()>
@@ -848,7 +849,7 @@ where
     W: AsyncWrite + Unpin,
     T: Serialize,
 {
-    let payload = bincode::serialize(message).context("encode frame")?;
+    let payload = encode_bincode(message).context("encode frame")?;
     if payload.len() > max_frame_len() {
         anyhow::bail!("frame too large: {}", payload.len());
     }

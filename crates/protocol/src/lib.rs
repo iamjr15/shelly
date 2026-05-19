@@ -15,7 +15,9 @@ pub mod types;
 /// Protocol contract version.
 pub mod version;
 
-pub use framing::{FrameError, decode_frame, encode_frame, max_frame_len};
+pub use framing::{
+    FrameError, decode_bincode, decode_frame, encode_bincode, encode_frame, max_frame_len,
+};
 pub use messages::{ClientToServerMsg, ErrorCode, ServerToClientMsg};
 pub use types::{
     AgentSource, AgentState, Capabilities, ClientId, ClientKind, ClientSize, DeviceSummary,
