@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const repo = path.resolve(new URL("..", import.meta.url).pathname);
@@ -70,6 +71,8 @@ const requiredRelayWiring = [
 
 const failures = [];
 const scannedArtifacts = [];
+const artifactChunkSize = 1024 * 1024;
+const artifactTextOverlap = 4096;
 
 if (process.argv.includes("--self-test")) {
   runSelfTest();
@@ -137,22 +140,16 @@ for (const requirement of requiredRelayWiring) {
 
 for (const artifact of findNonRelayArtifacts()) {
   scannedArtifacts.push(path.relative(repo, artifact));
-  const bytes = fs.readFileSync(artifact);
-  const artifactText = bytes.toString("latin1");
-  for (const pattern of forbiddenCredentialPatterns) {
-    const literal = literalFromPattern(pattern);
-    if (literal && bytes.includes(Buffer.from(literal))) {
-      failures.push(
-        `${path.relative(repo, artifact)} binary contains relay-only provider credential wiring: ${literal}`,
-      );
-    }
+  const scan = scanArtifactForForbiddenContent(artifact);
+  for (const literal of scan.credentialLiterals) {
+    failures.push(
+      `${path.relative(repo, artifact)} binary contains relay-only provider credential wiring: ${literal}`,
+    );
   }
-  for (const pattern of forbiddenRepositorySecretPatterns) {
-    if (matchesPattern(pattern, artifactText)) {
-      failures.push(
-        `${path.relative(repo, artifact)} artifact contains a repository secret or npm auth token pattern: ${pattern}`,
-      );
-    }
+  for (const pattern of scan.repositorySecretPatterns) {
+    failures.push(
+      `${path.relative(repo, artifact)} artifact contains a repository secret or npm auth token pattern: ${pattern}`,
+    );
   }
 }
 
@@ -214,6 +211,43 @@ function runSelfTest() {
     if (forbiddenRepositorySecretPatterns.some((pattern) => matchesPattern(pattern, sample))) {
       failures.push(`secret-boundary self-test unexpectedly matched sample: ${sample}`);
     }
+  }
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-secret-boundary-"));
+  try {
+    const chunkBoundaryToken = path.join(tempDir, "fieldworkd");
+    fs.writeFileSync(
+      chunkBoundaryToken,
+      Buffer.concat([
+        Buffer.alloc(artifactChunkSize - 2, 0),
+        Buffer.from("np"),
+        Buffer.from(`m_${"A".repeat(20)}`),
+        Buffer.alloc(artifactChunkSize, 0),
+      ]),
+    );
+    const tokenScan = scanArtifactForForbiddenContent(chunkBoundaryToken);
+    if (tokenScan.repositorySecretPatterns.length === 0) {
+      failures.push("secret-boundary self-test must detect npm tokens across artifact chunk boundaries");
+    }
+
+    const chunkBoundaryCredential = path.join(tempDir, "fieldwork");
+    fs.writeFileSync(
+      chunkBoundaryCredential,
+      Buffer.concat([
+        Buffer.alloc(artifactChunkSize - "ap".length, 0),
+        Buffer.from("ap"),
+        Buffer.from("ns.p8"),
+        Buffer.alloc(artifactChunkSize, 0),
+      ]),
+    );
+    const credentialScan = scanArtifactForForbiddenContent(chunkBoundaryCredential);
+    if (!credentialScan.credentialLiterals.includes("apns.p8")) {
+      failures.push(
+        "secret-boundary self-test must detect relay credential literals across artifact chunk boundaries",
+      );
+    }
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 
   verifyGitIgnoreSecretPatterns();
@@ -280,6 +314,52 @@ function* walkArtifacts(dir, names) {
       yield full;
     }
   }
+}
+
+function scanArtifactForForbiddenContent(file) {
+  const credentialLiterals = forbiddenCredentialPatterns.map(literalFromPattern).filter(Boolean);
+  const credentialBuffers = credentialLiterals.map((literal) => [literal, Buffer.from(literal)]);
+  const byteOverlap = Math.max(0, ...credentialBuffers.map(([, buffer]) => buffer.length - 1));
+  const foundCredentialLiterals = new Set();
+  const foundRepositorySecretPatterns = new Set();
+  const chunk = Buffer.allocUnsafe(artifactChunkSize);
+  let previousBytes = Buffer.alloc(0);
+  let previousText = "";
+  const fd = fs.openSync(file, "r");
+
+  try {
+    let bytesRead;
+    while ((bytesRead = fs.readSync(fd, chunk, 0, chunk.length, null)) > 0) {
+      const current = chunk.subarray(0, bytesRead);
+      const bytesForScan =
+        previousBytes.length > 0 ? Buffer.concat([previousBytes, current]) : current;
+      for (const [literal, literalBuffer] of credentialBuffers) {
+        if (!foundCredentialLiterals.has(literal) && bytesForScan.includes(literalBuffer)) {
+          foundCredentialLiterals.add(literal);
+        }
+      }
+
+      const textForScan = previousText + current.toString("latin1");
+      for (const pattern of forbiddenRepositorySecretPatterns) {
+        if (!foundRepositorySecretPatterns.has(pattern) && matchesPattern(pattern, textForScan)) {
+          foundRepositorySecretPatterns.add(pattern);
+        }
+      }
+
+      previousBytes =
+        byteOverlap > 0
+          ? Buffer.from(bytesForScan.subarray(Math.max(0, bytesForScan.length - byteOverlap)))
+          : Buffer.alloc(0);
+      previousText = textForScan.slice(-artifactTextOverlap);
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  return {
+    credentialLiterals: [...foundCredentialLiterals],
+    repositorySecretPatterns: [...foundRepositorySecretPatterns],
+  };
 }
 
 function literalFromPattern(pattern) {

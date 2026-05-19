@@ -876,8 +876,10 @@ function verifyLatestRefresh() {
   requireText(audit, "rejected repository npm token strings and\n`.npmrc` files", "release audit must record npm token and .npmrc secret-boundary coverage");
   requireText(audit, "npm auth-token patterns", "release audit must record artifact npm auth-token pattern scanning");
   requireText(audit, "scanned 32 non-relay artifacts", "release audit must record the staged npm platform and Android secret-boundary artifact scan");
-  requireText(audit, "latest `pnpm check:secret-boundaries` scan covered 20 retained non-relay\nartifacts and still passed", "release audit must record the current post-cleanup secret-boundary scan");
-  requireText(plan, "latest local `pnpm check:secret-boundaries` run scanned 20 retained non-relay artifacts and still passed", "PLAN.md must record the current post-cleanup secret-boundary scan");
+  requireText(audit, "latest\n`pnpm check:secret-boundaries` scan covered 24 retained non-relay artifacts and\nstill passed", "release audit must record the current post-cleanup secret-boundary scan");
+  requireText(audit, "verifier now streams artifact scans instead of materializing\nlarge native binaries as one string", "release audit must record streaming artifact secret-boundary scans");
+  requireText(plan, "latest local `pnpm check:secret-boundaries` run scanned 24 retained non-relay artifacts and still passed", "PLAN.md must record the current post-cleanup secret-boundary scan");
+  requireText(plan, "verifier now streams artifact scans instead of materializing large native binaries as one string", "PLAN.md must record streaming artifact secret-boundary scans");
   requireText(plan, "has a Terraform Validate job that installs Terraform 1.5.7 and runs the shared cleanup-on-exit Terraform fmt/init/validate script against the Oracle scaffold", "PLAN.md must record the CI Terraform validation job");
   for (const artifact of [
     "`packages/cli-darwin-arm64/bin/fieldwork`",

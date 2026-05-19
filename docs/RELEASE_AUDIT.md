@@ -698,11 +698,13 @@ secret-boundary verifier scanned 32 non-relay artifacts across package bins and
 release target outputs for relay-only credentials and npm auth-token patterns,
 while also rejecting committed npm token strings and `.npmrc` files;
 `release-rust.yml` still runs the same verifier after real release binaries are
-built. A later cleanup removed reproducible `target/debug` and Android target
-outputs while preserving the release AAB and staged desktop/npm binaries; the
-latest `pnpm check:secret-boundaries` scan covered 20 retained non-relay
-artifacts and still passed. `pnpm check:ios-prereqs` now reports at least 70 GiB
-free in `~/Downloads`.
+built. The current retained-artifact set includes staged desktop/npm binaries
+plus debug/release CLI and mobile-core outputs; the latest
+`pnpm check:secret-boundaries` scan covered 24 retained non-relay artifacts and
+still passed. The verifier now streams artifact scans instead of materializing
+large native binaries as one string, and its self-test covers npm token and
+relay credential literals split across chunk boundaries.
+`pnpm check:ios-prereqs` now reports at least 70 GiB free in `~/Downloads`.
 
 The daemon resize invariant refresh after the iOS/download pass also completed
 locally with:
