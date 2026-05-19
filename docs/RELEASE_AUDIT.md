@@ -156,6 +156,18 @@ outside this shell:
   `/tmp/fieldwork-adb-direct-restore-20260519225316/restored-locked.png` plus
   `/tmp/fieldwork-adb-direct-restore-20260519225316/restored-ui.xml` verified
   the locked `Unlock` surface, and the restored crash buffer was empty. A
+  2026-05-20 follow-up direct adb pass paired through explicit desktop
+  approval, attached `bash · fieldwork`, sent `android_adb_direct_ping`, and
+  verified `android-direct: android_adb_direct_ping` in
+  `/tmp/fieldwork-adb-direct-pair-20260519235638/terminal-after-input.png` and
+  `/tmp/fieldwork-adb-direct-pair-20260519235638/pty-output-after-input.txt`.
+  The paired-data relaunch initially exposed a nonfatal Camera2 scanner flicker;
+  the Android restore placeholder fix now keeps `PairingScreen` hidden until
+  saved pairing restore completes, and the rerun with empty
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD` captured
+  `/tmp/fieldwork-adb-direct-pair-20260519235638/relaunch-restore-fix-sessions.png`
+  plus UI XML/logcat with `FieldworkRepository: listSessions returned 1
+  sessions` and no `Camera`/`CAMERA`, Fieldwork `FATAL`, or ANR entries. A
   follow-up raw adb
   locked-launch baseline on 2026-05-19 installed the default debug APK, launched
   `app.fieldwork.android/.MainActivity` with `am start -W` `TotalTime=2078ms`,
@@ -560,6 +572,19 @@ in `TotalTime=5105ms`,
 `/tmp/fieldwork-adb-direct-restore-20260519225316/restored-locked.png` plus
 `/tmp/fieldwork-adb-direct-restore-20260519225316/restored-ui.xml` verified the
 locked `Unlock` surface again, and the restored crash buffer remained empty.
+The 2026-05-20 direct adb restore-fix pass paired through explicit desktop
+approval, attached `bash · fieldwork`, sent `android_adb_direct_ping`, verified
+`android-direct: android_adb_direct_ping` in
+`/tmp/fieldwork-adb-direct-pair-20260519235638/terminal-after-input.png` and
+`/tmp/fieldwork-adb-direct-pair-20260519235638/pty-output-after-input.txt`,
+then rebuilt a biometric-bypass debug APK with empty
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD`. A paired-data force-stop/relaunch completed
+with `Status: ok` and `TotalTime=6225ms`, captured
+`/tmp/fieldwork-adb-direct-pair-20260519235638/relaunch-restore-fix-sessions.png`
+plus UI XML/logcat, and filtered logcat contained
+`FieldworkRepository: listSessions returned 1 sessions` with no
+`Camera`/`CAMERA`, Fieldwork `FATAL`, or ANR entries after the saved-pairing
+restore placeholder fix.
 The generated UniFFI binding refresh passed after verifying the Android Kotlin
 binding exposes the v1 pair/list/subscribe/attach/input/resize/detach and
 push-token API, rejects generated mobile create/kill/session-command APIs, and

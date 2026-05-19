@@ -85,6 +85,7 @@ class FieldworkViewModelTest {
         assertEquals(1, fcmTokens.clearAllCalls)
         assertEquals(1, repository.clearCalls)
         assertNull(fcmTokens.pendingToken(context))
+        assertFalse(viewModel.state.value.restoringPairing)
     }
 
     @Test
@@ -231,6 +232,7 @@ class FieldworkViewModelTest {
 
         assertEquals("fieldwork-pair:v1:payload", repository.pairedPayload)
         assertEquals(true, viewModel.state.value.paired)
+        assertFalse(viewModel.state.value.restoringPairing)
         assertEquals(pairing, viewModel.state.value.pairedDaemon)
         assertEquals(listOf(session), viewModel.state.value.sessions)
         assertEquals(1, repository.subscribeCalls)
@@ -252,6 +254,7 @@ class FieldworkViewModelTest {
         drainMainLooper()
 
         assertEquals(true, viewModel.state.value.paired)
+        assertFalse(viewModel.state.value.restoringPairing)
         assertEquals(emptyList<MobileSession>(), viewModel.state.value.sessions)
         assertEquals(0, repository.subscribeCalls)
         assertEquals(emptyList<String>(), repository.registeredFcmTokens)
@@ -278,6 +281,7 @@ class FieldworkViewModelTest {
         )
 
         assertFalse(viewModel.state.value.paired)
+        assertTrue(viewModel.state.value.restoringPairing)
         assertTrue(restoreStarted.await(1, TimeUnit.SECONDS))
 
         restoreRelease.countDown()
@@ -285,6 +289,7 @@ class FieldworkViewModelTest {
         waitForState { viewModel.state.value.paired }
 
         assertEquals(true, viewModel.state.value.paired)
+        assertFalse(viewModel.state.value.restoringPairing)
         assertEquals(testPairing(), viewModel.state.value.pairedDaemon)
     }
 
@@ -402,6 +407,7 @@ class FieldworkViewModelTest {
         drainMainLooper()
 
         assertEquals(true, viewModel.state.value.paired)
+        assertFalse(viewModel.state.value.restoringPairing)
         assertEquals(freshPairing, viewModel.state.value.pairedDaemon)
     }
 

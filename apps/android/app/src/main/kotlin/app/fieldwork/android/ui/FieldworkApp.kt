@@ -3,6 +3,7 @@ package app.fieldwork.android.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,6 +14,7 @@ import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -136,7 +138,9 @@ fun FieldworkApp(
                     Box(modifier = Modifier.fillMaxSize()) {
                         when (selectedTab) {
                             AppTab.Sessions -> {
-                                if (state.paired) {
+                                if (state.restoringPairing) {
+                                    RestoringPairingPlaceholder(padding)
+                                } else if (state.paired) {
                                     SessionsScreen(
                                         padding = padding,
                                         viewModel = viewModel,
@@ -203,6 +207,18 @@ fun FieldworkApp(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RestoringPairingPlaceholder(padding: PaddingValues) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator()
     }
 }
 

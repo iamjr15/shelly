@@ -19,6 +19,7 @@ import java.security.MessageDigest
 data class FieldworkUiState(
     val unlocked: Boolean = false,
     val paired: Boolean = false,
+    val restoringPairing: Boolean = true,
     val sessions: List<MobileSession> = emptyList(),
     val loading: Boolean = false,
     val message: String? = null,
@@ -85,6 +86,7 @@ class FieldworkViewModel internal constructor(
         restoreGeneration += 1
         restoreJob?.cancel()
         restoreJob = null
+        _state.value = _state.value.copy(restoringPairing = false)
         viewModelScope.launch {
             runLoading {
                 withContext(repositoryDispatcher) {
@@ -142,7 +144,10 @@ class FieldworkViewModel internal constructor(
         pendingPushSessionIdHash = null
         fcmTokens.clearPendingToken(appContext)
         repository.clear()
-        _state.value = FieldworkUiState(unlocked = _state.value.unlocked)
+        _state.value = FieldworkUiState(
+            unlocked = _state.value.unlocked,
+            restoringPairing = false,
+        )
     }
 
     fun handlePushIntent(sessionIdHash: String) {
@@ -213,7 +218,11 @@ class FieldworkViewModel internal constructor(
             if (generation != restoreGeneration) {
                 return@onSuccess
             }
-            _state.value = _state.value.copy(paired = paired, pairedDaemon = repository.savedPairing)
+            _state.value = _state.value.copy(
+                paired = paired,
+                restoringPairing = false,
+                pairedDaemon = repository.savedPairing,
+            )
             if (paired && _state.value.unlocked) {
                 refreshSessions()
                 startSessionSubscription()
@@ -223,7 +232,10 @@ class FieldworkViewModel internal constructor(
             if (error is CancellationException) {
                 throw error
             }
-            _state.value = _state.value.copy(message = error.message ?: error.toString())
+            _state.value = _state.value.copy(
+                restoringPairing = false,
+                message = error.message ?: error.toString(),
+            )
         }
     }
 
