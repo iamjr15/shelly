@@ -1,6 +1,6 @@
 # Fieldwork v1 Release Audit
 
-Last updated: 2026-05-19
+Last updated: 2026-05-20
 
 This file is the current prompt-to-artifact audit for the v1 objective in
 `PLAN.md`, with `FUTURE.md` as the boundary for deferred work. It is not a
@@ -902,7 +902,7 @@ Observed results:
   and with the packaged protobuf manifest privacy surface checked for required
   Firebase/Sentry opt-out metadata plus forbidden content/permission strings.
   Current AAB: `54M`, SHA-256
-  `8fb83e440fc68b500e6f10a6fbc40ba43279d5992e1d8fa87a942e9e79657efd`.
+  `8ab0548931a2a6a378d54646bc0d6932bfce941c499d07d1218306bd7e4a7365`.
   `pnpm check:android-aab` now runs the verifier with `--expect-unsigned`, and
   `node scripts/test-android-aab-verifier.mjs` covers synthetic unsigned and
   signed AABs, including rejection of signature entries under
