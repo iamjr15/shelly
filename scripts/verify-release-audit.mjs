@@ -954,6 +954,7 @@ function verifyLatestRefresh() {
   requireText(audit, "Live `verify-npm-registry-state` use is reserved for post-placeholder and\npost-release registry-state/provenance verification", "release audit must reserve live npm registry checks for release-state verification");
   requireText(audit, "Bare registry-state invocations now fail closed unless an explicit\nrelease-state expectation flag is provided", "release audit must record bare npm registry-state fail-closed behavior");
   requireText(audit, "fail-before-network bare registry invocation", "release audit must record bare npm registry-state no-network guard");
+  requireText(audit, "missing-token publish rejection before npm is invoked", "release audit must record missing-token npm publish rejection before npm invocation");
   requireText(audit, "post-placeholder platform-published state", "release audit must record post-placeholder npm registry-state checking");
   requireText(audit, "post-release latest-version/provenance state", "release audit must record post-release npm version/provenance checking");
   requireText(audit, "post-publish public registry verification", "release audit must record post-publish npm registry verification");

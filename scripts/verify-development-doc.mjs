@@ -454,6 +454,8 @@ function verifyDevelopmentDoc(text) {
     "fails closed when run without explicit release-state expectation flags",
     "Use the live registry checker only for release-state verification after operator-controlled platform child publishes",
     "both `--check-ready` and actual publish-path rejection when platform children contain non-native files instead of Mach-O or ELF binaries",
+    "a missing token fails before npm is invoked",
+    "four platform packages first, meta package last, `--provenance`, and public access",
     "`--expect-platform-published`",
     "`--expect-latest-version=1.0.0 --expect-provenance`",
     'retries the public registry with `node scripts/verify-npm-registry-state.mjs --expect-meta-published --expect-platform-published --expect-latest-version="$version" --expect-provenance`',

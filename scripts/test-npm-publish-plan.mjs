@@ -2,6 +2,8 @@
 
 import path from "node:path";
 import process from "node:process";
+import fs from "node:fs";
+import os from "node:os";
 import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
@@ -16,15 +18,13 @@ const expected = [
 const env = { ...process.env };
 delete env.NODE_AUTH_TOKEN;
 
-const result = spawnSync(
-  process.execPath,
-  ["scripts/publish-npm-packages.mjs", "--publish-plan-json"],
-  {
-    cwd: root,
-    encoding: "utf8",
-    env,
-  },
-);
+assertMissingTokenFailsBeforeNpm();
+
+const result = spawnSync(process.execPath, ["scripts/publish-npm-packages.mjs", "--publish-plan-json"], {
+  cwd: root,
+  encoding: "utf8",
+  env,
+});
 
 if (result.status !== 0) {
   process.stdout.write(result.stdout);
@@ -54,6 +54,48 @@ for (let index = 0; index < expected.length; index += 1) {
 }
 
 console.log("npm publish plan ok: children first, provenance enabled, public access");
+
+function assertMissingTokenFailsBeforeNpm() {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-no-token-publish-"));
+  const fakeNpm = path.join(temp, process.platform === "win32" ? "npm.cmd" : "npm");
+  const marker = path.join(temp, "npm-invoked");
+
+  try {
+    fs.writeFileSync(
+      fakeNpm,
+      process.platform === "win32"
+        ? `@echo off\r\ntype nul > "${marker}"\r\nexit /b 9\r\n`
+        : `#!/bin/sh\n: > "${marker}"\nexit 9\n`,
+      { mode: 0o755 },
+    );
+
+    const result = spawnSync(process.execPath, ["scripts/publish-npm-packages.mjs"], {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...env,
+        PATH: `${temp}${path.delimiter}${env.PATH || ""}`,
+      },
+    });
+
+    if (result.status === 0) {
+      console.error("publish without NODE_AUTH_TOKEN unexpectedly passed");
+      process.exit(1);
+    }
+    if (!result.stderr.includes("NODE_AUTH_TOKEN is required for npm publish")) {
+      console.error(result.stdout);
+      console.error(result.stderr);
+      console.error("publish without NODE_AUTH_TOKEN must fail with the token guard");
+      process.exit(1);
+    }
+    if (fs.existsSync(marker)) {
+      console.error("publish without NODE_AUTH_TOKEN invoked npm before failing");
+      process.exit(1);
+    }
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+}
 
 function assert(condition, message) {
   if (!condition) {
