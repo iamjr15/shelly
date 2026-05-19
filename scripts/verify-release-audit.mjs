@@ -888,6 +888,7 @@ function verifyLatestRefresh() {
   requireText(audit, "verifier now streams artifact scans instead of materializing\nlarge native binaries as one string", "release audit must record streaming artifact secret-boundary scans");
   requireText(plan, "latest local `pnpm check:secret-boundaries` run scanned 24 retained non-relay artifacts and still passed", "PLAN.md must record the current post-cleanup secret-boundary scan");
   requireText(plan, "verifier now streams artifact scans instead of materializing large native binaries as one string", "PLAN.md must record streaming artifact secret-boundary scans");
+  requireText(plan, "missing-token publish rejection before `npm` is invoked", "PLAN.md must record the npm publish missing-token guard in implementation notes");
   requireText(plan, "has a Terraform Validate job that installs Terraform 1.5.7 and runs the shared cleanup-on-exit Terraform fmt/init/validate script against the Oracle scaffold", "PLAN.md must record the CI Terraform validation job");
   for (const artifact of [
     "`packages/cli-darwin-arm64/bin/fieldwork`",
@@ -1303,6 +1304,11 @@ function verifyPlanUncheckedGatesAreReflected() {
     uncheckedPlanLines,
     "local publish-plan verification and `release-npm.yml` enforce this ordering",
     "PLAN.md npm publish gate must distinguish local ordering automation from real publish completion",
+  );
+  requireText(
+    uncheckedPlanLines,
+    "missing `NODE_AUTH_TOKEN` fails before `npm` is invoked",
+    "PLAN.md npm publish gate must record the missing-token no-npm-invocation guard",
   );
   requireText(
     uncheckedPlanLines,
