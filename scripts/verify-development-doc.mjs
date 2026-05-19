@@ -98,6 +98,16 @@ function verifyDevelopmentDoc(text) {
     "`pnpm check:local-release -- --with-artifacts`",
     "docs/DEVELOPMENT.md must document the artifact-aware local release aggregate mode",
   );
+  requireText(
+    text,
+    "`pnpm check:local-release -- --with-runtime`",
+    "docs/DEVELOPMENT.md must document the runtime local release aggregate mode",
+  );
+  requireText(
+    text,
+    "demo video,\nsite typecheck/build, Terraform fmt/init/validate, relay TLS/OTLP loopbacks, and\ndesktop cold-start thresholds",
+    "docs/DEVELOPMENT.md must document what the runtime local release aggregate mode covers",
+  );
 
   for (const section of [
     "The protocol crate uses insta snapshots",
@@ -513,6 +523,14 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "scripts/verify-npm-packages.mjs\", \"--require-binaries", "artifact-aware local release gate must include staged npm binary verification");
   requireText(allFiles.localRelease, "\"npm meta dry-run pack\", npm, [\"pack\", \"./packages/cli\", \"--dry-run\", \"--json\"]", "artifact-aware local release gate must include npm meta dry-run pack");
   requireText(allFiles.localRelease, "cleanNpmEnv()", "local release gate must sanitize inherited npm config for dry-run pack");
+  requireText(allFiles.localRelease, "\"Android AAB artifact\", node, [\"scripts/verify-android-aab.mjs\", \"--expect-unsigned\"]", "artifact-aware local release gate must call the Android AAB verifier directly");
+  requireText(allFiles.localRelease, "\"demo video artifact\", node, [\"scripts/verify-demo-video.mjs\"]", "runtime local release gate must include demo video verification");
+  requireText(allFiles.localRelease, "ASTRO_TELEMETRY_DISABLED=1 ./node_modules/.bin/astro check", "runtime local release gate must include site typecheck");
+  requireText(allFiles.localRelease, "ASTRO_TELEMETRY_DISABLED=1 ./node_modules/.bin/astro build", "runtime local release gate must include site build");
+  requireText(allFiles.localRelease, "\"Terraform validate\", bash, [\"scripts/check-infra-terraform.sh\"]", "runtime local release gate must include Terraform validation");
+  requireText(allFiles.localRelease, "\"relay TLS loopback\", bash, [\"scripts/smoke-relay-tls-loopback.sh\"]", "runtime local release gate must include relay TLS smoke");
+  requireText(allFiles.localRelease, "\"relay OTLP loopback\", node, [\"scripts/smoke-relay-otlp-loopback.mjs\"]", "runtime local release gate must include relay OTLP smoke");
+  requireText(allFiles.localRelease, "\"desktop performance thresholds\", node, [\"scripts/measure-desktop-performance.mjs\"]", "runtime local release gate must include desktop performance thresholds");
   requireText(allFiles.ci, "node scripts/test-ios-prereqs.mjs", "CI must run the deterministic iOS prereq tests");
   requireText(allFiles.ci, "node scripts/test-android-aab-verifier.mjs", "CI must run the deterministic Android AAB verifier tests");
   requireText(allFiles.ci, "node scripts/test-external-status-refresh.mjs", "CI must run the deterministic external status refresh guard test");

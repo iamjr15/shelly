@@ -7,17 +7,18 @@ const root = path.resolve(new URL("..", import.meta.url).pathname);
 const args = new Set(process.argv.slice(2).filter((arg) => arg !== "--"));
 const listOnly = args.has("--list");
 const withArtifacts = args.has("--with-artifacts");
+const withRuntime = args.has("--with-runtime");
 
 for (const arg of args) {
-  if (!["--list", "--with-artifacts"].includes(arg)) {
+  if (!["--list", "--with-artifacts", "--with-runtime"].includes(arg)) {
     console.error(`unknown argument: ${arg}`);
     process.exit(2);
   }
 }
 
 const node = process.execPath;
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const bash = process.platform === "win32" ? "bash.exe" : "bash";
 
 const checks = [
   ["rust workspace contract", node, ["scripts/verify-rust-workspace.mjs"]],
@@ -53,13 +54,30 @@ const checks = [
 ];
 
 const artifactChecks = [
-  ["Android AAB artifact", pnpm, ["check:android-aab"]],
+  ["Android AAB artifact", node, ["scripts/verify-android-aab.mjs", "--expect-unsigned"]],
   ["staged npm package binaries", node, ["scripts/verify-npm-packages.mjs", "--require-binaries"]],
   ["npm publish readiness", node, ["scripts/publish-npm-packages.mjs", "--check-ready"]],
   ["npm meta dry-run pack", npm, ["pack", "./packages/cli", "--dry-run", "--json"], { env: cleanNpmEnv() }],
 ];
 
-const selected = withArtifacts ? [...checks, ...artifactChecks] : checks;
+const runtimeChecks = [
+  ["demo video artifact", node, ["scripts/verify-demo-video.mjs"]],
+  [
+    "site typecheck/build",
+    bash,
+    ["-lc", "cd site && ASTRO_TELEMETRY_DISABLED=1 ./node_modules/.bin/astro check && ASTRO_TELEMETRY_DISABLED=1 ./node_modules/.bin/astro build"],
+  ],
+  ["Terraform validate", bash, ["scripts/check-infra-terraform.sh"]],
+  ["relay TLS loopback", bash, ["scripts/smoke-relay-tls-loopback.sh"]],
+  ["relay OTLP loopback", node, ["scripts/smoke-relay-otlp-loopback.mjs"]],
+  ["desktop performance thresholds", node, ["scripts/measure-desktop-performance.mjs"]],
+];
+
+const selected = [
+  ...checks,
+  ...(withArtifacts ? artifactChecks : []),
+  ...(withRuntime ? runtimeChecks : []),
+];
 
 if (listOnly) {
   for (const [label, command, commandArgs] of selected) {
@@ -86,7 +104,11 @@ for (const [label, command, commandArgs, options = {}] of selected) {
   }
 }
 
-console.log(`\nlocal release gate ok${withArtifacts ? " with staged artifacts" : ""}`);
+const suffixes = [
+  withArtifacts ? "staged artifacts" : "",
+  withRuntime ? "runtime checks" : "",
+].filter(Boolean);
+console.log(`\nlocal release gate ok${suffixes.length ? ` with ${suffixes.join(" and ")}` : ""}`);
 
 function formatCommand(command, commandArgs) {
   return [command, ...commandArgs].map(shellQuote).join(" ");

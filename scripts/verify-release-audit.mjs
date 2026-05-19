@@ -114,6 +114,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "optional `--with-runtime` mode",
+    "release audit must record runtime local release aggregate mode",
+  );
+  requireText(
+    audit,
     "focused service context/path unit tests",
     "release audit must record daemon service install/path unit-test coverage",
   );
@@ -182,7 +187,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "latest pass measured CLI max `5.57ms` and daemon max `54.37ms`",
+    "latest pass measured CLI max `4.35ms` and daemon max `45.11ms`",
     "release audit must record current desktop max performance evidence",
   );
   requireText(
@@ -705,6 +710,7 @@ function verifyLatestRefresh() {
     "pnpm check:mobile-privacy",
     "pnpm check:v1-boundary",
     "pnpm check:release-audit",
+    "pnpm check:local-release -- --with-artifacts --with-runtime",
     "pnpm check:release-workflows",
     "pnpm check:secret-boundaries",
     "pnpm test:secret-boundaries",
@@ -803,8 +809,9 @@ function verifyLatestRefresh() {
   requireText(audit, "all passed except `pnpm check:ios-prereqs`", "release audit must record the latest focused result summary");
   requireText(audit, "repo-owned Xcode download, install, `xcode-select`, first-launch, rerun", "release audit must record iOS prereq recovery output");
   requireText(audit, "Desktop performance passed after one explicit warm-up sample", "release audit must record latest desktop performance result");
-  requireText(audit, "`3.30ms`, p95 `3.99ms`, max `5.57ms`", "release audit must record latest CLI desktop performance values");
-  requireText(audit, "`42.23ms`, p95 `50.77ms`, max `54.37ms`", "release audit must record latest daemon desktop performance values");
+  requireText(audit, "preserved AAB, staged npm binaries, npm publish readiness, meta-package dry-run\npack, demo video, site typecheck/build, Terraform fmt/init/validate, relay\nTLS/OTLP loopbacks, and desktop performance", "release audit must record latest aggregate local release gate coverage");
+  requireText(audit, "`3.31ms`, p95 `4.14ms`, max `4.35ms`", "release audit must record latest CLI desktop performance values");
+  requireText(audit, "`41.27ms`, p95 `43.05ms`, max `45.11ms`", "release audit must record latest daemon desktop performance values");
   requireText(audit, "npm binary readiness passed\nwith staged artifacts", "release audit must record staged npm binary readiness");
   requireText(audit, "Cross-target desktop release builds passed on 2026-05-19", "release audit must record the latest cross-target desktop release build date");
   requireText(audit, "Mach-O arm64/x86_64 and ELF x86-64/aarch64 binaries", "release audit must record cross-target binary format verification");
@@ -1424,6 +1431,14 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/verify-npm-packages.mjs\", \"--require-binaries", "artifact-aware local release gate must include staged npm binary verification");
   requireText(localRelease, "scripts/publish-npm-packages.mjs\", \"--check-ready", "artifact-aware local release gate must include publish-readiness verification");
   requireText(localRelease, "cleanNpmEnv()", "local release gate must clean noisy inherited npm config before dry-run pack");
+  requireText(localRelease, "\"Android AAB artifact\", node, [\"scripts/verify-android-aab.mjs\", \"--expect-unsigned\"]", "artifact-aware local release gate must call the Android AAB verifier directly");
+  requireText(localRelease, "\"demo video artifact\", node, [\"scripts/verify-demo-video.mjs\"]", "runtime local release gate must include demo video verification");
+  requireText(localRelease, "ASTRO_TELEMETRY_DISABLED=1 ./node_modules/.bin/astro check", "runtime local release gate must include site typecheck");
+  requireText(localRelease, "ASTRO_TELEMETRY_DISABLED=1 ./node_modules/.bin/astro build", "runtime local release gate must include site build");
+  requireText(localRelease, "\"Terraform validate\", bash, [\"scripts/check-infra-terraform.sh\"]", "runtime local release gate must include Terraform validation");
+  requireText(localRelease, "\"relay TLS loopback\", bash, [\"scripts/smoke-relay-tls-loopback.sh\"]", "runtime local release gate must include relay TLS smoke");
+  requireText(localRelease, "\"relay OTLP loopback\", node, [\"scripts/smoke-relay-otlp-loopback.mjs\"]", "runtime local release gate must include relay OTLP smoke");
+  requireText(localRelease, "\"desktop performance thresholds\", node, [\"scripts/measure-desktop-performance.mjs\"]", "runtime local release gate must include desktop performance thresholds");
   requireText(ci, "node scripts/verify-rust-workspace.mjs", "CI must run the Rust workspace verifier");
   requireText(ci, "cargo fmt --check", "CI must run cargo fmt");
   requireText(ci, "cargo clippy --workspace -- -D warnings", "CI must run workspace clippy as a deny-warning gate");

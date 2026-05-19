@@ -78,7 +78,11 @@ network account checks, live publishing, iOS SDK builds, Android emulator
 runtime tests, physical-device checks, and hosted relay deployment. When the
 local platform binaries and Android AAB are staged, run
 `pnpm check:local-release -- --with-artifacts` to also verify the preserved AAB,
-staged npm binaries, publish readiness, and meta-package dry-run pack.
+staged npm binaries, publish readiness, and meta-package dry-run pack. When
+release binaries, Terraform, ffmpeg/ffprobe, and site dependencies are available,
+run `pnpm check:local-release -- --with-runtime` to also verify the demo video,
+site typecheck/build, Terraform fmt/init/validate, relay TLS/OTLP loopbacks, and
+desktop cold-start thresholds. The flags can be combined.
 
 `pnpm check:release-artifacts` is intentionally fail-closed unless
 `artifacts/` or `FIELDWORK_ARTIFACT_DIR` contains the release-rust/GitHub
