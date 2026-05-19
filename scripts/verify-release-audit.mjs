@@ -37,6 +37,22 @@ function verifyCurrentVerdict() {
   requirePattern(audit, /It is not a\s+release sign-off/, "release audit must not masquerade as a release sign-off");
   requireText(audit, "Fieldwork v1 is not yet releasable", "release audit must state that v1 is not yet releasable while Section 13 gates are open");
   requireText(audit, "Do not mark v1 complete until every unchecked gate", "release audit must include the final release sign-off rule");
+  requireText(
+    audit,
+    "scripts/verify-release-audit.mjs` classifies\n  every unchecked `PLAN.md` gate by blocker class",
+    "release audit must document the unchecked-gate classification guard",
+  );
+  for (const blockerClass of [
+    "`ios-xcode`",
+    "`signing`",
+    "`publish`",
+    "`provider`",
+    "`physical-device`",
+    "`store-console`",
+    "`operator`",
+  ]) {
+    requireText(audit, blockerClass, `release audit must document unchecked-gate blocker class ${blockerClass}`);
+  }
 }
 
 function verifyPromptToArtifactChecklist() {
@@ -1136,54 +1152,60 @@ function verifyPlanUncheckedGatesAreReflected() {
     .filter((line) => line.startsWith("- [ ] "));
   const uncheckedPlanLines = uncheckedPlanLineList.join("\n");
 
-  const expectedUncheckedGateNeedles = [
-    "iOS xcframework",
-    "Daemon signed and notarized",
-    "iOS app signed",
-    "Android AAB signed",
-    "All 5 npm packages publish",
-    "`npm publish --provenance` enabled",
-    "`cosign attest`",
-    "Sentry receives test crashes",
-    "Honeycomb receives test traces",
-    "Daemon survives `pkill -KILL fieldworkd`",
-    "Daemon survives `sleep 30 && wake`",
-    "iOS app survives `Background",
-    "Android app survives same",
-    "Push notifications fire reliably",
-    "Terminal renders `yes | head -10000`",
-    "iOS app cold start",
-    "Android app cold start",
-    "Reconnect after network change",
-    "Pair flow end-to-end",
-    "Face ID / BiometricPrompt required",
-    "Push notification payload contains no terminal content",
-    "App Store privacy nutrition labels filled out",
-    "Play Console data safety form filled out",
-    "Pair a fresh phone",
-    "Create session from desktop CLI",
-    "Tap notification",
-    "Kill daemon, restart, sessions list shows last-known sessions",
-    "Run 3 sessions in parallel",
-    "Operator: confirm npm publish rights for the platform child package family",
-    "Operator: reserve/verify control of domain `fieldwork.dev`",
-    "Operator: create GitHub org `fieldwork-app`",
-    "Operator: reserve `@fieldworkdev`",
-    "Open an Oracle Cloud account",
-    "Apply for Apple Developer Program",
-    "Set up Sentry account",
-    "Set up Honeycomb account",
-    "Block out the next 10 weeks",
+  const expectedUncheckedGates = [
+    ["iOS xcframework", "ios-xcode"],
+    ["Daemon signed and notarized", "signing"],
+    ["iOS app signed", "signing"],
+    ["Android AAB signed", "signing"],
+    ["All 5 npm packages publish", "publish"],
+    ["`npm publish --provenance` enabled", "publish"],
+    ["`cosign attest`", "publish"],
+    ["Sentry receives test crashes", "provider"],
+    ["Honeycomb receives test traces", "provider"],
+    ["Daemon survives `pkill -KILL fieldworkd`", "signing"],
+    ["Daemon survives `sleep 30 && wake`", "physical-device"],
+    ["iOS app survives `Background", "physical-device"],
+    ["Android app survives same", "physical-device"],
+    ["Push notifications fire reliably", "provider"],
+    ["Terminal renders `yes | head -10000`", "physical-device"],
+    ["iOS app cold start", "physical-device"],
+    ["Android app cold start", "physical-device"],
+    ["Reconnect after network change", "physical-device"],
+    ["Pair flow end-to-end", "physical-device"],
+    ["Face ID / BiometricPrompt required", "physical-device"],
+    ["Push notification payload contains no terminal content", "provider"],
+    ["App Store privacy nutrition labels filled out", "store-console"],
+    ["Play Console data safety form filled out", "store-console"],
+    ["Pair a fresh phone", "physical-device"],
+    ["Create session from desktop CLI", "physical-device"],
+    ["Tap notification", "provider"],
+    ["Kill daemon, restart, sessions list shows last-known sessions", "physical-device"],
+    ["Run 3 sessions in parallel", "physical-device"],
+    ["Operator: confirm npm publish rights for the platform child package family", "operator"],
+    ["Operator: reserve/verify control of domain `fieldwork.dev`", "operator"],
+    ["Operator: create GitHub org `fieldwork-app`", "operator"],
+    ["Operator: reserve `@fieldworkdev`", "operator"],
+    ["Open an Oracle Cloud account", "operator"],
+    ["Apply for Apple Developer Program", "operator"],
+    ["Set up Sentry account", "operator"],
+    ["Set up Honeycomb account", "operator"],
+    ["Block out the next 10 weeks", "operator"],
   ];
+  const expectedUncheckedGateNeedles = expectedUncheckedGates.map(([needle]) => needle);
 
   for (const line of uncheckedPlanLineList) {
     if (!expectedUncheckedGateNeedles.some((gate) => line.includes(gate))) {
-      failures.push(`unchecked PLAN.md gate is not represented in release audit verifier: ${line}`);
+      failures.push(`unchecked PLAN.md gate is not classified in release audit verifier: ${line}`);
     }
   }
 
-  for (const gate of expectedUncheckedGateNeedles) {
+  for (const [gate, blockerClass] of expectedUncheckedGates) {
     requireText(uncheckedPlanLines, gate, `PLAN.md no longer exposes unchecked gate expected by audit verifier: ${gate}`);
+    requireText(
+      audit,
+      `\`${blockerClass}\``,
+      `release audit must document blocker class ${blockerClass} for unchecked gate: ${gate}`,
+    );
   }
   requireText(
     plan,

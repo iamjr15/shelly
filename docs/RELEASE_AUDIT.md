@@ -52,6 +52,11 @@ outside this shell:
 - Real macOS launchd and sleep/wake survival checks for `fieldworkd` after the
   daemon is signed/notarized; local restart-restore smoke is not a substitute
   for the `pkill` service-restart or lid-close sleep/wake gates.
+- Local completion-audit guard: `scripts/verify-release-audit.mjs` classifies
+  every unchecked `PLAN.md` gate by blocker class (`ios-xcode`, `signing`,
+  `publish`, `provider`, `physical-device`, `store-console`, or `operator`).
+  Any new unchecked gate that is not added to that classified allowlist fails the
+  audit instead of silently becoming release debt.
 - A local API 36.1 Android emulator is only a debug substitute for those
   runtime/performance gates, not release-device evidence. After wiping the
   unstable Play Store AVD data, `pnpm test:android-debug-smoke` installed the
