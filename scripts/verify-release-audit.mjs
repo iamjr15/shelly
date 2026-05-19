@@ -1175,6 +1175,20 @@ function verifyLatestRefresh() {
   ]) {
     requireText(plan, evidence, `PLAN.md aggregate Android emulator evidence must include ${evidence}`);
   }
+  for (const evidence of [
+    "Hosted Sentry receipt remains unchecked until a real Sentry project/DSN and signed daemon/mobile builds are available",
+    "live Honeycomb receipt gate remains unchecked until a Honeycomb account/API key and hosted relay test traces are available",
+    "real macOS sleep/wake survival remains unchecked until it can be run against the signed/notarized daemon artifact",
+    "real APNs/FCM provider delivery is exercised 10/10 on physical devices",
+    "relay validators and provider-client tests assert fixed alert copy, lowercase hash-only data fields",
+    "actual APNs/FCM payload is inspected in transit with a test device",
+    "`pnpm test:android-emulator-notification-tap` is the local Android substitute",
+    "`notify_tap_ok` lands only in the target PTY",
+    "`pnpm test:android-emulator-multisession` is the actual Android-app substitute",
+    "`multi_a_ok`, `multi_b_ok`, and `multi_c_ok` land only in their selected PTYs",
+  ]) {
+    requireText(plan, evidence, `PLAN.md unchecked gate boundary must include ${evidence}`);
+  }
   requireText(plan, "Android FCM token\nrefresh callbacks queue only trimmed pending tokens", "PLAN.md must record Android queued FCM token callbacks");
   requireText(plan, "paired-and-unlocked ViewModel sync path sends\nqueued/current tokens through mobile-core", "PLAN.md must record Android paired-and-unlocked token sync path");
   requireText(audit, "`hash_for_push` produces lowercase SHA-256 hex", "release audit must record daemon hash generation coverage");
