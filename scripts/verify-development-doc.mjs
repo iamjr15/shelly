@@ -430,6 +430,11 @@ function verifyDevelopmentDoc(text) {
     "node scripts/verify-no-ship-markers.mjs",
     "docs/DEVELOPMENT.md must document the CI no-ship marker verifier",
   );
+  requireText(
+    text,
+    "node scripts/verify-no-ship-markers.mjs` plus `--self-test`",
+    "docs/DEVELOPMENT.md must document the CI no-ship marker self-test",
+  );
 
   for (const phrase of [
     "cargo test -p fieldwork-daemon local_agent_hook",
@@ -598,6 +603,7 @@ function verifyWiring(allFiles) {
     "CI must list-check all local release aggregate modes",
   );
   requireText(allFiles.ci, "node scripts/verify-no-ship-markers.mjs", "CI must run the no-ship marker verifier");
+  requireText(allFiles.ci, "node scripts/verify-no-ship-markers.mjs --self-test", "CI must run the no-ship marker self-test");
   requireText(allFiles.localRelease, "scripts/verify-release-audit.mjs", "local release gate must include the release audit verifier");
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include the no-ship marker verifier");
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs\", \"--self-test", "local release gate must include the no-ship marker self-test");

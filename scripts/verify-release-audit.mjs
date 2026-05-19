@@ -1631,6 +1631,7 @@ function verifyVerifierIsWired() {
   requireText(ci, "node scripts/verify-telemetry-privacy.mjs", "CI must run the telemetry privacy verifier");
   requireText(ci, "node scripts/verify-v1-boundary.mjs", "CI must run the v1 boundary verifier");
   requireText(ci, "node scripts/verify-no-ship-markers.mjs", "CI must run the no-ship marker verifier");
+  requireText(ci, "node scripts/verify-no-ship-markers.mjs --self-test", "CI must run the no-ship marker self-test");
   requireText(ci, "node scripts/verify-security-model.mjs", "CI must run the security model verifier");
   requireText(ci, "node scripts/verify-release-audit.mjs", "CI must run the release audit verifier");
   requireText(ci, "node --check scripts/check-local-release.mjs", "CI must syntax-check the local release aggregate verifier");
