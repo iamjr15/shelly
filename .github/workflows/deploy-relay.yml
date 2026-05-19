@@ -20,6 +20,18 @@ jobs:
       - uses: sigstore/cosign-installer@v3
       - name: Install Ansible
         run: python3 -m pip install --user ansible
+      - name: Verify relay deploy prerequisites
+        env:
+          RELAY_SSH_KEY: ${{ secrets.RELAY_SSH_KEY }}
+        run: |
+          if [ -z "$RELAY_SSH_KEY" ]; then
+            echo "RELAY_SSH_KEY is required to deploy the relay fleet."
+            exit 1
+          fi
+          if ! grep -Ev '^\s*(#|$|\[)' infra/relay/ansible/inventory.ini | grep -q .; then
+            echo "infra/relay/ansible/inventory.ini must contain at least one relay host before deployment."
+            exit 1
+          fi
       - name: Download relay artifact
         env:
           GH_TOKEN: ${{ github.token }}
@@ -49,12 +61,6 @@ jobs:
           install -m 700 -d ~/.ssh
           echo "$RELAY_SSH_KEY" > ~/.ssh/fieldwork-relay
           chmod 600 ~/.ssh/fieldwork-relay
-      - name: Verify relay inventory
-        run: |
-          if ! grep -Ev '^\s*(#|$|\[)' infra/relay/ansible/inventory.ini | grep -q .; then
-            echo "infra/relay/ansible/inventory.ini must contain at least one relay host before deployment."
-            exit 1
-          fi
       - name: Deploy with Ansible
         env:
           ANSIBLE_HOST_KEY_CHECKING: "true"

@@ -197,6 +197,13 @@ function verifyAndroidRelease(text) {
 }
 
 function verifyRelayDeploy(text) {
+  requireText(text, "Verify relay deploy prerequisites", "deploy-relay must preflight SSH key and inventory before artifact work");
+  requireBefore(
+    text,
+    "Verify relay deploy prerequisites",
+    "Download relay artifact",
+    "deploy-relay must fail closed on SSH/inventory prerequisites before artifact download",
+  );
   requireText(text, "FIELDWORK_VERIFY_COSIGN_SIGNATURE: \"1\"", "deploy-relay must require cosign verification");
   requireText(text, "FIELDWORK_RELEASE_REPOSITORY: ${{ github.repository }}", "deploy-relay must verify SLSA buildType against the checked-out repository");
   requireText(text, "FIELDWORK_EXPECTED_RELEASE_TAG: ${{ github.event.inputs.tag }}", "deploy-relay must pin SLSA releaseTag to the requested GitHub Release tag");
@@ -355,6 +362,14 @@ function requireText(text, needle, message) {
 
 function rejectText(text, needle, message) {
   if (text.includes(needle)) {
+    failures.push(message);
+  }
+}
+
+function requireBefore(text, first, second, message) {
+  const firstIndex = text.indexOf(first);
+  const secondIndex = text.indexOf(second);
+  if (firstIndex === -1 || secondIndex === -1 || firstIndex >= secondIndex) {
     failures.push(message);
   }
 }
