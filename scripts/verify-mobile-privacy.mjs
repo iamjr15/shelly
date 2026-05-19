@@ -17,7 +17,9 @@ const androidFcmRegistrarTest = read("apps/android/app/src/test/kotlin/app/field
 const androidSessions = read("apps/android/app/src/main/kotlin/app/fieldwork/android/features/sessions/SessionsScreen.kt");
 const androidTerminal = read("apps/android/app/src/main/kotlin/app/fieldwork/android/features/terminal/TerminalScreen.kt");
 const androidSettings = read("apps/android/app/src/main/kotlin/app/fieldwork/android/features/settings/SettingsScreen.kt");
+const mobileCore = read("crates/mobile-core/src/lib.rs");
 verifyAndroidSourceManifest(androidSourceManifest);
+verifyAndroidJniContextInstaller(mobileCore);
 verifyAndroidBiometricGate(
   read("apps/android/app/src/main/kotlin/app/fieldwork/android/core/AndroidBiometricGate.kt"),
   read("apps/android/app/src/test/kotlin/app/fieldwork/android/core/AndroidBiometricGateTest.kt"),
@@ -116,6 +118,46 @@ function verifyAndroidSourceManifest(xml) {
   requireAndroidApplicationAttr(xml, "android:dataExtractionRules", "@xml/data_extraction_rules");
   requireAndroidApplicationAttr(xml, "android:fullBackupContent", "@xml/backup_rules");
   requireAndroidServiceExportedFalse(xml, ".push.FieldworkFirebaseMessagingService");
+}
+
+function verifyAndroidJniContextInstaller(text) {
+  const start = text.indexOf('#[cfg(target_os = "android")]');
+  const end = text.indexOf("impl From<MobilePlatform> for ClientKind", start);
+  if (start < 0 || end < 0) {
+    failures.push("mobile-core must keep a target_os=android JNI context installer block");
+    return;
+  }
+
+  const block = text.slice(start, end);
+  requireText(
+    block,
+    "OnceLock<Result<(), String>>",
+    "Android JNI context installer must cache initialization as a Result, not poison/panic a Once",
+  );
+  requireText(
+    block,
+    "throw_java_runtime_exception",
+    "Android JNI context installer must surface initialization failures to Java",
+  );
+  requireText(
+    block,
+    "env.throw(message)",
+    "Android JNI context installer must throw a Java exception for native initialization failures",
+  );
+  requireText(
+    block,
+    "Outcome::Err(error) => Err(error.to_string())",
+    "Android JNI context installer must convert JNI errors without panicking",
+  );
+  requireText(
+    block,
+    'Outcome::Panic(_) => Err("panic while installing Android JNI context".to_string())',
+    "Android JNI context installer must catch Rust panics before returning to the JVM",
+  );
+
+  if (/panic!\s*\(|resume_unwind|unwrap\(\)|expect\(/.test(block)) {
+    failures.push("Android JNI context installer must not panic, unwrap, expect, or resume_unwind across JNI");
+  }
 }
 
 function verifyAndroidBiometricGate(text, testText, gradleText) {
