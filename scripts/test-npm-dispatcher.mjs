@@ -88,6 +88,25 @@ function verifyDispatcher({ platform, arch, key }) {
   assert(result.status === 0, `${key} dispatcher should exit 0, got ${result.status}\n${result.stderr}`);
   assert(result.stdout.trim() === "fake-fieldwork alpha beta", `unexpected ${key} dispatcher stdout: ${result.stdout}`);
 
+  const aliasTmp = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-fw-alias-"));
+  try {
+    const fwAlias = path.join(aliasTmp, "fw");
+    fs.symlinkSync(dispatcher, fwAlias);
+    result = spawnSync(process.execPath, [fwAlias, "pair"], {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        FIELDWORK_NPM_PLATFORM: platform,
+        FIELDWORK_NPM_ARCH: arch,
+      },
+    });
+    assert(result.status === 0, `${key} fw alias should exit 0 for pair, got ${result.status}\n${result.stderr}`);
+    assert(result.stdout.trim() === "fake-fieldwork pair", `unexpected ${key} fw alias stdout: ${result.stdout}`);
+  } finally {
+    fs.rmSync(aliasTmp, { recursive: true, force: true });
+  }
+
   result = spawnSync(process.execPath, [daemonDispatcher, "--foreground"], {
     cwd: root,
     encoding: "utf8",

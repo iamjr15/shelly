@@ -682,6 +682,7 @@ What the protocol does NOT carry to push providers:
 
 ```
 fieldwork pair                          # show QR for new device; prompts to approve incoming pair requests
+fw pair                                 # npm-installed short alias for the same QR-pairing flow
 fieldwork pair-test --payload <json> [--attach <session|first>]
                                         # hidden headless iroh transport smoke client
 fieldwork                               # smart default: create+attach default claude, attach sole session, or list many

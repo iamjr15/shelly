@@ -86,6 +86,7 @@ function verifyAndroidRendererDoc() {
 function verifyReadme() {
   for (const needle of [
     "npm i -g fieldwork",
+    "fw pair",
     "the shorter `fw` alias",
     "`fw` accepts the same arguments as `fieldwork`",
     "`fw refactoringjob` is the named\nsession fast path",
@@ -265,6 +266,7 @@ function verifyInstallDoc() {
     "--expect-platform-published",
     "--expect-latest-version=1.0.0 --expect-provenance",
     "`fieldwork` is the meta package",
+    "`fw` is a shorter alias for the same user-facing CLI, so `fw pair`\nstarts the same QR-pairing flow as `fieldwork pair`",
     "Running either CLI name with no subcommand uses the smart default",
     "auto-generates a one-word display name that mobile apps show from the daemon\nsession list",
     "Running `fw refactoringjob` uses the named-session fast path",
@@ -309,6 +311,7 @@ function verifyPlanDoc() {
     "## 8. npm distribution (the only desktop install path)",
     "The meta-package's `bin` field exposes `fieldwork`, the shorter `fw` alias",
     '"fw": "bin/fieldwork"',
+    "fw pair                                 # npm-installed short alias for the same QR-pairing flow",
     "fieldwork                               # smart default: create+attach default claude",
     "fw                                      # npm-installed short alias for the same CLI and smart default",
     "fw <name>                               # named fast path: attach existing name or create+attach default claude",

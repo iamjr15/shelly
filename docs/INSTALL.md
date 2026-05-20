@@ -4,6 +4,10 @@ The v1 production install path will be:
 
 ```sh
 npm i -g fieldwork
+fieldwork daemon install
+fw pair
+fw
+fw refactoringjob
 ```
 
 The npm package scaffold is implemented under `packages/`, but the packages are not published until release credentials and platform artifacts are available. For current local development:
@@ -111,12 +115,13 @@ npm pack ./packages/cli --dry-run --json
 ```
 
 `fieldwork` is the meta package. It exposes `fieldwork`, `fw`, and
-`fieldworkd`: `fw` is a shorter alias for the same user-facing CLI, postinstall
-swaps the CLI and daemon commands to native binaries when scripts are allowed,
-and the shipped dispatchers run the matching platform package when postinstall
-is skipped. Running either CLI name with no subcommand uses the smart default:
-create and attach a default `claude` session when none exist, attach the only
-existing session, or list sessions when several are available. The create branch
+`fieldworkd`: `fw` is a shorter alias for the same user-facing CLI, so `fw pair`
+starts the same QR-pairing flow as `fieldwork pair`. Postinstall swaps the CLI
+and daemon commands to native binaries when scripts are allowed, and the shipped
+dispatchers run the matching platform package when postinstall is skipped.
+Running either CLI name with no subcommand uses the smart default: create and
+attach a default `claude` session when none exist, attach the only existing
+session, or list sessions when several are available. The create branch
 auto-generates a one-word display name that mobile apps show from the daemon
 session list. Running `fw refactoringjob` uses the named-session fast path, and
 `fieldwork new --name <name> [cmd...]` creates an explicitly named arbitrary-command PTY. The v1 platform
