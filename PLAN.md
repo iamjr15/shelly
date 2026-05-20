@@ -874,7 +874,7 @@ Internal state, reducers, iroh transport, persistence — all behind these types
    - List of session cards: name, status icon, model, last-line preview, elapsed.
    - Sort order: `AwaitingInput` first, then `Working`, then `Idle`, then `Ready`.
    - Swipe right: **hide locally** (just removes from this device's UI; doesn't affect the session on the desktop or other devices).
-   - **No "+ New session" button. No swipe-left-to-kill.** Per Section 6.4, mobile clients cannot create or kill sessions — those happen via `fieldwork new` / `fieldwork kill` on the desktop. If no sessions exist, the list shows a help card: *"Create a session on your laptop with `fieldwork new` — it'll appear here automatically."*
+   - **No "+ New session" button. No swipe-left-to-kill.** Per Section 6.4, mobile clients cannot create or kill sessions — those happen via `fw new` / `fw kill` on the desktop (`fieldwork` remains the equivalent full command name). If no sessions exist, the list shows a help card: *"Create a session on your laptop with `fw new` — it'll appear here automatically."*
    - Tap card → push `TerminalView(sessionId:)`.
 
 2. **Terminal view** (`Features/Terminal/TerminalView.swift`):

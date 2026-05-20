@@ -333,6 +333,8 @@ function verifyPlanDoc() {
     "daemon rejects duplicate session\nnames with `ErrorCode::InvalidRequest`",
     "`fw new --name <name>` if a\ndesired session name collides with a subcommand",
     "Mobile clients still cannot create sessions, kill sessions, or choose\ncommands",
+    "mobile clients cannot create or kill sessions — those happen via `fw new` / `fw kill` on the desktop",
+    "Create a session on your laptop with `fw new`",
     "**Local substitute note (2026-05-20)**",
     "preserves\nhost `CARGO_HOME`/`RUSTUP_HOME` while isolating Fieldwork's temp `HOME`",
     "explicitly named `FW_SUBSCRIBE_SESSION_READY` and `FW_RECONNECT_READY`",
@@ -370,6 +372,11 @@ function verifyPlanDoc() {
     docs.plan,
     "bin` field exposes only the CLI",
     "PLAN.md must not claim the npm meta-package exposes only the CLI",
+  );
+  rejectText(
+    docs.plan,
+    "Create a session on your laptop with `fieldwork new`",
+    "PLAN.md mobile empty-state copy must prefer the short `fw new` command",
   );
 }
 
