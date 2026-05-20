@@ -268,6 +268,26 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "GitHub Actions release secrets",
+    "release audit operations row must record GitHub release-secret coverage",
+  );
+  requireText(
+    audit,
+    "npm ownership bootstrap for the platform child packages",
+    "release audit operations row must record npm child-package bootstrap coverage",
+  );
+  requireText(
+    audit,
+    "GitHub secrets checklist",
+    "release audit operations row must record infra verifier coverage for GitHub secrets",
+  );
+  requireText(
+    audit,
+    "npm bootstrap instructions",
+    "release audit operations row must record infra verifier coverage for npm bootstrap instructions",
+  );
+  requireText(
+    audit,
     "optional `--with-runtime` mode",
     "release audit must record runtime local release aggregate mode",
   );
@@ -1278,7 +1298,9 @@ function verifyLatestRefresh() {
   requireText(audit, "infra scaffold verifier passed", "release audit must record the focused infra scaffold verifier result");
   requireText(audit, "operations runbook's", "release audit must record operations runbook coverage");
   requireText(audit, "operator-owned release-gate handoff", "release audit must record operations release-gate handoff coverage");
-  requireText(audit, "`PLAN.md` checkbox source of truth for\nexternal gates", "release audit must record PLAN.md as the external-gate checkbox source of truth");
+  requireText(audit, "GitHub secrets checklist", "release audit must record operations GitHub secrets checklist coverage");
+  requireText(audit, "npm ownership\nbootstrap instructions", "release audit must record operations npm ownership bootstrap coverage");
+  requireText(audit, "`PLAN.md` checkbox source of truth for external gates", "release audit must record PLAN.md as the external-gate checkbox source of truth");
   requireText(audit, "operator-reservation evidence handling", "release audit must record operations handling for operator-reservation evidence");
   requireText(audit, "Appendix B operator reservations", "release audit must record operations Appendix B reservation coverage");
   requireText(audit, "release-gate handoff steps", "release audit must record the infra verifier's handoff pins");
