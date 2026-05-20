@@ -36,6 +36,10 @@ operator explicitly asks for that exact refresh.
   `fieldwork-linux-arm64`, and `fieldwork-linux-x64`, then release through
   `release-npm.yml` with `NPM_TOKEN` so children publish first and `fieldwork`
   publishes last with provenance.
+- **Operator reservations**: Appendix B account and reservation work remains
+  outside agent ownership: domain `fieldwork.dev`, GitHub org `fieldwork-app`,
+  GitHub repo `fieldwork`, `@fieldworkdev`, Oracle Cloud capacity, Apple
+  Developer, Sentry, Honeycomb, and launch-calendar commitments.
 - **GitHub Release artifacts**: tag from a clean verified commit, let
   `release-rust.yml` produce signed/notarized Darwin artifacts, Linux archives,
   SHA-256 files, and Sigstore attestations, then verify those artifacts before

@@ -87,6 +87,8 @@ function verifyReadme() {
     "Homebrew, `curl | sh`, `cargo install`, and self-update are intentionally out of scope",
     "docs/RELEASE_AUDIT.md",
     "operator-requested refresh",
+    "operator-facing release-gate handoff",
+    "operator-owned reservations for domain, GitHub, social, cloud, provider, and launch-calendar work",
     "target/debug/fieldwork new bash",
     "Pair tokens are 32 random bytes, base32 encoded, single-use, and expire after 10 minutes",
     "separate encrypted `devices.redb`, with hashed row keys",
