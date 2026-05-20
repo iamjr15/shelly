@@ -56,6 +56,10 @@ operator explicitly asks for that exact refresh.
   session list subscription, terminal attach/input, reconnect/replay after
   network changes, background/foreground restore, biometric launch/stale-input
   gates, notification tap-through, flood rendering, and cold-start thresholds.
+  Before the full Section 13 release-device pass, use `docs/LIVE_TESTING.md` for
+  the first operator-assisted Android-only terminal handoff run: same
+  daemon-owned PTY session, no screen mirroring, no arbitrary Terminal.app/iTerm
+  takeover, and direct `adb` screenshot/UI/log/crash evidence.
 
 Before the release tag, rerun the deterministic local gate from a clean checkout:
 
