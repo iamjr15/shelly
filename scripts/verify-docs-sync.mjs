@@ -339,7 +339,7 @@ function verifyPlanDoc() {
     "**Local substitute note (2026-05-20)**",
     "preserves\nhost `CARGO_HOME`/`RUSTUP_HOME` while isolating Fieldwork's temp `HOME`",
     "explicitly named `FW_SUBSCRIBE_SESSION_READY` and `FW_RECONNECT_READY`",
-    "replayed missed output after a simulated iroh reconnect within 2 seconds (12ms",
+    "replayed missed output after a simulated iroh reconnect within 2 seconds (13ms",
     '"fieldworkd": "bin/fieldworkd"',
     '"README.md"',
     '"access": "public"',

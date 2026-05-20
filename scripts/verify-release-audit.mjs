@@ -396,7 +396,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "latest pass measured CLI max `4.18ms` and daemon max `47.59ms`",
+    "latest pass measured CLI max `4.18ms` and daemon max `46.41ms`",
     "release audit must record current desktop max performance evidence",
   );
   requireText(
@@ -1100,8 +1100,8 @@ function verifyLatestRefresh() {
   requireText(audit, "temp-volume exhaustion while unpacking Cargo registry\nfiles", "release audit must record the local temp-space retry reason");
   requireText(audit, "local handoff smoke preserved host\n`CARGO_HOME`/`RUSTUP_HOME`", "release audit must record local handoff cache preservation");
   requireText(audit, "named its subscription/reconnect sessions\nexplicitly under the daemon duplicate-name rule", "release audit must record duplicate-name-safe handoff smoke sessions");
-  requireText(audit, "`3.05ms`, p95 `4.10ms`, max `4.12ms`", "release audit must record latest CLI desktop performance values");
-  requireText(audit, "`39.73ms`, p95 `42.70ms`, max `43.84ms`", "release audit must record latest daemon desktop performance values");
+  requireText(audit, "`3.46ms`, p95 `4.09ms`, max `4.18ms`", "release audit must record latest CLI desktop performance values");
+  requireText(audit, "`40.59ms`, p95 `44.88ms`, max `46.41ms`", "release audit must record latest daemon desktop performance values");
   requireText(audit, "npm binary readiness passed\nwith staged artifacts", "release audit must record staged npm binary readiness");
   requireText(audit, "Cross-target desktop release builds passed on 2026-05-20", "release audit must record the latest cross-target desktop release build date");
   requireText(audit, "Mach-O arm64/x86_64 and ELF x86-64/aarch64 binaries", "release audit must record cross-target binary format verification");
@@ -1116,9 +1116,9 @@ function verifyLatestRefresh() {
   requireText(audit, "rejected repository npm token strings and\n`.npmrc` files", "release audit must record npm token and .npmrc secret-boundary coverage");
   requireText(audit, "npm auth-token patterns", "release audit must record artifact npm auth-token pattern scanning");
   requireText(audit, "scanned 32 non-relay artifacts", "release audit must record the staged npm platform and Android secret-boundary artifact scan");
-  requireText(audit, "latest\n`pnpm check:secret-boundaries` scan covered 24 retained non-relay artifacts and\nstill passed", "release audit must record the current post-cleanup secret-boundary scan");
+  requireText(audit, "latest\n`pnpm check:secret-boundaries` scan covered 40 retained non-relay artifacts and\nstill passed", "release audit must record the current post-cleanup secret-boundary scan");
   requireText(audit, "verifier now streams artifact scans instead of materializing\nlarge native binaries as one string", "release audit must record streaming artifact secret-boundary scans");
-  requireText(plan, "latest local `pnpm check:secret-boundaries` run scanned 24 retained non-relay artifacts and still passed", "PLAN.md must record the current post-cleanup secret-boundary scan");
+  requireText(plan, "latest local `pnpm check:secret-boundaries` run scanned 40 retained non-relay artifacts and still passed", "PLAN.md must record the current post-cleanup secret-boundary scan");
   requireText(plan, "verifier now streams artifact scans instead of materializing large native binaries as one string", "PLAN.md must record streaming artifact secret-boundary scans");
   requireText(plan, "missing-token publish rejection before `npm` is invoked", "PLAN.md must record the npm publish missing-token guard in implementation notes");
   requireText(plan, "has a Terraform Validate job that installs Terraform 1.5.7 and runs the shared cleanup-on-exit Terraform fmt/init/validate script against the Oracle scaffold", "PLAN.md must record the CI Terraform validation job");
@@ -1316,11 +1316,11 @@ function verifyLatestRefresh() {
   requireText(audit, "clearing\n  reproducible debug/mobile Rust build output to recover disk space", "release audit must record local handoff disk-space recovery");
   requireText(audit, "removing the regenerated repo-local `target/debug` after the run", "release audit must record local handoff target/debug cleanup");
   requireText(audit, "`IosApp` and `AndroidApp`", "release audit must record both mobile client kinds in capability verification");
-  requirePattern(audit, /paired in\s+3 seconds/, "release audit must record the latest local handoff pair duration");
-  requireText(audit, "12ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
-  requireText(audit, "`cargo nextest run --workspace`: 157 tests passed.", "release audit must record the current workspace nextest count");
-  requireText(audit, "`cargo test --workspace`: 157 unit/integration tests passed, plus doctests.", "release audit must record the current workspace cargo test count");
-  requireText(audit, "`cargo test -p fieldwork-daemon`: 68 daemon tests passed", "release audit must record the current daemon test count");
+  requirePattern(audit, /paired in\s+2 seconds/, "release audit must record the latest local handoff pair duration");
+  requireText(audit, "13ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
+  requireText(audit, "`cargo nextest run --workspace`: 170 tests passed.", "release audit must record the current workspace nextest count");
+  requireText(audit, "`cargo test --workspace --doc`: workspace doctest harnesses passed", "release audit must record the current workspace doctest result");
+  requireText(audit, "`cargo nextest run -p fieldwork-daemon`: 73 daemon tests passed", "release audit must record the current daemon test count");
   requireText(audit, "`cargo deny check`: exited successfully with `advisories ok, bans ok,\n  licenses ok, sources ok`", "release audit must record the current cargo-deny category result");
   requireText(audit, "duplicate-crate findings were warnings only", "release audit must distinguish cargo-deny duplicate warnings from deny failures");
   requireText(audit, "`cargo audit`: exited successfully with allowed warnings only (`adler`,\n  `bincode`, `paste`, `lru`)", "release audit must record the current cargo-audit warning set");
