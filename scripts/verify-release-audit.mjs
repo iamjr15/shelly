@@ -1066,6 +1066,8 @@ function verifyLatestRefresh() {
   requireText(audit, "scripts/verify-security-model.mjs", "release audit must cite the security model verifier");
   requireText(audit, "infra scaffold verifier passed", "release audit must record the focused infra scaffold verifier result");
   requireText(audit, "operations runbook's", "release audit must record operations runbook coverage");
+  requireText(audit, "operator-owned release-gate handoff", "release audit must record operations release-gate handoff coverage");
+  requireText(audit, "release-gate handoff steps", "release audit must record the infra verifier's handoff pins");
   requireText(audit, "relay prerequisites", "release audit must record operations prerequisite coverage");
   requireText(audit, "quarterly credential rotation steps", "release audit must record operations rotation coverage");
   requireText(audit, "token-deletion flow", "release audit must record operations token-deletion coverage");
