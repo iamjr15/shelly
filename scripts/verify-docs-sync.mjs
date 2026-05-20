@@ -231,6 +231,9 @@ function verifyArchitectureDoc() {
     "Production deployment serves this listener over Rustls",
     "Relay push requests are validated with strict Serde schemas and `garde`",
     "Desktop distribution is npm-only",
+    "The meta package exposes `fieldwork`, `fw`, and `fieldworkd` through npm",
+    "`fieldwork` and the short `fw` alias both point at the same CLI dispatcher in `bin/fieldwork`",
+    "the CLI dispatcher (`fieldwork`/`fw`) and daemon dispatcher fall back to the platform package",
     "`dist-workspace.toml` keeps cargo-dist in archive/audit mode only",
   ]) {
     requireText(docs.architecture, needle, `docs/ARCHITECTURE.md must document current architecture: ${needle}`);
