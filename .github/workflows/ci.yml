@@ -128,6 +128,7 @@ jobs:
       - run: node scripts/verify-no-ship-markers.mjs
       - run: node scripts/verify-no-ship-markers.mjs --self-test
       - run: node scripts/verify-release-audit.mjs
+      - run: node scripts/test-release-audit-list.mjs
       - run: node scripts/verify-release-workflows.mjs
       - run: node scripts/verify-relay-provider-clients.mjs
       - run: node scripts/verify-security-model.mjs

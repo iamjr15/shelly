@@ -179,6 +179,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "release-audit list-mode test coverage",
+    "release audit must record CI coverage for release-audit list mode",
+  );
+  requireText(
+    audit,
     "release-audit list-mode test",
     "release audit must record local release aggregate coverage for release-audit list mode",
   );
@@ -1832,6 +1837,7 @@ function verifyVerifierIsWired() {
   requireText(ci, "node scripts/verify-no-ship-markers.mjs --self-test", "CI must run the no-ship marker self-test");
   requireText(ci, "node scripts/verify-security-model.mjs", "CI must run the security model verifier");
   requireText(ci, "node scripts/verify-release-audit.mjs", "CI must run the release audit verifier");
+  requireText(ci, "node scripts/test-release-audit-list.mjs", "CI must run the release audit list-mode test");
   requireText(ci, "node --check scripts/check-local-release.mjs", "CI must syntax-check the local release aggregate verifier");
   requireText(
     ci,
