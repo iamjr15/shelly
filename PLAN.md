@@ -1453,7 +1453,7 @@ paired in 2 seconds, created default `claude`, `bash`, `vim`, and
 desktop-created subscribed `bash` sessions, observed the subscribed session from
 the simulated phone, sent mobile-originated input to `bash`, `claude`, and the
 subscribed session, replayed missed output after a simulated iroh reconnect within
-2 seconds (17ms in the latest local run), attached to the TUI session, verified no cross-session output
+2 seconds (32ms in the latest local run), attached to the TUI session, verified no cross-session output
 leakage, rejected mobile `CreateSession`/`KillSession`/`AgentStateEvent`, rejected a revoked device
 identity, and restored last-known sessions after daemon restart. The unchecked
 boxes above remain release gates because they require real phone QR scanning,
@@ -1672,7 +1672,7 @@ the runner workspace.
 
 **Implementation note refresh (2026-05-19)**: bincode serialization is centralized in `fieldwork-protocol` through shared `encode_bincode`/`decode_bincode` helpers. The workspace uses bincode 2 with its legacy configuration so v1 local IPC and persisted payload wrappers keep the original fixed-int/little-endian layout; focused protocol tests pin the simple `ListSessions` frame bytes and reject trailing bincode payload bytes. `fieldwork` and `fieldworkd` now call those protocol helpers instead of owning their own bincode dependency/configuration.
 
-**Reconnect smoke refresh (2026-05-19)**: the local handoff smoke now also creates a PTY that emits output while the simulated iroh phone is detached, reconnects with the previous `last_seen_seq`, and verifies that the missed output arrives through `Attached.initial_bytes` within the 2-second local threshold. The latest local run replayed `FW_RECONNECT_LINE_50` after a 17ms reconnect. Physical network-change timing remains a Section 13 release gate.
+**Reconnect smoke refresh (2026-05-19)**: the local handoff smoke now also creates a PTY that emits output while the simulated iroh phone is detached, reconnects with the previous `last_seen_seq`, and verifies that the missed output arrives through `Attached.initial_bytes` within the 2-second local threshold. The latest local run replayed `FW_RECONNECT_LINE_50` after a 32ms reconnect. Physical network-change timing remains a Section 13 release gate.
 
 **Daemon Sentry test note (2026-05-17)**: daemon Sentry initialization now builds explicit `ClientOptions` instead of passing an unchecked DSN string into `sentry::init`; invalid configured DSNs fail daemon logging initialization with context instead of panicking. The daemon test target enables Sentry's `test` feature only as a dev-dependency and verifies three local invariants: crash reporting requires explicit opt-in plus DSN, `send_default_pii=false` and `traces_sample_rate=0.0` remain set, and a Rust panic is captured through Sentry's local test transport. Hosted Sentry receipt from daemon/iOS/Android remains a Section 13 external gate until a real Sentry project/DSN and signed mobile builds are available.
 
