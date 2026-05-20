@@ -4,8 +4,16 @@ import path from "node:path";
 
 const root = path.resolve(new URL("..", import.meta.url).pathname);
 const failures = [];
-const listUnchecked = process.argv.includes("--list-unchecked");
+const args = process.argv.slice(2);
+const listUnchecked = args.includes("--list-unchecked");
 const classifiedUncheckedGates = [];
+
+for (const arg of args) {
+  if (arg !== "--list-unchecked") {
+    console.error(`unknown argument: ${arg}`);
+    process.exit(2);
+  }
+}
 
 const audit = read("docs/RELEASE_AUDIT.md");
 const plan = read("PLAN.md");

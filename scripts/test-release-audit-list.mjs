@@ -37,6 +37,18 @@ for (const expected of [
   }
 }
 
+const unknownFlag = spawnSync(process.execPath, ["scripts/verify-release-audit.mjs", "--list-uncheked"], {
+  cwd: root,
+  encoding: "utf8",
+});
+
+if (unknownFlag.status !== 2) {
+  failures.push(`release-audit unknown flag exited ${unknownFlag.status}, expected 2`);
+}
+if (!unknownFlag.stderr.includes("unknown argument: --list-uncheked")) {
+  failures.push("release-audit unknown flag did not print the expected error");
+}
+
 if (failures.length > 0) {
   console.error(failures.join("\n"));
   process.exit(1);
