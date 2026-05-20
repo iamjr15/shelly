@@ -951,12 +951,27 @@ fieldwork                          # meta-package (Node-side, tiny)
   "optionalDependencies": {
     "fieldwork-darwin-arm64": "1.0.0",
     "fieldwork-darwin-x64": "1.0.0",
-    "fieldwork-linux-x64": "1.0.0",
-    "fieldwork-linux-arm64": "1.0.0"
+    "fieldwork-linux-arm64": "1.0.0",
+    "fieldwork-linux-x64": "1.0.0"
   },
   "engines": { "node": ">=18" },
+  "files": [
+    "bin/fieldwork",
+    "bin/fieldworkd",
+    "install.js",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
   "license": "AGPL-3.0-or-later",
-  "repository": "github:fieldwork-app/fieldwork",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fieldwork-app/fieldwork.git",
+    "directory": "packages/cli"
+  },
   "keywords": ["terminal", "mobile", "pty", "tmux", "mosh", "claude-code", "codex", "coding-agent"],
   "preferUnplugged": true
 }
@@ -1011,6 +1026,7 @@ if (!fieldworkPath || !daemonPath) process.exit(0); // dispatcher fallback handl
 const binDir = path.join(__dirname, 'bin');
 
 try {
+  fs.mkdirSync(binDir, { recursive: true });
   fs.copyFileSync(fieldworkPath, path.join(binDir, 'fieldwork'));
   fs.copyFileSync(daemonPath, path.join(binDir, 'fieldworkd'));
   fs.chmodSync(path.join(binDir, 'fieldwork'), 0o755);
