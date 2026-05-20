@@ -937,6 +937,7 @@ function verifyExternalBlockers() {
 
   for (const externalStatus of [
     "full build blocked by Xcode/signing/device gates",
+    "paused `fw new` empty-state copy refresh",
     "provider delivery blocked",
     "publish blocked",
     "external secrets blocked",
