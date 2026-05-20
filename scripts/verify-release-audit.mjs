@@ -994,6 +994,16 @@ function verifyLatestRefresh() {
   );
   requireText(
     audit,
+    "meta-package README contract checks in `scripts/verify-npm-packages.mjs`",
+    "release audit must record the npm package-page README guard",
+  );
+  requireText(
+    audit,
+    "package-page install/use commands, mobile capability boundary, four v1 platform package names, dispatcher fallback, WSL2 host scope, encrypted local persistence, push-payload privacy copy",
+    "release audit must record the npm package-page README contract scope",
+  );
+  requireText(
+    audit,
     "real staged desktop binary readiness without committing generated native package artifacts",
     "release audit must distinguish staged package binaries from committed source",
   );
@@ -1002,6 +1012,8 @@ function verifyLatestRefresh() {
   requireText(audit, "no further npm\n  name-availability checks are needed for it", "release audit must avoid treating the owned npm name as an availability task");
   requireText(audit, "Live `verify-npm-registry-state` use is reserved for post-placeholder and\npost-release registry-state/provenance verification", "release audit must reserve live npm registry checks for release-state verification");
   requireText(audit, "Bare registry-state invocations now fail closed unless an explicit\nrelease-state expectation flag is provided", "release audit must record bare npm registry-state fail-closed behavior");
+  requireText(audit, "The npm meta-package README is now guarded as a package-page contract", "release audit must record npm README package-page contract");
+  requireText(audit, "rejects placeholder availability-check copy", "release audit must record npm README placeholder-copy guard");
   requireText(audit, "fail-before-network bare registry invocation", "release audit must record bare npm registry-state no-network guard");
   requireText(audit, "missing-token publish rejection before npm is invoked", "release audit must record missing-token npm publish rejection before npm invocation");
   requireText(audit, "early `NPM_TOKEN` preflight before npm artifact download", "release audit must record release-npm token preflight before artifact download");

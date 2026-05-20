@@ -11,6 +11,7 @@ const gitignore = fs.readFileSync(path.join(root, ".gitignore"), "utf8");
 const workspaceConfig = fs.readFileSync(path.join(root, "pnpm-workspace.yaml"), "utf8");
 const rootLicense = fs.readFileSync(path.join(root, "LICENSE"), "utf8");
 const rootNotice = fs.readFileSync(path.join(root, "NOTICE"), "utf8");
+const metaReadme = fs.readFileSync(path.join(root, "packages/cli/README.md"), "utf8");
 const repositoryUrl = "git+https://github.com/fieldwork-app/fieldwork.git";
 const platforms = [
   { key: "darwin-arm64", os: "darwin", cpu: "arm64" },
@@ -56,6 +57,7 @@ for (const required of [
 assert(meta.name === "fieldwork", "meta package name must be fieldwork");
 assert(meta.version === "1.0.0", "meta package version must be 1.0.0 for v1 release artifacts");
 assertNpmLegalMetadata(meta, "packages/cli/package.json", "packages/cli");
+assertMetaReadme();
 assert(meta.bin?.fieldwork === "bin/fieldwork", "meta package must expose bin/fieldwork");
 assert(meta.bin?.fieldworkd === "bin/fieldworkd", "meta package must expose bin/fieldworkd");
 assert(meta.scripts?.postinstall === "node install.js", "meta package must run install.js postinstall");
@@ -156,4 +158,36 @@ function assertNoTrackedGeneratedNativeBins() {
     tracked.length === 0,
     `generated platform package binaries must not be tracked: ${tracked.join(", ")}`,
   );
+}
+
+function assertMetaReadme() {
+  const normalizedReadme = metaReadme.replace(/\s+/g, " ");
+  const requiredText = [
+    "Your terminal sessions, from anywhere.",
+    "npm i -g fieldwork",
+    "The unscoped `fieldwork` package is the v1 desktop install and update path.",
+    "`fieldwork`: the user-facing CLI",
+    "`fieldworkd`: the local daemon that owns PTYs, pairing, replay, and transport",
+    "fieldwork daemon install",
+    "fieldwork pair",
+    "fieldwork new bash",
+    "fieldwork attach <session-id>",
+    "Mobile clients can pair, list sessions, attach, send input, resize, detach, and register push tokens.",
+    "Mobile clients cannot create or kill sessions.",
+    "fieldwork-darwin-arm64",
+    "fieldwork-darwin-x64",
+    "fieldwork-linux-arm64",
+    "fieldwork-linux-x64",
+    "postinstall scripts",
+    "shipped dispatchers still run the matching platform binaries",
+    "WSL2",
+    "Local persistence is encrypted by default with an OS-keychain-held key",
+    "do not include terminal content, commands, paths, or session names",
+  ];
+  for (const needle of requiredText) {
+    assert(normalizedReadme.includes(needle), `packages/cli/README.md must document npm package behavior: ${needle}`);
+  }
+  for (const forbiddenText of ["Temporary npm publish availability check", "availability check"]) {
+    assert(!metaReadme.includes(forbiddenText), `packages/cli/README.md must not contain placeholder text: ${forbiddenText}`);
+  }
 }
