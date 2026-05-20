@@ -13,6 +13,7 @@ const docs = {
   architecture: read("docs/ARCHITECTURE.md"),
   install: read("docs/INSTALL.md"),
   androidRenderer: read("docs/ANDROID_RENDERER.md"),
+  liveTesting: read("docs/LIVE_TESTING.md"),
 };
 
 verifyRequiredDocsExist();
@@ -22,6 +23,7 @@ verifyPrivacyDoc();
 verifyArchitectureDoc();
 verifyInstallDoc();
 verifyAndroidRendererDoc();
+verifyLiveTestingDoc();
 verifyPlanDoc();
 
 if (failures.length > 0) {
@@ -41,6 +43,7 @@ function verifyRequiredDocsExist() {
     "docs/ARCHITECTURE.md",
     "docs/INSTALL.md",
     "docs/ANDROID_RENDERER.md",
+    "docs/LIVE_TESTING.md",
     "docs/RELEASE_AUDIT.md",
   ]) {
     const fullPath = path.join(root, rel);
@@ -90,6 +93,7 @@ function verifyReadme() {
     "operator-requested refresh",
     "operator-facing release-gate handoff",
     "operator-owned reservations for domain, GitHub, social, cloud, provider, and launch-calendar work",
+    "docs/LIVE_TESTING.md",
     "target/debug/fieldwork new bash",
     "Pair tokens are 32 random bytes, base32 encoded, single-use, and expire after 10 minutes",
     "separate encrypted `devices.redb`, with hashed row keys",
@@ -103,6 +107,38 @@ function verifyReadme() {
     "real APNs/FCM provider delivery requires relay-only Apple/Firebase credentials",
   ]) {
     requireText(docs.readme, needle, `README.md must document current v1 behavior: ${needle}`);
+  }
+}
+
+function verifyLiveTestingDoc() {
+  for (const needle of [
+    "first operator-assisted live test round",
+    "Android physical-device terminal handoff only",
+    "same daemon-owned PTY session",
+    "not screen mirroring",
+    "does not\n  take over arbitrary already-open Terminal.app or iTerm tabs",
+    "Do not include iOS, npm publish, store submission, production relay deploy, APNs\nor FCM provider delivery",
+    "USB debugging is not an\n  end-user requirement",
+    "enable it for this QA run only when capturing direct\n  `adb` evidence",
+    "can be exercised without USB debugging",
+    "equivalent bug report, screen recording, logs, and crash data",
+    "No debug biometric bypass and no debug pairing payload",
+    "apps/android/gradlew --no-daemon :app:assembleDebug",
+    "adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk",
+    "target/release/fieldwork new bash",
+    "target/release/fieldwork new -- claude",
+    "target/release/fieldwork new -- vim",
+    "target/release/fieldwork pair",
+    "adb exec-out screencap -p",
+    "adb shell uiautomator dump",
+    "adb logcat -d -b crash",
+    "echo android_live_ok",
+    "Background the app while a PTY emits output",
+    "Toggle Wi-Fi or airplane mode",
+    "Mobile never creates or kills sessions and never chooses commands",
+    "Do not check provider-push, signing, publish, store-console, iOS, domain, or\noperator-reservation boxes",
+  ]) {
+    requireText(docs.liveTesting, needle, `docs/LIVE_TESTING.md must document first live test behavior: ${needle}`);
   }
 }
 

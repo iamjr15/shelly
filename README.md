@@ -37,6 +37,7 @@ The `fieldwork.dev` site source lives in `site/` as a static Astro project. It c
 
 The current v1 prompt-to-artifact checklist and remaining external release gates are tracked in [`docs/RELEASE_AUDIT.md`](docs/RELEASE_AUDIT.md), while `PLAN.md` remains the completion-checkbox source of truth. The product security model is in [`docs/SECURITY.md`](docs/SECURITY.md); vulnerability reporting stays in the root [`SECURITY.md`](SECURITY.md).
 The operator-facing release-gate handoff lives in [`docs/OPERATIONS.md`](docs/OPERATIONS.md), including operator-owned reservations for domain, GitHub, social, cloud, provider, and launch-calendar work.
+The first operator-assisted Android physical-device handoff pass is defined in [`docs/LIVE_TESTING.md`](docs/LIVE_TESTING.md).
 
 ## Current Local Flow
 
