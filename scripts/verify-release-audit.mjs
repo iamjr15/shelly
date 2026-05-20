@@ -430,13 +430,13 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "latest raw adb emulator QA refresh installed the default debug APK",
-    "release audit must record the latest raw adb emulator QA refresh",
+    "A 2026-05-19 raw adb emulator QA refresh installed the default debug APK",
+    "release audit must record the 2026-05-19 raw adb emulator QA refresh",
   );
   requireText(
     audit,
     "`Status: ok` and `TotalTime=5297ms`",
-    "release audit must record latest raw adb launch status and timing",
+    "release audit must record the 2026-05-19 raw adb launch status and timing",
   );
   for (const evidence of [
     "`/tmp/fieldwork-adb-direct-20260519225027/default.png`",
@@ -463,7 +463,7 @@ function verifyPromptToArtifactChecklist() {
     "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-locked.png`",
     "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-ui.xml`",
   ]) {
-    requireText(audit, evidence, `release audit latest raw adb QA evidence must include ${evidence}`);
+    requireText(audit, evidence, `release audit 2026-05-19 raw adb QA evidence must include ${evidence}`);
   }
   requireText(
     audit,
@@ -1188,8 +1188,8 @@ function verifyLatestRefresh() {
   requireText(audit, "packaged manifest privacy surface", "release audit must record Android AAB packaged manifest privacy verification");
   requireText(audit, "Firebase/Sentry opt-out metadata", "release audit must record packaged manifest opt-out metadata verification");
   requireText(plan, "focused Android JVM tests now verify locked terminal input is refused before it reaches mobile-core plus latest-`lastSeenSeq` `Lag` and attached-stream-error reattach", "PLAN.md must record focused Android locked-input and lag/stream-error reattach coverage");
-  requireText(plan, "latest direct adb emulator QA refresh installed the default debug APK", "PLAN.md must record the latest direct adb emulator QA refresh");
-  requireText(plan, "`Status: ok` and `TotalTime=5297ms`", "PLAN.md must record the latest raw adb launch status and timing");
+  requireText(plan, "A 2026-05-19 direct adb emulator QA refresh installed the default debug APK", "PLAN.md must record the 2026-05-19 direct adb emulator QA refresh");
+  requireText(plan, "`Status: ok` and `TotalTime=5297ms`", "PLAN.md must record the 2026-05-19 raw adb launch status and timing");
   for (const evidence of [
     "`/tmp/fieldwork-adb-direct-20260519225027/default.png`",
     "`/tmp/fieldwork-adb-direct-20260519225027/default-ui.xml`",
@@ -1213,7 +1213,7 @@ function verifyLatestRefresh() {
     "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-locked.png`",
     "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-ui.xml`",
   ]) {
-    requireText(plan, evidence, `PLAN.md latest raw adb QA evidence must include ${evidence}`);
+    requireText(plan, evidence, `PLAN.md 2026-05-19 raw adb QA evidence must include ${evidence}`);
   }
   requireText(plan, "empty `FIELDWORK_DEBUG_PAIRING_PAYLOAD`", "PLAN.md must record restored empty Android debug pairing payload");
   for (const evidence of [

@@ -356,7 +356,7 @@ function verifyDevelopmentDoc(text) {
     "`/tmp/fieldwork-adb-launch.png`",
     "`/tmp/fieldwork-adb-ui.xml`",
     "empty Fieldwork crash buffer",
-    "latest raw adb emulator QA refresh on 2026-05-19",
+    "A 2026-05-19 raw adb emulator QA refresh",
     "`TotalTime=5297ms`",
     "`/tmp/fieldwork-adb-direct-20260519225027/default.png`",
     "`/tmp/fieldwork-adb-direct-20260519225027/default-ui.xml`",

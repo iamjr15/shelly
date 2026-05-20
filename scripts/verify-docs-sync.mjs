@@ -240,7 +240,7 @@ function verifyPlanDoc() {
     "node scripts/check-github-namespace.mjs --operator-refresh --expect-available",
     "fieldwork-app/fieldwork",
     "not the older planned `codex app-server daemon --remote-control` form",
-    "latest direct adb emulator QA refresh installed the default debug APK",
+    "A 2026-05-19 direct adb emulator QA refresh installed the default debug APK",
     "`TotalTime=5297ms`",
     "`pair_flow_ms=1043`",
     "`TotalTime=5105ms`",

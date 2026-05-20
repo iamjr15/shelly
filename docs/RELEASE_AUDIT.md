@@ -570,7 +570,7 @@ The raw adb locked-launch refresh installed the default debug APK, launched
 and an empty crash buffer, and verified the locked `Unlock` surface. This is a
 debug emulator smoke result only; physical release-device cold-start evidence is
 still required for the Section 13 threshold.
-The latest raw adb emulator QA refresh installed the default debug APK, launched
+A 2026-05-19 raw adb emulator QA refresh installed the default debug APK, launched
 with `Status: ok` and `TotalTime=5297ms`, captured
 `/tmp/fieldwork-adb-direct-20260519225027/default.png`,
 `/tmp/fieldwork-adb-direct-20260519225027/default-ui.xml`,
