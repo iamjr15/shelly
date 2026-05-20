@@ -69,12 +69,25 @@ Use a clean terminal so the captured command output is easy to audit:
 
 ```sh
 target/release/fieldwork daemon start
+target/release/fieldwork
+target/release/fieldwork refactoringjob
+target/release/fieldwork new --name shell bash
+target/release/fieldwork new --name editor -- vim
 target/release/fieldwork new bash
 target/release/fieldwork new -- claude
 target/release/fieldwork new -- vim
 target/release/fieldwork ls
 target/release/fieldwork pair
 ```
+
+The bare `target/release/fieldwork` command must create and attach a default
+`claude` session with a generated one-word name such as `waffle` or `kazoo`.
+Press `Ctrl-B` then `D` to detach after confirming the generated name. The
+`target/release/fieldwork refactoringjob` command must create or attach that
+named default `claude` session. Confirm both the generated name and
+`refactoringjob` appear as active sessions in the Android dashboard after
+pairing; the phone should still only list and attach, never create or choose
+commands.
 
 Approve the pairing only after the phone scans the QR payload and the CLI asks
 for explicit confirmation.
@@ -119,7 +132,9 @@ target/release/fieldwork ls > "$FW_LIVE_DIR/sessions.txt"
    content.
 2. Biometric unlock is required before session list or terminal input.
 3. QR pairing completes through explicit desktop approval.
-4. Android dashboard lists desktop-created `bash`, `claude`, and TUI sessions.
+4. Android dashboard lists the auto-named default `claude` session, the
+   `refactoringjob` named shortcut session, and desktop-created `bash`,
+   `claude`, and TUI sessions.
 5. Attach to `bash`, type `echo android_live_ok`, and verify the output appears.
 6. Attach to `claude`, send a harmless line, and verify input/output does not
    affect the other sessions.

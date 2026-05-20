@@ -227,6 +227,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "bare `fieldwork` auto-named default `claude` shortcut",
+    "release audit must record live-test coverage for the bare fieldwork shortcut",
+  );
+  requireText(
+    audit,
+    "`fieldwork refactoringjob` named shortcut appearing in the Android dashboard",
+    "release audit must record live-test coverage for named shortcut dashboard visibility",
+  );
+  requireText(
+    audit,
     "docs/ANDROID_RENDERER.md`, `docs/LIVE_TESTING.md`, and `docs/RELEASE_AUDIT.md`",
     "release audit docs-sync row must include Android renderer and live-testing docs",
   );
@@ -801,10 +811,17 @@ function verifyLiveTestingRunbook() {
     "direct `adb`: screenshots, UI dumps, app logcat,\n  crash buffers, and command output",
     "apps/android/gradlew --no-daemon :app:assembleDebug",
     "adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk",
+    "target/release/fieldwork\n",
+    "target/release/fieldwork refactoringjob",
+    "target/release/fieldwork new --name shell bash",
+    "target/release/fieldwork new --name editor -- vim",
     "target/release/fieldwork new bash",
     "target/release/fieldwork new -- claude",
     "target/release/fieldwork new -- vim",
     "target/release/fieldwork pair",
+    "generated one-word name such as `waffle` or `kazoo`",
+    "`refactoringjob` appear as active sessions in the Android dashboard",
+    "auto-named default `claude` session",
     "Mobile never creates or kills sessions and never chooses commands",
     "Do not check provider-push, signing, publish, store-console, iOS, domain, or\noperator-reservation boxes",
   ]) {
