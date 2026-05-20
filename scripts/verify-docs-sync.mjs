@@ -86,6 +86,7 @@ function verifyReadme() {
     "Desktop distribution is npm-only for v1",
     "Homebrew, `curl | sh`, `cargo install`, and self-update are intentionally out of scope",
     "docs/RELEASE_AUDIT.md",
+    "`PLAN.md` remains the completion-checkbox source of truth",
     "operator-requested refresh",
     "operator-facing release-gate handoff",
     "operator-owned reservations for domain, GitHub, social, cloud, provider, and launch-calendar work",

@@ -486,7 +486,8 @@ workspace, shared package metadata, required `fieldwork`/`fieldworkd`/
 docs-sync verifier passed, pinning the named v1 docs to the current install,
 protocol, privacy, architecture, iOS blocker, mobile-boundary, npm-only
 distribution, and deferred-scope facts, including the README pointer to the
-operator-facing release-gate handoff. The development doc verifier passed, pinning `docs/DEVELOPMENT.md` to the 15-minute source-build path, common checks, focused protocol/PTY/mobile-core tests, local handoff smoke, desktop release/performance commands, website checks, UniFFI bindgen, iOS/Android development flows, mobile privacy/telemetry facts, daemon logs, and user-service lifecycle. The community scaffold verifier passed,
+operator-facing release-gate handoff and `PLAN.md` completion-checkbox source
+of truth. The development doc verifier passed, pinning `docs/DEVELOPMENT.md` to the 15-minute source-build path, common checks, focused protocol/PTY/mobile-core tests, local handoff smoke, desktop release/performance commands, website checks, UniFFI bindgen, iOS/Android development flows, mobile privacy/telemetry facts, daemon logs, and user-service lifecycle. The community scaffold verifier passed,
 pinning the PR/issue templates, root OSS/security docs, and pre-commit hooks to
 the v1 privacy, security, verification, and external-gate contract. The security model verifier passed, pinning `docs/SECURITY.md` to the v1 trust zones, local IPC hardening, pairing/device auth, encrypted local storage, raw-byte terminal privacy, relay push controls, mobile biometric gates, remaining external gates, and CI wiring. The infra scaffold verifier passed, including focused coverage for the operations runbook's
 operator-owned release-gate handoff, `PLAN.md` checkbox source of truth for

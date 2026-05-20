@@ -1065,6 +1065,7 @@ function verifyLatestRefresh() {
   requireText(audit, "docs-sync verifier passed", "release audit must record the focused docs-sync verifier result");
   requireText(audit, "named v1 docs", "release audit must record named docs synchronization coverage");
   requireText(audit, "README pointer to the\noperator-facing release-gate handoff", "release audit must record README operator-handoff pointer coverage");
+  requireText(audit, "`PLAN.md` completion-checkbox source\nof truth", "release audit must record README PLAN.md completion-checkbox source coverage");
   requireText(audit, "development doc verifier passed", "release audit must record the focused development doc verifier result");
   requireText(audit, "15-minute source-build path", "release audit must record development source-build coverage");
   requireText(audit, "focused protocol/PTY/mobile-core tests", "release audit must record development focused-test coverage");
