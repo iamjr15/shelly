@@ -38,6 +38,7 @@ const checks = [
   ["no-ship marker scan", node, ["scripts/verify-no-ship-markers.mjs"]],
   ["no-ship marker self-test", node, ["scripts/verify-no-ship-markers.mjs", "--self-test"]],
   ["release audit", node, ["scripts/verify-release-audit.mjs"]],
+  ["release audit list mode", node, ["scripts/test-release-audit-list.mjs"]],
   [
     "workflow YAML syntax",
     ruby,
