@@ -73,6 +73,67 @@ Only check the external boxes in `PLAN.md` after the matching hosted account,
 provider, signed-artifact, physical-device, or operator-reservation evidence
 exists, and keep `docs/RELEASE_AUDIT.md` synchronized with the evidence.
 
+## npm Ownership Bootstrap
+
+The unscoped `fieldwork` meta package is already operator-owned. Do not run
+availability checks for it, and do not manually overwrite it outside the release
+workflow except for an explicit operator recovery.
+
+The remaining npm ownership step is the four platform child packages:
+
+- `fieldwork-darwin-arm64`
+- `fieldwork-darwin-x64`
+- `fieldwork-linux-arm64`
+- `fieldwork-linux-x64`
+
+If those names are not already controlled by the operator account, reserve them
+with harmless `0.0.0` placeholder publishes from an operator shell that is
+logged into npm. Do not paste npm tokens into chat, do not commit `.npmrc`, and
+do not store publish tokens in this repository.
+
+```sh
+for name in \
+  fieldwork-darwin-arm64 \
+  fieldwork-darwin-x64 \
+  fieldwork-linux-arm64 \
+  fieldwork-linux-x64
+do
+  dir="$(mktemp -d)"
+  printf '%s\n' \
+    '{' \
+    "  \"name\": \"$name\"," \
+    '  "version": "0.0.0",' \
+    '  "description": "Reserved Fieldwork platform package. Real binaries start at 1.0.0.",' \
+    '  "license": "AGPL-3.0-or-later",' \
+    '  "publishConfig": { "access": "public" }' \
+    '}' > "$dir/package.json"
+  printf '# %s\n\nReserved Fieldwork platform package. Real binaries start at 1.0.0.\n' "$name" > "$dir/README.md"
+  npm publish "$dir" --access public
+  rm -rf "$dir"
+done
+```
+
+After placeholder publishes, verify the public registry state:
+
+```sh
+node scripts/verify-npm-registry-state.mjs \
+  --expect-meta-published \
+  --expect-platform-published
+```
+
+For the actual v1 release, publish only through `release-npm.yml` from a clean
+tagged GitHub release. Store the release-scoped npm token as the GitHub
+`NPM_TOKEN` secret, let the workflow publish the four platform packages first
+and the `fieldwork` meta package last with provenance, then verify:
+
+```sh
+node scripts/verify-npm-registry-state.mjs \
+  --expect-meta-published \
+  --expect-platform-published \
+  --expect-latest-version=1.0.0 \
+  --expect-provenance
+```
+
 ## Relay Deploy
 
 Provision each Oracle region with the credential-free Terraform scaffold first:

@@ -14,6 +14,7 @@ const docs = {
   install: read("docs/INSTALL.md"),
   androidRenderer: read("docs/ANDROID_RENDERER.md"),
   liveTesting: read("docs/LIVE_TESTING.md"),
+  operations: read("docs/OPERATIONS.md"),
 };
 
 verifyRequiredDocsExist();
@@ -24,6 +25,7 @@ verifyArchitectureDoc();
 verifyInstallDoc();
 verifyAndroidRendererDoc();
 verifyLiveTestingDoc();
+verifyOperationsDoc();
 verifyPlanDoc();
 
 if (failures.length > 0) {
@@ -44,6 +46,7 @@ function verifyRequiredDocsExist() {
     "docs/INSTALL.md",
     "docs/ANDROID_RENDERER.md",
     "docs/LIVE_TESTING.md",
+    "docs/OPERATIONS.md",
     "docs/RELEASE_AUDIT.md",
   ]) {
     const fullPath = path.join(root, rel);
@@ -80,6 +83,31 @@ function verifyAndroidRendererDoc() {
       needle,
       `docs/ANDROID_RENDERER.md must document current renderer evidence: ${needle}`,
     );
+  }
+}
+
+function verifyOperationsDoc() {
+  for (const needle of [
+    "npm Ownership Bootstrap",
+    "The unscoped `fieldwork` meta package is already operator-owned",
+    "Do not run\navailability checks for it",
+    "Do not paste npm tokens into chat",
+    "do not commit `.npmrc`",
+    "`fieldwork-darwin-arm64`",
+    "`fieldwork-darwin-x64`",
+    "`fieldwork-linux-arm64`",
+    "`fieldwork-linux-x64`",
+    "Reserved Fieldwork platform package. Real binaries start at 1.0.0.",
+    "node scripts/verify-npm-registry-state.mjs",
+    "--expect-meta-published",
+    "--expect-platform-published",
+    "--expect-latest-version=1.0.0",
+    "--expect-provenance",
+    "publish only through `release-npm.yml`",
+    "`NPM_TOKEN` secret",
+    "four platform packages first\nand the `fieldwork` meta package last with provenance",
+  ]) {
+    requireText(docs.operations, needle, `docs/OPERATIONS.md must document npm ownership handoff: ${needle}`);
   }
 }
 
