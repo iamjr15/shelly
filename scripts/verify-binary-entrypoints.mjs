@@ -7,20 +7,37 @@ import process from "node:process";
 const root = path.resolve(new URL("..", import.meta.url).pathname);
 const releaseDir = path.join(root, "target", "release");
 const version = workspaceVersion();
+const args = new Set(process.argv.slice(2));
+
+for (const arg of args) {
+  if (arg !== "--staged-host") {
+    fail(`unknown argument: ${arg}`);
+  }
+}
 
 const binaries = [
   {
     name: "fieldworkd",
+    path: path.join(releaseDir, "fieldworkd"),
     description: "Fieldwork host daemon.",
   },
   {
     name: "fieldwork-relay",
+    path: path.join(releaseDir, "fieldwork-relay"),
     description: "Fieldwork relay and push gateway.",
   },
 ];
 
+if (args.has("--staged-host")) {
+  binaries.push({
+    name: "fieldworkd",
+    path: path.join(root, "packages", `cli-${hostPlatformKey()}`, "bin", "fieldworkd"),
+    description: "Fieldwork host daemon.",
+  });
+}
+
 for (const binary of binaries) {
-  const binaryPath = path.join(releaseDir, binary.name);
+  const binaryPath = binary.path;
   if (!fs.existsSync(binaryPath)) {
     fail(`${binary.name} is missing at ${binaryPath}; run cargo build --release -p ${packageFor(binary.name)}`);
   }
@@ -66,6 +83,22 @@ function run(command, args) {
 
 function packageFor(name) {
   return name === "fieldwork-relay" ? "fieldwork-relay" : "fieldwork-daemon";
+}
+
+function hostPlatformKey() {
+  const os = {
+    darwin: "darwin",
+    linux: "linux",
+  }[process.platform];
+  const arch = {
+    arm64: "arm64",
+    x64: "x64",
+  }[process.arch];
+
+  if (!os || !arch) {
+    fail(`unsupported host platform for staged package entrypoint verification: ${process.platform}/${process.arch}`);
+  }
+  return `${os}-${arch}`;
 }
 
 function workspaceVersion() {

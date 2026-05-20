@@ -69,6 +69,7 @@ const checks = [
 const artifactChecks = [
   ["Android AAB artifact", node, ["scripts/verify-android-aab.mjs", "--expect-unsigned"]],
   ["staged npm package binaries", node, ["scripts/verify-npm-packages.mjs", "--require-binaries"]],
+  ["staged host binary entrypoints", node, ["scripts/verify-binary-entrypoints.mjs", "--staged-host"]],
   ["npm publish readiness", node, ["scripts/publish-npm-packages.mjs", "--check-ready"]],
   ["npm meta dry-run pack", npm, ["pack", "./packages/cli", "--dry-run", "--json"], { env: cleanNpmEnv() }],
 ];
