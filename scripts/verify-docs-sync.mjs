@@ -76,7 +76,8 @@ function verifyAndroidRendererDoc() {
     "`visible_ms=3318`",
     "8440/14400 flood screenshot nonblack samples",
     "no Fieldwork crash log entries",
-    "30-minute physical Android device dogfood remains blocked",
+    "30-minute physical Android device dogfood is a counted unchecked\n  `PLAN.md` release gate before Play internal distribution",
+    "lack of an attached Android test device",
   ]) {
     requireText(
       docs.androidRenderer,
