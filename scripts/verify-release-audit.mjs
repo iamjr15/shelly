@@ -1465,6 +1465,7 @@ function verifyLatestRefresh() {
     "`FieldworkRepository: listSessions returned 3 sessions`",
     "`/tmp/fieldwork-fw-direct-pair-20260520152507/dashboard-crash.log`",
   ]) {
+    requireText(plan, evidence, `PLAN.md direct fw shim adb evidence must include ${evidence}`);
     requireText(audit, evidence, `release audit direct fw shim adb evidence must include ${evidence}`);
   }
   for (const evidence of [
