@@ -66,6 +66,7 @@ function verifyDevelopmentDoc(text) {
   requireText(text, "RUSTSEC-2026-0002", "docs/DEVELOPMENT.md must document the current lru RustSec advisory");
   requireText(text, "cargo update -p lru@0.12.5 --dry-run", "docs/DEVELOPMENT.md must document the lru dry-run update check");
   requireText(text, "does not use `lru::IterMut` directly", "docs/DEVELOPMENT.md must document direct lru IterMut non-use");
+  requireText(text, "rejects direct `lru` dependencies plus `lru::` source paths", "docs/DEVELOPMENT.md must document direct lru source/dependency guard");
 
   for (const command of [
     "pnpm check:local-release",

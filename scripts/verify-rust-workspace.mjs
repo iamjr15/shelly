@@ -42,6 +42,7 @@ verifyPackage("crates/mobile-core/Cargo.toml", {
   requiredText: ['crate-type = ["lib", "cdylib", "staticlib"]'],
   bins: [{ name: "uniffi-bindgen", path: "uniffi-bindgen.rs" }],
 });
+verifyNoDirectLruUse();
 
 if (failures.length > 0) {
   console.error(failures.join("\n"));
@@ -115,6 +116,35 @@ function parseBins(text) {
     }
   }
   return bins;
+}
+
+function verifyNoDirectLruUse() {
+  for (const rel of ["Cargo.toml", ...expectedMembers.map((member) => `${member}/Cargo.toml`)]) {
+    const text = read(rel);
+    if (/^\s*lru\s*[.=]/m.test(text)) {
+      failures.push(`${rel} must not depend directly on lru while RUSTSEC-2026-0002 is allowed only as a transitive terminal-state dependency`);
+    }
+  }
+
+  for (const rel of rustFiles(path.join(root, "crates"))) {
+    const text = read(rel);
+    if (text.includes("lru::")) {
+      failures.push(`${rel} must not use lru:: directly while RUSTSEC-2026-0002 is allowed only as a transitive terminal-state dependency`);
+    }
+  }
+}
+
+function rustFiles(dir) {
+  const files = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...rustFiles(fullPath));
+    } else if (entry.isFile() && entry.name.endsWith(".rs")) {
+      files.push(path.relative(root, fullPath));
+    }
+  }
+  return files.sort();
 }
 
 function read(rel) {

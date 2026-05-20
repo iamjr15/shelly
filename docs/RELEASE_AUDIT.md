@@ -900,7 +900,10 @@ Observed results:
   `bincode`, `paste`, `lru`), as documented in `docs/DEVELOPMENT.md`.
   Follow-up dependency inspection confirmed `lru 0.12.5` is pulled only through
   `tattoy-wezterm-term`, `cargo update -p lru@0.12.5 --dry-run` found no
-  compatible lockfile move, and Fieldwork does not call `lru::IterMut` directly.
+  compatible lockfile move, Fieldwork does not call `lru::IterMut` directly, and
+  `scripts/verify-rust-workspace.mjs` rejects direct `lru` dependencies plus
+  `lru::` source paths while the advisory is allowlisted only as a transitive
+  terminal-state dependency.
 - Workflow YAML parsing passed locally and is enforced by the CI workflow-static
   job.
 - Npm package checks passed for metadata, OSS notices, secret boundaries,
