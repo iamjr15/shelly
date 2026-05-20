@@ -637,11 +637,12 @@ rebuilt/reinstalled afterward, `BuildConfig.java` again contained
 the locked `Unlock` surface.
 A 2026-05-20 direct locked-launch refresh on a freshly booted `Medium_Phone_API_36.1` emulator
 installed the default debug APK, launched with `Status: ok`,
-`LaunchState: COLD`, and `TotalTime=2226ms`, captured
-`/tmp/fieldwork-adb-direct-20260520014809/default-locked.png`,
-`/tmp/fieldwork-adb-direct-20260520014809/default-ui.xml`,
-`/tmp/fieldwork-adb-direct-20260520014809/default-logcat.log`, and an empty
-`/tmp/fieldwork-adb-direct-20260520014809/default-crash.log`, verified a
+`LaunchState: COLD`, and `TotalTime=1919ms`, captured
+`/tmp/fieldwork-adb-direct-20260520092447/default-locked.png`,
+`/tmp/fieldwork-adb-direct-20260520092447/default-ui.xml`,
+`/tmp/fieldwork-adb-direct-20260520092447/default-logcat.log`,
+`/tmp/fieldwork-adb-direct-20260520092447/default-app-pid-logcat.log`, and an
+empty `/tmp/fieldwork-adb-direct-20260520092447/default-crash.log`, verified a
 1080x2400 screenshot plus `text="Unlock"` in the UI dump, and found no Fieldwork `FATAL EXCEPTION` or ANR log entries.
 The generated UniFFI binding refresh passed after verifying the Android Kotlin
 binding exposes the v1 pair/list/subscribe/attach/input/resize/detach and

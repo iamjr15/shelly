@@ -1245,11 +1245,12 @@ function verifyLatestRefresh() {
   for (const evidence of [
     "direct locked-launch refresh on a freshly booted `Medium_Phone_API_36.1` emulator",
     "`LaunchState: COLD`",
-    "`TotalTime=2226ms`",
-    "`/tmp/fieldwork-adb-direct-20260520014809/default-locked.png`",
-    "`/tmp/fieldwork-adb-direct-20260520014809/default-ui.xml`",
-    "`/tmp/fieldwork-adb-direct-20260520014809/default-logcat.log`",
-    "`/tmp/fieldwork-adb-direct-20260520014809/default-crash.log`",
+    "`TotalTime=1919ms`",
+    "`/tmp/fieldwork-adb-direct-20260520092447/default-locked.png`",
+    "`/tmp/fieldwork-adb-direct-20260520092447/default-ui.xml`",
+    "`/tmp/fieldwork-adb-direct-20260520092447/default-logcat.log`",
+    "`/tmp/fieldwork-adb-direct-20260520092447/default-app-pid-logcat.log`",
+    "`/tmp/fieldwork-adb-direct-20260520092447/default-crash.log`",
     "1080x2400 screenshot plus `text=\"Unlock\"`",
     "no Fieldwork `FATAL EXCEPTION` or ANR log entries",
   ]) {
