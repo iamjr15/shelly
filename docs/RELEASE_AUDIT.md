@@ -491,7 +491,8 @@ of truth. The development doc verifier passed, pinning `docs/DEVELOPMENT.md` to 
 pinning the PR/issue templates, root OSS/security docs, and pre-commit hooks to
 the v1 privacy, security, verification, and external-gate contract. The security model verifier passed, pinning `docs/SECURITY.md` to the v1 trust zones, local IPC hardening, pairing/device auth, encrypted local storage, raw-byte terminal privacy, relay push controls, mobile biometric gates, remaining external gates, and CI wiring. The infra scaffold verifier passed, including focused coverage for the operations runbook's
 operator-owned release-gate handoff, `PLAN.md` checkbox source of truth for
-external gates, Appendix B operator reservations, relay prerequisites,
+external gates, operator-reservation evidence handling, Appendix B operator reservations,
+relay prerequisites,
 quarterly credential rotation steps, incident response procedure,
 token-deletion flow, local verification list, and committed
 Terraform OCI provider lockfile. A follow-up

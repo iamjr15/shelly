@@ -1094,6 +1094,7 @@ function verifyLatestRefresh() {
   requireText(audit, "operations runbook's", "release audit must record operations runbook coverage");
   requireText(audit, "operator-owned release-gate handoff", "release audit must record operations release-gate handoff coverage");
   requireText(audit, "`PLAN.md` checkbox source of truth for\nexternal gates", "release audit must record PLAN.md as the external-gate checkbox source of truth");
+  requireText(audit, "operator-reservation evidence handling", "release audit must record operations handling for operator-reservation evidence");
   requireText(audit, "Appendix B operator reservations", "release audit must record operations Appendix B reservation coverage");
   requireText(audit, "release-gate handoff steps", "release audit must record the infra verifier's handoff pins");
   requireText(audit, "relay prerequisites", "release audit must record operations prerequisite coverage");
