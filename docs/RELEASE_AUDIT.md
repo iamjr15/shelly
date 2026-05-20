@@ -190,7 +190,26 @@ outside this shell:
   `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, the restored default build launched in
   `TotalTime=1371ms`, and
   `/tmp/fieldwork-adb-direct-20260520001909/default-restore-locked.png`
-  verified the locked `Unlock` surface. A
+  verified the locked `Unlock` surface. A 2026-05-20 direct adb refresh
+  installed the default debug APK, launched the locked app with `Status: ok`,
+  `LaunchState: COLD`, and `TotalTime=2360ms`, captured
+  `/tmp/fieldwork-adb-direct-20260520100608/default-locked.png`,
+  `/tmp/fieldwork-adb-direct-20260520100608/default-ui.xml`,
+  `/tmp/fieldwork-adb-direct-20260520100608/default-logcat.log`, and an empty
+  `/tmp/fieldwork-adb-direct-20260520100608/default-crash.log`, then paired an
+  isolated release daemon through the debug-only biometric-bypass/pair-payload
+  APK in `/tmp/fieldwork-adb-direct-pair-20260520100742`. That run accepted the
+  runtime camera and notification prompts, paired through explicit desktop
+  approval, listed `bash · fieldwork` with `ANDROID_ADB_DIRECT_READY`, attached
+  the terminal, sent `android_adb_direct_ping` through `adb shell input text`,
+  and captured
+  `/tmp/fieldwork-adb-direct-pair-20260520100742/terminal-after-input.png`
+  showing `android-direct: android_adb_direct_ping`. `fieldwork devices` listed
+  `sdk_gphone64_arm64`, the terminal crash buffer was empty, and the debug APK
+  was rebuilt back to default with `FIELDWORK_BIOMETRIC_BYPASS = false`,
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, and the restored locked screen at
+  `/tmp/fieldwork-adb-direct-pair-20260520100742/default-restored-locked.png`.
+  A
   follow-up raw adb
   locked-launch baseline on 2026-05-19 installed the default debug APK, launched
   `app.fieldwork.android/.MainActivity` with `am start -W` `TotalTime=2078ms`,

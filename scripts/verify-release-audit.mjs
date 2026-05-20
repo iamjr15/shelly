@@ -1247,6 +1247,26 @@ function verifyLatestRefresh() {
     requireText(audit, evidence, `release audit latest manual adb terminal evidence must include ${evidence}`);
   }
   for (const evidence of [
+    "adb refresh",
+    "`TotalTime=2360ms`",
+    "`/tmp/fieldwork-adb-direct-20260520100608/default-locked.png`",
+    "`/tmp/fieldwork-adb-direct-20260520100608/default-ui.xml`",
+    "`/tmp/fieldwork-adb-direct-20260520100608/default-logcat.log`",
+    "`/tmp/fieldwork-adb-direct-20260520100608/default-crash.log`",
+    "`/tmp/fieldwork-adb-direct-pair-20260520100742`",
+    "`ANDROID_ADB_DIRECT_READY`",
+    "`android_adb_direct_ping`",
+    "`/tmp/fieldwork-adb-direct-pair-20260520100742/terminal-after-input.png`",
+    "`android-direct: android_adb_direct_ping`",
+    "`sdk_gphone64_arm64`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    '`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`',
+    "`/tmp/fieldwork-adb-direct-pair-20260520100742/default-restored-locked.png`",
+  ]) {
+    requireText(plan, evidence, `PLAN.md current direct adb refresh evidence must include ${evidence}`);
+    requireText(audit, evidence, `release audit current direct adb refresh evidence must include ${evidence}`);
+  }
+  for (const evidence of [
     "direct locked-launch refresh on a freshly booted `Medium_Phone_API_36.1` emulator",
     "`LaunchState: COLD`",
     "`TotalTime=1919ms`",
