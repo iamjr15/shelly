@@ -6,6 +6,8 @@ tmp="$(mktemp -d)"
 daemon_pid=""
 daemon_pid2=""
 subscribe_pid=""
+host_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+host_rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
 
 cleanup() {
   if [[ -n "$daemon_pid" ]]; then
@@ -31,6 +33,8 @@ export HOME="$tmp/home"
 export XDG_RUNTIME_DIR="$tmp/runtime"
 export XDG_CONFIG_HOME="$tmp/config"
 export XDG_STATE_HOME="$tmp/state"
+export CARGO_HOME="$host_cargo_home"
+export RUSTUP_HOME="$host_rustup_home"
 export FIELDWORK_IROH_SECRET_KEY_B64="BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU"
 export PATH="$tmp/bin:$PATH"
 
@@ -53,6 +57,16 @@ cargo build -q -p fieldwork-cli -p fieldwork-daemon
 
 fieldwork="$cargo_target_dir/debug/fieldwork"
 fieldworkd="$cargo_target_dir/debug/fieldworkd"
+
+run_fieldwork_new() {
+  local log_path="$1"
+  shift
+  if ! "$fieldwork" new "$@" >"$log_path" 2>&1; then
+    echo "fieldwork new failed: $*" >&2
+    cat "$log_path" >&2 || true
+    exit 1
+  fi
+}
 
 wait_for_socket() {
   for _ in $(seq 1 80); do
@@ -90,15 +104,15 @@ else
   exit 1
 fi
 
-"$fieldwork" new --dir "$tmp/home" >"$tmp/new-claude.log" 2>&1
+run_fieldwork_new "$tmp/new-claude.log" --dir "$tmp/home"
 claude_created="$(cat "$tmp/new-claude.log")"
 claude_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-claude.log")"
 
-"$fieldwork" new bash >"$tmp/new-bash.log" 2>&1
+run_fieldwork_new "$tmp/new-bash.log" bash
 bash_created="$(cat "$tmp/new-bash.log")"
 bash_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-bash.log")"
 
-"$fieldwork" new "${tui_command[@]}" >"$tmp/new-tui.log" 2>&1
+run_fieldwork_new "$tmp/new-tui.log" "${tui_command[@]}"
 tui_created="$(cat "$tmp/new-tui.log")"
 tui_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-tui.log")"
 
@@ -192,11 +206,11 @@ fi
 subscribe_pid=$!
 
 sleep 0.2
-"$fieldwork" new bash -lc 'printf "FW_SUBSCRIBE_SESSION_READY\n"; while IFS= read -r line; do printf "late: %s\n" "$line"; done' >"$tmp/new-subscribe.log" 2>&1
+run_fieldwork_new "$tmp/new-subscribe.log" --name FW_SUBSCRIBE_SESSION_READY -- bash -lc 'printf "FW_SUBSCRIBE_SESSION_READY\n"; while IFS= read -r line; do printf "late: %s\n" "$line"; done'
 subscribe_created="$(cat "$tmp/new-subscribe.log")"
 subscribe_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-subscribe.log")"
 
-"$fieldwork" new bash -lc 'printf "FW_RECONNECT_READY\n"; sleep 5; for i in $(seq 1 50); do printf "FW_RECONNECT_LINE_%02d\n" "$i"; done; sleep 10' >"$tmp/new-reconnect.log" 2>&1
+run_fieldwork_new "$tmp/new-reconnect.log" --name FW_RECONNECT_READY -- bash -lc 'printf "FW_RECONNECT_READY\n"; sleep 5; for i in $(seq 1 50); do printf "FW_RECONNECT_LINE_%02d\n" "$i"; done; sleep 10'
 reconnect_created="$(cat "$tmp/new-reconnect.log")"
 reconnect_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-reconnect.log")"
 

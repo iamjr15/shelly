@@ -134,6 +134,11 @@ function verifyDevelopmentDoc(text) {
   );
   requireText(
     text,
+    "preserves the host `CARGO_HOME` and\n`RUSTUP_HOME` while isolating Fieldwork's `HOME`",
+    "docs/DEVELOPMENT.md must document local handoff Cargo/Rustup cache preservation",
+  );
+  requireText(
+    text,
     'CARGO_HOME="$HOME/.cargo" CARGO_TARGET_DIR="$PWD/target" pnpm check:local-release -- --with-artifacts --with-runtime',
     "docs/DEVELOPMENT.md must document the low-temp-space aggregate gate command",
   );
@@ -197,10 +202,13 @@ function verifyDevelopmentDoc(text) {
     "pairs the hidden iroh phone simulator through explicit desktop approval",
     "verifies the simulated pair flow completes within 15 seconds",
     "verifies reconnect-with-replay over iroh within 2 seconds from `last_seen_seq`",
+    "creating an explicitly named desktop session",
+    "a separate explicitly named session emits missed output",
     "verifies that the paired simulated phone receives `Forbidden` when it tries to create sessions, kill sessions, or emit agent-state hook events",
     "verifies that the same device identity is rejected with `Unauthorized`",
     "verifies that all last-known sessions are restored",
     "honors `CARGO_TARGET_DIR` for debug binaries",
+    "preserving the host `CARGO_HOME` and `RUSTUP_HOME`",
     "without recreating repo-local `target/debug`",
   ]) {
     requireText(text, phrase, `docs/DEVELOPMENT.md pairing smoke coverage is missing: ${phrase}`);
