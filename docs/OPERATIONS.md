@@ -25,6 +25,36 @@ The public iroh relay function can continue running during push-gateway
 maintenance. Push delivery is the only v1 feature that requires the relay HTTP
 control plane and provider credentials.
 
+## GitHub Secrets Checklist
+
+Create only the secrets the current workflows read. `GITHUB_TOKEN` is provided
+by GitHub Actions and does not need to be created manually.
+
+| Secret | Workflow | Purpose |
+|---|---|---|
+| `NPM_TOKEN` | `release-npm.yml` | Publish the four platform children and the `fieldwork` meta package with npm provenance. |
+| `APPLE_P12_BASE64` | `release-rust.yml` | macOS daemon signing certificate for Darwin desktop artifacts. |
+| `APPLE_P12_PASSWORD` | `release-rust.yml` | Password for the macOS signing `.p12`. |
+| `APP_STORE_KEY_JSON` | `release-rust.yml`, `release-ios.yml` | Apple notarization and TestFlight upload API key JSON. |
+| `SENTRY_DSN` | `release-ios.yml`, `release-android.yml` | Release-build mobile crash-reporting DSN; telemetry still stays opt-in. |
+| `IOS_DISTRIBUTION_CERTIFICATE_BASE64` | `release-ios.yml` | iOS Apple Distribution certificate. |
+| `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD` | `release-ios.yml` | Password for the iOS distribution certificate. |
+| `IOS_PROVISIONING_PROFILE_BASE64` | `release-ios.yml` | App Store provisioning profile for `app.fieldwork.ios` with production APNs entitlement. |
+| `IOS_DEVELOPMENT_TEAM` | `release-ios.yml` | Apple Team ID used to validate the provisioning profile. |
+| `IOS_EXPORT_OPTIONS_PLIST` | `release-ios.yml` | Xcode export options for the signed IPA. |
+| `ANDROID_GOOGLE_SERVICES_JSON` | `release-android.yml` | Firebase app config so Android release builds can obtain FCM registration tokens. |
+| `ANDROID_KEYSTORE_BASE64` | `release-android.yml` | Base64-encoded Android release keystore. |
+| `ANDROID_KEYSTORE_PROPERTIES` | `release-android.yml` | Gradle signing properties for the Android release keystore. |
+| `PLAY_SERVICE_ACCOUNT_JSON` | `release-android.yml` | Google Play upload service account JSON. |
+| `RELAY_SSH_KEY` | `deploy-relay.yml` | Private SSH key for the relay deploy user. |
+| `CLOUDFLARE_API_TOKEN` | `deploy-site.yml` | Cloudflare Pages deploy token for `fieldwork.dev`. |
+| `CLOUDFLARE_ACCOUNT_ID` | `deploy-site.yml` | Cloudflare account id for the Pages project. |
+
+Relay provider credentials are not GitHub repository secrets in the current v1
+scaffold. Keep the APNs `.p8`, FCM service-account JSON, Honeycomb API key, and
+control-plane TLS cert/key on the relay hosts under `/etc/fieldwork/secrets/`;
+the Ansible systemd unit passes those files through `LoadCredential`.
+
 ## Release Gate Handoff
 
 These gates are intentionally operator-owned. Local build agents should not run
