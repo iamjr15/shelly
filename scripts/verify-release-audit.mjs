@@ -36,8 +36,17 @@ console.log("release audit ok");
 function verifyCurrentVerdict() {
   requireText(audit, "This file is the current prompt-to-artifact audit", "release audit must describe its prompt-to-artifact purpose");
   requirePattern(audit, /It is not a\s+release sign-off/, "release audit must not masquerade as a release sign-off");
-  requireText(audit, "Fieldwork v1 is not yet releasable", "release audit must state that v1 is not yet releasable while Section 13 gates are open");
-  requireText(audit, "Do not mark v1 complete until every unchecked gate", "release audit must include the final release sign-off rule");
+  requireText(audit, "Fieldwork v1 is not yet releasable", "release audit must state that v1 is not yet releasable while PLAN.md gates are open");
+  requireText(
+    audit,
+    "Do not mark v1 complete until every unchecked gate in `PLAN.md`, including\nSection 13 and Appendix B gates, has real evidence",
+    "release audit must include the final release sign-off rule for both Section 13 and Appendix B",
+  );
+  requireText(
+    audit,
+    "operator-reservation",
+    "release audit sign-off rule must include operator-reservation gates",
+  );
   requireText(
     audit,
     "scripts/verify-release-audit.mjs` classifies\n  every unchecked `PLAN.md` gate by blocker class",

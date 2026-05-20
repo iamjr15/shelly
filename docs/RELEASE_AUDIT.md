@@ -1079,7 +1079,8 @@ Observed results:
 
 ## Release Sign-Off Rule
 
-Do not mark v1 complete until every unchecked gate in `PLAN.md` Section 13 has
-real evidence. Local substitutes are acceptable for development confidence, but
-they do not close physical-device, provider, signing, publish, or hosted
-infrastructure gates.
+Do not mark v1 complete until every unchecked gate in `PLAN.md`, including
+Section 13 and Appendix B gates, has real evidence. Local substitutes are
+acceptable for development confidence, but they do not close physical-device,
+provider, signing, publish, operator-reservation, or hosted infrastructure
+gates.
