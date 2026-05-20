@@ -12,7 +12,9 @@ fieldwork daemon install
 fieldwork pair
 ```
 
-The npm package installs `fieldwork` and `fieldworkd` together. Desktop distribution is npm-only for v1; Homebrew, `curl | sh`, `cargo install`, and self-update are intentionally out of scope.
+The npm package installs `fieldwork`, the shorter `fw` alias, and `fieldworkd`
+together. `fw` accepts the same arguments as `fieldwork` (`fw pair`,
+`fw new bash`, `fw attach <session-id>`). Desktop distribution is npm-only for v1; Homebrew, `curl | sh`, `cargo install`, and self-update are intentionally out of scope.
 
 ## Screenshots
 

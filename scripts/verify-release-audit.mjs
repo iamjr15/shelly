@@ -277,8 +277,8 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "npm meta-package exposes both command dispatchers",
-    "release audit must record that npm exposes both desktop binaries",
+    "npm meta-package exposes `fieldwork`, the shorter `fw` CLI alias, and `fieldworkd`",
+    "release audit must record that npm exposes the short CLI alias and daemon binary",
   );
   requireText(
     audit,
@@ -608,8 +608,18 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "`fieldwork` and `fieldworkd` dispatcher fallback",
-    "release audit must record dispatcher fallback coverage for both npm commands",
+    "`fieldwork`, the shorter `fw` CLI alias, and `fieldworkd`",
+    "release audit must record npm short CLI alias coverage",
+  );
+  requireText(
+    audit,
+    "`fieldwork`/`fw` CLI dispatcher alias and `fieldworkd` daemon dispatcher fallback",
+    "release audit must record dispatcher fallback coverage for the npm CLI alias and daemon command",
+  );
+  requireText(
+    audit,
+    "dispatcher fallback for the CLI alias\nand daemon commands",
+    "release audit must record latest refresh coverage for the npm CLI alias and daemon dispatchers",
   );
   requireText(
     audit,

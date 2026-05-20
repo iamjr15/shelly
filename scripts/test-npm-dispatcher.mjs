@@ -22,6 +22,8 @@ for (const platformCase of platformCases) {
   verifyPostinstallSwap(platformCase);
 }
 
+verifyDispatcherSpawnError(platformCases[0]);
+
 fs.rmSync(path.join(metaDir, "node_modules"), { recursive: true, force: true });
 let result = spawnSync(process.execPath, [dispatcher], {
   cwd: root,
@@ -134,6 +136,44 @@ function verifyPostinstallSwap({ platform, arch, key }) {
   } finally {
     fs.rmSync(installTmp, { recursive: true, force: true });
   }
+}
+
+function verifyDispatcherSpawnError({ platform, arch, key }) {
+  const fakePackageDir = path.join(metaDir, "node_modules", `fieldwork-${key}`);
+  fs.rmSync(path.join(metaDir, "node_modules"), { recursive: true, force: true });
+  fs.mkdirSync(path.join(fakePackageDir, "bin"), { recursive: true });
+  fs.writeFileSync(
+    path.join(fakePackageDir, "package.json"),
+    JSON.stringify({ name: `fieldwork-${key}`, version: "0.0.0-test" }),
+  );
+  for (const name of ["fieldwork", "fieldworkd"]) {
+    fs.writeFileSync(path.join(fakePackageDir, "bin", name), "#!/usr/bin/env node\n");
+    fs.chmodSync(path.join(fakePackageDir, "bin", name), 0o644);
+  }
+
+  let result = spawnSync(process.execPath, [dispatcher], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      FIELDWORK_NPM_PLATFORM: platform,
+      FIELDWORK_NPM_ARCH: arch,
+    },
+  });
+  assert(result.status === 1, `${key} dispatcher should fail clearly on a non-executable native binary`);
+  assert(result.stderr.includes("failed to start native binary"), `${key} dispatcher should report spawn failure`);
+
+  result = spawnSync(process.execPath, [daemonDispatcher], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      FIELDWORK_NPM_PLATFORM: platform,
+      FIELDWORK_NPM_ARCH: arch,
+    },
+  });
+  assert(result.status === 1, `${key} fieldworkd dispatcher should fail clearly on a non-executable native binary`);
+  assert(result.stderr.includes("failed to start native binary"), `${key} fieldworkd dispatcher should report spawn failure`);
 }
 
 function assert(condition, message) {

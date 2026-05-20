@@ -4,6 +4,7 @@
   "description": "Your terminal sessions, from anywhere.",
   "bin": {
     "fieldwork": "bin/fieldwork",
+    "fw": "bin/fieldwork",
     "fieldworkd": "bin/fieldworkd"
   },
   "scripts": {

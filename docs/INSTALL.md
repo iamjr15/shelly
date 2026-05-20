@@ -95,10 +95,11 @@ node scripts/test-bun-install.mjs
 npm pack ./packages/cli --dry-run --json
 ```
 
-`fieldwork` is the meta package. It exposes both `fieldwork` and
-`fieldworkd`: postinstall swaps both commands to native binaries when scripts
-are allowed, and both commands dispatch into the platform package when
-postinstall is skipped. The v1 platform packages are
+`fieldwork` is the meta package. It exposes `fieldwork`, `fw`, and
+`fieldworkd`: `fw` is a shorter alias for the same user-facing CLI, postinstall
+swaps the CLI and daemon commands to native binaries when scripts are allowed,
+and the shipped dispatchers run the matching platform package when postinstall
+is skipped. The v1 platform packages are
 `fieldwork-darwin-arm64`, `fieldwork-darwin-x64`,
 `fieldwork-linux-arm64`, and `fieldwork-linux-x64`. Each platform
 package receives `fieldwork` and `fieldworkd` from the release artifact pipeline

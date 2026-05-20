@@ -59,6 +59,7 @@ assert(meta.version === "1.0.0", "meta package version must be 1.0.0 for v1 rele
 assertNpmLegalMetadata(meta, "packages/cli/package.json", "packages/cli");
 assertMetaReadme();
 assert(meta.bin?.fieldwork === "bin/fieldwork", "meta package must expose bin/fieldwork");
+assert(meta.bin?.fw === "bin/fieldwork", "meta package must expose fw as a short alias for bin/fieldwork");
 assert(meta.bin?.fieldworkd === "bin/fieldworkd", "meta package must expose bin/fieldworkd");
 assert(meta.scripts?.postinstall === "node install.js", "meta package must run install.js postinstall");
 assert(meta.preferUnplugged === true, "meta package should prefer unplugged installs");
@@ -167,6 +168,8 @@ function assertMetaReadme() {
     "npm i -g fieldwork",
     "The unscoped `fieldwork` package is the v1 desktop install and update path.",
     "`fieldwork`: the user-facing CLI",
+    "`fw`: a shorter alias for the same user-facing CLI",
+    "`fw` alias accepts the same arguments",
     "`fieldworkd`: the local daemon that owns PTYs, pairing, replay, and transport",
     "fieldwork daemon install",
     "fieldwork pair",

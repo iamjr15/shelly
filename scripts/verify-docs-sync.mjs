@@ -86,6 +86,8 @@ function verifyAndroidRendererDoc() {
 function verifyReadme() {
   for (const needle of [
     "npm i -g fieldwork",
+    "the shorter `fw` alias",
+    "`fw` accepts the same arguments as `fieldwork`",
     "Desktop distribution is npm-only for v1",
     "Homebrew, `curl | sh`, `cargo install`, and self-update are intentionally out of scope",
     "docs/RELEASE_AUDIT.md",
@@ -275,7 +277,8 @@ function verifyPlanDoc() {
     "encrypted devices.redb under a hashed device row key",
     "Pair tokens are daemon-local in-memory pending tokens",
     "## 8. npm distribution (the only desktop install path)",
-    "The meta-package's `bin` field exposes both commands to npm",
+    "The meta-package's `bin` field exposes `fieldwork`, the shorter `fw` alias",
+    '"fw": "bin/fieldwork"',
     '"fieldworkd": "bin/fieldworkd"',
     '"README.md"',
     '"access": "public"',

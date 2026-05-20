@@ -14,9 +14,10 @@ npm i -g fieldwork
 ```
 
 The unscoped `fieldwork` package is the v1 desktop install and update path. It
-installs both commands:
+installs these commands:
 
 - `fieldwork`: the user-facing CLI
+- `fw`: a shorter alias for the same user-facing CLI
 - `fieldworkd`: the local daemon that owns PTYs, pairing, replay, and transport
 
 Use npm to update installed builds:
@@ -33,6 +34,9 @@ fieldwork pair
 fieldwork new bash
 fieldwork attach <session-id>
 ```
+
+The shorter `fw` alias accepts the same arguments, for example `fw pair`,
+`fw new bash`, and `fw attach <session-id>`.
 
 The default desktop command can be `claude`, but arbitrary PTY commands are
 supported. Mobile clients can pair, list sessions, attach, send input, resize,

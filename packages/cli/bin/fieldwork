@@ -32,6 +32,11 @@ const child = spawn(binPath, process.argv.slice(2), { stdio: "inherit" });
 process.on("SIGINT", () => child.kill("SIGINT"));
 process.on("SIGTERM", () => child.kill("SIGTERM"));
 
+child.on("error", (err) => {
+  console.error(`fieldwork: failed to start native binary at ${binPath}: ${err.message}`);
+  process.exit(1);
+});
+
 child.on("exit", (code, signal) => {
   if (signal) {
     process.kill(process.pid, signal);
