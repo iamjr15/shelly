@@ -234,6 +234,16 @@ outside this shell:
   `/tmp/fieldwork-fw-direct-pair-20260520152507/dashboard-crash.log` was empty;
   and the debug APK was restored to `FIELDWORK_BIOMETRIC_BYPASS = false` and
   `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`.
+  A direct adb empty-dashboard refresh then paired an isolated release daemon
+  with no pre-existing sessions through explicit desktop approval and captured
+  `/tmp/fieldwork-empty-direct-20260520162209/empty-dashboard.png` plus
+  `/tmp/fieldwork-empty-direct-20260520162209/empty-dashboard.xml`; the UI dump
+  showed `No sessions` and `Create one on your laptop with fw new.`, app logcat
+  showed `FieldworkRepository: pair completed` and `FieldworkRepository:
+  listSessions returned 0 sessions`, crash buffers were empty, and the restored
+  default APK had `FIELDWORK_BIOMETRIC_BYPASS = false`,
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, and the locked `Unlock` surface at
+  `/tmp/fieldwork-empty-direct-20260520162209/default-locked.png`.
   A
   follow-up raw adb
   locked-launch baseline on 2026-05-19 installed the default debug APK, launched
@@ -713,6 +723,16 @@ in `pair_flow_ms=423`, and
 `/tmp/fieldwork-fw-direct-pair-20260520152507/dashboard-crash.log` was empty;
 and the debug APK was restored to `FIELDWORK_BIOMETRIC_BYPASS = false` and
 `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`.
+A direct adb empty-dashboard refresh then paired an isolated release daemon with
+no pre-existing sessions through explicit desktop approval and captured
+`/tmp/fieldwork-empty-direct-20260520162209/empty-dashboard.png` plus
+`/tmp/fieldwork-empty-direct-20260520162209/empty-dashboard.xml`. The UI dump
+showed `No sessions` and `Create one on your laptop with fw new.`, app logcat
+showed `FieldworkRepository: pair completed` and `FieldworkRepository:
+listSessions returned 0 sessions`, crash buffers were empty, and the restored
+default APK had `FIELDWORK_BIOMETRIC_BYPASS = false`,
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, and the locked `Unlock` surface at
+`/tmp/fieldwork-empty-direct-20260520162209/default-locked.png`.
 A 2026-05-20 direct locked-launch refresh on a freshly booted `Medium_Phone_API_36.1` emulator
 installed the default debug APK, launched with `Status: ok`,
 `LaunchState: COLD`, and `TotalTime=1919ms`, captured

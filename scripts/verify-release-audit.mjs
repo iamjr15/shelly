@@ -1465,6 +1465,11 @@ function verifyLatestRefresh() {
     "`kazoo`",
     "`FieldworkRepository: listSessions returned 3 sessions`",
     "`/tmp/fieldwork-fw-direct-pair-20260520152507/dashboard-crash.log`",
+    "`/tmp/fieldwork-empty-direct-20260520162209/empty-dashboard.xml`",
+    "`/tmp/fieldwork-empty-direct-20260520162209/empty-dashboard.png`",
+    "`Create one on your laptop with fw new.`",
+    "returned 0 sessions",
+    "`/tmp/fieldwork-empty-direct-20260520162209/default-locked.png`",
   ]) {
     requireText(plan, evidence, `PLAN.md direct fw shim adb evidence must include ${evidence}`);
     requireText(audit, evidence, `release audit direct fw shim adb evidence must include ${evidence}`);

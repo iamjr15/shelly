@@ -1518,6 +1518,18 @@ receives it within the local 8-second emulator bound, opens it, sends
 input. Latest default aggregate run passed on `emulator-5554` with
 `visible_ms=3318`.
 
+A 2026-05-20 direct adb empty-dashboard refresh verified the same no-session
+state without the wrapper smoke scripts: an isolated release daemon exposed a
+debug-only pair payload, Android paired through explicit desktop approval, and
+`/tmp/fieldwork-empty-direct-20260520162209/empty-dashboard.xml` plus
+`/tmp/fieldwork-empty-direct-20260520162209/empty-dashboard.png` showed
+`No sessions` and `Create one on your laptop with fw new.`. App logcat showed
+`FieldworkRepository: pair completed` and `FieldworkRepository: listSessions
+returned 0 sessions`, crash buffers were empty, and the APK was restored to
+`FIELDWORK_BIOMETRIC_BYPASS = false` plus
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""` with the locked `Unlock` surface at
+`/tmp/fieldwork-empty-direct-20260520162209/default-locked.png`.
+
 `pnpm test:android-emulator-restart-restore` is the actual Android-app local
 substitute for the daemon-restart restore gate: it pairs the debug app with an
 isolated release daemon, creates `fw_restart_session`, waits for
