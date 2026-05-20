@@ -124,6 +124,25 @@ for (const prerequisite of [
   requireText(files.operations, prerequisite, `Operations runbook prerequisites must include ${prerequisite}`);
 }
 
+for (const handoff of [
+  "## Release Gate Handoff",
+  "should not run\nlive reservation, publish, domain, provider-console, or account checks",
+  "already-owned unscoped `fieldwork` meta package",
+  "`fieldwork-darwin-arm64`, `fieldwork-darwin-x64`,",
+  "`fieldwork-linux-arm64`, and `fieldwork-linux-x64`",
+  "children publish first and `fieldwork`\n  publishes last with provenance",
+  "signed/notarized Darwin artifacts, Linux archives,\n  SHA-256 files, and Sigstore attestations",
+  "verify HTTPS `/v1/version`, iroh relay\n  fallback, sampled Honeycomb traces, and 10/10 generic push delivery",
+  "prepared App Store privacy nutrition labels and\n  Play Data safety answers",
+  "iOS implementation work is\n  otherwise paused until the team resumes that track",
+  "QR pairing,\n  session list subscription, terminal attach/input, reconnect/replay after\n  network changes",
+  "biometric launch/stale-input\n  gates",
+  "pnpm check:local-release -- --with-artifacts --with-runtime",
+  "Only check the external boxes in `docs/RELEASE_AUDIT.md`",
+]) {
+  requireText(files.operations, handoff, `Operations runbook release-gate handoff must include ${handoff}`);
+}
+
 for (const deployCheck of [
   "systemctl status fieldwork-control-plane.service",
   "systemctl status fieldwork-iroh-relay.service",

@@ -25,6 +25,44 @@ The public iroh relay function can continue running during push-gateway
 maintenance. Push delivery is the only v1 feature that requires the relay HTTP
 control plane and provider credentials.
 
+## Release Gate Handoff
+
+These gates are intentionally operator-owned. Local build agents should not run
+live reservation, publish, domain, provider-console, or account checks unless the
+operator explicitly asks for that exact refresh.
+
+- **npm**: keep the already-owned unscoped `fieldwork` meta package, add publish
+  rights for `fieldwork-darwin-arm64`, `fieldwork-darwin-x64`,
+  `fieldwork-linux-arm64`, and `fieldwork-linux-x64`, then release through
+  `release-npm.yml` with `NPM_TOKEN` so children publish first and `fieldwork`
+  publishes last with provenance.
+- **GitHub Release artifacts**: tag from a clean verified commit, let
+  `release-rust.yml` produce signed/notarized Darwin artifacts, Linux archives,
+  SHA-256 files, and Sigstore attestations, then verify those artifacts before
+  npm publish or relay deploy.
+- **Relay and provider credentials**: provision the Oracle relay hosts, point DNS
+  at them, install relay-only APNs `.p8`, FCM service-account JSON, and Honeycomb
+  credentials, deploy both regions, and verify HTTPS `/v1/version`, iroh relay
+  fallback, sampled Honeycomb traces, and 10/10 generic push delivery.
+- **Mobile stores**: submit the prepared App Store privacy nutrition labels and
+  Play Data safety answers, then run signed release-device validation before any
+  TestFlight, App Store, or Play production rollout. iOS implementation work is
+  otherwise paused until the team resumes that track.
+- **Physical-device smoke**: on fresh iOS and Android devices, verify QR pairing,
+  session list subscription, terminal attach/input, reconnect/replay after
+  network changes, background/foreground restore, biometric launch/stale-input
+  gates, notification tap-through, flood rendering, and cold-start thresholds.
+
+Before the release tag, rerun the deterministic local gate from a clean checkout:
+
+```sh
+pnpm check:local-release -- --with-artifacts --with-runtime
+pnpm check:release-audit
+```
+
+Only check the external boxes in `docs/RELEASE_AUDIT.md` after the matching
+hosted account, provider, signed-artifact, or physical-device evidence exists.
+
 ## Relay Deploy
 
 Provision each Oracle region with the credential-free Terraform scaffold first:
