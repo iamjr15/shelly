@@ -530,8 +530,8 @@ initialization installed the signed OCI provider from the lockfile, validation
 reported `Success! The configuration is valid.`, and the shared script removed
 the ignored `.terraform` provider cache afterward without producing `tfstate` or
 `tfvars` files. The site content verifier passed, pinning the `fieldwork.dev` pages to v1 install, protocol, architecture, privacy, screenshot SVG imports, and future-scope exclusions. Domain status refresh is no longer an agent-owned routine release activity; `scripts/check-domain-status.mjs --operator-refresh` remains available for explicit operator-requested refreshes only, and the script fails closed before network access without that flag. The release-workflow verifier now also pins the Cloudflare Pages deploy scaffold for `fieldwork.dev`, including the isolated site lockfile install, root `pnpm build:site`, fail-closed Cloudflare credentials, and the `fieldwork-dev` Pages project. The release-workflow verifier now also pins the weekly Dependabot matrix for Cargo, root npm package metadata, the isolated `site/` npm lockfile, Android Gradle, and GitHub Actions. The focused daemon state-inference fixture tests passed, and the focused daemon local-agent-hook tests passed for `matching_local_agent_hook_updates_session_state` and `mismatched_local_agent_hook_is_ignored`, verifying that matching LocalCli Claude/Codex hook events update only matching PTY sessions while mismatched hook sources are ignored. The daemon
-service scaffold verifier passed, the direct bincode IPC mobile create/kill rejection test passed for `IosApp` and `AndroidApp`, the direct bincode IPC mobile agent-state hook rejection test passed for `IosApp` and `AndroidApp`, the local handoff smoke now also covers paired iroh mobile agent-state hook rejection, and the latest local handoff smoke paired in 2 seconds before exercising `claude`, `bash`, `vim`, subscribed session updates,
-mobile input, warm reconnect replay over iroh within 2 seconds from `last_seen_seq` (20ms in the latest local run), protocol-mismatch rejection, mobile create/kill/agent-state-event rejection, revocation, and restart restore.
+service scaffold verifier passed, the direct bincode IPC mobile create/kill rejection test passed for `IosApp` and `AndroidApp`, the direct bincode IPC mobile agent-state hook rejection test passed for `IosApp` and `AndroidApp`, the local handoff smoke now also covers paired iroh mobile agent-state hook rejection, and the latest local handoff smoke paired in 3 seconds before exercising `claude`, `bash`, `vim`, subscribed session updates,
+mobile input, warm reconnect replay over iroh within 2 seconds from `last_seen_seq` (12ms in the latest local run), protocol-mismatch rejection, mobile create/kill/agent-state-event rejection, revocation, and restart restore.
 The Android biometric gate refresh added focused JVM tests for first unlock,
 immediate post-unlock resume, fresh foreground resume, 5-minute stale foreground
 boundary, and terminal input refusal while locked, while preserving the
@@ -602,8 +602,8 @@ follow-up 2026-05-20 `pnpm check:local-release -- --with-runtime` pass verified
 the current source tree after the local handoff smoke preserved host
 `CARGO_HOME`/`RUSTUP_HOME` and named its subscription/reconnect sessions
 explicitly under the daemon duplicate-name rule. The latest performance run
-reported CLI median `3.27ms`, p95 `3.81ms`, max `4.18ms`, and daemon
-ready-to-handshake median `39.82ms`, p95 `42.60ms`, max `43.46ms` over 25
+reported CLI median `3.05ms`, p95 `4.10ms`, max `4.12ms`, and daemon
+ready-to-handshake median `39.73ms`, p95 `42.70ms`, max `43.84ms` over 25
 measured release-build samples; npm binary readiness passed
 with staged artifacts; `publish-npm-packages.mjs --check-ready` confirmed the
 children-first order `fieldwork-darwin-arm64 -> fieldwork-darwin-x64 ->
@@ -1018,8 +1018,8 @@ Observed results:
   `application/x-protobuf` `/v1/traces` POST for `/v1/version`, and the exported
   protobuf body did not contain injected terminal/session/token sentinel strings.
 - Desktop performance passed after one explicit warm-up sample, with CLI median
-  `3.59ms`, p95 `4.07ms`, max `4.18ms`, and daemon ready-to-handshake median
-  `40.44ms`, p95 `44.31ms`, max `47.59ms` over 25 measured release-build
+  `3.05ms`, p95 `4.10ms`, max `4.12ms`, and daemon ready-to-handshake median
+  `39.73ms`, p95 `42.70ms`, max `43.84ms` over 25 measured release-build
   samples.
 - Site check/build produced 5 static pages with no Astro diagnostics.
 - Agent-browser screenshot smoke captured `/`, `/install`, `/architecture`,
@@ -1031,7 +1031,7 @@ Observed results:
 - Local handoff smoke passed with `pnpm test:local-handoff` after clearing
   reproducible debug/mobile Rust build output to recover disk space, then
   removing the regenerated repo-local `target/debug` after the run. Simulated
-  pair duration was `2s`: default
+  pair duration was `3s`: default
   `claude`, `bash`, `vim`, and desktop-created subscribed `bash` sessions were
   created; the simulated phone first verified protocol-mismatch rejection on the
   iroh transport, observed the subscribed session, attached, sent input, avoided
