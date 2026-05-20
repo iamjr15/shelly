@@ -131,6 +131,8 @@ function verifyArchitecturePage() {
     "iroh QUIC",
     "encrypted local `redb` databases",
     "keys held by the OS keychain",
+    "Keychain prompts are only for local key material",
+    "terminal output, keystrokes, commands, paths, session names, and push tokens are not stored there",
     "private `0700`",
     "database files are `0600`",
     "APNs `.p8`, FCM service-account JSON, and Honeycomb credentials live only on the relay",
@@ -179,6 +181,8 @@ function verifyPrivacyPage() {
     "Mobile crash reporting is opt-in",
     "disables default PII and trace sampling",
     "encrypted locally by default",
+    "Keychain prompts are only for local key material",
+    "terminal output, keystrokes, commands, paths, session names, and push tokens are not stored there",
     "rejects symlinked stores",
   ]) {
     requireText(files.privacy, phrase, `privacy page must preserve privacy fact: ${phrase}`);
