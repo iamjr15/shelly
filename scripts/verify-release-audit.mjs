@@ -1040,6 +1040,7 @@ function verifyLatestRefresh() {
   requireText(audit, "`fieldwork`/`fieldworkd`/", "release audit must record all desktop/relay binary declarations");
   requireText(audit, "docs-sync verifier passed", "release audit must record the focused docs-sync verifier result");
   requireText(audit, "named v1 docs", "release audit must record named docs synchronization coverage");
+  requireText(audit, "README pointer to the\noperator-facing release-gate handoff", "release audit must record README operator-handoff pointer coverage");
   requireText(audit, "development doc verifier passed", "release audit must record the focused development doc verifier result");
   requireText(audit, "15-minute source-build path", "release audit must record development source-build coverage");
   requireText(audit, "focused protocol/PTY/mobile-core tests", "release audit must record development focused-test coverage");
@@ -1067,6 +1068,7 @@ function verifyLatestRefresh() {
   requireText(audit, "infra scaffold verifier passed", "release audit must record the focused infra scaffold verifier result");
   requireText(audit, "operations runbook's", "release audit must record operations runbook coverage");
   requireText(audit, "operator-owned release-gate handoff", "release audit must record operations release-gate handoff coverage");
+  requireText(audit, "Appendix B operator reservations", "release audit must record operations Appendix B reservation coverage");
   requireText(audit, "release-gate handoff steps", "release audit must record the infra verifier's handoff pins");
   requireText(audit, "relay prerequisites", "release audit must record operations prerequisite coverage");
   requireText(audit, "quarterly credential rotation steps", "release audit must record operations rotation coverage");
