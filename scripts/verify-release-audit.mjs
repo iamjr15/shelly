@@ -282,6 +282,26 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "no-subcommand smart default parser path for\n`fieldwork`/`fw`",
+    "release audit must record the no-subcommand CLI smart default coverage",
+  );
+  requireText(
+    audit,
+    "the `fw <name>` named-session fast path",
+    "release audit must record named-session shortcut coverage",
+  );
+  requireText(
+    audit,
+    "`fieldwork new\n--name <name> [cmd...]`",
+    "release audit must record explicitly named arbitrary-command session coverage",
+  );
+  requireText(
+    audit,
+    "generates short one-word names and stores them in the\ndaemon session summary that mobile dashboards already render",
+    "release audit must record auto-named no-args session visibility on mobile",
+  );
+  requireText(
+    audit,
     "Keychain prompts are only for local key material",
     "release audit must record the user-facing Keychain boundary clarification",
   );

@@ -726,7 +726,11 @@ path with fake `launchctl`/`systemctl` so LaunchAgent `KeepAlive` and systemd
 verifier, and release-audit verifier passed after that change. The npm
 distribution refresh now exposes `fieldwork`, the shorter `fw` alias, and
 `fieldworkd` from the meta package, covers dispatcher fallback for the CLI alias
-and daemon commands, and verifies the packed meta tarball includes both executable dispatcher files. The relay push privacy
+and daemon commands, verifies the packed meta tarball includes both executable dispatcher files, and covers the no-subcommand smart default parser path for
+`fieldwork`/`fw`, the `fw <name>` named-session fast path, and `fieldwork new
+--name <name> [cmd...]` for explicitly named arbitrary-command PTYs. The no-name
+default create path now generates short one-word names and stores them in the
+daemon session summary that mobile dashboards already render. The relay push privacy
 refresh now validates `session_id_hash` and `session_name_hash` as lowercase
 64-character hex strings and rejects `last_line`, command, path, and session-name
 free-text payload fields. Mobile notification ingress now mirrors that contract

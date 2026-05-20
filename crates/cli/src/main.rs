@@ -14,16 +14,43 @@ use fieldwork_protocol::{
 };
 use qrcode::{QrCode, render::unicode};
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::io::Read;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+const AUTO_SESSION_NAMES: &[&str] = &[
+    "waffle",
+    "pickle",
+    "noodle",
+    "bagel",
+    "nacho",
+    "spatula",
+    "kazoo",
+    "widget",
+    "pancake",
+    "pretzel",
+    "cupcake",
+    "lollipop",
+    "confetti",
+    "sprocket",
+    "marble",
+    "boomerang",
+    "muffin",
+    "donut",
+    "toaster",
+    "sprinkle",
+    "gizmo",
+    "jellybean",
+];
 
 #[derive(Parser)]
 #[command(name = "fieldwork")]
 #[command(about = "Continue terminal sessions from anywhere")]
 struct Cli {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -71,6 +98,8 @@ enum Command {
     New {
         #[arg(long = "dir", default_value = ".")]
         dir: PathBuf,
+        #[arg(long)]
+        name: Option<String>,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
     },
@@ -100,6 +129,8 @@ enum Command {
         shell: Shell,
     },
     Version,
+    #[command(external_subcommand)]
+    Named(Vec<OsString>),
 }
 
 #[derive(Subcommand)]
@@ -166,12 +197,13 @@ enum HookCommand {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    if should_check_update_notice(&cli.command) {
+    if should_check_update_notice(cli.command.as_ref()) {
         update_notice::maybe_print_update_notice().await;
     }
     match cli.command {
-        Command::Pair => pair_device().await,
-        Command::PairTest {
+        None => run_default().await,
+        Some(Command::Pair) => pair_device().await,
+        Some(Command::PairTest {
             payload,
             name,
             attach,
@@ -189,7 +221,7 @@ async fn main() -> Result<()> {
             expect_forbidden_create,
             expect_forbidden_kill,
             expect_forbidden_agent_event,
-        } => {
+        }) => {
             iroh_client::pair_test(iroh_client::PairTestOptions {
                 payload,
                 name,
@@ -211,11 +243,11 @@ async fn main() -> Result<()> {
             })
             .await
         }
-        Command::Ls => list_sessions().await,
-        Command::New { dir, command } => create_session(dir, command).await,
-        Command::Attach { session } => attach_session(session).await,
-        Command::Kill { session } => kill_session(session).await,
-        Command::Devices { command } => {
+        Some(Command::Ls) => list_sessions().await,
+        Some(Command::New { dir, name, command }) => create_session(dir, name, command).await,
+        Some(Command::Attach { session }) => attach_session(session).await,
+        Some(Command::Kill { session }) => kill_session(session).await,
+        Some(Command::Devices { command }) => {
             match command {
                 Some(DeviceCommand::Remove { name }) => {
                     remove_device(name).await?;
@@ -224,8 +256,8 @@ async fn main() -> Result<()> {
             }
             Ok(())
         }
-        Command::Settings { command } => run_settings(command),
-        Command::Daemon { command } => {
+        Some(Command::Settings { command }) => run_settings(command),
+        Some(Command::Daemon { command }) => {
             match command.unwrap_or(DaemonCommand::Status) {
                 DaemonCommand::Install => {
                     service::install()?;
@@ -259,27 +291,28 @@ async fn main() -> Result<()> {
             }
             Ok(())
         }
-        Command::Hook { command } => run_hook(command).await,
-        Command::Completion { shell } => {
+        Some(Command::Hook { command }) => run_hook(command).await,
+        Some(Command::Completion { shell }) => {
             print_completion(shell);
             Ok(())
         }
-        Command::Version => {
+        Some(Command::Version) => {
             println!("fieldwork {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+        Some(Command::Named(args)) => open_named_session(args).await,
     }
 }
 
-fn should_check_update_notice(command: &Command) -> bool {
+fn should_check_update_notice(command: Option<&Command>) -> bool {
     matches!(
         command,
-        Command::Ls
-            | Command::New { .. }
-            | Command::Kill { .. }
-            | Command::Devices { .. }
-            | Command::Settings { .. }
-            | Command::Daemon { .. }
+        Some(Command::Ls)
+            | Some(Command::New { .. })
+            | Some(Command::Kill { .. })
+            | Some(Command::Devices { .. })
+            | Some(Command::Settings { .. })
+            | Some(Command::Daemon { .. })
     )
 }
 
@@ -522,38 +555,137 @@ fn codex_state_from_name(event: &str) -> Option<AgentState> {
 }
 
 async fn list_sessions() -> Result<()> {
-    let (mut conn, _) = ipc::connect_local().await?;
-    ipc::write_msg(&mut conn, &ClientToServerMsg::ListSessions).await?;
-    match ipc::read_msg::<_, ServerToClientMsg>(&mut conn).await? {
-        ServerToClientMsg::SessionList { sessions } => {
-            if sessions.is_empty() {
-                println!("No sessions.");
-            } else {
-                for session in sessions {
-                    println!(
-                        "{}\t{}\t{:?}\t{}",
-                        session.id,
-                        session.name,
-                        session.state,
-                        session.command.join(" ")
-                    );
-                }
-            }
-        }
-        ServerToClientMsg::Error { message, .. } => bail!("{message}"),
-        other => bail!("unexpected daemon response: {other:?}"),
-    }
+    let sessions = fetch_sessions().await?;
+    print_sessions(&sessions);
     Ok(())
 }
 
-async fn create_session(dir: PathBuf, mut command: Vec<String>) -> Result<()> {
+async fn run_default() -> Result<()> {
+    let sessions = fetch_sessions().await?;
+    match sessions.as_slice() {
+        [] => {
+            let summary = create_session_summary(
+                PathBuf::from("."),
+                Some(auto_session_name(&sessions)),
+                Vec::new(),
+            )
+            .await?;
+            eprintln!("created {}\t{}", summary.id, summary.name);
+            attach_session(summary.id.to_string()).await
+        }
+        [session] => attach_session(session.id.to_string()).await,
+        _ => {
+            print_sessions(&sessions);
+            eprintln!(
+                "Multiple sessions are available. Run `fieldwork attach <session-id>` or `fw attach <session-id>`."
+            );
+            Ok(())
+        }
+    }
+}
+
+async fn open_named_session(args: Vec<OsString>) -> Result<()> {
+    let name = parse_named_shortcut_args(args)?;
+    let sessions = fetch_sessions().await?;
+    if let Some(session) = sessions.iter().find(|session| session.name == name) {
+        return attach_session(session.id.to_string()).await;
+    }
+
+    let summary = create_session_summary(PathBuf::from("."), Some(name), Vec::new()).await?;
+    eprintln!("created {}\t{}", summary.id, summary.name);
+    attach_session(summary.id.to_string()).await
+}
+
+fn parse_named_shortcut_args(args: Vec<OsString>) -> Result<String> {
+    let mut args = args.into_iter();
+    let Some(name) = args.next() else {
+        bail!("named session shortcut requires a session name");
+    };
+    if args.next().is_some() {
+        bail!(
+            "named session shortcut accepts one session name; use `fieldwork new --name <name> -- <cmd...>` to choose a command"
+        );
+    }
+    let name = name
+        .into_string()
+        .map_err(|_| anyhow::anyhow!("named session shortcut requires a UTF-8 session name"))?;
+    normalize_session_name(name)
+}
+
+fn auto_session_name(existing: &[SessionSummary]) -> String {
+    let start = auto_name_start_index();
+    for offset in 0..AUTO_SESSION_NAMES.len() {
+        let name = AUTO_SESSION_NAMES[(start + offset) % AUTO_SESSION_NAMES.len()];
+        if existing.iter().all(|session| session.name != name) {
+            return name.to_string();
+        }
+    }
+
+    let base = AUTO_SESSION_NAMES[start % AUTO_SESSION_NAMES.len()];
+    for suffix in 2.. {
+        let candidate = format!("{base}{suffix}");
+        if existing.iter().all(|session| session.name != candidate) {
+            return candidate;
+        }
+    }
+    unreachable!("unbounded suffix search always returns")
+}
+
+fn auto_name_start_index() -> usize {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    (nanos as usize ^ std::process::id() as usize) % AUTO_SESSION_NAMES.len()
+}
+
+async fn fetch_sessions() -> Result<Vec<SessionSummary>> {
+    let (mut conn, _) = ipc::connect_local().await?;
+    ipc::write_msg(&mut conn, &ClientToServerMsg::ListSessions).await?;
+    match ipc::read_msg::<_, ServerToClientMsg>(&mut conn).await? {
+        ServerToClientMsg::SessionList { sessions } => Ok(sessions),
+        ServerToClientMsg::Error { message, .. } => bail!("{message}"),
+        other => bail!("unexpected daemon response: {other:?}"),
+    }
+}
+
+fn print_sessions(sessions: &[SessionSummary]) {
+    if sessions.is_empty() {
+        println!("No sessions.");
+    } else {
+        for session in sessions {
+            println!(
+                "{}\t{}\t{:?}\t{}",
+                session.id,
+                session.name,
+                session.state,
+                session.command.join(" ")
+            );
+        }
+    }
+}
+
+async fn create_session(dir: PathBuf, name: Option<String>, command: Vec<String>) -> Result<()> {
+    let summary = create_session_summary(dir, name, command).await?;
+    println!("created {}\t{}", summary.id, summary.name);
+    Ok(())
+}
+
+async fn create_session_summary(
+    dir: PathBuf,
+    name: Option<String>,
+    mut command: Vec<String>,
+) -> Result<SessionSummary> {
     if command.is_empty() {
         command.push("claude".to_string());
     }
     let cwd = dir
         .canonicalize()
         .with_context(|| format!("canonicalize {}", dir.display()))?;
-    let name = session_name(&command, &cwd);
+    let name = match name {
+        Some(name) => normalize_session_name(name)?,
+        None => session_name(&command, &cwd),
+    };
     let size = terminal_size();
 
     let (mut conn, _) = ipc::connect_local().await?;
@@ -570,13 +702,10 @@ async fn create_session(dir: PathBuf, mut command: Vec<String>) -> Result<()> {
     .await?;
 
     match ipc::read_msg::<_, ServerToClientMsg>(&mut conn).await? {
-        ServerToClientMsg::SessionCreated { summary, .. } => {
-            println!("created {}\t{}", summary.id, summary.name);
-        }
+        ServerToClientMsg::SessionCreated { summary, .. } => Ok(summary),
         ServerToClientMsg::Error { message, .. } => bail!("{message}"),
         other => bail!("unexpected daemon response: {other:?}"),
     }
-    Ok(())
 }
 
 async fn attach_session(session_ref: String) -> Result<()> {
@@ -769,6 +898,17 @@ fn session_name(command: &[String], cwd: &std::path::Path) -> String {
     format!("{} · {dir}", command[0])
 }
 
+fn normalize_session_name(name: String) -> Result<String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        bail!("session name cannot be empty");
+    }
+    if name.chars().any(char::is_control) {
+        bail!("session name cannot contain control characters");
+    }
+    Ok(name)
+}
+
 fn print_daemon_logs(tail: usize) -> Result<()> {
     let path = latest_daemon_log_file()?;
     let contents =
@@ -835,9 +975,14 @@ impl Drop for RawMode {
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, HookCommand, codex_state_from_json, should_check_update_notice};
+    use super::{
+        AUTO_SESSION_NAMES, Cli, Command, HookCommand, auto_session_name, codex_state_from_json,
+        normalize_session_name, parse_named_shortcut_args, should_check_update_notice,
+    };
+    use clap::Parser;
     use clap_complete::Shell;
-    use fieldwork_protocol::AgentState;
+    use fieldwork_protocol::{AgentState, SessionId};
+    use std::ffi::OsString;
     use std::path::PathBuf;
 
     #[test]
@@ -863,22 +1008,108 @@ mod tests {
 
     #[test]
     fn update_notice_skips_machine_and_terminal_streaming_commands() {
-        assert!(should_check_update_notice(&Command::Ls));
-        assert!(should_check_update_notice(&Command::New {
+        assert!(!should_check_update_notice(None));
+        assert!(should_check_update_notice(Some(&Command::Ls)));
+        assert!(should_check_update_notice(Some(&Command::New {
             dir: PathBuf::from("."),
+            name: None,
             command: vec!["bash".to_string()],
-        }));
+        })));
 
-        assert!(!should_check_update_notice(&Command::Pair));
-        assert!(!should_check_update_notice(&Command::Attach {
+        assert!(!should_check_update_notice(Some(&Command::Pair)));
+        assert!(!should_check_update_notice(Some(&Command::Attach {
             session: "first".to_string(),
-        }));
-        assert!(!should_check_update_notice(&Command::Hook {
+        })));
+        assert!(!should_check_update_notice(Some(&Command::Hook {
             command: HookCommand::CodexEvent { session: None },
-        }));
-        assert!(!should_check_update_notice(&Command::Completion {
+        })));
+        assert!(!should_check_update_notice(Some(&Command::Completion {
             shell: Shell::Bash,
-        }));
-        assert!(!should_check_update_notice(&Command::Version));
+        })));
+        assert!(!should_check_update_notice(Some(&Command::Version)));
+        assert!(!should_check_update_notice(Some(&Command::Named(vec![
+            OsString::from("refactoringjob"),
+        ]))));
+    }
+
+    #[test]
+    fn no_args_parse_to_smart_default() {
+        let cli = Cli::try_parse_from(["fieldwork"]).expect("no-arg CLI parses");
+        assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn unknown_subcommand_parses_to_named_shortcut() {
+        let cli =
+            Cli::try_parse_from(["fieldwork", "refactoringjob"]).expect("named shortcut parses");
+        let Some(Command::Named(args)) = cli.command else {
+            panic!("expected named shortcut command");
+        };
+        assert_eq!(args, vec![OsString::from("refactoringjob")]);
+    }
+
+    #[test]
+    fn new_accepts_explicit_name() {
+        let cli = Cli::try_parse_from(["fieldwork", "new", "--name", "refactoringjob", "bash"])
+            .expect("named new parses");
+        let Some(Command::New { name, command, .. }) = cli.command else {
+            panic!("expected new command");
+        };
+        assert_eq!(name.as_deref(), Some("refactoringjob"));
+        assert_eq!(command, vec!["bash".to_string()]);
+    }
+
+    #[test]
+    fn named_shortcut_requires_exactly_one_valid_name() {
+        assert_eq!(
+            parse_named_shortcut_args(vec![OsString::from("  refactoringjob  ")])
+                .expect("valid shortcut"),
+            "refactoringjob"
+        );
+        assert!(parse_named_shortcut_args(Vec::new()).is_err());
+        assert!(
+            parse_named_shortcut_args(vec![
+                OsString::from("refactoringjob"),
+                OsString::from("bash")
+            ])
+            .is_err()
+        );
+        assert!(normalize_session_name("line\nbreak".to_string()).is_err());
+    }
+
+    #[test]
+    fn auto_session_names_are_one_word_and_avoid_collisions() {
+        let name = auto_session_name(&[]);
+        assert!(AUTO_SESSION_NAMES.contains(&name.as_str()));
+        assert!(
+            name.chars()
+                .all(|ch| !ch.is_whitespace() && !ch.is_control())
+        );
+
+        let existing: Vec<_> = AUTO_SESSION_NAMES
+            .iter()
+            .map(|name| test_summary(name))
+            .collect();
+        let fallback = auto_session_name(&existing);
+        assert!(!existing.iter().any(|session| session.name == fallback));
+        assert!(
+            fallback
+                .chars()
+                .all(|ch| !ch.is_whitespace() && !ch.is_control())
+        );
+    }
+
+    fn test_summary(name: &str) -> fieldwork_protocol::SessionSummary {
+        fieldwork_protocol::SessionSummary {
+            id: SessionId::new(),
+            name: name.to_string(),
+            command: vec!["claude".to_string()],
+            cwd: PathBuf::from("."),
+            created_at: 0,
+            last_activity: 0,
+            state: AgentState::Idle,
+            last_line: None,
+            model: None,
+        }
     }
 }

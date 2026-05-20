@@ -684,8 +684,12 @@ What the protocol does NOT carry to push providers:
 fieldwork pair                          # show QR for new device; prompts to approve incoming pair requests
 fieldwork pair-test --payload <json> [--attach <session|first>]
                                         # hidden headless iroh transport smoke client
+fieldwork                               # smart default: create+attach default claude, attach sole session, or list many
+fw                                      # npm-installed short alias for the same CLI and smart default
+fw <name>                               # named fast path: attach existing name or create+attach default claude
 fieldwork ls                            # list sessions
-fieldwork new --dir <path> [cmd...]     # create session (default cmd: claude). CLI-only — phone cannot do this.
+fieldwork new --name <name> --dir <path> [cmd...]
+                                        # create named session (default cmd: claude). CLI-only — phone cannot do this.
 fieldwork attach <session-id|name>      # ratatui-based terminal client
 fieldwork kill <session-id|name>        # SIGTERM to session. CLI-only.
 fieldwork devices                       # list paired phones (last seen, push platform)
@@ -707,6 +711,27 @@ fieldwork completion <shell>            # generate completions
 ```
 
 **No `fieldwork update` subcommand** — npm is the install channel, so updates route through `npm update -g fieldwork`. Having a separate self-updater would let the binary version diverge from the npm-registered version, breaking the user's mental model. The CLI prints a one-line `fieldwork X.Y.Z available - run npm update -g fieldwork` notice to stderr if the npm registry shows a newer version. The check is cached for 24 hours in the private Fieldwork config directory and skipped for QR pairing, shell completions, hooks, `version`, and raw terminal attach flows.
+
+**No-args fast path**: `fieldwork` and npm's `fw` alias with no subcommand route
+through the desktop-only CLI capability boundary. If no sessions exist, the CLI
+creates the default `claude` session with a generated one-word display name such
+as `waffle` or `kazoo` and immediately attaches; if exactly one session exists,
+it attaches that session; if several sessions exist, it prints the session list
+and asks the user to choose explicitly. The generated name is stored in
+`SessionSummary.name`, so mobile apps show the same active session name in the
+dashboard. Mobile clients still cannot create sessions, kill sessions, or choose
+commands.
+
+**Named-session fast path**: `fw <name>` is the product replacement for a
+tmux/mosh/Tailscale alias like `mc refactoringjob`. It resolves an existing
+session by exact display name and attaches to that live daemon-owned PTY. If no
+session by that name exists, it creates a default `claude` PTY with that name and
+immediately attaches. To name arbitrary commands explicitly, use `fieldwork new
+--name <name> [cmd...]`; the phone sees the name as a tappable session but still
+never creates sessions or chooses commands. Reserved command names such as
+`pair`, `new`, `attach`, and `daemon` remain CLI subcommands; use
+`fieldwork new --name <name>` if a desired session name collides with a
+subcommand.
 
 **`attach` UX**: local terminal pass-through client that connects to the daemon's Unix socket, sends `AttachSession`, receives the `Attached { initial_bytes }` payload, then writes streamed raw PTY bytes directly to the user's terminal in raw mode. This preserves full TUI fidelity for `vim`, `htop`, `lazygit`, shells, and agent UIs without trying to re-render a terminal inside ratatui. Keyboard input is forwarded as bytes (including Ctrl+B as escape prefix, Ctrl+B then D to detach — tmux-style for muscle memory). A ratatui status overlay can be revisited after v1 once it can be done without corrupting arbitrary TUI output.
 

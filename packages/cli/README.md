@@ -31,12 +31,22 @@ npm update -g fieldwork
 ```sh
 fieldwork daemon install
 fieldwork pair
+fw
+fw refactoringjob
+fieldwork new --name shell bash
 fieldwork new bash
 fieldwork attach <session-id>
 ```
 
 The shorter `fw` alias accepts the same arguments, for example `fw pair`,
-`fw new bash`, and `fw attach <session-id>`.
+`fw new bash`, and `fw attach <session-id>`. Running `fieldwork` or `fw` with no
+subcommand creates and attaches a default `claude` session when none exist,
+attaches the only existing session, or lists sessions when several are
+available. Running `fw refactoringjob` attaches that named session when it
+exists, or creates and attaches a default `claude` PTY named `refactoringjob`
+when it does not. No-name default sessions get generated one-word names like
+`waffle` or `kazoo`, and the same daemon session name appears in the mobile app
+dashboard.
 
 The default desktop command can be `claude`, but arbitrary PTY commands are
 supported. Mobile clients can pair, list sessions, attach, send input, resize,

@@ -10,9 +10,22 @@ The npm package scaffold is implemented under `packages/`, but the packages are 
 
 ```sh
 cargo build --workspace
+target/debug/fieldwork
+target/debug/fieldwork refactoringjob
+target/debug/fieldwork new --name shell bash
 target/debug/fieldwork new bash
 target/debug/fieldwork attach <session-id>
 ```
+
+With no subcommand, `fieldwork` uses the same smart default as the npm `fw`
+alias: create and attach a default `claude` session when none exist, attach the
+only existing session, or list sessions when several are available. New no-name
+default sessions get generated one-word names like `waffle` or `kazoo`, and the
+same daemon session summary appears in the mobile app dashboard. With one
+unknown word, `fieldwork`/`fw` uses the named session shortcut: attach the named
+session if it exists, otherwise create a default `claude` PTY with that display
+name and attach. Use `fieldwork new --name <name> [cmd...]` when you want a
+named session with an explicit command such as `bash`, `vim`, or `codex`.
 
 Current remote-pairing development flow:
 
@@ -99,7 +112,13 @@ npm pack ./packages/cli --dry-run --json
 `fieldworkd`: `fw` is a shorter alias for the same user-facing CLI, postinstall
 swaps the CLI and daemon commands to native binaries when scripts are allowed,
 and the shipped dispatchers run the matching platform package when postinstall
-is skipped. The v1 platform packages are
+is skipped. Running either CLI name with no subcommand uses the smart default:
+create and attach a default `claude` session when none exist, attach the only
+existing session, or list sessions when several are available. The create branch
+auto-generates a one-word display name that mobile apps show from the daemon
+session list. Running `fw refactoringjob` uses the named-session fast path, and
+`fieldwork new --name <name> [cmd...]` creates an explicitly named arbitrary-command PTY. The v1 platform
+packages are
 `fieldwork-darwin-arm64`, `fieldwork-darwin-x64`,
 `fieldwork-linux-arm64`, and `fieldwork-linux-x64`. Each platform
 package receives `fieldwork` and `fieldworkd` from the release artifact pipeline

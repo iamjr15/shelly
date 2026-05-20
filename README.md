@@ -14,7 +14,15 @@ fieldwork pair
 
 The npm package installs `fieldwork`, the shorter `fw` alias, and `fieldworkd`
 together. `fw` accepts the same arguments as `fieldwork` (`fw pair`,
-`fw new bash`, `fw attach <session-id>`). Desktop distribution is npm-only for v1; Homebrew, `curl | sh`, `cargo install`, and self-update are intentionally out of scope.
+`fw new bash`, `fw attach <session-id>`). `fw refactoringjob` is the named
+session fast path: attach if that session exists, otherwise create a default
+`claude` PTY named `refactoringjob` and attach. Running `fieldwork` or `fw` with
+no subcommand creates and attaches a default `claude` session with a generated
+one-word name like `waffle` or `kazoo` when none exist, attaches the only
+existing session, or lists sessions when there are several. The generated or
+chosen session name is stored in the daemon summary, so it appears as the active
+session name in the mobile app dashboard.
+Desktop distribution is npm-only for v1; Homebrew, `curl | sh`, `cargo install`, and self-update are intentionally out of scope.
 
 ## Screenshots
 
@@ -45,11 +53,17 @@ The first operator-assisted Android physical-device handoff pass is defined in [
 
 ```sh
 cargo build --workspace
+target/debug/fieldwork
+target/debug/fieldwork refactoringjob
+target/debug/fieldwork new --name shell bash
 target/debug/fieldwork new bash
 target/debug/fieldwork ls
 target/debug/fieldwork attach <session-id>
 ```
 
+With no subcommand, the CLI uses the same smart default as the npm `fw` alias
+and auto-names a new default session with a short one-word name.
+With an unknown single word, it uses the named session shortcut described above.
 Inside `attach`, press `Ctrl-B` then `D` to detach without killing the session.
 
 The daemon persists session summaries and scrollback locally in encrypted `redb` storage using an OS-keychain-held key. Paired device records live in a separate encrypted `devices.redb`, with hashed row keys so raw device node IDs and push tokens live only inside encrypted row payloads. Keychain prompts are only for local key material; terminal output, keystrokes, commands, paths, session names, and push tokens are not stored there. The local persistence parent is `0700`, database files are `0600`, and symlinked persistence directories or database files are rejected before use. `fieldwork settings scrollback-encryption off` is the explicit opt-out path for environments where keychain-backed encryption is unavailable; after daemon restart, future session scrollback and device-registry writes are plaintext until the setting is turned back on. After a daemon restart, completed sessions can be listed and attached for scrollback replay, but their PTY process is correctly reported as exited.
