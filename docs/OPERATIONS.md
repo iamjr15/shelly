@@ -218,11 +218,14 @@ files:
 ```sh
 node scripts/verify-secret-boundaries.mjs
 node scripts/verify-infra-scaffold.mjs
+pnpm check:docs-sync
+pnpm check:release-audit
 pnpm check:infra-terraform
 scripts/smoke-relay-tls-loopback.sh
 node scripts/test-release-artifacts.mjs
 node scripts/test-npm-publish-plan.mjs
 node scripts/test-bun-install.mjs
+pnpm check:local-release
 pnpm check:release-workflows
 pnpm check:relay-provider-clients
 pnpm check:security-model
