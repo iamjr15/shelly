@@ -1126,7 +1126,8 @@ function verifyLatestRefresh() {
   requireText(audit, "`IosApp` and `AndroidApp`", "release audit must record both mobile client kinds in capability verification");
   requirePattern(audit, /paired in\s+2 seconds/, "release audit must record the latest local handoff pair duration");
   requireText(audit, "32ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
-  requireText(audit, "`cargo nextest run --workspace`: 157 tests passed.", "release audit must record the current workspace nextest count");
+  requireText(audit, "`cargo nextest run --workspace`: 157 tests passed", "release audit must record the current workspace nextest count");
+  requireText(audit, "one leaky test in `service::tests::formats_service_status`", "release audit must record the current nextest leak report");
   requireText(audit, "`cargo test --workspace`: 157 unit/integration tests passed, plus doctests.", "release audit must record the current workspace cargo test count");
   requireText(audit, "`cargo test -p fieldwork-daemon`: 68 daemon tests passed", "release audit must record the current daemon test count");
   requireText(audit, "`cargo deny check`: exited successfully with `advisories ok, bans ok,\n  licenses ok, sources ok`", "release audit must record the current cargo-deny category result");

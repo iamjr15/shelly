@@ -898,7 +898,9 @@ pnpm test:local-handoff
 
 Observed results:
 
-- `cargo nextest run --workspace`: 157 tests passed.
+- `cargo nextest run --workspace`: 157 tests passed, with nextest reporting
+  one leaky test in `service::tests::formats_service_status` while still
+  exiting successfully.
 - `cargo test --workspace`: 157 unit/integration tests passed, plus doctests.
 - `cargo test -p fieldwork-daemon`: 68 daemon tests passed, including the
   local Sentry panic-capture test transport smoke, seven-day daemon-log pruning,
