@@ -254,7 +254,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "latest pass measured CLI max `10.03ms` and daemon max `42.20ms`",
+    "latest pass measured CLI max `4.18ms` and daemon max `47.59ms`",
     "release audit must record current desktop max performance evidence",
   );
   requireText(
@@ -911,8 +911,8 @@ function verifyLatestRefresh() {
   requireText(audit, "preserved AAB, staged npm binaries, npm publish readiness,\nmeta-package dry-run pack, local handoff smoke, demo video, site typecheck/build,\nTerraform fmt/init/validate, relay TLS/OTLP loopbacks, and desktop performance", "release audit must record latest aggregate local release gate coverage");
   requireText(audit, "`pnpm check:local-release -- --with-artifacts --with-runtime`", "release audit must record the latest artifact/runtime aggregate command");
   requireText(audit, "temp-volume exhaustion while unpacking Cargo registry\nfiles", "release audit must record the local temp-space retry reason");
-  requireText(audit, "`3.89ms`, p95 `9.69ms`, max `10.03ms`", "release audit must record latest CLI desktop performance values");
-  requireText(audit, "`40.28ms`, p95 `42.09ms`, max `42.20ms`", "release audit must record latest daemon desktop performance values");
+  requireText(audit, "`3.59ms`, p95 `4.07ms`, max `4.18ms`", "release audit must record latest CLI desktop performance values");
+  requireText(audit, "`40.44ms`, p95 `44.31ms`, max `47.59ms`", "release audit must record latest daemon desktop performance values");
   requireText(audit, "npm binary readiness passed\nwith staged artifacts", "release audit must record staged npm binary readiness");
   requireText(audit, "Cross-target desktop release builds passed on 2026-05-19", "release audit must record the latest cross-target desktop release build date");
   requireText(audit, "Mach-O arm64/x86_64 and ELF x86-64/aarch64 binaries", "release audit must record cross-target binary format verification");
@@ -1125,7 +1125,7 @@ function verifyLatestRefresh() {
   requireText(audit, "removing the regenerated repo-local `target/debug` after the run", "release audit must record local handoff target/debug cleanup");
   requireText(audit, "`IosApp` and `AndroidApp`", "release audit must record both mobile client kinds in capability verification");
   requirePattern(audit, /paired in\s+2 seconds/, "release audit must record the latest local handoff pair duration");
-  requireText(audit, "32ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
+  requireText(audit, "20ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
   requireText(audit, "`cargo nextest run --workspace`: 157 tests passed.", "release audit must record the current workspace nextest count");
   requireText(audit, "`cargo test --workspace`: 157 unit/integration tests passed, plus doctests.", "release audit must record the current workspace cargo test count");
   requireText(audit, "`cargo test -p fieldwork-daemon`: 68 daemon tests passed", "release audit must record the current daemon test count");

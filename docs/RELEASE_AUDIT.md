@@ -296,7 +296,7 @@ outside this shell:
 | Pre-commit developer gate | `.pre-commit-config.yaml` runs `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`, `cargo nextest run --workspace --no-fail-fast`, `node scripts/verify-secret-boundaries.mjs`, `node scripts/verify-no-ship-markers.mjs`, and `node scripts/verify-no-ship-markers.mjs --self-test` through local system hooks; `scripts/verify-community-scaffold.mjs` pins those hooks as always-run workspace/security gates | Locally verified |
 | Daemon service install/restart scaffold | `crates/cli/src/service.rs`, CLI daemon commands, IPC health wait, CLI auto-spawn reuse of validated colocated `fieldworkd` resolution, focused service context/path unit tests including colocated executable `fieldworkd` validation, macOS Gatekeeper rejection, and install rollback when service start fails, fake-command `service-manager` rendering tests for LaunchAgent `KeepAlive`/`SuccessfulExit=false` and systemd `Restart=on-failure`/`RestartSec=5`, local handoff restart-restore smoke, and `scripts/verify-daemon-service.mjs` | Static/source verified; launchd/systemd survival and macOS sleep/wake gates still need signed/notarized artifact, real sleep/wake cycle, or Linux user-service host |
 | Daemon log retention | `crates/daemon/src/logging.rs`, `logging::tests::prune_old_log_files_removes_only_expired_daemon_logs`, and `scripts/verify-daemon-service.mjs` verify seven-day startup pruning for `daemon.log*` files only | Locally verified |
-| Desktop cold-start performance thresholds | `scripts/measure-desktop-performance.mjs` and `pnpm measure:desktop-performance` build on release binaries, run one explicit warm-up sample to remove build-machine first-exec noise, then fail if any measured `fieldwork version` sample exceeds 50 ms or any measured daemon ready-to-handshake sample exceeds 200 ms; latest pass measured CLI max `10.03ms` and daemon max `42.20ms` over 25 measured samples | Locally verified |
+| Desktop cold-start performance thresholds | `scripts/measure-desktop-performance.mjs` and `pnpm measure:desktop-performance` build on release binaries, run one explicit warm-up sample to remove build-machine first-exec noise, then fail if any measured `fieldwork version` sample exceeds 50 ms or any measured daemon ready-to-handshake sample exceeds 200 ms; latest pass measured CLI max `4.18ms` and daemon max `47.59ms` over 25 measured samples | Locally verified |
 | Development doc | `docs/DEVELOPMENT.md` documents the 15-minute source-build path, common local checks, protocol/ring/snapshot/mobile-core focused tests, local handoff smoke, desktop release/performance commands, website checks, UniFFI bindgen, iOS/Android development flows, mobile privacy/telemetry facts, daemon logs, and user-service lifecycle; `scripts/verify-development-doc.mjs` pins those claims and CI wiring | Locally verified |
 | Docs synchronized | `scripts/verify-docs-sync.mjs` requires `README.md`, `PLAN.md`, `FUTURE.md`, `docs/PROTOCOL.md`, `docs/PRIVACY.md`, `docs/ARCHITECTURE.md`, `docs/INSTALL.md`, and `docs/RELEASE_AUDIT.md` to exist and carry the current v1 install, protocol, privacy, architecture, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts; `docs/DEVELOPMENT.md`, `docs/OPERATIONS.md`, and `docs/SECURITY.md` remain covered by the focused release, infra, security-model, telemetry, and privacy verifiers | Current |
 | README screenshots and 60-second demo video | README embeds the three screenshot-style SVG captures and links `docs/assets/fieldwork-demo-v1.mp4`; `scripts/render-demo-video.mjs` regenerates the MP4 from those assets plus fixed release-boundary slates, and `pnpm check:demo-video` verifies an H.264 1920x1080 artifact with approximately 60-second duration | Locally verified |
@@ -502,7 +502,7 @@ reported `Success! The configuration is valid.`, and the shared script removed
 the ignored `.terraform` provider cache afterward without producing `tfstate` or
 `tfvars` files. The site content verifier passed, pinning the `fieldwork.dev` pages to v1 install, protocol, architecture, privacy, screenshot SVG imports, and future-scope exclusions. Domain status refresh is no longer an agent-owned routine release activity; `scripts/check-domain-status.mjs --operator-refresh` remains available for explicit operator-requested refreshes only, and the script fails closed before network access without that flag. The release-workflow verifier now also pins the Cloudflare Pages deploy scaffold for `fieldwork.dev`, including the isolated site lockfile install, root `pnpm build:site`, fail-closed Cloudflare credentials, and the `fieldwork-dev` Pages project. The release-workflow verifier now also pins the weekly Dependabot matrix for Cargo, root npm package metadata, the isolated `site/` npm lockfile, Android Gradle, and GitHub Actions. The focused daemon state-inference fixture tests passed, and the focused daemon local-agent-hook tests passed for `matching_local_agent_hook_updates_session_state` and `mismatched_local_agent_hook_is_ignored`, verifying that matching LocalCli Claude/Codex hook events update only matching PTY sessions while mismatched hook sources are ignored. The daemon
 service scaffold verifier passed, the direct bincode IPC mobile create/kill rejection test passed for `IosApp` and `AndroidApp`, the direct bincode IPC mobile agent-state hook rejection test passed for `IosApp` and `AndroidApp`, the local handoff smoke now also covers paired iroh mobile agent-state hook rejection, and the latest local handoff smoke paired in 2 seconds before exercising `claude`, `bash`, `vim`, subscribed session updates,
-mobile input, warm reconnect replay over iroh within 2 seconds from `last_seen_seq` (32ms in the latest local run), protocol-mismatch rejection, mobile create/kill/agent-state-event rejection, revocation, and restart restore.
+mobile input, warm reconnect replay over iroh within 2 seconds from `last_seen_seq` (20ms in the latest local run), protocol-mismatch rejection, mobile create/kill/agent-state-event rejection, revocation, and restart restore.
 The Android biometric gate refresh added focused JVM tests for first unlock,
 immediate post-unlock resume, fresh foreground resume, 5-minute stale foreground
 boundary, and terminal input refusal while locked, while preserving the
@@ -569,8 +569,8 @@ An earlier rerun hit local temp-volume exhaustion while unpacking Cargo registry
 files under an isolated temp `HOME`; after removing the generated
 `/tmp/fieldwork-target-checks` directory and using the normal Cargo
 cache/target paths, the same gate passed without product-code changes. The latest
-performance run reported CLI median `3.89ms`, p95 `9.69ms`, max `10.03ms`, and
-daemon ready-to-handshake median `40.28ms`, p95 `42.09ms`, max `42.20ms` over
+performance run reported CLI median `3.59ms`, p95 `4.07ms`, max `4.18ms`, and
+daemon ready-to-handshake median `40.44ms`, p95 `44.31ms`, max `47.59ms` over
 25 measured release-build samples; npm binary readiness passed
 with staged artifacts; `publish-npm-packages.mjs --check-ready` confirmed the
 children-first order `fieldwork-darwin-arm64 -> fieldwork-darwin-x64 ->
@@ -956,8 +956,8 @@ Observed results:
   `application/x-protobuf` `/v1/traces` POST for `/v1/version`, and the exported
   protobuf body did not contain injected terminal/session/token sentinel strings.
 - Desktop performance passed after one explicit warm-up sample, with CLI median
-  `3.89ms`, p95 `9.69ms`, max `10.03ms`, and daemon ready-to-handshake median
-  `40.28ms`, p95 `42.09ms`, max `42.20ms` over 25 measured release-build
+  `3.59ms`, p95 `4.07ms`, max `4.18ms`, and daemon ready-to-handshake median
+  `40.44ms`, p95 `44.31ms`, max `47.59ms` over 25 measured release-build
   samples.
 - Site check/build produced 5 static pages with no Astro diagnostics.
 - Agent-browser screenshot smoke captured `/`, `/install`, `/architecture`,
