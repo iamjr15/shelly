@@ -75,6 +75,7 @@ const artifactChecks = [
 
 const runtimeChecks = [
   ["local handoff smoke", bash, ["scripts/smoke-local-handoff.sh"], { env: localHandoffEnv() }],
+  ["binary entrypoints", node, ["scripts/verify-binary-entrypoints.mjs"]],
   ["demo video artifact", node, ["scripts/verify-demo-video.mjs"]],
   [
     "site typecheck/build",

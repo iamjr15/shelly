@@ -9,6 +9,7 @@
     "refresh:domain-status": "node scripts/check-domain-status.mjs --operator-refresh",
     "refresh:github-namespace": "node scripts/check-github-namespace.mjs --operator-refresh",
     "check:rust-workspace": "node scripts/verify-rust-workspace.mjs",
+    "check:binary-entrypoints": "node scripts/verify-binary-entrypoints.mjs",
     "check:changesets": "node scripts/verify-changesets-config.mjs",
     "check:oss-notices": "node scripts/generate-oss-notices.mjs --check",
     "check:docs-sync": "node scripts/verify-docs-sync.mjs",
