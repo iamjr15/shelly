@@ -193,6 +193,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "live-testing evidence verifier fixture test",
+    "release audit must record local release aggregate coverage for live-test evidence verifier self-test",
+  );
+  requireText(
+    audit,
     "`docs/LIVE_TESTING.md` defines the first operator-assisted Android physical-device terminal handoff pass",
     "release audit must include the first Android live-test runbook row",
   );
@@ -225,6 +230,16 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "direct `adb` screenshot/UI/log/crash capture",
     "release audit must preserve the direct adb evidence requirement",
+  );
+  requireText(
+    audit,
+    'pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"',
+    "release audit must include the first live-test evidence verifier command",
+  );
+  requireText(
+    audit,
+    "nontrivial PNG screenshots, locked-surface privacy",
+    "release audit must describe live-test evidence verifier coverage",
   );
   requireText(
     audit,
@@ -1930,6 +1945,7 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/verify-rust-workspace.mjs", "local release gate must include Rust workspace verification");
   requireText(localRelease, "scripts/verify-release-audit.mjs", "local release gate must include release audit verification");
   requireText(localRelease, "scripts/test-release-audit-list.mjs", "local release gate must include release audit list-mode test");
+  requireText(localRelease, "scripts/test-live-testing-evidence.mjs", "local release gate must include live-test evidence verifier self-test");
   requireText(localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");
   requireText(localRelease, "Dir[\".github/workflows/*.yml\"].sort.each", "local release gate must parse all workflow YAML files");
   requireText(localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include no-ship marker verification");
