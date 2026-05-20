@@ -171,7 +171,7 @@ function assertMetaReadme() {
     "`fw`: a shorter alias for the same user-facing CLI",
     "`fw` alias accepts the same arguments",
     "`fieldworkd`: the local daemon that owns PTYs, pairing, replay, and transport",
-    "fieldwork daemon install",
+    "fw daemon install",
     "fw pair",
     "fw",
     "fw refactoringjob",

@@ -107,7 +107,7 @@ function verifyInstallPage() {
     "Mobile apps attach to sessions created on the desktop",
     "they do not create sessions",
     "npm i -g fieldwork",
-    "fieldwork daemon install",
+    "fw daemon install",
     "fw pair",
     "cargo build --workspace",
     "target/debug/fieldwork new bash",

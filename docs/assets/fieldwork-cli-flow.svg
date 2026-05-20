@@ -11,11 +11,11 @@
   <g font-family="Menlo, Consolas, monospace" font-size="26">
     <text x="124" y="176" fill="#87d787">$ npm i -g fieldwork</text>
     <text x="124" y="223" fill="#9fb4c8">added fieldwork with native darwin-arm64 binaries</text>
-    <text x="124" y="292" fill="#87d787">$ fieldwork daemon install</text>
+    <text x="124" y="292" fill="#87d787">$ fw daemon install</text>
     <text x="124" y="339" fill="#9fb4c8">installed and started fieldworkd user service</text>
-    <text x="124" y="408" fill="#87d787">$ fieldwork new --dir ~/projects/api claude</text>
+    <text x="124" y="408" fill="#87d787">$ fw new --dir ~/projects/api claude</text>
     <text x="124" y="455" fill="#9fb4c8">created 019e35d2-8d76-7f60-9c46-3e4b8a4e2257  claude-api</text>
-    <text x="124" y="524" fill="#87d787">$ fieldwork ls</text>
+    <text x="124" y="524" fill="#87d787">$ fw ls</text>
     <text x="124" y="571" fill="#d6e0ea">019e35d2-8d76-7f60-9c46-3e4b8a4e2257    claude-api    Working    claude</text>
   </g>
 </svg>

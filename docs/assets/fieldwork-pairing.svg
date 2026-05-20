@@ -7,9 +7,9 @@
   <circle cx="108" cy="99" r="8" fill="#e05848"/>
   <circle cx="134" cy="99" r="8" fill="#f0b84d"/>
   <circle cx="160" cy="99" r="8" fill="#55b678"/>
-  <text x="432" y="105" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="17" fill="#c8d2dc">fieldwork pair</text>
+  <text x="432" y="105" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="17" fill="#c8d2dc">fw pair</text>
   <g font-family="Menlo, Consolas, monospace" font-size="22">
-    <text x="112" y="170" fill="#87d787">$ fieldwork pair</text>
+    <text x="112" y="170" fill="#87d787">$ fw pair</text>
     <text x="112" y="215" fill="#9fb4c8">Scan this QR with Fieldwork mobile.</text>
   </g>
   <rect x="114" y="250" width="220" height="220" fill="#f8fbfd"/>

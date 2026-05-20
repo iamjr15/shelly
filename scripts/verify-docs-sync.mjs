@@ -86,7 +86,7 @@ function verifyAndroidRendererDoc() {
 function verifyReadme() {
   for (const needle of [
     "npm i -g fieldwork",
-    "fieldwork daemon install\nfw pair",
+    "fw daemon install\nfw pair",
     "fw pair",
     "the shorter `fw` alias",
     "`fw` accepts the same arguments as `fieldwork`",
@@ -256,7 +256,7 @@ function verifyInstallDoc() {
     "New no-name\ndefault sessions get generated one-word names like `waffle` or `kazoo`",
     "same daemon session summary appears in the mobile app dashboard",
     "With one\nunknown word, `fieldwork`/`fw` uses the named session shortcut",
-    "Use `fieldwork new --name <name> [cmd...]`",
+    "Use `fw new --name <name> [cmd...]`",
     "Duplicate session names are rejected by the daemon",
     "scripts/smoke-local-handoff.sh",
     "default `claude` session through a temp stub command, a desktop `bash` session, and a `vim` TUI session",
@@ -278,7 +278,7 @@ function verifyInstallDoc() {
     "Running either CLI name with no subcommand uses the smart default",
     "auto-generates a one-word display name that mobile apps show from the daemon\nsession list",
     "Running `fw refactoringjob` uses the named-session fast path",
-    "`fieldwork new --name <name> [cmd...]` creates an explicitly named arbitrary-command PTY",
+    "`fw new --name <name> [cmd...]` creates an explicitly named arbitrary-command PTY",
     "Xcode 16.3 for local development on the current macOS 15.2 host",
     "node scripts/check-domain-status.mjs --operator-refresh --require-registered --require-dns",
     "Run it only when the operator asks for\na status refresh",

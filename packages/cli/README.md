@@ -29,7 +29,7 @@ npm update -g fieldwork
 ## First Run
 
 ```sh
-fieldwork daemon install
+fw daemon install
 fw pair
 fw
 fw refactoringjob

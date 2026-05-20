@@ -8,7 +8,7 @@ Fieldwork v1 is being built as a daemon plus CLI plus native mobile apps for uni
 
 ```sh
 npm i -g fieldwork
-fieldwork daemon install
+fw daemon install
 fw pair
 ```
 

@@ -4,7 +4,7 @@ The v1 production install path will be:
 
 ```sh
 npm i -g fieldwork
-fieldwork daemon install
+fw daemon install
 fw pair
 fw
 fw refactoringjob
@@ -28,7 +28,7 @@ default sessions get generated one-word names like `waffle` or `kazoo`, and the
 same daemon session summary appears in the mobile app dashboard. With one
 unknown word, `fieldwork`/`fw` uses the named session shortcut: attach the named
 session if it exists, otherwise create a default `claude` PTY with that display
-name and attach. Use `fieldwork new --name <name> [cmd...]` when you want a
+name and attach. Use `fw new --name <name> [cmd...]` when you want a
 named session with an explicit command such as `bash`, `vim`, or `codex`.
 Duplicate session names are rejected by the daemon so phone dashboard labels and
 `fw <name>` shortcuts stay unambiguous.
@@ -39,7 +39,7 @@ Current remote-pairing development flow:
 scripts/smoke-local-handoff.sh
 ```
 
-The smoke script starts an isolated daemon, creates a default `claude` session through a temp stub command, a desktop `bash` session, and a `vim` TUI session, verifies the iroh transport rejects a mismatched protocol version before pairing, pairs the hidden iroh client through explicit desktop approval, lists and attaches to those sessions, starts a mobile session-list subscription before creating another desktop session, verifies that subscribed session appears, sends mobile-originated input into `bash`, `claude`, and the subscribed desktop-created session, checks that switched sessions do not receive each other's output markers, verifies the paired mobile client cannot create sessions, kill sessions, or emit agent-state hook events, removes the simulated device, verifies the reused identity is unauthorized, restarts the daemon, and checks last-known session restore. `fieldwork pair` itself starts the daemon if needed, prints a QR payload, and requires explicit `y` approval before a device is stored. Pair tokens are single-use.
+The smoke script starts an isolated daemon, creates a default `claude` session through a temp stub command, a desktop `bash` session, and a `vim` TUI session, verifies the iroh transport rejects a mismatched protocol version before pairing, pairs the hidden iroh client through explicit desktop approval, lists and attaches to those sessions, starts a mobile session-list subscription before creating another desktop session, verifies that subscribed session appears, sends mobile-originated input into `bash`, `claude`, and the subscribed desktop-created session, checks that switched sessions do not receive each other's output markers, verifies the paired mobile client cannot create sessions, kill sessions, or emit agent-state hook events, removes the simulated device, verifies the reused identity is unauthorized, restarts the daemon, and checks last-known session restore. `fw pair` (or `fieldwork pair`) starts the daemon if needed, prints a QR payload, and requires explicit `y` approval before a device is stored. Pair tokens are single-use.
 
 Optional local daemon service install while developing:
 
@@ -124,7 +124,7 @@ attach a default `claude` session when none exist, attach the only existing
 session, or list sessions when several are available. The create branch
 auto-generates a one-word display name that mobile apps show from the daemon
 session list. Running `fw refactoringjob` uses the named-session fast path, and
-`fieldwork new --name <name> [cmd...]` creates an explicitly named arbitrary-command PTY. The v1 platform
+`fw new --name <name> [cmd...]` creates an explicitly named arbitrary-command PTY. The v1 platform
 packages are
 `fieldwork-darwin-arm64`, `fieldwork-darwin-x64`,
 `fieldwork-linux-arm64`, and `fieldwork-linux-x64`. Each platform

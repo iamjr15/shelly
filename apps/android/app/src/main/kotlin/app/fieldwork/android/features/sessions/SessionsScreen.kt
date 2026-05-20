@@ -89,7 +89,7 @@ fun SessionsScreen(
                     Card {
                         ListItem(
                             headlineContent = { Text("No sessions") },
-                            supportingContent = { Text("Create one on your laptop with fieldwork new.") },
+                            supportingContent = { Text("Create one on your laptop with fw new.") },
                             leadingContent = { Icon(Icons.Default.Terminal, contentDescription = null) },
                         )
                     }
