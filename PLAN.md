@@ -1475,14 +1475,18 @@ Treat this as a release checklist. v1.0.0 cannot ship until every box is checked
 - [ ] Kill daemon, restart, sessions list shows last-known sessions (scrollback restored, processes died — documented) — the hidden local handoff simulator verifies desktop restore. `pnpm test:android-emulator-restart-restore` is the actual Android-app local substitute: it pairs the debug app with an isolated release daemon, creates an intentionally completed `fw_restart_session` so the daemon persists `ANDROID_RESTART_SCROLLBACK` through the session-exit path, restarts the daemon with the same persisted state and node identity, relaunches the app from saved pairing, verifies the restored dashboard still shows `fw_restart_session`, opens the restored terminal, and uses a separately approved verifier to confirm `ANDROID_RESTART_SCROLLBACK` is replayed from restored scrollback. The repeatable smoke passed on `emulator-5554` on 2026-05-19 after the ViewModel main-thread fix. Direct adb restart-restore evidence on 2026-05-19 captured the paired dashboard and logcat before/after a daemon restart, exposed an Android `ANR in app.fieldwork.android` when refresh performed mobile-core session listing on the main thread, then passed after `FieldworkViewModel` moved repository calls to `Dispatchers.IO`: screenshots showed `fw_restart_session` on the restored dashboard before and after refresh, logcat showed `FieldworkRepository: listSessions returned 1 sessions`, and no Fieldwork `FATAL EXCEPTION` or ANR remained.
 - [ ] Run 3 sessions in parallel, switch between them on phone, no state leakage — the hidden local handoff smoke verifies switched simulated-phone sessions do not receive each other's output markers, and `pnpm test:android-emulator-multisession` is the actual Android-app substitute: it opens `fwm_a`, `fwm_b`, and `fwm_c`, switches among all three in the app, sends Android-originated input to each, and verifies `multi_a_ok`, `multi_b_ok`, and `multi_c_ok` land only in their selected PTYs. Physical-device switching remains required before checking this gate.
 
-**Local substitute note (2026-05-19)**: `scripts/smoke-local-handoff.sh`
-passes against the hidden iroh phone simulator on this machine. Latest run
-paired in 2 seconds, created default `claude`, `bash`, `vim`, and
-desktop-created subscribed `bash` sessions, observed the subscribed session from
-the simulated phone, sent mobile-originated input to `bash`, `claude`, and the
-subscribed session, replayed missed output after a simulated iroh reconnect within
-2 seconds (20ms in the latest local run), attached to the TUI session, verified no cross-session output
-leakage, rejected mobile `CreateSession`/`KillSession`/`AgentStateEvent`, rejected a revoked device
+**Local substitute note (2026-05-20)**: `scripts/smoke-local-handoff.sh`
+passes against the hidden iroh phone simulator on this machine and now preserves
+host `CARGO_HOME`/`RUSTUP_HOME` while isolating Fieldwork's temp `HOME`, config,
+state, and runtime directories. Latest `pnpm check:local-release --
+--with-runtime` run paired in 3 seconds, created default `claude`, `bash`,
+`vim`, explicitly named `FW_SUBSCRIBE_SESSION_READY` and `FW_RECONNECT_READY`
+desktop sessions, observed the subscribed session from the simulated phone, sent
+mobile-originated input to `bash`, `claude`, and the subscribed session,
+replayed missed output after a simulated iroh reconnect within 2 seconds (13ms
+in the latest local run), attached to the TUI session, verified no
+cross-session output leakage, rejected mobile
+`CreateSession`/`KillSession`/`AgentStateEvent`, rejected a revoked device
 identity, and restored last-known sessions after daemon restart. The unchecked
 boxes above remain release gates because they require real phone QR scanning,
 native terminal rendering, push tap-through, and physical-device app behavior.
