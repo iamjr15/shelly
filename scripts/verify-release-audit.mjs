@@ -228,12 +228,17 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "bare `fieldwork` auto-named default `claude` shortcut",
-    "release audit must record live-test coverage for the bare fieldwork shortcut",
+    "a temporary source-build `fw` shim",
+    "release audit must record the source-build fw live-test shim",
   );
   requireText(
     audit,
-    "`fieldwork refactoringjob` named shortcut appearing in the Android dashboard",
+    "bare `fw` auto-named default `claude` shortcut",
+    "release audit must record live-test coverage for the bare fw shortcut",
+  );
+  requireText(
+    audit,
+    "`fw refactoringjob` named shortcut appearing in the Android dashboard",
     "release audit must record live-test coverage for named shortcut dashboard visibility",
   );
   requireText(
@@ -817,14 +822,16 @@ function verifyLiveTestingRunbook() {
     "direct `adb`: screenshots, UI dumps, app logcat,\n  crash buffers, and command output",
     "apps/android/gradlew --no-daemon :app:assembleDebug",
     "adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk",
-    "target/release/fieldwork\n",
-    "target/release/fieldwork refactoringjob",
-    "target/release/fieldwork new --name shell bash",
-    "target/release/fieldwork new --name editor -- vim",
-    "target/release/fieldwork new bash",
-    "target/release/fieldwork new -- claude",
-    "target/release/fieldwork new -- vim",
-    "target/release/fieldwork pair",
+    'export FW_LIVE_BIN="/tmp/fieldwork-live-bin"',
+    'ln -sf "$PWD/target/release/fieldwork" "$FW_LIVE_BIN/fw"',
+    "fw daemon start",
+    "fw\nfw refactoringjob",
+    "fw new --name shell bash",
+    "fw new --name editor -- vim",
+    "fw new bash",
+    "fw new -- claude",
+    "fw new -- vim",
+    "fw pair",
     "generated one-word name such as `waffle` or `kazoo`",
     "`refactoringjob` appear as active sessions in the Android dashboard",
     "auto-named default `claude` session",

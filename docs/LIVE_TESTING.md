@@ -65,29 +65,38 @@ rg 'FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
 
 ## Desktop Setup
 
-Use a clean terminal so the captured command output is easy to audit:
+Use a clean terminal so the captured command output is easy to audit. If this
+round is running from source before the npm package is installed globally, put a
+temporary `fw` shim on `PATH` so the test exercises the same short command users
+will type after install:
 
 ```sh
-target/release/fieldwork daemon start
-target/release/fieldwork
-target/release/fieldwork refactoringjob
-target/release/fieldwork new --name shell bash
-target/release/fieldwork new --name editor -- vim
-target/release/fieldwork new bash
-target/release/fieldwork new -- claude
-target/release/fieldwork new -- vim
-target/release/fieldwork ls
-target/release/fieldwork pair
+export FW_LIVE_BIN="/tmp/fieldwork-live-bin"
+mkdir -p "$FW_LIVE_BIN"
+ln -sf "$PWD/target/release/fieldwork" "$FW_LIVE_BIN/fieldwork"
+ln -sf "$PWD/target/release/fieldwork" "$FW_LIVE_BIN/fw"
+ln -sf "$PWD/target/release/fieldworkd" "$FW_LIVE_BIN/fieldworkd"
+export PATH="$FW_LIVE_BIN:$PATH"
+
+fw daemon start
+fw
+fw refactoringjob
+fw new --name shell bash
+fw new --name editor -- vim
+fw new bash
+fw new -- claude
+fw new -- vim
+fw ls
+fw pair
 ```
 
-The bare `target/release/fieldwork` command must create and attach a default
-`claude` session with a generated one-word name such as `waffle` or `kazoo`.
-Press `Ctrl-B` then `D` to detach after confirming the generated name. The
-`target/release/fieldwork refactoringjob` command must create or attach that
-named default `claude` session. Confirm both the generated name and
-`refactoringjob` appear as active sessions in the Android dashboard after
-pairing; the phone should still only list and attach, never create or choose
-commands.
+The bare `fw` command must create and attach a default `claude` session with a
+generated one-word name such as `waffle` or `kazoo`. Press `Ctrl-B` then `D` to
+detach after confirming the generated name. The `fw refactoringjob` command must
+create or attach that named default `claude` session. Confirm both the generated
+name and `refactoringjob` appear as active sessions in the Android dashboard
+after pairing; the phone should still only list and attach, never create or
+choose commands.
 
 Approve the pairing only after the phone scans the QR payload and the CLI asks
 for explicit confirmation.
@@ -122,8 +131,8 @@ adb shell uiautomator dump /sdcard/window.xml
 adb pull /sdcard/window.xml "$FW_LIVE_DIR/session-ui.xml"
 adb logcat -d > "$FW_LIVE_DIR/session-logcat.log"
 adb logcat -d -b crash > "$FW_LIVE_DIR/session-crash.log"
-target/release/fieldwork devices > "$FW_LIVE_DIR/devices.txt"
-target/release/fieldwork ls > "$FW_LIVE_DIR/sessions.txt"
+fw devices > "$FW_LIVE_DIR/devices.txt"
+fw ls > "$FW_LIVE_DIR/sessions.txt"
 ```
 
 ## Test Matrix
