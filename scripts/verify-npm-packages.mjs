@@ -182,6 +182,8 @@ function assertMetaReadme() {
     "shipped dispatchers still run the matching platform binaries",
     "WSL2",
     "Local persistence is encrypted by default with an OS-keychain-held key",
+    "Keychain prompts are only for local key material",
+    "terminal output, keystrokes, commands, paths, session names, and push tokens are not stored there",
     "do not include terminal content, commands, paths, or session names",
   ];
   for (const needle of requiredText) {

@@ -53,5 +53,7 @@ disabled, the shipped dispatchers still run the matching platform binaries. v1
 Windows host support is through the Linux package inside WSL2.
 
 Local persistence is encrypted by default with an OS-keychain-held key unless
-the user explicitly opts out. Fieldwork push payloads are privacy-preserving and
-do not include terminal content, commands, paths, or session names.
+the user explicitly opts out. Keychain prompts are only for local key material;
+terminal output, keystrokes, commands, paths, session names, and push tokens are
+not stored there. Fieldwork push payloads are privacy-preserving and do not
+include terminal content, commands, paths, or session names.
