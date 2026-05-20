@@ -1026,10 +1026,15 @@ Observed results:
   identity pinning,
   children-first provenance publish plan, post-publish registry-state and
   provenance verification, artifact preparation, and dry-run package packing.
-- Cross-target desktop release builds passed on 2026-05-19 for `fieldwork`, `fieldworkd`, and
-  `fieldwork-relay` on `aarch64-apple-darwin`, `x86_64-apple-darwin`,
-  `x86_64-unknown-linux-gnu`, and `aarch64-unknown-linux-gnu`; `file`
-  identified the expected Mach-O arm64/x86_64 and ELF x86-64/aarch64 binaries.
+- Cross-target desktop release builds passed on 2026-05-20 for `fieldwork`,
+  `fieldworkd`, and `fieldwork-relay` on `aarch64-apple-darwin`,
+  `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, and
+  `aarch64-unknown-linux-gnu`; `file` identified the expected
+  Mach-O arm64/x86_64 and ELF x86-64/aarch64 binaries. The four generated npm
+  platform package binary pairs were refreshed from those outputs, the host
+  staged `fieldworkd` entrypoint was verified for `--help`/`--version`, and
+  `pnpm check:local-release --with-artifacts` passed against the refreshed
+  staged packages.
 - Oracle relay provisioning scaffold is present under `infra/oracle`: Terraform
   fmt/init/validate passed against the OCI provider, `provision-region.sh`
   supplies the A1-capacity retry wrapper, and `pnpm check:infra-scaffold`

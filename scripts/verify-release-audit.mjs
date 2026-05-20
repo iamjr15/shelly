@@ -1103,7 +1103,7 @@ function verifyLatestRefresh() {
   requireText(audit, "`3.05ms`, p95 `4.10ms`, max `4.12ms`", "release audit must record latest CLI desktop performance values");
   requireText(audit, "`39.73ms`, p95 `42.70ms`, max `43.84ms`", "release audit must record latest daemon desktop performance values");
   requireText(audit, "npm binary readiness passed\nwith staged artifacts", "release audit must record staged npm binary readiness");
-  requireText(audit, "Cross-target desktop release builds passed on 2026-05-19", "release audit must record the latest cross-target desktop release build date");
+  requireText(audit, "Cross-target desktop release builds passed on 2026-05-20", "release audit must record the latest cross-target desktop release build date");
   requireText(audit, "Mach-O arm64/x86_64 and ELF x86-64/aarch64 binaries", "release audit must record cross-target binary format verification");
   requireText(audit, "fieldwork-darwin-arm64 -> fieldwork-darwin-x64 ->\nfieldwork-linux-arm64 -> fieldwork-linux-x64 -> fieldwork", "release audit must record current children-first npm readiness order");
   requireText(audit, "`fieldwork@1.0.0` meta\npackage with only `LICENSE`, `NOTICE`, `README.md`, `bin/fieldwork`,\n`bin/fieldworkd`, `install.js`, and `package.json`", "release audit must record meta package dry-run contents");
