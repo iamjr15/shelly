@@ -21,12 +21,13 @@ if (result.stdout.includes("release audit ok")) {
 }
 
 for (const expected of [
-  "Unchecked PLAN.md gates: 37",
+  "Unchecked PLAN.md gates: 38",
   "ios-xcode (1)",
   "signing (4)",
   "publish (3)",
   "provider (5)",
-  "physical-device (13)",
+  "physical-device (14)",
+  "30-minute physical Android terminal renderer dogfood",
   "store-console (2)",
   "operator (9)",
   "Operator: confirm npm publish rights for the platform child package family",

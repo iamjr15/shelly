@@ -71,7 +71,7 @@ function verifyCurrentVerdict() {
   );
   requireText(
     audit,
-    "Current unchecked `PLAN.md` gate inventory: 37 total (`ios-xcode`: 1,\n  `signing`: 4, `publish`: 3, `provider`: 5, `physical-device`: 13,\n  `store-console`: 2, `operator`: 9)",
+    "Current unchecked `PLAN.md` gate inventory: 38 total (`ios-xcode`: 1,\n  `signing`: 4, `publish`: 3, `provider`: 5, `physical-device`: 14,\n  `store-console`: 2, `operator`: 9)",
     "release audit must record exact unchecked gate counts by blocker class",
   );
   requireText(
@@ -1579,7 +1579,7 @@ function verifyPlanUncheckedGatesAreReflected() {
     signing: 4,
     publish: 3,
     provider: 5,
-    "physical-device": 13,
+    "physical-device": 14,
     "store-console": 2,
     operator: 9,
   };
@@ -1604,6 +1604,7 @@ function verifyPlanUncheckedGatesAreReflected() {
     ["Android app survives same", "physical-device"],
     ["Push notifications fire reliably", "provider"],
     ["Terminal renders `yes | head -10000`", "physical-device"],
+    ["30-minute physical Android terminal renderer dogfood", "physical-device"],
     ["iOS app cold start", "physical-device"],
     ["Android app cold start", "physical-device"],
     ["Reconnect after network change", "physical-device"],
