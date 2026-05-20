@@ -1458,6 +1458,16 @@ function verifyLatestRefresh() {
     requireText(audit, evidence, `release audit current direct adb refresh evidence must include ${evidence}`);
   }
   for (const evidence of [
+    "`/tmp/fieldwork-fw-direct-pair-20260520152507/dashboard.png`",
+    "`/tmp/fieldwork-fw-direct-pair-20260520152507/after-pair.xml`",
+    "`pair_flow_ms=423`",
+    "`kazoo`",
+    "`FieldworkRepository: listSessions returned 3 sessions`",
+    "`/tmp/fieldwork-fw-direct-pair-20260520152507/dashboard-crash.log`",
+  ]) {
+    requireText(audit, evidence, `release audit direct fw shim adb evidence must include ${evidence}`);
+  }
+  for (const evidence of [
     "direct locked-launch refresh on a freshly booted `Medium_Phone_API_36.1` emulator",
     "`LaunchState: COLD`",
     "`TotalTime=1919ms`",

@@ -222,6 +222,18 @@ outside this shell:
   `/tmp/fieldwork-shortcut-adb-clean-51uCRiNt/dashboard.png` plus
   `/tmp/fieldwork-shortcut-adb-clean-51uCRiNt/dashboard.xml` showed `cupcake`,
   `refactoringjob`, and `shell` with no `No sessions` state.
+  A later direct adb source-build `fw` shim pass used the first-live-test
+  command shape without wrapper smoke scripts: bare `fw` created the auto-named
+  default `claude` session `kazoo`, `fw refactoringjob` created the named
+  shortcut, `fw new --name shell` created the shell session, explicit desktop
+  approval completed in `pair_flow_ms=423`, and
+  `/tmp/fieldwork-fw-direct-pair-20260520152507/dashboard.png` plus
+  `/tmp/fieldwork-fw-direct-pair-20260520152507/after-pair.xml` showed `kazoo`,
+  `refactoringjob`, and `shell` with no `No sessions` state. App logcat showed
+  `FieldworkRepository: pair completed` and `FieldworkRepository: listSessions returned 3 sessions`;
+  `/tmp/fieldwork-fw-direct-pair-20260520152507/dashboard-crash.log` was empty;
+  and the debug APK was restored to `FIELDWORK_BIOMETRIC_BYPASS = false` and
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`.
   A
   follow-up raw adb
   locked-launch baseline on 2026-05-19 installed the default debug APK, launched
@@ -688,6 +700,18 @@ session, explicit desktop approval completed Android pairing, and
 `/tmp/fieldwork-shortcut-adb-clean-51uCRiNt/dashboard.xml` showed `cupcake`,
 `refactoringjob`, and `shell` with no `No sessions` state. The debug APK was
 then restored to `FIELDWORK_BIOMETRIC_BYPASS = false` and
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`.
+A later direct adb source-build `fw` shim pass used the first-live-test command
+shape without wrapper smoke scripts: bare `fw` created the auto-named default
+`claude` session `kazoo`, `fw refactoringjob` created the named shortcut, `fw
+new --name shell` created the shell session, explicit desktop approval completed
+in `pair_flow_ms=423`, and
+`/tmp/fieldwork-fw-direct-pair-20260520152507/dashboard.png` plus
+`/tmp/fieldwork-fw-direct-pair-20260520152507/after-pair.xml` showed `kazoo`,
+`refactoringjob`, and `shell` with no `No sessions` state. App logcat showed
+`FieldworkRepository: pair completed` and `FieldworkRepository: listSessions returned 3 sessions`;
+`/tmp/fieldwork-fw-direct-pair-20260520152507/dashboard-crash.log` was empty;
+and the debug APK was restored to `FIELDWORK_BIOMETRIC_BYPASS = false` and
 `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`.
 A 2026-05-20 direct locked-launch refresh on a freshly booted `Medium_Phone_API_36.1` emulator
 installed the default debug APK, launched with `Status: ok`,
