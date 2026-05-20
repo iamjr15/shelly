@@ -135,6 +135,18 @@ fw devices > "$FW_LIVE_DIR/devices.txt"
 fw ls > "$FW_LIVE_DIR/sessions.txt"
 ```
 
+After the required files are captured, run the local evidence verifier:
+
+```sh
+pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"
+```
+
+This verifier does not replace human review of the phone behavior. It checks
+that the direct `adb` evidence set is complete, screenshots are nontrivial PNGs,
+the locked UI did not expose session or terminal content, the paired run listed
+the expected desktop-created sessions, and the captured logs/crash buffers do
+not contain Fieldwork fatal, ANR, or crash entries.
+
 ## Test Matrix
 
 1. Locked launch shows only the unlock surface and no session or terminal
@@ -175,6 +187,7 @@ the exact evidence paths, then update `docs/RELEASE_AUDIT.md` and rerun:
 ```sh
 pnpm check:release-audit
 pnpm check:docs-sync
+pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"
 node scripts/verify-release-audit.mjs --list-unchecked
 ```
 
