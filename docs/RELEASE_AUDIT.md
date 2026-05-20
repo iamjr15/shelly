@@ -212,6 +212,16 @@ outside this shell:
   was rebuilt back to default with `FIELDWORK_BIOMETRIC_BYPASS = false`,
   `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, and the restored locked screen at
   `/tmp/fieldwork-adb-direct-pair-20260520100742/default-restored-locked.png`.
+  A 2026-05-20 direct adb shortcut-dashboard refresh on `Medium_Phone_API_36.1`
+  then used an isolated release daemon and direct `adb`/`uiautomator` evidence
+  to verify the new `fw` workflow: bare `target/release/fieldwork` created and
+  attached the auto-named default `claude` session `cupcake`,
+  `target/release/fieldwork refactoringjob` created and attached the named
+  shortcut session, `fieldwork new --name shell` created the explicit shell
+  session, explicit desktop approval completed Android pairing, and
+  `/tmp/fieldwork-shortcut-adb-clean-51uCRiNt/dashboard.png` plus
+  `/tmp/fieldwork-shortcut-adb-clean-51uCRiNt/dashboard.xml` showed `cupcake`,
+  `refactoringjob`, and `shell` with no `No sessions` state.
   A
   follow-up raw adb
   locked-launch baseline on 2026-05-19 installed the default debug APK, launched
@@ -663,6 +673,18 @@ rebuilt/reinstalled afterward, `BuildConfig.java` again contained
 `TotalTime=1371ms`, and
 `/tmp/fieldwork-adb-direct-20260520001909/default-restore-locked.png` verified
 the locked `Unlock` surface.
+A 2026-05-20 direct adb shortcut-dashboard refresh on `Medium_Phone_API_36.1`
+used only direct `adb` interaction plus desktop `expect` to verify the new
+shortcut workflow. Bare `target/release/fieldwork` created and attached the
+auto-named default `claude` session `cupcake`,
+`target/release/fieldwork refactoringjob` created and attached the named
+shortcut session, `fieldwork new --name shell` created an explicit shell
+session, explicit desktop approval completed Android pairing, and
+`/tmp/fieldwork-shortcut-adb-clean-51uCRiNt/dashboard.png` plus
+`/tmp/fieldwork-shortcut-adb-clean-51uCRiNt/dashboard.xml` showed `cupcake`,
+`refactoringjob`, and `shell` with no `No sessions` state. The debug APK was
+then restored to `FIELDWORK_BIOMETRIC_BYPASS = false` and
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`.
 A 2026-05-20 direct locked-launch refresh on a freshly booted `Medium_Phone_API_36.1` emulator
 installed the default debug APK, launched with `Status: ok`,
 `LaunchState: COLD`, and `TotalTime=1919ms`, captured
