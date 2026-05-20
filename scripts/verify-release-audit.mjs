@@ -196,6 +196,21 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "Keychain prompts are only for local key material",
+    "release audit must record the user-facing Keychain boundary clarification",
+  );
+  requireText(
+    audit,
+    "terminal output, keystrokes, commands, paths, session names, and push tokens are not stored there",
+    "release audit must record which data is not stored in Keychain",
+  );
+  requireText(
+    audit,
+    "Keychain-held key boundaries",
+    "release audit must record security-model coverage for Keychain-held key boundaries",
+  );
+  requireText(
+    audit,
     "scripts/verify-rust-workspace.mjs",
     "release audit must record the Rust workspace/binary verifier",
   );
