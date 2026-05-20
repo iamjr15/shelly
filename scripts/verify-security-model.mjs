@@ -91,6 +91,8 @@ function verifySecurityDoc(text) {
     "encrypted in redb with OS-keychain-held keys",
     "Device registry rows\nuse hashed row keys",
     "raw device node IDs and push tokens live only inside the\nencrypted row payload",
+    "Keychain prompts are only for local key material",
+    "terminal output, keystrokes, commands, paths, session names, and push tokens are\nnot stored there",
     "fieldwork settings scrollback-encryption off",
     "applies after daemon restart",
     "future local persistence\nplaintext",

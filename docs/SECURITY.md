@@ -46,7 +46,9 @@ Pairing is intentionally two-step:
 By default, the daemon stores scrollback/session summaries and paired device
 registry data encrypted in redb with OS-keychain-held keys. Device registry rows
 use hashed row keys, so raw device node IDs and push tokens live only inside the
-encrypted row payload. The explicit opt-out is:
+encrypted row payload. Keychain prompts are only for local key material;
+terminal output, keystrokes, commands, paths, session names, and push tokens are
+not stored there. The explicit opt-out is:
 
 ```sh
 fieldwork settings scrollback-encryption off
