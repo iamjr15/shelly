@@ -86,6 +86,7 @@ function verifyAndroidRendererDoc() {
 function verifyReadme() {
   for (const needle of [
     "npm i -g fieldwork",
+    "fieldwork daemon install\nfw pair",
     "fw pair",
     "the shorter `fw` alias",
     "`fw` accepts the same arguments as `fieldwork`",

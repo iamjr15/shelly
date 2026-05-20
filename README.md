@@ -9,7 +9,7 @@ Fieldwork v1 is being built as a daemon plus CLI plus native mobile apps for uni
 ```sh
 npm i -g fieldwork
 fieldwork daemon install
-fieldwork pair
+fw pair
 ```
 
 The npm package installs `fieldwork`, the shorter `fw` alias, and `fieldworkd`
