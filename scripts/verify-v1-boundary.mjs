@@ -372,10 +372,15 @@ function verifyUnscopedNpmPackageBoundary() {
   if (meta.name !== "fieldwork") {
     failures.push("packages/cli/package.json must keep the unscoped fieldwork meta-package name");
   }
+  if (meta.bin?.fieldwork !== "bin/fieldwork" || meta.bin?.fieldworkd !== "bin/fieldworkd") {
+    failures.push("packages/cli/package.json must expose both fieldwork and fieldworkd command shims");
+  }
 
   const plan = read("PLAN.md");
   requireText(plan, "**npm meta-package**: `fieldwork`", "PLAN.md must name the unscoped fieldwork npm meta-package");
   requireText(plan, "The unscoped `fieldwork` meta package is operator-owned", "PLAN.md must record that the unscoped fieldwork package is operator-owned");
+  requireText(plan, "The meta-package's `bin` field exposes both commands to npm", "PLAN.md must keep npm meta-package bin exposure aligned with implementation");
+  rejectPattern(plan, /bin` field exposes only the CLI/, "PLAN.md must not claim the npm meta-package exposes only the CLI");
 }
 
 function* mobileFiles() {

@@ -235,6 +235,7 @@ function verifyPlanDoc() {
     "encrypted devices.redb under a hashed device row key",
     "Pair tokens are daemon-local in-memory pending tokens",
     "## 8. npm distribution (the only desktop install path)",
+    "The meta-package's `bin` field exposes both commands to npm",
     "Operator: reserve/verify control of domain `fieldwork.dev`",
     "available only for explicit operator-requested status refreshes",
     "node scripts/check-github-namespace.mjs --operator-refresh --expect-available",
@@ -258,6 +259,11 @@ function verifyPlanDoc() {
     docs.plan,
     "Codex `app-server daemon --remote-control`, Cursor",
     "PLAN.md cultural-moment text must not preserve the obsolete Codex command as current",
+  );
+  rejectText(
+    docs.plan,
+    "bin` field exposes only the CLI",
+    "PLAN.md must not claim the npm meta-package exposes only the CLI",
   );
 }
 
