@@ -52,6 +52,7 @@
     "test:secret-boundaries": "node scripts/verify-secret-boundaries.mjs --self-test",
     "test:no-ship": "node scripts/verify-no-ship-markers.mjs --self-test",
     "test:bun-install": "node scripts/test-bun-install.mjs",
+    "test:release-audit-list": "node scripts/test-release-audit-list.mjs",
     "test:release-artifacts": "node scripts/test-release-artifacts.mjs",
     "test:android-aab-verifier": "node scripts/test-android-aab-verifier.mjs",
     "test:android-pair-button-picker": "node scripts/test-android-pair-button-picker.mjs",

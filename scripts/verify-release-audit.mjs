@@ -73,6 +73,11 @@ function verifyCurrentVerdict() {
     "node scripts/verify-release-audit.mjs --list-unchecked",
     "release audit must document the unchecked gate list mode",
   );
+  requireText(
+    audit,
+    "pnpm test:release-audit-list",
+    "release audit must document the unchecked gate list-mode test",
+  );
   for (const blockerClass of [
     "`ios-xcode`",
     "`signing`",
@@ -1597,6 +1602,9 @@ function verifyVerifierIsWired() {
   }
   if (packageJson.scripts?.["check:release-audit"] !== "node scripts/verify-release-audit.mjs") {
     failures.push("package.json must expose check:release-audit");
+  }
+  if (packageJson.scripts?.["test:release-audit-list"] !== "node scripts/test-release-audit-list.mjs") {
+    failures.push("package.json must expose test:release-audit-list");
   }
   if (packageJson.scripts?.["check:release-workflows"] !== "node scripts/verify-release-workflows.mjs") {
     failures.push("package.json must expose check:release-workflows");
