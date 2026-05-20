@@ -730,7 +730,8 @@ and daemon commands, verifies the packed meta tarball includes both executable d
 `fieldwork`/`fw`, the `fw <name>` named-session fast path, and `fieldwork new
 --name <name> [cmd...]` for explicitly named arbitrary-command PTYs. The no-name
 default create path now generates short one-word names and stores them in the
-daemon session summary that mobile dashboards already render. The relay push privacy
+daemon session summary that mobile dashboards already render; daemon IPC rejects
+duplicate session names so shortcut resolution stays unambiguous. The relay push privacy
 refresh now validates `session_id_hash` and `session_name_hash` as lowercase
 64-character hex strings and rejects `last_line`, command, path, and session-name
 free-text payload fields. Mobile notification ingress now mirrors that contract

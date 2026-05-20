@@ -391,6 +391,17 @@ where
                     write_forbidden(&writer, "mobile clients cannot create sessions").await?;
                     continue;
                 }
+                if state.summaries().iter().any(|session| session.name == name) {
+                    write_msg(
+                        &writer,
+                        &ServerToClientMsg::Error {
+                            code: ErrorCode::InvalidRequest,
+                            message: format!("session name already exists: {name}"),
+                        },
+                    )
+                    .await?;
+                    continue;
+                }
 
                 match Session::spawn(
                     name,
@@ -1039,6 +1050,74 @@ mod tests {
     async fn ipc_handler_rejects_mobile_create_and_kill_session_requests() {
         assert_ipc_forbids_create_and_kill(ClientKind::IosApp).await;
         assert_ipc_forbids_create_and_kill(ClientKind::AndroidApp).await;
+    }
+
+    #[tokio::test]
+    async fn ipc_handler_rejects_duplicate_session_names() {
+        let (client, server) = tokio::io::duplex(8192);
+        let (server_reader, server_writer) = tokio::io::split(server);
+        let server_task =
+            tokio::spawn(handle_client_io(test_state(), server_reader, server_writer));
+        let (mut client_reader, client_writer) = tokio::io::split(client);
+        let client_writer = Arc::new(Mutex::new(client_writer));
+
+        write_msg(
+            &client_writer,
+            &ClientToServerMsg::Hello {
+                client_kind: ClientKind::LocalCli,
+                client_version: "test".to_string(),
+                protocol_version: CONTRACT_VERSION,
+            },
+        )
+        .await
+        .unwrap();
+        let welcome: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
+        assert!(matches!(welcome, ServerToClientMsg::Welcome { .. }));
+
+        for expected in ["created", "duplicate"] {
+            write_msg(
+                &client_writer,
+                &ClientToServerMsg::CreateSession {
+                    name: "refactoringjob".to_string(),
+                    command: vec![
+                        "/bin/sh".to_string(),
+                        "-c".to_string(),
+                        "while IFS= read -r _line; do sleep 1; done".to_string(),
+                    ],
+                    cwd: std::env::current_dir().expect("current dir"),
+                    env: HashMap::new(),
+                    size: ClientSize { rows: 24, cols: 80 },
+                },
+            )
+            .await
+            .unwrap();
+
+            let response: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
+            match expected {
+                "created" => {
+                    let ServerToClientMsg::SessionCreated { summary, .. } = response else {
+                        panic!("expected session creation, got {response:?}");
+                    };
+                    assert_eq!(summary.name, "refactoringjob");
+                }
+                "duplicate" => assert_eq!(
+                    response,
+                    ServerToClientMsg::Error {
+                        code: ErrorCode::InvalidRequest,
+                        message: "session name already exists: refactoringjob".to_string(),
+                    }
+                ),
+                _ => unreachable!(),
+            }
+        }
+
+        drop(client_writer);
+        drop(client_reader);
+        timeout(Duration::from_secs(1), server_task)
+            .await
+            .expect("IPC handler did not exit")
+            .expect("IPC handler panicked")
+            .expect("IPC handler failed");
     }
 
     async fn assert_ipc_forbids_agent_state_events(client_kind: ClientKind) {

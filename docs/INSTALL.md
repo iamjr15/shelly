@@ -26,6 +26,8 @@ unknown word, `fieldwork`/`fw` uses the named session shortcut: attach the named
 session if it exists, otherwise create a default `claude` PTY with that display
 name and attach. Use `fieldwork new --name <name> [cmd...]` when you want a
 named session with an explicit command such as `bash`, `vim`, or `codex`.
+Duplicate session names are rejected by the daemon so phone dashboard labels and
+`fw <name>` shortcuts stay unambiguous.
 
 Current remote-pairing development flow:
 

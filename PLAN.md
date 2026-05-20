@@ -728,10 +728,11 @@ session by exact display name and attaches to that live daemon-owned PTY. If no
 session by that name exists, it creates a default `claude` PTY with that name and
 immediately attaches. To name arbitrary commands explicitly, use `fieldwork new
 --name <name> [cmd...]`; the phone sees the name as a tappable session but still
-never creates sessions or chooses commands. Reserved command names such as
-`pair`, `new`, `attach`, and `daemon` remain CLI subcommands; use
-`fieldwork new --name <name>` if a desired session name collides with a
-subcommand.
+never creates sessions or chooses commands. The daemon rejects duplicate session
+names with `ErrorCode::InvalidRequest`, keeping dashboard labels and `fw <name>`
+resolution unambiguous. Reserved command names such as `pair`, `new`, `attach`,
+and `daemon` remain CLI subcommands; use `fieldwork new --name <name>` if a
+desired session name collides with a subcommand.
 
 **`attach` UX**: local terminal pass-through client that connects to the daemon's Unix socket, sends `AttachSession`, receives the `Attached { initial_bytes }` payload, then writes streamed raw PTY bytes directly to the user's terminal in raw mode. This preserves full TUI fidelity for `vim`, `htop`, `lazygit`, shells, and agent UIs without trying to re-render a terminal inside ratatui. Keyboard input is forwarded as bytes (including Ctrl+B as escape prefix, Ctrl+B then D to detach — tmux-style for muscle memory). A ratatui status overlay can be revisited after v1 once it can be done without corrupting arbitrary TUI output.
 

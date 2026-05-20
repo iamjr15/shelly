@@ -21,7 +21,8 @@ no subcommand creates and attaches a default `claude` session with a generated
 one-word name like `waffle` or `kazoo` when none exist, attaches the only
 existing session, or lists sessions when there are several. The generated or
 chosen session name is stored in the daemon summary, so it appears as the active
-session name in the mobile app dashboard.
+session name in the mobile app dashboard. The daemon rejects duplicate session
+names, so a named shortcut always resolves to one PTY.
 Desktop distribution is npm-only for v1; Homebrew, `curl | sh`, `cargo install`, and self-update are intentionally out of scope.
 
 ## Screenshots

@@ -312,6 +312,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "daemon IPC rejects\nduplicate session names",
+    "release audit must record duplicate session-name rejection",
+  );
+  requireText(
+    audit,
     "Keychain prompts are only for local key material",
     "release audit must record the user-facing Keychain boundary clarification",
   );
