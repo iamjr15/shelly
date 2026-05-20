@@ -142,6 +142,16 @@ function verifyDevelopmentDoc(text) {
     "CI syntax-checks the\naggregate wrapper and list-checks the combined artifact/runtime mode",
     "docs/DEVELOPMENT.md must document CI coverage for the local release aggregate wrapper",
   );
+  requireText(
+    text,
+    "node scripts/verify-release-audit.mjs --list-unchecked",
+    "docs/DEVELOPMENT.md must document the unchecked gate list command",
+  );
+  requireText(
+    text,
+    "`pnpm test:release-audit-list` pins that grouped output",
+    "docs/DEVELOPMENT.md must document the unchecked gate list test",
+  );
 
   for (const section of [
     "The protocol crate uses insta snapshots",

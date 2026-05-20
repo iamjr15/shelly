@@ -99,6 +99,9 @@ to reuse the normal Cargo cache and repo-local target directory. CI syntax-check
 aggregate wrapper and list-checks the combined artifact/runtime mode so wrapper
 drift is caught without duplicating the full artifact/runtime gate in pull
 requests.
+For operator handoff, `node scripts/verify-release-audit.mjs --list-unchecked`
+prints the current unchecked `PLAN.md` gates grouped by blocker class, and
+`pnpm test:release-audit-list` pins that grouped output.
 
 `pnpm check:release-artifacts` is intentionally fail-closed unless
 `artifacts/` or `FIELDWORK_ARTIFACT_DIR` contains the release-rust/GitHub
