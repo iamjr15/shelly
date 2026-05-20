@@ -71,8 +71,8 @@ temporary `fw` shim on `PATH` so the test exercises the same short command users
 will type after install:
 
 ```sh
-export FW_LIVE_BIN="/tmp/fieldwork-live-bin"
-mkdir -p "$FW_LIVE_BIN"
+export FW_LIVE_BIN="$(mktemp -d /tmp/fieldwork-live-bin.XXXXXX)"
+trap 'rm -rf "$FW_LIVE_BIN"' EXIT
 ln -sf "$PWD/target/release/fieldwork" "$FW_LIVE_BIN/fieldwork"
 ln -sf "$PWD/target/release/fieldwork" "$FW_LIVE_BIN/fw"
 ln -sf "$PWD/target/release/fieldworkd" "$FW_LIVE_BIN/fieldworkd"
