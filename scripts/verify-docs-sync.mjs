@@ -92,6 +92,7 @@ function verifyReadme() {
     "target/debug/fieldwork new bash",
     "Pair tokens are 32 random bytes, base32 encoded, single-use, and expire after 10 minutes",
     "separate encrypted `devices.redb`, with hashed row keys",
+    "Keychain prompts are only for local key material",
     "scripts/smoke-local-handoff.sh",
     "default `claude` session, a `bash` session, and a `vim` TUI session",
     "mobile-kind clients cannot create sessions, kill sessions, or emit agent-state hook events",
