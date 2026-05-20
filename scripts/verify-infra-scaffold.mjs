@@ -124,6 +124,46 @@ for (const prerequisite of [
   requireText(files.operations, prerequisite, `Operations runbook prerequisites must include ${prerequisite}`);
 }
 
+for (const githubSecretChecklist of [
+  "## GitHub Secrets Checklist",
+  "`GITHUB_TOKEN` is provided\nby GitHub Actions and does not need to be created manually",
+  "Relay provider credentials are not GitHub repository secrets",
+  "APNs `.p8`, FCM service-account JSON, Honeycomb API key, and\ncontrol-plane TLS cert/key",
+  "`LoadCredential`",
+]) {
+  requireText(
+    files.operations,
+    githubSecretChecklist,
+    `Operations runbook GitHub secrets checklist must include ${githubSecretChecklist}`,
+  );
+}
+
+for (const githubSecret of [
+  "NPM_TOKEN",
+  "APPLE_P12_BASE64",
+  "APPLE_P12_PASSWORD",
+  "APP_STORE_KEY_JSON",
+  "SENTRY_DSN",
+  "IOS_DISTRIBUTION_CERTIFICATE_BASE64",
+  "IOS_DISTRIBUTION_CERTIFICATE_PASSWORD",
+  "IOS_PROVISIONING_PROFILE_BASE64",
+  "IOS_DEVELOPMENT_TEAM",
+  "IOS_EXPORT_OPTIONS_PLIST",
+  "ANDROID_GOOGLE_SERVICES_JSON",
+  "ANDROID_KEYSTORE_BASE64",
+  "ANDROID_KEYSTORE_PROPERTIES",
+  "PLAY_SERVICE_ACCOUNT_JSON",
+  "RELAY_SSH_KEY",
+  "CLOUDFLARE_API_TOKEN",
+  "CLOUDFLARE_ACCOUNT_ID",
+]) {
+  requireText(
+    files.operations,
+    `\`${githubSecret}\``,
+    `Operations runbook GitHub secrets checklist must include ${githubSecret}`,
+  );
+}
+
 for (const handoff of [
   "## Release Gate Handoff",
   "should not run\nlive reservation, publish, domain, provider-console, or account checks",
@@ -150,6 +190,33 @@ for (const handoff of [
   "Only check the external boxes in `PLAN.md` after the matching hosted account,\nprovider, signed-artifact, physical-device, or operator-reservation evidence\nexists, and keep `docs/RELEASE_AUDIT.md` synchronized with the evidence",
 ]) {
   requireText(files.operations, handoff, `Operations runbook release-gate handoff must include ${handoff}`);
+}
+
+for (const npmBootstrap of [
+  "## npm Ownership Bootstrap",
+  "The unscoped `fieldwork` meta package is already operator-owned",
+  "Do not run\navailability checks for it",
+  "Do not paste npm tokens into chat",
+  "do not commit `.npmrc`",
+  "fieldwork-darwin-arm64",
+  "fieldwork-darwin-x64",
+  "fieldwork-linux-arm64",
+  "fieldwork-linux-x64",
+  "Reserved Fieldwork platform package. Real binaries start at 1.0.0.",
+  "node scripts/verify-npm-registry-state.mjs",
+  "--expect-meta-published",
+  "--expect-platform-published",
+  "--expect-latest-version=1.0.0",
+  "--expect-provenance",
+  "publish only through `release-npm.yml`",
+  "`NPM_TOKEN` secret",
+  "four platform packages first\nand the `fieldwork` meta package last with provenance",
+]) {
+  requireText(
+    files.operations,
+    npmBootstrap,
+    `Operations runbook npm ownership bootstrap must include ${npmBootstrap}`,
+  );
 }
 
 for (const deployCheck of [
