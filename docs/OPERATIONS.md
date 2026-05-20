@@ -64,8 +64,9 @@ pnpm check:local-release -- --with-artifacts --with-runtime
 pnpm check:release-audit
 ```
 
-Only check the external boxes in `docs/RELEASE_AUDIT.md` after the matching
-hosted account, provider, signed-artifact, or physical-device evidence exists.
+Only check the external boxes in `PLAN.md` after the matching hosted account,
+provider, signed-artifact, or physical-device evidence exists, and keep
+`docs/RELEASE_AUDIT.md` synchronized with the evidence.
 
 ## Relay Deploy
 
