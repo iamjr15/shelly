@@ -330,6 +330,7 @@ function verifyPlanDoc() {
     "`SessionSummary.name`, so mobile apps show the same active session name in the\ndashboard",
     "**Named-session fast path**",
     "`fw <name>` is the product replacement for a\ntmux/mosh/Tailscale alias like `mc refactoringjob`",
+    "**Create session from desktop CLI** (`fw new --dir ~/projects claude`)",
     "daemon rejects duplicate session\nnames with `ErrorCode::InvalidRequest`",
     "`fw new --name <name>` if a\ndesired session name collides with a subcommand",
     "Mobile clients still cannot create sessions, kill sessions, or choose\ncommands",
@@ -377,6 +378,11 @@ function verifyPlanDoc() {
     docs.plan,
     "Create a session on your laptop with `fieldwork new`",
     "PLAN.md mobile empty-state copy must prefer the short `fw new` command",
+  );
+  rejectText(
+    docs.plan,
+    "**Create session from desktop CLI** (`fieldwork new --dir ~/projects claude`)",
+    "PLAN.md Section 13 smoke gate must prefer the short `fw new` command",
   );
 }
 
