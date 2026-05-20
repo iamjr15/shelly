@@ -151,6 +151,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "Terraform validation uses `TF_PLUGIN_CACHE_DIR` outside the generated working directory while still removing `.terraform/` on exit",
+    "release audit must record Terraform plugin-cache hygiene for runtime local release checks",
+  );
+  requireText(
+    audit,
     "local handoff smoke, demo-video, site typecheck/build",
     "release audit must record local handoff smoke in runtime aggregate mode",
   );

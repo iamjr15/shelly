@@ -65,7 +65,9 @@ requireText(files.provision, "terraform init", "Oracle provision wrapper must in
 requireText(files.provision, "terraform apply", "Oracle provision wrapper must apply Terraform");
 requireText(files.provision, "FIELDWORK_ORACLE_RETRY_ATTEMPTS", "Oracle provision wrapper must support retry attempts");
 requireExecutable("infra/oracle/provision-region.sh");
-requireText(files.terraformCheck, 'trap cleanup EXIT', "Terraform validation script must clean generated provider cache");
+requireText(files.terraformCheck, 'TF_PLUGIN_CACHE_DIR', "Terraform validation script must use a plugin cache outside the generated working directory");
+requireText(files.terraformCheck, 'mkdir -p "$TF_PLUGIN_CACHE_DIR"', "Terraform validation script must create the plugin cache before init");
+requireText(files.terraformCheck, 'trap cleanup EXIT', "Terraform validation script must clean generated .terraform working directory");
 requireText(files.terraformCheck, 'terraform fmt -check -recursive "$terraform_dir"', "Terraform validation script must check formatting");
 requireText(files.terraformCheck, 'terraform -chdir="$terraform_dir" init -backend=false', "Terraform validation script must initialize without remote state");
 requireText(files.terraformCheck, 'terraform -chdir="$terraform_dir" validate', "Terraform validation script must validate the Oracle scaffold");

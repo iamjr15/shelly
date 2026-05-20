@@ -167,6 +167,7 @@ function verifyDevelopmentDoc(text) {
     "CI's Terraform Validate job installs Terraform 1.5.7",
     "shared `scripts/check-infra-terraform.sh` path",
     "exposed locally as `pnpm check:infra-terraform`",
+    "uses `TF_PLUGIN_CACHE_DIR` outside the generated working directory",
     "removes generated `.terraform/` caches on exit",
     "also run `pnpm check:infra-terraform`",
     "Inspect daemon logs:",
