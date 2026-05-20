@@ -31,7 +31,7 @@ Fieldwork is a free, open-source product that gives a developer running **any CL
 It replaces the current power-user stack of **Termius + mosh + Tailscale + tmux + ssh-keys + multiple-apps** with one daemon + one CLI + one mobile app. The shared state lives in the daemon, and every connected client (Mac terminal, iOS app, Android app) is a view into the same live PTY.
 
 **v1 ships**:
-- **Universal mobile terminal handoff** — laptop ↔ phone session handoff for **any CLI**: shells (bash, zsh, fish), TUIs (vim, htop, lazygit, tig, k9s), REPLs (python, node, irb), AI coding agents (Claude Code, Codex, OpenCode, anything that runs in a terminal). The daemon spawns a PTY with whatever command you give it (`fieldwork new bash`, `fieldwork new claude`, `fieldwork new "python repl"`) and streams raw bytes to the phone. Termius + mosh + Tailscale + tmux replacement is complete — every workflow those tools support, this supports.
+- **Universal mobile terminal handoff** — laptop ↔ phone session handoff for **any CLI**: shells (bash, zsh, fish), TUIs (vim, htop, lazygit, tig, k9s), REPLs (python, node, irb), AI coding agents (Claude Code, Codex, OpenCode, anything that runs in a terminal). The daemon spawns a PTY with whatever command you give it (`fw new bash`, `fw new claude`, `fw new "python repl"`) and streams raw bytes to the phone. Termius + mosh + Tailscale + tmux replacement is complete — every workflow those tools support, this supports.
 - **Multi-session dashboard** with auto-naming, status states (idle/working/awaiting), and per-session previews.
 - **Native iOS and Android apps**.
 - **AI-coding-agent-aware push notifications for Claude Code AND Codex** — the differentiating feature on top of the universal handoff. v1 ships two state-inference modules: Claude Code (prompt-pattern detection + Stop-hook integration) and Codex (structured JSON events accepted through the local `fieldwork hook codex-event` adapter, matching the current Codex remote-control/app-server surface without mutating the user's PTY command). When either agent flips to "awaiting your approval," your phone buzzes. Other CLIs run perfectly fine but don't get this push (they're interactive shells, not autonomous agents — the question doesn't apply).
@@ -54,7 +54,7 @@ You (and developers like you) run terminal-based tools on a laptop — Claude Co
 
 Fieldwork is two binaries and one app:
 
-1. **`fieldwork` CLI** — install once on your laptop, run `fieldwork pair`, scan the QR with your phone. Done. Forever.
+1. **`fieldwork` CLI with `fw` short alias** — install once on your laptop, run `fw pair`, scan the QR with your phone. Done. Forever.
 2. **`fieldworkd` daemon** — the long-running process that owns your PTY sessions. Spawned by the CLI; survives terminal close, lid close, sleep, and app disconnects. (Does not survive logout/reboot — see Section 7.1 for the lifetime contract.)
 3. **Fieldwork mobile app** — native iOS and Android. Shows a list of your active sessions, lets you tap any to drop into a live terminal view, pushes a notification when an agent is waiting.
 
@@ -141,13 +141,13 @@ The first-party threats (Anthropic Remote Control, Codex Mobile) ship inside off
 
 ### 3.3 Data flow (typical session)
 
-1. User runs `fieldwork pair` on their Mac. Daemon (if not running) auto-spawns via launchd.
+1. User runs `fw pair` on their Mac. Daemon (if not running) auto-spawns via launchd.
 2. CLI prints a QR encoding `{relay_url, pair_token, daemon_nodeid}`.
 3. User opens Fieldwork on phone, scans QR.
 4. Phone's iroh endpoint connects to daemon's iroh endpoint (direct or via relay).
 5. Mutual auth via the pair token; both sides exchange long-lived Ed25519 pubkeys.
 6. Phone disconnects. Pair complete. Pair token expires.
-7. Later: user runs `fieldwork new --dir ~/projects/api claude` — daemon spawns a Claude Code PTY.
+7. Later: user runs `fw new --dir ~/projects/api claude` — daemon spawns a Claude Code PTY.
 8. User leaves the house. Phone opens Fieldwork — already paired — iroh reconnects automatically.
 9. Phone subscribes to the session list; daemon streams sessions (id, name, status, last-output-line).
 10. User taps "claude · api" — phone enters terminal view, daemon streams raw PTY byte chunks over the encrypted iroh transport. SwiftTerm/libvterm renders.
@@ -646,7 +646,7 @@ What the protocol does NOT carry to push providers:
 
 ### 7.1 `fieldworkd` daemon
 
-**Spawn model**: launched by `fieldwork pair` first run, or by `fieldwork daemon install` (which writes a launchd plist / systemd user unit via `service-manager`). Always runs as the logged-in user, never root.
+**Spawn model**: launched by `fw pair` first run, or by `fw daemon install` / `fieldwork daemon install` (which writes a launchd plist / systemd user unit via `service-manager`). Always runs as the logged-in user, never root.
 
 **Responsibilities**:
 - Maintain N PTY sessions (one per arbitrary command — `claude`, `bash`, `vim`, `python`, `htop`, anything). v1: macOS + Linux only.
@@ -681,26 +681,26 @@ What the protocol does NOT carry to push providers:
 **Subcommands**:
 
 ```
-fieldwork pair                          # show QR for new device; prompts to approve incoming pair requests
-fw pair                                 # npm-installed short alias for the same QR-pairing flow
+fw pair                                 # show QR for new device; prompts to approve incoming pair requests
+fieldwork pair                          # full command name for the same QR-pairing flow
 fieldwork pair-test --payload <json> [--attach <session|first>]
                                         # hidden headless iroh transport smoke client
 fieldwork                               # smart default: create+attach default claude, attach sole session, or list many
 fw                                      # npm-installed short alias for the same CLI and smart default
 fw <name>                               # named fast path: attach existing name or create+attach default claude
-fieldwork ls                            # list sessions
-fieldwork new --name <name> --dir <path> [cmd...]
+fw ls                                   # list sessions
+fw new --name <name> --dir <path> [cmd...]
                                         # create named session (default cmd: claude). CLI-only — phone cannot do this.
-fieldwork attach <session-id|name>      # ratatui-based terminal client
-fieldwork kill <session-id|name>        # SIGTERM to session. CLI-only.
-fieldwork devices                       # list paired phones (last seen, push platform)
-fieldwork devices remove <name>         # unpair (revokes device cert; daemon refuses subsequent connections)
-fieldwork daemon                        # subcommand group
-  fieldwork daemon install               # install as service (launchd on macOS, systemd user unit on Linux)
-  fieldwork daemon uninstall
-  fieldwork daemon status
-  fieldwork daemon logs [--tail]
-  fieldwork daemon restart
+fw attach <session-id|name>             # ratatui-based terminal client
+fw kill <session-id|name>               # SIGTERM to session. CLI-only.
+fw devices                              # list paired phones (last seen, push platform)
+fw devices remove <name>                # unpair (revokes device cert; daemon refuses subsequent connections)
+fw daemon                               # subcommand group
+  fw daemon install                     # install as service (launchd on macOS, systemd user unit on Linux)
+  fw daemon uninstall
+  fw daemon status
+  fw daemon logs [--tail]
+  fw daemon restart
 fieldwork settings telemetry status
 fieldwork settings telemetry on [--sentry-dsn <dsn>]
 fieldwork settings telemetry off
@@ -727,12 +727,12 @@ commands.
 tmux/mosh/Tailscale alias like `mc refactoringjob`. It resolves an existing
 session by exact display name and attaches to that live daemon-owned PTY. If no
 session by that name exists, it creates a default `claude` PTY with that name and
-immediately attaches. To name arbitrary commands explicitly, use `fieldwork new
+immediately attaches. To name arbitrary commands explicitly, use `fw new
 --name <name> [cmd...]`; the phone sees the name as a tappable session but still
 never creates sessions or chooses commands. The daemon rejects duplicate session
 names with `ErrorCode::InvalidRequest`, keeping dashboard labels and `fw <name>`
 resolution unambiguous. Reserved command names such as `pair`, `new`, `attach`,
-and `daemon` remain CLI subcommands; use `fieldwork new --name <name>` if a
+and `daemon` remain CLI subcommands; use `fw new --name <name>` if a
 desired session name collides with a subcommand.
 
 **`attach` UX**: local terminal pass-through client that connects to the daemon's Unix socket, sends `AttachSession`, receives the `Attached { initial_bytes }` payload, then writes streamed raw PTY bytes directly to the user's terminal in raw mode. This preserves full TUI fidelity for `vim`, `htop`, `lazygit`, shells, and agent UIs without trying to re-render a terminal inside ratatui. Keyboard input is forwarded as bytes (including Ctrl+B as escape prefix, Ctrl+B then D to detach — tmux-style for muscle memory). A ratatui status overlay can be revisited after v1 once it can be done without corrupting arbitrary TUI output.
