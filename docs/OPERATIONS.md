@@ -62,6 +62,7 @@ Before the release tag, rerun the deterministic local gate from a clean checkout
 ```sh
 pnpm check:local-release -- --with-artifacts --with-runtime
 pnpm check:release-audit
+node scripts/verify-release-audit.mjs --list-unchecked
 ```
 
 Only check the external boxes in `PLAN.md` after the matching hosted account,

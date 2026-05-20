@@ -4,6 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(new URL("..", import.meta.url).pathname);
 const failures = [];
+const listUnchecked = process.argv.includes("--list-unchecked");
+const classifiedUncheckedGates = [];
 
 const audit = read("docs/RELEASE_AUDIT.md");
 const plan = read("PLAN.md");
@@ -31,7 +33,11 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("release audit ok");
+if (listUnchecked) {
+  printUncheckedGates();
+} else {
+  console.log("release audit ok");
+}
 
 function verifyCurrentVerdict() {
   requireText(audit, "This file is the current prompt-to-artifact audit", "release audit must describe its prompt-to-artifact purpose");
@@ -61,6 +67,11 @@ function verifyCurrentVerdict() {
     audit,
     "release-audit verifier recomputes\n  this inventory from `PLAN.md` so count drift fails locally",
     "release audit must say unchecked gate count drift fails locally",
+  );
+  requireText(
+    audit,
+    "node scripts/verify-release-audit.mjs --list-unchecked",
+    "release audit must document the unchecked gate list mode",
   );
   for (const blockerClass of [
     "`ios-xcode`",
@@ -1425,6 +1436,7 @@ function verifyPlanUncheckedGatesAreReflected() {
       failures.push(`unchecked PLAN.md gate is not classified in release audit verifier: ${line}`);
     } else {
       actualUncheckedCounts[match[1]] += 1;
+      classifiedUncheckedGates.push({ blockerClass: match[1], line });
     }
   }
 
@@ -1509,6 +1521,24 @@ function verifyPlanUncheckedGatesAreReflected() {
     "Appendix B external reservations",
   ]) {
     requireText(audit, auditPhrase, `release audit must reflect unchecked gates around: ${auditPhrase}`);
+  }
+}
+
+function printUncheckedGates() {
+  const grouped = new Map();
+  for (const gate of classifiedUncheckedGates) {
+    if (!grouped.has(gate.blockerClass)) {
+      grouped.set(gate.blockerClass, []);
+    }
+    grouped.get(gate.blockerClass).push(gate.line.replace(/^- \[ \]\s*/, ""));
+  }
+
+  console.log(`Unchecked PLAN.md gates: ${classifiedUncheckedGates.length}`);
+  for (const [blockerClass, gates] of grouped.entries()) {
+    console.log(`\n${blockerClass} (${gates.length})`);
+    for (const gate of gates) {
+      console.log(`- ${gate}`);
+    }
   }
 }
 

@@ -141,6 +141,7 @@ for (const handoff of [
   "QR pairing,\n  session list subscription, terminal attach/input, reconnect/replay after\n  network changes",
   "biometric launch/stale-input\n  gates",
   "pnpm check:local-release -- --with-artifacts --with-runtime",
+  "node scripts/verify-release-audit.mjs --list-unchecked",
   "Only check the external boxes in `PLAN.md` after the matching hosted account,\nprovider, signed-artifact, physical-device, or operator-reservation evidence\nexists, and keep `docs/RELEASE_AUDIT.md` synchronized with the evidence",
 ]) {
   requireText(files.operations, handoff, `Operations runbook release-gate handoff must include ${handoff}`);
