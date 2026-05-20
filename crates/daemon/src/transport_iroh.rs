@@ -210,15 +210,9 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                 if let Some(task) = session_list_task.take() {
                     task.abort();
                 }
-                write_msg(
-                    &writer,
-                    &ServerToClientMsg::SessionList {
-                        sessions: state.summaries(),
-                    },
-                )
-                .await?;
+                let (sessions, mut rx) = state.subscribe_session_list_with_initial();
+                write_msg(&writer, &ServerToClientMsg::SessionList { sessions }).await?;
 
-                let mut rx = state.subscribe_session_list();
                 let writer = Arc::clone(&writer);
                 session_list_task = Some(tokio::spawn(async move {
                     while rx.changed().await.is_ok() {

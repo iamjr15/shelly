@@ -117,6 +117,17 @@ impl AppState {
         self.session_list_tx.subscribe()
     }
 
+    pub(crate) fn subscribe_session_list_with_initial(
+        &self,
+    ) -> (
+        Vec<fieldwork_protocol::SessionSummary>,
+        watch::Receiver<Vec<fieldwork_protocol::SessionSummary>>,
+    ) {
+        let mut rx = self.subscribe_session_list();
+        let initial = rx.borrow_and_update().clone();
+        (initial, rx)
+    }
+
     pub(crate) fn publish_session_list(&self) {
         self.session_list_tx.send_replace(self.summaries());
     }
@@ -358,15 +369,9 @@ where
                 if let Some(task) = session_list_task.take() {
                     task.abort();
                 }
-                write_msg(
-                    &writer,
-                    &ServerToClientMsg::SessionList {
-                        sessions: state.summaries(),
-                    },
-                )
-                .await?;
+                let (sessions, mut rx) = state.subscribe_session_list_with_initial();
+                write_msg(&writer, &ServerToClientMsg::SessionList { sessions }).await?;
 
-                let mut rx = state.subscribe_session_list();
                 let writer = Arc::clone(&writer);
                 session_list_task = Some(tokio::spawn(async move {
                     while rx.changed().await.is_ok() {
@@ -1223,6 +1228,24 @@ mod tests {
         })
         .await
         .expect("timed out waiting for empty session list");
+
+        let _ = session.kill();
+    }
+
+    #[tokio::test]
+    async fn session_list_subscription_initial_snapshot_is_current() {
+        let state = test_state();
+        let session = spawn_stdin_session("already-created");
+        let session_id = session.id();
+        state.sessions.insert(session_id, Arc::clone(&session));
+        spawn_session_list_forwarder(Arc::clone(&state), Arc::clone(&session));
+        state.publish_session_list();
+
+        let (initial, rx) = state.subscribe_session_list_with_initial();
+
+        assert_eq!(initial.len(), 1);
+        assert_eq!(initial[0].id, session_id);
+        assert!(!rx.has_changed().expect("session list sender alive"));
 
         let _ = session.kill();
     }
