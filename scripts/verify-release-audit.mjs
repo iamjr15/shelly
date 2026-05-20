@@ -19,6 +19,7 @@ const audit = read("docs/RELEASE_AUDIT.md");
 const plan = read("PLAN.md");
 const install = read("docs/INSTALL.md");
 const development = read("docs/DEVELOPMENT.md");
+const liveTesting = read("docs/LIVE_TESTING.md");
 const ci = read(".github/workflows/ci.yml");
 const localRelease = read("scripts/check-local-release.mjs");
 const domainStatus = read("scripts/check-domain-status.mjs");
@@ -28,6 +29,7 @@ const packageJson = JSON.parse(read("package.json"));
 
 verifyCurrentVerdict();
 verifyPromptToArtifactChecklist();
+verifyLiveTestingRunbook();
 verifyExternalBlockers();
 verifyIosHeadroomEvidence();
 verifyLatestRefresh();
@@ -139,6 +141,7 @@ function verifyPromptToArtifactChecklist() {
     "Mobile resume/input biometric gates",
     "Mobile can pair, list/subscribe, attach, send input, resize, detach, register push tokens",
     "Mobile cannot create sessions, kill sessions, or specify commands",
+    "First Android live-test runbook",
     "iroh P2P transport with relay fallback",
     "Generic push notifications",
     "Relay control-plane transport encryption",
@@ -186,6 +189,46 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "release-audit list-mode test",
     "release audit must record local release aggregate coverage for release-audit list mode",
+  );
+  requireText(
+    audit,
+    "`docs/LIVE_TESTING.md` defines the first operator-assisted Android physical-device terminal handoff pass",
+    "release audit must include the first Android live-test runbook row",
+  );
+  requireText(
+    audit,
+    "not v1 release sign-off",
+    "release audit must say the live-test runbook is not release sign-off",
+  );
+  requireText(
+    audit,
+    "same daemon-owned PTY session",
+    "release audit must preserve the same-daemon-owned-PTY live-test boundary",
+  );
+  requireText(
+    audit,
+    "not screen mirroring",
+    "release audit must preserve the live-test screen-mirroring boundary",
+  );
+  requireText(
+    audit,
+    "no takeover of arbitrary already-open Terminal.app or iTerm tabs",
+    "release audit must preserve the live-test arbitrary-terminal boundary",
+  );
+  requireText(
+    audit,
+    "USB debugging only for QA evidence and not an end-user requirement",
+    "release audit must preserve the USB debugging boundary",
+  );
+  requireText(
+    audit,
+    "direct `adb` screenshot/UI/log/crash capture",
+    "release audit must preserve the direct adb evidence requirement",
+  );
+  requireText(
+    audit,
+    "docs/ANDROID_RENDERER.md`, `docs/LIVE_TESTING.md`, and `docs/RELEASE_AUDIT.md`",
+    "release audit docs-sync row must include Android renderer and live-testing docs",
   );
   requireText(
     audit,
@@ -327,7 +370,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "current v1 install, protocol, privacy, architecture, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
+    "current v1 install, protocol, privacy, architecture, Android renderer, first live-test, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
     "release audit must record concrete docs-sync coverage",
   );
   requireText(
@@ -713,6 +756,30 @@ function verifyPromptToArtifactChecklist() {
     "worker_unregisters_token_from_relay",
     "release audit must record daemon push worker token-unregistration coverage",
   );
+}
+
+function verifyLiveTestingRunbook() {
+  for (const needle of [
+    "first operator-assisted live test round",
+    "Android physical-device terminal handoff only",
+    "same daemon-owned PTY session",
+    "not screen mirroring",
+    "does not\n  take over arbitrary already-open Terminal.app or iTerm tabs",
+    "Do not include iOS, npm publish, store submission, production relay deploy, APNs\nor FCM provider delivery",
+    "USB debugging is not an\n  end-user requirement",
+    "enable it for this QA run only when capturing direct\n  `adb` evidence",
+    "direct `adb`: screenshots, UI dumps, app logcat,\n  crash buffers, and command output",
+    "apps/android/gradlew --no-daemon :app:assembleDebug",
+    "adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk",
+    "target/release/fieldwork new bash",
+    "target/release/fieldwork new -- claude",
+    "target/release/fieldwork new -- vim",
+    "target/release/fieldwork pair",
+    "Mobile never creates or kills sessions and never chooses commands",
+    "Do not check provider-push, signing, publish, store-console, iOS, domain, or\noperator-reservation boxes",
+  ]) {
+    requireText(liveTesting, needle, `docs/LIVE_TESTING.md must retain first live-test runbook evidence: ${needle}`);
+  }
 }
 
 function verifyExternalBlockers() {
