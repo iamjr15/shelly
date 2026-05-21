@@ -4,11 +4,19 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
+import zlib from "node:zlib";
 
 const root = path.resolve(new URL("..", import.meta.url).pathname);
 const verifier = path.join(root, "scripts/verify-live-testing-evidence.mjs");
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-live-evidence-"));
+const crc32Table = Array.from({ length: 256 }, (_, index) => {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  return value >>> 0;
+});
 
 try {
   const good = path.join(temp, "good");
@@ -24,6 +32,11 @@ try {
   writeFixture(missingTui);
   fs.rmSync(path.join(missingTui, "tui.png"));
   expectStatus(missingTui, 1, "missing TUI screenshot should fail", "missing evidence file: tui.png");
+
+  const blankScreenshot = path.join(temp, "blank-screenshot");
+  writeFixture(blankScreenshot);
+  writePng(path.join(blankScreenshot, "session.png"), { blank: true });
+  expectStatus(blankScreenshot, 1, "blank screenshot should fail", "session.png appears blank or solid-color");
 
   const badTui = path.join(temp, "bad-tui");
   writeFixture(badTui);
@@ -125,10 +138,63 @@ function writeFixture(dir) {
   );
 }
 
-function writePng(file) {
-  const bytes = Buffer.alloc(1500);
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
-  fs.writeFileSync(file, bytes);
+function writePng(file, options = {}) {
+  const width = 360;
+  const height = 640;
+  const rowBytes = width * 4;
+  const raw = Buffer.alloc((rowBytes + 1) * height);
+  let offset = 0;
+  for (let y = 0; y < height; y += 1) {
+    raw[offset] = 0;
+    offset += 1;
+    for (let x = 0; x < width; x += 1) {
+      if (options.blank) {
+        raw[offset] = 18;
+        raw[offset + 1] = 18;
+        raw[offset + 2] = 18;
+      } else {
+        raw[offset] = (x * 3 + y) & 0xff;
+        raw[offset + 1] = (x + y * 2) & 0xff;
+        raw[offset + 2] = x > 90 && x < 270 && y > 220 && y < 420 ? 240 : 36;
+      }
+      raw[offset + 3] = 255;
+      offset += 4;
+    }
+  }
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", zlib.deflateSync(raw, { level: options.blank ? 0 : 6 })),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+  fs.writeFileSync(file, png);
+}
+
+function pngChunk(type, data) {
+  const typeBytes = Buffer.from(type, "ascii");
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([typeBytes, data])), 0);
+  return Buffer.concat([length, typeBytes, data, crc]);
+}
+
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc = (crc >>> 8) ^ crc32Table[(crc ^ byte) & 0xff];
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function expectStatus(dir, expectedStatus, message, expectedOutput = null) {

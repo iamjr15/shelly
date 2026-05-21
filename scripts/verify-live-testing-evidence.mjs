@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import zlib from "node:zlib";
 
 const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 const failures = [];
@@ -250,6 +251,188 @@ function verifyPng(file) {
   if (bytes.length < 1024) {
     failures.push(`${file} is too small to be useful evidence (${bytes.length} bytes)`);
   }
+  try {
+    verifyVisiblePng(file, decodePng(bytes));
+  } catch (error) {
+    failures.push(`${file} must be a decodable nonblank PNG screenshot: ${error.message}`);
+  }
+}
+
+function decodePng(bytes) {
+  let offset = 8;
+  let header = null;
+  const idat = [];
+
+  while (offset + 12 <= bytes.length) {
+    const length = bytes.readUInt32BE(offset);
+    offset += 4;
+    const type = bytes.toString("ascii", offset, offset + 4);
+    offset += 4;
+    const dataStart = offset;
+    const dataEnd = dataStart + length;
+    if (dataEnd + 4 > bytes.length) {
+      throw new Error(`truncated ${type || "PNG"} chunk`);
+    }
+    const data = bytes.subarray(dataStart, dataEnd);
+    offset = dataEnd + 4;
+
+    if (type === "IHDR") {
+      if (length !== 13) {
+        throw new Error("invalid IHDR length");
+      }
+      header = {
+        width: data.readUInt32BE(0),
+        height: data.readUInt32BE(4),
+        bitDepth: data[8],
+        colorType: data[9],
+        compression: data[10],
+        filter: data[11],
+        interlace: data[12],
+      };
+    } else if (type === "IDAT") {
+      idat.push(Buffer.from(data));
+    } else if (type === "IEND") {
+      break;
+    }
+  }
+
+  if (!header) {
+    throw new Error("missing IHDR");
+  }
+  if (idat.length === 0) {
+    throw new Error("missing IDAT");
+  }
+  if (header.width === 0 || header.height === 0) {
+    throw new Error("empty dimensions");
+  }
+  if (header.bitDepth !== 8) {
+    throw new Error(`unsupported bit depth ${header.bitDepth}`);
+  }
+  if (header.compression !== 0 || header.filter !== 0 || header.interlace !== 0) {
+    throw new Error("unsupported PNG compression, filter, or interlace mode");
+  }
+
+  const channels = channelsForColorType(header.colorType);
+  const rowBytes = header.width * channels;
+  const expected = (rowBytes + 1) * header.height;
+  const inflated = zlib.inflateSync(Buffer.concat(idat));
+  if (inflated.length < expected) {
+    throw new Error(`truncated image data (${inflated.length}/${expected} bytes)`);
+  }
+
+  const pixels = Buffer.alloc(rowBytes * header.height);
+  let inputOffset = 0;
+  for (let y = 0; y < header.height; y += 1) {
+    const filterType = inflated[inputOffset];
+    inputOffset += 1;
+    const rowStart = y * rowBytes;
+    const prevRowStart = rowStart - rowBytes;
+    for (let x = 0; x < rowBytes; x += 1) {
+      const byte = inflated[inputOffset];
+      inputOffset += 1;
+      const left = x >= channels ? pixels[rowStart + x - channels] : 0;
+      const up = y > 0 ? pixels[prevRowStart + x] : 0;
+      const upLeft = y > 0 && x >= channels ? pixels[prevRowStart + x - channels] : 0;
+      pixels[rowStart + x] = unfilterByte(filterType, byte, left, up, upLeft);
+    }
+  }
+
+  return { ...header, channels, pixels };
+}
+
+function channelsForColorType(colorType) {
+  switch (colorType) {
+    case 0:
+      return 1;
+    case 2:
+      return 3;
+    case 4:
+      return 2;
+    case 6:
+      return 4;
+    default:
+      throw new Error(`unsupported color type ${colorType}`);
+  }
+}
+
+function unfilterByte(filterType, byte, left, up, upLeft) {
+  switch (filterType) {
+    case 0:
+      return byte;
+    case 1:
+      return (byte + left) & 0xff;
+    case 2:
+      return (byte + up) & 0xff;
+    case 3:
+      return (byte + Math.floor((left + up) / 2)) & 0xff;
+    case 4:
+      return (byte + paeth(left, up, upLeft)) & 0xff;
+    default:
+      throw new Error(`unsupported PNG filter ${filterType}`);
+  }
+}
+
+function paeth(left, up, upLeft) {
+  const estimate = left + up - upLeft;
+  const leftDistance = Math.abs(estimate - left);
+  const upDistance = Math.abs(estimate - up);
+  const upLeftDistance = Math.abs(estimate - upLeft);
+  if (leftDistance <= upDistance && leftDistance <= upLeftDistance) {
+    return left;
+  }
+  if (upDistance <= upLeftDistance) {
+    return up;
+  }
+  return upLeft;
+}
+
+function verifyVisiblePng(file, image) {
+  let first = null;
+  let opaquePixels = 0;
+  let differingPixels = 0;
+
+  for (let offset = 0; offset < image.pixels.length; offset += image.channels) {
+    const pixel = pixelRgb(image, offset);
+    if (pixel.alpha < 16) {
+      continue;
+    }
+    opaquePixels += 1;
+    if (!first) {
+      first = pixel;
+    } else if (rgbDistance(first, pixel) > 8) {
+      differingPixels += 1;
+    }
+  }
+
+  if (!first) {
+    throw new Error("no opaque pixels");
+  }
+  const minimumDifferingPixels = Math.max(8, Math.min(200, Math.floor(opaquePixels * 0.00005)));
+  if (differingPixels < minimumDifferingPixels) {
+    throw new Error(
+      `${file} appears blank or solid-color (${differingPixels}/${opaquePixels} visibly different pixels)`,
+    );
+  }
+}
+
+function pixelRgb(image, offset) {
+  const data = image.pixels;
+  switch (image.colorType) {
+    case 0:
+      return { red: data[offset], green: data[offset], blue: data[offset], alpha: 255 };
+    case 2:
+      return { red: data[offset], green: data[offset + 1], blue: data[offset + 2], alpha: 255 };
+    case 4:
+      return { red: data[offset], green: data[offset], blue: data[offset], alpha: data[offset + 1] };
+    case 6:
+      return { red: data[offset], green: data[offset + 1], blue: data[offset + 2], alpha: data[offset + 3] };
+    default:
+      throw new Error(`unsupported color type ${image.colorType}`);
+  }
+}
+
+function rgbDistance(a, b) {
+  return Math.abs(a.red - b.red) + Math.abs(a.green - b.green) + Math.abs(a.blue - b.blue);
 }
 
 function requireDirectory(dir) {
