@@ -145,7 +145,7 @@ function verifyDevelopmentDoc(text) {
   );
   requireText(
     text,
-    "CI syntax-checks the\naggregate wrapper and list-checks the combined artifact/runtime mode",
+    "CI\nsyntax-checks the aggregate wrapper and list-checks the combined\nartifact/runtime mode",
     "docs/DEVELOPMENT.md must document CI coverage for the local release aggregate wrapper",
   );
   requireText(
@@ -693,6 +693,9 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "scripts/verify-release-audit.mjs", "local release gate must include the release audit verifier");
   requireText(allFiles.localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");
   requireText(allFiles.localRelease, "Dir[\".github/workflows/*.yml\"].sort.each", "local release gate must parse all workflow YAML files");
+  requireText(allFiles.localRelease, "\"shell script syntax\"", "local release gate must include shell script syntax parsing");
+  requireText(allFiles.localRelease, "for script in scripts/*.sh apps/ios/scripts/*.sh", "local release gate must syntax-check every checked-in shell script");
+  requireText(allFiles.localRelease, "bash -n \"$script\"", "local release gate must use bash -n for shell script syntax checks");
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include the no-ship marker verifier");
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs\", \"--self-test", "local release gate must include the no-ship marker self-test");
   requireText(allFiles.localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include deterministic release-artifact verifier coverage");
@@ -718,6 +721,11 @@ function verifyWiring(allFiles) {
   requireText(allFiles.ci, "node scripts/test-android-aab-verifier.mjs", "CI must run the deterministic Android AAB verifier tests");
   requireText(allFiles.ci, "node scripts/test-android-pair-button-picker.mjs", "CI must run the deterministic Android pair-button picker test");
   requireText(allFiles.ci, "node scripts/test-external-status-refresh.mjs", "CI must run the deterministic external status refresh guard test");
+  requireText(
+    allFiles.development,
+    "syntax-checks every checked-in shell script under `scripts/*.sh` and\n`apps/ios/scripts/*.sh`",
+    "docs/DEVELOPMENT.md must document shell-script syntax coverage in local release",
+  );
   for (const script of [
     "scripts/smoke-android-debug.sh",
     "scripts/smoke-android-emulator-pair.sh",

@@ -183,6 +183,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "shell-script syntax checks for `scripts/*.sh` and `apps/ios/scripts/*.sh`",
+    "release audit must record shell-script syntax checks in the local release gate",
+  );
+  requireText(
+    audit,
     "release-audit list-mode test coverage",
     "release audit must record CI coverage for release-audit list mode",
   );
@@ -2009,6 +2014,9 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/test-live-testing-evidence.mjs", "local release gate must include live-test evidence verifier self-test");
   requireText(localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");
   requireText(localRelease, "Dir[\".github/workflows/*.yml\"].sort.each", "local release gate must parse all workflow YAML files");
+  requireText(localRelease, "\"shell script syntax\"", "local release gate must include shell script syntax checks");
+  requireText(localRelease, "for script in scripts/*.sh apps/ios/scripts/*.sh", "local release gate must syntax-check every checked-in shell script");
+  requireText(localRelease, "bash -n \"$script\"", "local release gate must use bash -n for shell script syntax checks");
   requireText(localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include no-ship marker verification");
   requireText(localRelease, "scripts/verify-no-ship-markers.mjs\", \"--self-test", "local release gate must include no-ship marker self-test coverage");
   requireText(localRelease, "scripts/verify-release-workflows.mjs", "local release gate must include release workflow verification");

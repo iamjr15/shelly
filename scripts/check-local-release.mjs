@@ -40,7 +40,14 @@ const checks = [
   ["release audit", node, ["scripts/verify-release-audit.mjs"]],
   ["release audit list mode", node, ["scripts/test-release-audit-list.mjs"]],
   ["live testing evidence verifier self-test", node, ["scripts/test-live-testing-evidence.mjs"]],
-  ["debug instance script syntax", bash, ["-n", "scripts/debug-instance.sh"]],
+  [
+    "shell script syntax",
+    bash,
+    [
+      "-lc",
+      'for script in scripts/*.sh apps/ios/scripts/*.sh; do bash -n "$script" || exit 1; done; printf "shell script syntax ok\\n"',
+    ],
+  ],
   [
     "workflow YAML syntax",
     ruby,

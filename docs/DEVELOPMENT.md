@@ -98,10 +98,13 @@ repo-local `target/debug` cache. The smoke preserves the host `CARGO_HOME` and
 directories, so Rustup does not redownload the pinned toolchain into each temp
 run. On hosts with limited temp-volume space, run
 `CARGO_HOME="$HOME/.cargo" CARGO_TARGET_DIR="$PWD/target" pnpm check:local-release -- --with-artifacts --with-runtime`
-to reuse the normal Cargo cache and repo-local target directory. CI syntax-checks the
-aggregate wrapper and list-checks the combined artifact/runtime mode so wrapper
-drift is caught without duplicating the full artifact/runtime gate in pull
-requests.
+to reuse the normal Cargo cache and repo-local target directory. CI
+syntax-checks the aggregate wrapper and list-checks the combined
+artifact/runtime mode so wrapper drift is caught without duplicating the full
+artifact/runtime gate in pull requests. The local release gate also
+syntax-checks every checked-in shell script under `scripts/*.sh` and
+`apps/ios/scripts/*.sh`, including the Android emulator smoke scripts, without
+requiring an emulator.
 For operator handoff, `node scripts/verify-release-audit.mjs --list-unchecked`
 prints the current unchecked `PLAN.md` gates grouped by blocker class, and
 `pnpm test:release-audit-list` pins that grouped output.
