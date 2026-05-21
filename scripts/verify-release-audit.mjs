@@ -1553,6 +1553,18 @@ function verifyLatestRefresh() {
     requireText(audit, evidence, `release audit latest direct adb locked-launch evidence must include ${evidence}`);
   }
   for (const evidence of [
+    "later 2026-05-21 direct adb locked-launch refresh",
+    "`/tmp/fieldwork-adb-direct-20260521-locked-refresh`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`TotalTime=976ms`",
+    "`locked.png`, `locked-ui.xml`, `logcat.log`, and an empty `crash.log`",
+    "debug-emulator evidence only",
+  ]) {
+    requireText(plan, evidence, `PLAN.md latest 2026-05-21 direct adb locked-launch evidence must include ${evidence}`);
+    requireText(audit, evidence, `release audit latest 2026-05-21 direct adb locked-launch evidence must include ${evidence}`);
+  }
+  for (const evidence of [
     "Android aggregate emulator QA note",
     "`pnpm test:android-emulator` aggregates the direct-adb emulator substitutes",
     "retries only a locked debug-launch timing outlier once with the same strict limit",
