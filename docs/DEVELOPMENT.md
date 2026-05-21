@@ -105,7 +105,10 @@ artifact/runtime gate in pull requests. The local release gate also
 syntax-checks every checked-in Node script under `scripts/*.mjs` with
 `node --check`, and every checked-in shell script under `scripts/*.sh` and
 `apps/ios/scripts/*.sh`, including the Android emulator smoke scripts, without
-requiring an emulator.
+requiring an emulator. It also parses tracked repo JSON package/config assets,
+lints the iOS project plist, Info.plist, and entitlements with `plutil -lint`,
+and validates Android XML resources plus docs SVG assets with
+`xmllint --noout`.
 For operator handoff, `node scripts/verify-release-audit.mjs --list-unchecked`
 prints the current unchecked `PLAN.md` gates grouped by blocker class, and
 `pnpm test:release-audit-list` pins that grouped output.

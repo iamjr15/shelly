@@ -56,6 +56,7 @@ const checks = [
       'for script in scripts/*.sh apps/ios/scripts/*.sh; do bash -n "$script" || exit 1; done; printf "shell script syntax ok\\n"',
     ],
   ],
+  ["structured asset syntax", node, ["scripts/verify-structured-assets.mjs"]],
   [
     "workflow YAML syntax",
     ruby,

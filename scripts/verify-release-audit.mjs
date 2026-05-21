@@ -22,6 +22,7 @@ const development = read("docs/DEVELOPMENT.md");
 const liveTesting = read("docs/LIVE_TESTING.md");
 const ci = read(".github/workflows/ci.yml");
 const localRelease = read("scripts/check-local-release.mjs");
+const structuredAssets = read("scripts/verify-structured-assets.mjs");
 const localHandoff = read("scripts/smoke-local-handoff.sh");
 const domainStatus = read("scripts/check-domain-status.mjs");
 const githubNamespace = read("scripts/check-github-namespace.mjs");
@@ -190,6 +191,21 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "shell-script syntax checks for `scripts/*.sh` and `apps/ios/scripts/*.sh`",
     "release audit must record shell-script syntax checks in the local release gate",
+  );
+  requireText(
+    audit,
+    "structured asset syntax checks for tracked JSON package/config assets",
+    "release audit must record structured JSON asset checks in the local release gate",
+  );
+  requireText(
+    audit,
+    "iOS plist/project metadata with `plutil -lint`",
+    "release audit must record plist/project checks in the local release gate",
+  );
+  requireText(
+    audit,
+    "docs SVG assets with `xmllint --noout`",
+    "release audit must record SVG XML checks in the local release gate",
   );
   requireText(
     audit,
@@ -2025,6 +2041,13 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "\"shell script syntax\"", "local release gate must include shell script syntax checks");
   requireText(localRelease, "for script in scripts/*.sh apps/ios/scripts/*.sh", "local release gate must syntax-check every checked-in shell script");
   requireText(localRelease, "bash -n \"$script\"", "local release gate must use bash -n for shell script syntax checks");
+  requireText(localRelease, "\"structured asset syntax\"", "local release gate must include structured asset syntax checks");
+  requireText(localRelease, "scripts/verify-structured-assets.mjs", "local release gate must run the structured asset verifier");
+  requireText(structuredAssets, "*.json", "structured asset verifier must parse tracked JSON assets");
+  requireText(structuredAssets, "plutil", "structured asset verifier must lint iOS plist/project metadata");
+  requireText(structuredAssets, "xmllint", "structured asset verifier must lint Android XML and docs SVG assets");
+  requireText(structuredAssets, "apps/android/app/src/main/AndroidManifest.xml", "structured asset verifier must include the Android manifest");
+  requireText(structuredAssets, "docs/assets/*.svg", "structured asset verifier must include docs SVG assets");
   requireText(localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include no-ship marker verification");
   requireText(localRelease, "scripts/verify-no-ship-markers.mjs\", \"--self-test", "local release gate must include no-ship marker self-test coverage");
   requireText(localRelease, "scripts/verify-release-workflows.mjs", "local release gate must include release workflow verification");

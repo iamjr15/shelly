@@ -11,6 +11,7 @@ const files = {
   packageJson: read("package.json"),
   ci: read(".github/workflows/ci.yml"),
   localRelease: read("scripts/check-local-release.mjs"),
+  structuredAssets: read("scripts/verify-structured-assets.mjs"),
   androidEmulatorAll: read("scripts/smoke-android-emulator-all.sh"),
   androidGradlew: read("apps/android/gradlew"),
   desktopPerf: read("scripts/measure-desktop-performance.mjs"),
@@ -699,6 +700,13 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "\"shell script syntax\"", "local release gate must include shell script syntax parsing");
   requireText(allFiles.localRelease, "for script in scripts/*.sh apps/ios/scripts/*.sh", "local release gate must syntax-check every checked-in shell script");
   requireText(allFiles.localRelease, "bash -n \"$script\"", "local release gate must use bash -n for shell script syntax checks");
+  requireText(allFiles.localRelease, "\"structured asset syntax\"", "local release gate must include structured asset syntax checks");
+  requireText(allFiles.localRelease, "scripts/verify-structured-assets.mjs", "local release gate must run the structured asset verifier");
+  requireText(allFiles.structuredAssets, "*.json", "structured asset verifier must parse tracked JSON assets");
+  requireText(allFiles.structuredAssets, "plutil", "structured asset verifier must lint iOS plist/project metadata");
+  requireText(allFiles.structuredAssets, "xmllint", "structured asset verifier must lint Android XML and docs SVG assets");
+  requireText(allFiles.structuredAssets, "apps/android/app/src/main/AndroidManifest.xml", "structured asset verifier must include the Android manifest");
+  requireText(allFiles.structuredAssets, "docs/assets/*.svg", "structured asset verifier must include docs SVG assets");
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include the no-ship marker verifier");
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs\", \"--self-test", "local release gate must include the no-ship marker self-test");
   requireText(allFiles.localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include deterministic release-artifact verifier coverage");
@@ -733,6 +741,21 @@ function verifyWiring(allFiles) {
     allFiles.development,
     "every checked-in shell script under `scripts/*.sh` and\n`apps/ios/scripts/*.sh`",
     "docs/DEVELOPMENT.md must document shell script syntax coverage in local release",
+  );
+  requireText(
+    allFiles.development,
+    "parses tracked repo JSON package/config assets",
+    "docs/DEVELOPMENT.md must document JSON asset syntax coverage in local release",
+  );
+  requireText(
+    allFiles.development,
+    "lints the iOS project plist, Info.plist, and entitlements with `plutil -lint`",
+    "docs/DEVELOPMENT.md must document plist/project syntax coverage in local release",
+  );
+  requireText(
+    allFiles.development,
+    "Android XML resources plus docs SVG assets with\n`xmllint --noout`",
+    "docs/DEVELOPMENT.md must document Android XML and SVG syntax coverage in local release",
   );
   for (const script of [
     "scripts/smoke-android-debug.sh",
