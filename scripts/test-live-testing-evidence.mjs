@@ -20,6 +20,16 @@ try {
   fs.rmSync(path.join(missing, "session.png"));
   expectStatus(missing, 1, "missing session screenshot should fail", "missing evidence file: session.png");
 
+  const missingTui = path.join(temp, "missing-tui");
+  writeFixture(missingTui);
+  fs.rmSync(path.join(missingTui, "tui.png"));
+  expectStatus(missingTui, 1, "missing TUI screenshot should fail", "missing evidence file: tui.png");
+
+  const badTui = path.join(temp, "bad-tui");
+  writeFixture(badTui);
+  fs.writeFileSync(path.join(badTui, "tui-ui.xml"), '<hierarchy><node text="Attached"/><node text="plain shell"/></hierarchy>\n');
+  expectStatus(badTui, 1, "TUI without vim/htop content should fail", "tui-ui.xml must include visible vim/htop terminal content");
+
   const crash = path.join(temp, "crash");
   writeFixture(crash);
   fs.writeFileSync(path.join(crash, "session-crash.log"), "FATAL EXCEPTION: main\nProcess: app.fieldwork.android\n");
@@ -39,12 +49,14 @@ function writeFixture(dir) {
   fs.mkdirSync(dir, { recursive: true });
   writePng(path.join(dir, "locked.png"));
   writePng(path.join(dir, "session.png"));
+  writePng(path.join(dir, "tui.png"));
   fs.writeFileSync(
     path.join(dir, "launch.txt"),
     ["Status: ok", "LaunchState: COLD", "Activity: app.fieldwork.android/.MainActivity", "TotalTime: 934"].join("\n"),
   );
   fs.writeFileSync(path.join(dir, "locked-ui.xml"), '<hierarchy><node text="Unlock"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "session-ui.xml"), '<hierarchy><node text="refactoringjob"/><node text="android_live_ok"/></hierarchy>\n');
+  fs.writeFileSync(path.join(dir, "tui-ui.xml"), '<hierarchy><node text="tui"/><node text="Attached"/><node text="F1Help F2Setup F10Quit"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "locked-logcat.log"), "I Fieldwork: locked launch\n");
   fs.writeFileSync(path.join(dir, "locked-crash.log"), "");
   fs.writeFileSync(
@@ -56,6 +68,8 @@ function writeFixture(dir) {
     ].join("\n"),
   );
   fs.writeFileSync(path.join(dir, "session-crash.log"), "");
+  fs.writeFileSync(path.join(dir, "tui-logcat.log"), "I Fieldwork: terminal attached\n");
+  fs.writeFileSync(path.join(dir, "tui-crash.log"), "");
   fs.writeFileSync(path.join(dir, "devices.txt"), "Pixel 8 Pro paired\n");
   fs.writeFileSync(
     path.join(dir, "sessions.txt"),

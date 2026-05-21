@@ -297,6 +297,26 @@ A later 2026-05-20 direct adb source-build `fw` shim pass used the first-live-te
 
 A 2026-05-20 direct adb empty-dashboard refresh used an isolated release daemon with no pre-existing sessions, a debug-only injected pair payload, direct `adb install`, `adb shell input tap`, `uiautomator` dumps, screenshots, logcat, and crash-buffer capture. The app paired through explicit desktop approval and captured `/tmp/fieldwork-empty-direct-20260520162209/empty-dashboard.png` plus `/tmp/fieldwork-empty-direct-20260520162209/empty-dashboard.xml`; the UI dump showed `No sessions` and `Create one on your laptop with fw new.`. App logcat showed `FieldworkRepository: pair completed` and `FieldworkRepository: listSessions returned 0 sessions`, crash buffers were empty, and the default debug APK was restored to `FIELDWORK_BIOMETRIC_BYPASS = false`, `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, and the locked `Unlock` surface at `/tmp/fieldwork-empty-direct-20260520162209/default-locked.png`.
 
+A 2026-05-21 direct adb terminal-focus refresh moved the Android terminal attach
+surface to the app root while attached, hid the global Sessions/Settings bottom
+navigation, explicitly focused termlib's IME target, and verified
+`adb shell input text android_terminal_fix_ok` reached the daemon-owned PTY.
+Evidence under `/tmp/fieldwork-adb-terminalfix-live-20260521155139` captured
+the attached `androidfix` terminal, app logcat, an empty crash buffer, and
+restored default debug APK state. A same-day TUI attach pass then opened a
+daemon-owned `htop` session named `tui` from the Android dashboard; evidence
+under `/tmp/fieldwork-adb-tui-live-20260521160229` shows `tui` as `Working`,
+`Attached` terminal state, `htop` function-key chrome (`F1Help`, `F2Setup`,
+`F10Quit`), the accessory bar, focused termlib IME target, empty crash buffers,
+and a final restored locked default build with `FIELDWORK_BIOMETRIC_BYPASS =
+false` and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`. This is direct adb emulator
+evidence only; the physical Android dogfood gate remains unchecked.
+
+The first-round live-test evidence verifier now requires a dedicated TUI attach
+capture (`tui.png`, `tui-ui.xml`, `tui-logcat.log`, and `tui-crash.log`) in
+addition to the locked and normal session captures, and it fails unless the UI
+dump shows `Attached` plus visible `vim`/`htop` terminal content.
+
 The Android pair smoke now also measures the debug-app Pair tap through explicit desktop approval completion and fails above the local 15-second emulator bound. The adb scripts pick the Pair action from the dumped UI tree by locating the `Pairing payload` field and the first full-width enabled clickable control below it, because the current Compose tree exposes the Pair button itself without stable visible text. `node scripts/test-android-pair-button-picker.mjs` pins that accessibility-tree shape so the emulator smokes fail deterministically if the locator drifts. Latest aggregate-invoked run passed on `emulator-5554` with `pair_flow_ms=2234`. This is app-side timing substitute evidence only; physical QR camera pair-flow timing still needs a release-device run.
 
 `pnpm test:android-emulator-background-replay` is the focused local background/foreground substitute: it pairs the actual Android app, opens a desktop-created terminal, sends input before backgrounding, backgrounds the app while the PTY emits `ANDROID_BACKGROUND_REPLAY_OUTPUT`, foregrounds back to the attached terminal, sends `after_background_ok`, and uses a separately approved verifier client to confirm the background-emitted output and post-foreground input remain replayable. Latest local run on 2026-05-19 passed on `emulator-5554`.

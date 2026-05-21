@@ -135,6 +135,18 @@ fw devices > "$FW_LIVE_DIR/devices.txt"
 fw ls > "$FW_LIVE_DIR/sessions.txt"
 ```
 
+After attaching the TUI session (`vim` or `htop`), capture a dedicated TUI
+evidence set. The UI dump must show the `Attached` terminal state plus visible
+TUI terminal content such as `htop` function-key labels or a `vim` status line:
+
+```sh
+adb exec-out screencap -p > "$FW_LIVE_DIR/tui.png"
+adb shell uiautomator dump /sdcard/window.xml
+adb pull /sdcard/window.xml "$FW_LIVE_DIR/tui-ui.xml"
+adb logcat -d > "$FW_LIVE_DIR/tui-logcat.log"
+adb logcat -d -b crash > "$FW_LIVE_DIR/tui-crash.log"
+```
+
 After the required files are captured, run the local evidence verifier:
 
 ```sh
@@ -144,7 +156,9 @@ pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"
 This verifier does not replace human review of the phone behavior. It checks
 that the direct `adb` evidence set is complete, screenshots are nontrivial PNGs,
 the locked UI did not expose session or terminal content, the paired run listed
-the expected desktop-created sessions, and the captured logs/crash buffers do
+the expected desktop-created sessions, the TUI attach evidence shows real
+`vim`/`htop` terminal content in the Android terminal surface, and captured
+logs/crash buffers do
 not contain Fieldwork fatal, ANR, or crash entries.
 
 ## Test Matrix

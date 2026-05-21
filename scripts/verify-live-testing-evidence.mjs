@@ -25,6 +25,10 @@ const requiredFiles = [
   "session-ui.xml",
   "session-logcat.log",
   "session-crash.log",
+  "tui.png",
+  "tui-ui.xml",
+  "tui-logcat.log",
+  "tui-crash.log",
   "devices.txt",
   "sessions.txt",
 ];
@@ -36,15 +40,19 @@ for (const file of requiredFiles) {
 if (failures.length === 0) {
   verifyPng("locked.png");
   verifyPng("session.png");
+  verifyPng("tui.png");
   verifyLaunch(readText("launch.txt"));
   verifyLockedSurface(readText("locked-ui.xml"));
   verifySessionEvidence(readText("session-ui.xml"), readText("session-logcat.log"), readText("sessions.txt"));
+  verifyTuiEvidence(readText("tui-ui.xml"));
   verifyDevices(readText("devices.txt"));
   verifyLogs([
     ["locked-logcat.log", readText("locked-logcat.log")],
     ["locked-crash.log", readText("locked-crash.log")],
     ["session-logcat.log", readText("session-logcat.log")],
     ["session-crash.log", readText("session-crash.log")],
+    ["tui-logcat.log", readText("tui-logcat.log")],
+    ["tui-crash.log", readText("tui-crash.log")],
   ]);
 }
 
@@ -78,6 +86,16 @@ function verifySessionEvidence(sessionUi, sessionLogcat, sessionsText) {
   requirePatternText(sessionsText, /\bclaude\b/i, "sessions.txt must include a Claude/default session command");
   requirePatternText(sessionsText, /\b(shell|bash)\b/i, "sessions.txt must include a desktop-created shell/bash session");
   requirePatternText(sessionsText, /\b(editor|vim|htop)\b/i, "sessions.txt must include a desktop-created TUI session");
+}
+
+function verifyTuiEvidence(text) {
+  rejectPatternText(text, /\bNo sessions\b/i, "tui-ui.xml must show an attached TUI, not the dashboard");
+  requirePatternText(text, /\bAttached\b/i, "tui-ui.xml must show the terminal attached state");
+  requirePatternText(
+    text,
+    /(F1\s*Help|F1Help|F2\s*Setup|F2Setup|F10\s*Quit|F10Quit|VIM|--\s*INSERT\s*--|\/etc\/hosts|~\s*$)/im,
+    "tui-ui.xml must include visible vim/htop terminal content",
+  );
 }
 
 function verifyDevices(text) {
