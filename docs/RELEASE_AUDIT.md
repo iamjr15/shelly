@@ -278,6 +278,23 @@ outside this shell:
   locked `Unlock` surface in `TotalTime=3967ms` with screenshot/UI XML/logcat
   under `/tmp/fieldwork-adb-tui-live-20260521160229/default-restore-160932` and
   an empty restored crash buffer.
+  A later 2026-05-21 direct adb pair/attach refresh on a freshly rebooted
+  `Medium_Phone_API_36.1` emulator installed a debug-only pairing-payload build,
+  launched it in `TotalTime=1717ms`, paired through explicit desktop approval,
+  listed the desktop-created `android-direct` session, attached it, sent
+  `fw_direct_20260521_ok` through `adb shell input text`, and captured
+  `/tmp/fieldwork-adb-direct-20260521165654/pair4-dashboard.png`,
+  `/tmp/fieldwork-adb-direct-20260521165654/pair4-terminal-before-input.png`,
+  `/tmp/fieldwork-adb-direct-20260521165654/pair4-terminal-after-input.png`, UI
+  XML, logcat, and empty crash buffers. The desktop replay file
+  `/tmp/fieldwork-adb-direct-20260521165654/pair-runtime/pty-replay-after-input.txt`
+  contains `android-direct: fw_direct_20260521_ok`; app logcat showed
+  `FieldworkRepository: pair completed` and `FieldworkRepository: listSessions
+  returned 1 sessions`. The debug APK was then rebuilt/reinstalled back to
+  `FIELDWORK_BIOMETRIC_BYPASS = false` and
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, relaunched with `Status: ok`,
+  `TotalTime=1862ms`, and the locked
+  `Unlock` surface at `/tmp/fieldwork-adb-direct-20260521165654/restore-default-locked.png`.
   A later direct adb live-test-shaped emulator bundle under
   `/tmp/fieldwork-live-emulator-8UZh53hL` passed
   `pnpm check:live-testing-evidence -- /tmp/fieldwork-live-emulator-8UZh53hL`.
@@ -790,6 +807,17 @@ installed the default debug APK, launched with `Status: ok`,
 `/tmp/fieldwork-adb-direct-20260520092447/default-app-pid-logcat.log`, and an
 empty `/tmp/fieldwork-adb-direct-20260520092447/default-crash.log`, verified a
 1080x2400 screenshot plus `text="Unlock"` in the UI dump, and found no Fieldwork `FATAL EXCEPTION` or ANR log entries.
+A 2026-05-21 direct adb pair/attach refresh under
+`/tmp/fieldwork-adb-direct-20260521165654` installed a debug-only pairing payload
+build after a default locked-surface capture, paired through explicit desktop
+approval, listed `android-direct`, attached the terminal, sent
+`fw_direct_20260521_ok` with `adb shell input text`, captured dashboard and
+terminal screenshots/UI dumps/logcat/crash buffers, and saved a desktop replay at
+`pair-runtime/pty-replay-after-input.txt` containing
+`android-direct: fw_direct_20260521_ok`. The restored default debug APK had
+`FIELDWORK_BIOMETRIC_BYPASS = false`, `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`,
+relaunched with `Status: ok` and `TotalTime=1862ms`, showed the locked `Unlock`
+surface, and had an empty crash buffer.
 The generated UniFFI binding refresh passed after verifying the Android Kotlin
 binding exposes the v1 pair/list/subscribe/attach/input/resize/detach and
 push-token API, rejects generated mobile create/kill/session-command APIs, and
