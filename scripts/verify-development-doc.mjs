@@ -693,6 +693,9 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "scripts/verify-release-audit.mjs", "local release gate must include the release audit verifier");
   requireText(allFiles.localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");
   requireText(allFiles.localRelease, "Dir[\".github/workflows/*.yml\"].sort.each", "local release gate must parse all workflow YAML files");
+  requireText(allFiles.localRelease, "\"Node script syntax\"", "local release gate must include Node script syntax parsing");
+  requireText(allFiles.localRelease, "for script in scripts/*.mjs", "local release gate must syntax-check every checked-in Node script");
+  requireText(allFiles.localRelease, "node --check \"$script\"", "local release gate must use node --check for Node script syntax checks");
   requireText(allFiles.localRelease, "\"shell script syntax\"", "local release gate must include shell script syntax parsing");
   requireText(allFiles.localRelease, "for script in scripts/*.sh apps/ios/scripts/*.sh", "local release gate must syntax-check every checked-in shell script");
   requireText(allFiles.localRelease, "bash -n \"$script\"", "local release gate must use bash -n for shell script syntax checks");
@@ -723,8 +726,13 @@ function verifyWiring(allFiles) {
   requireText(allFiles.ci, "node scripts/test-external-status-refresh.mjs", "CI must run the deterministic external status refresh guard test");
   requireText(
     allFiles.development,
-    "syntax-checks every checked-in shell script under `scripts/*.sh` and\n`apps/ios/scripts/*.sh`",
-    "docs/DEVELOPMENT.md must document shell-script syntax coverage in local release",
+    "syntax-checks every checked-in Node script under `scripts/*.mjs` with\n`node --check`",
+    "docs/DEVELOPMENT.md must document Node script syntax coverage in local release",
+  );
+  requireText(
+    allFiles.development,
+    "every checked-in shell script under `scripts/*.sh` and\n`apps/ios/scripts/*.sh`",
+    "docs/DEVELOPMENT.md must document shell script syntax coverage in local release",
   );
   for (const script of [
     "scripts/smoke-android-debug.sh",

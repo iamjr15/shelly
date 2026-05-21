@@ -41,6 +41,14 @@ const checks = [
   ["release audit list mode", node, ["scripts/test-release-audit-list.mjs"]],
   ["live testing evidence verifier self-test", node, ["scripts/test-live-testing-evidence.mjs"]],
   [
+    "Node script syntax",
+    bash,
+    [
+      "-lc",
+      'for script in scripts/*.mjs; do node --check "$script" >/dev/null || exit 1; done; printf "node script syntax ok\\n"',
+    ],
+  ],
+  [
     "shell script syntax",
     bash,
     [

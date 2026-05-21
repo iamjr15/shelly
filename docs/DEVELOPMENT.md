@@ -102,7 +102,8 @@ to reuse the normal Cargo cache and repo-local target directory. CI
 syntax-checks the aggregate wrapper and list-checks the combined
 artifact/runtime mode so wrapper drift is caught without duplicating the full
 artifact/runtime gate in pull requests. The local release gate also
-syntax-checks every checked-in shell script under `scripts/*.sh` and
+syntax-checks every checked-in Node script under `scripts/*.mjs` with
+`node --check`, and every checked-in shell script under `scripts/*.sh` and
 `apps/ios/scripts/*.sh`, including the Android emulator smoke scripts, without
 requiring an emulator.
 For operator handoff, `node scripts/verify-release-audit.mjs --list-unchecked`
