@@ -135,6 +135,16 @@ fw devices > "$FW_LIVE_DIR/devices.txt"
 fw ls > "$FW_LIVE_DIR/sessions.txt"
 ```
 
+After typing `echo android_live_ok` from Android into the desktop-created
+`shell`/`bash` session, reattach to that same daemon-owned PTY from a desktop
+terminal and capture the replay transcript. This is the proof that the phone is
+not screen mirroring and is seeing the same PTY state the laptop sees:
+
+```sh
+script -q "$FW_LIVE_DIR/terminal-replay.txt" fw attach shell
+# Confirm android_live_ok is visible, then press Ctrl-B followed by D to detach.
+```
+
 After attaching the TUI session (`vim` or `htop`), capture a dedicated TUI
 evidence set. The UI dump must show the `Attached` terminal state plus visible
 TUI terminal content such as `htop` function-key labels or a `vim` status line:
@@ -156,9 +166,10 @@ pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"
 This verifier does not replace human review of the phone behavior. It checks
 that the direct `adb` evidence set is complete, screenshots are nontrivial PNGs,
 the locked UI did not expose session or terminal content, the paired run listed
-the expected desktop-created sessions, the TUI attach evidence shows real
-`vim`/`htop` terminal content in the Android terminal surface, and captured
-logs/crash buffers do
+the expected desktop-created sessions, the desktop replay transcript contains
+`android_live_ok` from the Android-originated shell input, the TUI attach
+evidence shows real `vim`/`htop` terminal content in the Android terminal
+surface, and captured logs/crash buffers do
 not contain Fieldwork fatal, ANR, or crash entries.
 
 ## Test Matrix

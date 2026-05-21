@@ -873,6 +873,7 @@ function verifyLiveTestingRunbook() {
     "fw new -- claude",
     "fw new -- vim",
     "fw pair",
+    "script -q \"$FW_LIVE_DIR/terminal-replay.txt\" fw attach shell",
     "generated one-word name such as `waffle` or `kazoo`",
     "`refactoringjob` appear as active sessions in the Android dashboard",
     "auto-named default `claude` session",

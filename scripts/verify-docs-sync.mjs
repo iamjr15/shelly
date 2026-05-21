@@ -208,6 +208,8 @@ function verifyLiveTestingDoc() {
     "adb exec-out screencap -p",
     "adb shell uiautomator dump",
     "adb logcat -d -b crash",
+    "script -q \"$FW_LIVE_DIR/terminal-replay.txt\" fw attach shell",
+    "desktop replay transcript contains\n`android_live_ok`",
     "pnpm check:live-testing-evidence -- \"$FW_LIVE_DIR\"",
     "direct `adb` evidence set is complete",
     "screenshots are nontrivial PNGs",

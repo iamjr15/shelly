@@ -30,6 +30,16 @@ try {
   fs.writeFileSync(path.join(badTui, "tui-ui.xml"), '<hierarchy><node text="Attached"/><node text="plain shell"/></hierarchy>\n');
   expectStatus(badTui, 1, "TUI without vim/htop content should fail", "tui-ui.xml must include visible vim/htop terminal content");
 
+  const missingReplay = path.join(temp, "missing-replay");
+  writeFixture(missingReplay);
+  fs.rmSync(path.join(missingReplay, "terminal-replay.txt"));
+  expectStatus(missingReplay, 1, "missing desktop replay transcript should fail", "missing evidence file: terminal-replay.txt");
+
+  const badReplay = path.join(temp, "bad-replay");
+  writeFixture(badReplay);
+  fs.writeFileSync(path.join(badReplay, "terminal-replay.txt"), "shell prompt only\n");
+  expectStatus(badReplay, 1, "desktop replay without Android marker should fail", "terminal-replay.txt must prove Android-originated input/output");
+
   const crash = path.join(temp, "crash");
   writeFixture(crash);
   fs.writeFileSync(path.join(crash, "session-crash.log"), "FATAL EXCEPTION: main\nProcess: app.fieldwork.android\n");
@@ -55,7 +65,7 @@ function writeFixture(dir) {
     ["Status: ok", "LaunchState: COLD", "Activity: app.fieldwork.android/.MainActivity", "TotalTime: 934"].join("\n"),
   );
   fs.writeFileSync(path.join(dir, "locked-ui.xml"), '<hierarchy><node text="Unlock"/></hierarchy>\n');
-  fs.writeFileSync(path.join(dir, "session-ui.xml"), '<hierarchy><node text="refactoringjob"/><node text="android_live_ok"/></hierarchy>\n');
+  fs.writeFileSync(path.join(dir, "session-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="android_live_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "tui-ui.xml"), '<hierarchy><node text="tui"/><node text="Attached"/><node text="F1Help F2Setup F10Quit"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "locked-logcat.log"), "I Fieldwork: locked launch\n");
   fs.writeFileSync(path.join(dir, "locked-crash.log"), "");
@@ -71,6 +81,7 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "tui-logcat.log"), "I Fieldwork: terminal attached\n");
   fs.writeFileSync(path.join(dir, "tui-crash.log"), "");
   fs.writeFileSync(path.join(dir, "devices.txt"), "Pixel 8 Pro paired\n");
+  fs.writeFileSync(path.join(dir, "terminal-replay.txt"), "shell bash\n$ echo android_live_ok\nandroid_live_ok\n");
   fs.writeFileSync(
     path.join(dir, "sessions.txt"),
     ["waffle claude", "refactoringjob claude", "shell bash", "editor vim"].join("\n"),

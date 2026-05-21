@@ -316,10 +316,16 @@ The first-round live-test evidence verifier now requires a dedicated TUI attach
 capture (`tui.png`, `tui-ui.xml`, `tui-logcat.log`, and `tui-crash.log`) in
 addition to the locked and normal session captures, and it fails unless the UI
 dump shows `Attached` plus visible `vim`/`htop` terminal content.
+It also requires `terminal-replay.txt`, captured by reattaching from the desktop
+to the same daemon-owned `shell`/`bash` session after Android sends
+`echo android_live_ok`; that transcript must contain `android_live_ok` so the
+round proves phone and laptop are looking at the same PTY rather than a mirrored
+screen or disconnected view.
 
 A later direct adb live-test-shaped emulator bundle on 2026-05-21 captured the
-same required evidence layout under `/tmp/fieldwork-live-emulator-8UZh53hL` and
-passed `pnpm check:live-testing-evidence -- /tmp/fieldwork-live-emulator-8UZh53hL`.
+then-current evidence layout under `/tmp/fieldwork-live-emulator-8UZh53hL` and
+passed the verifier before the stricter `terminal-replay.txt` requirement was
+added.
 It launched the default locked APK, paired a debug-only payload build through
 explicit desktop approval, showed desktop-created `refactoringjob`, `shell`,
 `editor`, and `extra` sessions on the dashboard, opened the dedicated `editor`

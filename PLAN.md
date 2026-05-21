@@ -1778,8 +1778,9 @@ empty.
 
 **Direct Android adb live-test evidence bundle (2026-05-21)**: a later manual
 emulator pass captured the first-round live-test evidence layout under
-`/tmp/fieldwork-live-emulator-8UZh53hL` and passed
-`pnpm check:live-testing-evidence -- /tmp/fieldwork-live-emulator-8UZh53hL`.
+`/tmp/fieldwork-live-emulator-8UZh53hL` and passed the then-current
+`pnpm check:live-testing-evidence` verifier before the stricter desktop
+`terminal-replay.txt` proof requirement was added.
 The bundle includes locked-launch screenshot/UI/log/crash evidence, paired
 dashboard evidence listing desktop-created `refactoringjob`, `shell`, `editor`,
 and `extra` sessions, normal attach evidence, dedicated TUI attach evidence

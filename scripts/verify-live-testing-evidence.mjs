@@ -25,6 +25,7 @@ const requiredFiles = [
   "session-ui.xml",
   "session-logcat.log",
   "session-crash.log",
+  "terminal-replay.txt",
   "tui.png",
   "tui-ui.xml",
   "tui-logcat.log",
@@ -43,7 +44,12 @@ if (failures.length === 0) {
   verifyPng("tui.png");
   verifyLaunch(readText("launch.txt"));
   verifyLockedSurface(readText("locked-ui.xml"));
-  verifySessionEvidence(readText("session-ui.xml"), readText("session-logcat.log"), readText("sessions.txt"));
+  verifySessionEvidence(
+    readText("session-ui.xml"),
+    readText("session-logcat.log"),
+    readText("sessions.txt"),
+    readText("terminal-replay.txt"),
+  );
   verifyTuiEvidence(readText("tui-ui.xml"));
   verifyDevices(readText("devices.txt"));
   verifyLogs([
@@ -78,14 +84,25 @@ function verifyLockedSurface(text) {
   );
 }
 
-function verifySessionEvidence(sessionUi, sessionLogcat, sessionsText) {
+function verifySessionEvidence(sessionUi, sessionLogcat, sessionsText, terminalReplay) {
   rejectPatternText(sessionUi, /\bNo sessions\b/i, "session-ui.xml must not be the empty dashboard after pairing");
+  requirePatternText(sessionUi, /\bAttached\b/i, "session-ui.xml must show the normal terminal attached state");
   requirePatternText(sessionLogcat, /FieldworkRepository:\s+pair completed/, "session-logcat.log must show repository pair completion");
   requirePatternText(sessionLogcat, /FieldworkRepository:\s+listSessions returned \d+ sessions/, "session-logcat.log must show session listing after pair");
   requirePatternText(sessionsText, /\brefactoringjob\b/, "sessions.txt must include the named shortcut session refactoringjob");
   requirePatternText(sessionsText, /\bclaude\b/i, "sessions.txt must include a Claude/default session command");
   requirePatternText(sessionsText, /\b(shell|bash)\b/i, "sessions.txt must include a desktop-created shell/bash session");
   requirePatternText(sessionsText, /\b(editor|vim|htop)\b/i, "sessions.txt must include a desktop-created TUI session");
+  requirePatternText(
+    terminalReplay,
+    /\bandroid_live_ok\b/,
+    "terminal-replay.txt must prove Android-originated input/output was visible from a desktop reattach",
+  );
+  requirePatternText(
+    terminalReplay,
+    /\b(shell|bash)\b/i,
+    "terminal-replay.txt must identify the desktop-created shell/bash session",
+  );
 }
 
 function verifyTuiEvidence(text) {
