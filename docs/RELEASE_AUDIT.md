@@ -295,6 +295,15 @@ outside this shell:
   `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, relaunched with `Status: ok`,
   `TotalTime=1862ms`, and the locked
   `Unlock` surface at `/tmp/fieldwork-adb-direct-20260521165654/restore-default-locked.png`.
+  A later 2026-05-21 direct adb locked-launch refresh under
+  `/tmp/fieldwork-adb-direct-20260521-locked-refresh` reinstalled the default
+  debug APK, confirmed `FIELDWORK_BIOMETRIC_BYPASS = false` and
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, cleared app data/logcat, launched with
+  `Status: ok`, `LaunchState: COLD`, and `TotalTime=976ms`, captured
+  `locked.png`, `locked-ui.xml`, `logcat.log`, and an empty `crash.log`,
+  verified a 1080x2400 screenshot plus `text="Unlock"` in the UI dump, and
+  found no Fieldwork `FATAL EXCEPTION` or ANR log entries. This remains
+  debug-emulator evidence only.
   A later direct adb live-test-shaped emulator bundle under
   `/tmp/fieldwork-live-emulator-8UZh53hL` passed the then-current
   `pnpm check:live-testing-evidence` verifier before the stricter desktop

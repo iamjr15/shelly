@@ -377,6 +377,17 @@ reinstalled back to `FIELDWORK_BIOMETRIC_BYPASS = false` and
 `TotalTime=1862ms`, and the locked `Unlock` surface. This is direct adb emulator
 evidence only, not physical release-device evidence.
 
+A later 2026-05-21 direct adb locked-launch refresh reinstalled the default
+debug APK on `Medium_Phone_API_36.1`, verified the generated debug BuildConfig
+kept `FIELDWORK_BIOMETRIC_BYPASS = false` and
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, cleared app data/logcat, launched with
+`Status: ok`, `LaunchState: COLD`, and `TotalTime=976ms`, and captured
+`/tmp/fieldwork-adb-direct-20260521-locked-refresh/locked.png`,
+`locked-ui.xml`, `logcat.log`, and an empty `crash.log`. The UI dump contained
+`text="Unlock"`, the screenshot was 1080x2400, and targeted logcat scanning
+found no Fieldwork `FATAL EXCEPTION` or ANR entries. This is debug-emulator
+evidence only, not physical release-device evidence.
+
 The Android pair smoke now also measures the debug-app Pair tap through explicit desktop approval completion and fails above the local 15-second emulator bound. The adb scripts pick the Pair action from the dumped UI tree by locating the `Pairing payload` field and the first full-width enabled clickable control below it, because the current Compose tree exposes the Pair button itself without stable visible text. `node scripts/test-android-pair-button-picker.mjs` pins that accessibility-tree shape so the emulator smokes fail deterministically if the locator drifts. Latest aggregate-invoked run passed on `emulator-5554` with `pair_flow_ms=2234`. This is app-side timing substitute evidence only; physical QR camera pair-flow timing still needs a release-device run.
 
 `pnpm test:android-emulator-background-replay` is the focused local background/foreground substitute: it pairs the actual Android app, opens a desktop-created terminal, sends input before backgrounding, backgrounds the app while the PTY emits `ANDROID_BACKGROUND_REPLAY_OUTPUT`, foregrounds back to the attached terminal, sends `after_background_ok`, and uses a separately approved verifier client to confirm the background-emitted output and post-foreground input remain replayable. Latest local run on 2026-05-19 passed on `emulator-5554`.
