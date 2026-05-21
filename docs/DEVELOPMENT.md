@@ -317,6 +317,17 @@ capture (`tui.png`, `tui-ui.xml`, `tui-logcat.log`, and `tui-crash.log`) in
 addition to the locked and normal session captures, and it fails unless the UI
 dump shows `Attached` plus visible `vim`/`htop` terminal content.
 
+A later direct adb live-test-shaped emulator bundle on 2026-05-21 captured the
+same required evidence layout under `/tmp/fieldwork-live-emulator-8UZh53hL` and
+passed `pnpm check:live-testing-evidence -- /tmp/fieldwork-live-emulator-8UZh53hL`.
+It launched the default locked APK, paired a debug-only payload build through
+explicit desktop approval, showed desktop-created `refactoringjob`, `shell`,
+`editor`, and `extra` sessions on the dashboard, opened the dedicated `editor`
+`htop` session with `Attached` status and visible function-key chrome, and then
+rebuilt/reinstalled the default APK with `FIELDWORK_BIOMETRIC_BYPASS = false`,
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, the locked `Unlock` surface, and an
+empty restored crash buffer. This is still emulator substitute evidence only.
+
 The Android pair smoke now also measures the debug-app Pair tap through explicit desktop approval completion and fails above the local 15-second emulator bound. The adb scripts pick the Pair action from the dumped UI tree by locating the `Pairing payload` field and the first full-width enabled clickable control below it, because the current Compose tree exposes the Pair button itself without stable visible text. `node scripts/test-android-pair-button-picker.mjs` pins that accessibility-tree shape so the emulator smokes fail deterministically if the locator drifts. Latest aggregate-invoked run passed on `emulator-5554` with `pair_flow_ms=2234`. This is app-side timing substitute evidence only; physical QR camera pair-flow timing still needs a release-device run.
 
 `pnpm test:android-emulator-background-replay` is the focused local background/foreground substitute: it pairs the actual Android app, opens a desktop-created terminal, sends input before backgrounding, backgrounds the app while the PTY emits `ANDROID_BACKGROUND_REPLAY_OUTPUT`, foregrounds back to the attached terminal, sends `after_background_ok`, and uses a separately approved verifier client to confirm the background-emitted output and post-foreground input remain replayable. Latest local run on 2026-05-19 passed on `emulator-5554`.

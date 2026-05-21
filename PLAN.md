@@ -1775,6 +1775,20 @@ gates remain unchecked. The default debug APK was then rebuilt/reinstalled,
 plus UI XML verified the locked surface, and the restored crash buffer was
 empty.
 
+**Direct Android adb live-test evidence bundle (2026-05-21)**: a later manual
+emulator pass captured the first-round live-test evidence layout under
+`/tmp/fieldwork-live-emulator-8UZh53hL` and passed
+`pnpm check:live-testing-evidence -- /tmp/fieldwork-live-emulator-8UZh53hL`.
+The bundle includes locked-launch screenshot/UI/log/crash evidence, paired
+dashboard evidence listing desktop-created `refactoringjob`, `shell`, `editor`,
+and `extra` sessions, normal attach evidence, dedicated TUI attach evidence
+where `tui-ui.xml` shows the daemon-owned `editor` `htop` session as `Attached`
+with visible function-key chrome, and restored-default APK evidence showing
+`FIELDWORK_BIOMETRIC_BYPASS = false`, `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`,
+the locked `Unlock` surface, and an empty restored crash buffer. This is still
+emulator substitute evidence only; physical Android biometric, QR-camera,
+renderer dogfood, and release-device runtime gates remain unchecked.
+
 **Android background/foreground replay note (2026-05-19)**: `pnpm test:android-emulator-background-replay` pairs the actual Android debug app with an isolated release daemon through the debug-only QR payload path, opens a desktop-created terminal, backgrounds the attached app while the PTY emits `ANDROID_BACKGROUND_REPLAY_OUTPUT`, foregrounds back to `Attached`, sends `after_background_ok`, and verifies the background-emitted output plus post-foreground input through a separately approved verifier. Latest local run passed on `emulator-5554`. This is still emulator substitute evidence; the release gate remains unchecked until the same behavior is observed on physical release devices.
 
 **Android startup hardening note (2026-05-18)**: the Android root now obtains
