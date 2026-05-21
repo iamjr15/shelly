@@ -92,17 +92,33 @@ function verifyDispatcher({ platform, arch, key }) {
   try {
     const fwAlias = path.join(aliasTmp, "fw");
     fs.symlinkSync(dispatcher, fwAlias);
-    result = spawnSync(process.execPath, [fwAlias, "pair"], {
-      cwd: root,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        FIELDWORK_NPM_PLATFORM: platform,
-        FIELDWORK_NPM_ARCH: arch,
+    for (const aliasCase of [
+      { name: "smart default", args: [], stdout: "fake-fieldwork" },
+      { name: "pair", args: ["pair"], stdout: "fake-fieldwork pair" },
+      {
+        name: "named-session shortcut",
+        args: ["refactoringjob"],
+        stdout: "fake-fieldwork refactoringjob",
       },
-    });
-    assert(result.status === 0, `${key} fw alias should exit 0 for pair, got ${result.status}\n${result.stderr}`);
-    assert(result.stdout.trim() === "fake-fieldwork pair", `unexpected ${key} fw alias stdout: ${result.stdout}`);
+    ]) {
+      result = spawnSync(process.execPath, [fwAlias, ...aliasCase.args], {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          FIELDWORK_NPM_PLATFORM: platform,
+          FIELDWORK_NPM_ARCH: arch,
+        },
+      });
+      assert(
+        result.status === 0,
+        `${key} fw alias should exit 0 for ${aliasCase.name}, got ${result.status}\n${result.stderr}`,
+      );
+      assert(
+        result.stdout.trim() === aliasCase.stdout,
+        `unexpected ${key} fw alias ${aliasCase.name} stdout: ${result.stdout}`,
+      );
+    }
   } finally {
     fs.rmSync(aliasTmp, { recursive: true, force: true });
   }

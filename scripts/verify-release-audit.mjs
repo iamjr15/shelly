@@ -379,7 +379,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "no-subcommand smart default parser path for\n`fieldwork`/`fw`",
+    "no-subcommand smart default parser and npm\ndispatcher paths for `fieldwork`/`fw`",
     "release audit must record the no-subcommand CLI smart default coverage",
   );
   requireText(
