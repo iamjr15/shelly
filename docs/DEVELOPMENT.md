@@ -187,7 +187,10 @@ isolated `HOME`, XDG config/state/cache/runtime directories, and local `fw`,
 `fieldwork`, and `fieldworkd` symlinks. It deliberately sets
 `FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED=false` inside that isolated state root
 to avoid Keychain prompts during local debugging; production-like and release
-verification paths should leave the encryption override unset.
+verification paths should leave the encryption override unset. Custom
+`FIELDWORK_DEBUG_TMUX_SESSION` and `FIELDWORK_DEBUG_ROOT` values are preserved by
+`scripts/debug-instance.sh env`, so copied CLI commands keep pointing at the
+same isolated daemon.
 
 Desktop performance smoke:
 

@@ -100,24 +100,38 @@ run_debug() {
   "$@"
 }
 
+shell_quote() {
+  printf "%q" "$1"
+}
+
+env_command_prefix() {
+  printf "FIELDWORK_DEBUG_TMUX_SESSION=%s FIELDWORK_DEBUG_ROOT=%s" \
+    "$(shell_quote "$session")" \
+    "$(shell_quote "$state_root")"
+}
+
 print_env() {
+  printf "export FIELDWORK_DEBUG_TMUX_SESSION=%s\n" "$(shell_quote "$session")"
+  printf "export FIELDWORK_DEBUG_ROOT=%s\n" "$(shell_quote "$state_root")"
+  printf "export HOME=%s\n" "$(shell_quote "$home_dir")"
+  printf "export XDG_RUNTIME_DIR=%s\n" "$(shell_quote "$runtime_dir")"
+  printf "export XDG_CONFIG_HOME=%s\n" "$(shell_quote "$config_dir")"
+  printf "export XDG_STATE_HOME=%s\n" "$(shell_quote "$state_dir")"
+  printf "export XDG_CACHE_HOME=%s\n" "$(shell_quote "$cache_dir")"
   cat <<ENV
-export HOME="$home_dir"
-export XDG_RUNTIME_DIR="$runtime_dir"
-export XDG_CONFIG_HOME="$config_dir"
-export XDG_STATE_HOME="$state_dir"
-export XDG_CACHE_HOME="$cache_dir"
 export FIELDWORK_DISABLE_UPDATE_CHECK=1
 export FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED=false
-export PATH="$bin_dir:\$PATH"
 ENV
+  printf "export PATH=%s:\$PATH\n" "$(shell_quote "$bin_dir")"
 }
 
 print_next_steps() {
+  local prefix
+  prefix="$(env_command_prefix)"
   cat <<NEXT
-Attach logs: tmux attach -t "$session"
-Use CLI:     eval "\$(scripts/debug-instance.sh env)" && fw ls
-Stop:        scripts/debug-instance.sh stop
+Attach logs: tmux attach -t $(shell_quote "$session")
+Use CLI:     eval "\$($prefix scripts/debug-instance.sh env)" && fw ls
+Stop:        $prefix scripts/debug-instance.sh stop
 State root:  $state_root
 NEXT
 }
