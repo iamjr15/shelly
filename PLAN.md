@@ -709,6 +709,7 @@ fieldwork settings scrollback-encryption on
 fieldwork settings scrollback-encryption off
 fieldwork version
 fieldwork completion <shell>            # generate completions
+fw completion <shell>                   # generate completions registered for the short alias
 ```
 
 **No `fieldwork update` subcommand** — npm is the install channel, so updates route through `npm update -g fieldwork`. Having a separate self-updater would let the binary version diverge from the npm-registered version, breaking the user's mental model. The CLI prints a one-line `fieldwork X.Y.Z available - run npm update -g fieldwork` notice to stderr if the npm registry shows a newer version. The check is cached for 24 hours in the private Fieldwork config directory and skipped for QR pairing, shell completions, hooks, `version`, and raw terminal attach flows.

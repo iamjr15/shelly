@@ -318,8 +318,17 @@ fn should_check_update_notice(command: Option<&Command>) -> bool {
 
 fn print_completion(shell: Shell) {
     let mut command = Cli::command();
-    let bin_name = command.get_name().to_string();
+    let bin_name = completion_bin_name(std::env::args_os().next());
     clap_complete::generate(shell, &mut command, bin_name, &mut std::io::stdout());
+}
+
+fn completion_bin_name(arg0: Option<OsString>) -> String {
+    arg0.as_deref()
+        .and_then(|arg0| std::path::Path::new(arg0).file_name())
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("fieldwork")
+        .to_string()
 }
 
 fn run_settings(command: SettingsCommand) -> Result<()> {
@@ -977,7 +986,8 @@ impl Drop for RawMode {
 mod tests {
     use super::{
         AUTO_SESSION_NAMES, Cli, Command, HookCommand, auto_session_name, codex_state_from_json,
-        normalize_session_name, parse_named_shortcut_args, should_check_update_notice,
+        completion_bin_name, normalize_session_name, parse_named_shortcut_args,
+        should_check_update_notice,
     };
     use clap::Parser;
     use clap_complete::Shell;
@@ -1036,6 +1046,19 @@ mod tests {
     fn no_args_parse_to_smart_default() {
         let cli = Cli::try_parse_from(["fieldwork"]).expect("no-arg CLI parses");
         assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn completion_bin_name_follows_invoked_alias() {
+        assert_eq!(
+            completion_bin_name(Some(OsString::from("/usr/local/bin/fw"))),
+            "fw"
+        );
+        assert_eq!(
+            completion_bin_name(Some(OsString::from("fieldwork"))),
+            "fieldwork"
+        );
+        assert_eq!(completion_bin_name(None), "fieldwork");
     }
 
     #[test]

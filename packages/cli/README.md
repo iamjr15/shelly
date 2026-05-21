@@ -36,6 +36,7 @@ fw refactoringjob
 fw new --name shell bash
 fw new bash
 fw attach <session-id>
+fw completion bash
 ```
 
 The shorter `fw` alias accepts the same arguments as `fieldwork`: `fw pair` is
@@ -48,6 +49,10 @@ exists, or creates and attaches a default `claude` PTY named `refactoringjob`
 when it does not. No-name default sessions get generated one-word names like
 `waffle` or `kazoo`, and the same daemon session name appears in the mobile app
 dashboard.
+
+Shell completions follow the command used to generate them. `fw completion bash`
+registers the short alias, while `fieldwork completion bash` registers the long
+command.
 
 The default desktop command can be `claude`, but arbitrary PTY commands are
 supported. Mobile clients can pair, list sessions, attach, send input, resize,
