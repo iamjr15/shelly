@@ -703,6 +703,8 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "\"structured asset syntax\"", "local release gate must include structured asset syntax checks");
   requireText(allFiles.localRelease, "scripts/verify-structured-assets.mjs", "local release gate must run the structured asset verifier");
   requireText(allFiles.structuredAssets, "*.json", "structured asset verifier must parse tracked JSON assets");
+  requireText(allFiles.structuredAssets, "*.toml", "structured asset verifier must parse tracked TOML assets");
+  requireText(allFiles.structuredAssets, "tomllib", "structured asset verifier must use a real TOML parser");
   requireText(allFiles.structuredAssets, "plutil", "structured asset verifier must lint iOS plist/project metadata");
   requireText(allFiles.structuredAssets, "xmllint", "structured asset verifier must lint Android XML and docs SVG assets");
   requireText(allFiles.structuredAssets, "apps/android/app/src/main/AndroidManifest.xml", "structured asset verifier must include the Android manifest");
@@ -744,17 +746,22 @@ function verifyWiring(allFiles) {
   );
   requireText(
     allFiles.development,
-    "parses tracked repo JSON package/config assets",
-    "docs/DEVELOPMENT.md must document JSON asset syntax coverage in local release",
+    "parses tracked repo JSON and TOML package/config\nassets",
+    "docs/DEVELOPMENT.md must document JSON/TOML asset syntax coverage in local release",
   );
   requireText(
     allFiles.development,
-    "lints the iOS project plist, Info.plist, and entitlements with `plutil -lint`",
+    "Python's standard `tomllib` for TOML",
+    "docs/DEVELOPMENT.md must document TOML parser coverage in local release",
+  );
+  requireText(
+    allFiles.development,
+    "lints the iOS project\nplist, Info.plist, and entitlements with `plutil -lint`",
     "docs/DEVELOPMENT.md must document plist/project syntax coverage in local release",
   );
   requireText(
     allFiles.development,
-    "Android XML resources plus docs SVG assets with\n`xmllint --noout`",
+    "Android\nXML resources plus docs SVG assets with\n`xmllint --noout`",
     "docs/DEVELOPMENT.md must document Android XML and SVG syntax coverage in local release",
   );
   for (const script of [

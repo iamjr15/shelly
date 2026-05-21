@@ -194,8 +194,8 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "structured asset syntax checks for tracked JSON package/config assets",
-    "release audit must record structured JSON asset checks in the local release gate",
+    "structured asset syntax checks for tracked JSON and TOML package/config assets",
+    "release audit must record structured JSON/TOML asset checks in the local release gate",
   );
   requireText(
     audit,
@@ -2044,6 +2044,8 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "\"structured asset syntax\"", "local release gate must include structured asset syntax checks");
   requireText(localRelease, "scripts/verify-structured-assets.mjs", "local release gate must run the structured asset verifier");
   requireText(structuredAssets, "*.json", "structured asset verifier must parse tracked JSON assets");
+  requireText(structuredAssets, "*.toml", "structured asset verifier must parse tracked TOML assets");
+  requireText(structuredAssets, "tomllib", "structured asset verifier must use a real TOML parser");
   requireText(structuredAssets, "plutil", "structured asset verifier must lint iOS plist/project metadata");
   requireText(structuredAssets, "xmllint", "structured asset verifier must lint Android XML and docs SVG assets");
   requireText(structuredAssets, "apps/android/app/src/main/AndroidManifest.xml", "structured asset verifier must include the Android manifest");

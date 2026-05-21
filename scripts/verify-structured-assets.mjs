@@ -15,6 +15,15 @@ const jsonPaths = gitLsFiles([
   ":!:site/node_modules/**",
   ":!:target/**",
 ]);
+const tomlPaths = gitLsFiles([
+  "*.toml",
+  ":!:apps/android/app/build/**",
+  ":!:node_modules/**",
+  ":!:references/**",
+  ":!:site/dist/**",
+  ":!:site/node_modules/**",
+  ":!:target/**",
+]);
 const plistPaths = [
   "apps/ios/Fieldwork.xcodeproj/project.pbxproj",
   "apps/ios/Resources/Info.plist",
@@ -29,6 +38,9 @@ const xmlSvgPaths = gitLsFiles([
 if (jsonPaths.length === 0) {
   fail("no tracked JSON assets found");
 }
+if (tomlPaths.length === 0) {
+  fail("no tracked TOML assets found");
+}
 if (xmlSvgPaths.length === 0) {
   fail("no tracked Android XML or docs SVG assets found");
 }
@@ -41,6 +53,8 @@ for (const relativePath of jsonPaths) {
   }
 }
 console.log(`json asset syntax ok (${jsonPaths.length} files)`);
+
+run(findPythonWithTomllib(), ["-c", tomlVerifierSource(), ...tomlPaths]);
 
 run("plutil", ["-lint", ...plistPaths]);
 console.log(`plist/project syntax ok (${plistPaths.length} files)`);
@@ -60,6 +74,36 @@ function gitLsFiles(pathspecs) {
     fail(`git ls-files failed with exit code ${result.status}: ${result.stderr.trim()}`);
   }
   return result.stdout.split("\n").filter(Boolean).sort();
+}
+
+function findPythonWithTomllib() {
+  for (const command of ["python3", "python3.14", "python3.13", "python3.12", "python3.11"]) {
+    const result = spawnSync(command, ["-c", "import tomllib"], {
+      cwd: root,
+      encoding: "utf8",
+    });
+    if (!result.error && result.status === 0) {
+      return command;
+    }
+  }
+  fail("python3.11+ with the standard tomllib module is required for TOML asset syntax checks");
+}
+
+function tomlVerifierSource() {
+  return `
+import pathlib
+import sys
+import tomllib
+
+for relative_path in sys.argv[1:]:
+    try:
+        tomllib.loads(pathlib.Path(relative_path).read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"{relative_path} is not valid TOML: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+print(f"toml asset syntax ok ({len(sys.argv) - 1} files)")
+`.trim();
 }
 
 function run(command, args) {
