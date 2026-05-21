@@ -436,7 +436,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "latest pass from `pnpm check:local-release -- --with-runtime` measured CLI max `29.52ms` and daemon max `122.43ms`",
+    "latest pass from `pnpm check:local-release -- --with-artifacts --with-runtime` measured CLI max `4.38ms` and daemon max `44.95ms`",
     "release audit must record current desktop max performance evidence",
   );
   requireText(
@@ -1140,8 +1140,8 @@ function verifyLatestRefresh() {
   requireText(audit, "temp-volume exhaustion while unpacking Cargo registry\nfiles", "release audit must record the local temp-space retry reason");
   requireText(audit, "local handoff smoke preserved host\n`CARGO_HOME`/`RUSTUP_HOME`", "release audit must record local handoff cache preservation");
   requireText(audit, "named its subscription/reconnect sessions\nexplicitly under the daemon duplicate-name rule", "release audit must record duplicate-name-safe handoff smoke sessions");
-  requireText(audit, "`3.92ms`, p95 `18.04ms`, max `29.52ms`", "release audit must record latest CLI desktop performance values");
-  requireText(audit, "`56.34ms`, p95 `114.34ms`, max `122.43ms`", "release audit must record latest daemon desktop performance values");
+  requireText(audit, "`3.45ms`, p95 `4.35ms`, max `4.38ms`", "release audit must record latest CLI desktop performance values");
+  requireText(audit, "`40.84ms`, p95 `44.12ms`, max `44.95ms`", "release audit must record latest daemon desktop performance values");
   requireText(audit, "npm binary readiness passed\nwith staged artifacts", "release audit must record staged npm binary readiness");
   requireText(audit, "Cross-target desktop release builds passed on 2026-05-20", "release audit must record the latest cross-target desktop release build date");
   requireText(audit, "Mach-O arm64/x86_64 and ELF x86-64/aarch64 binaries", "release audit must record cross-target binary format verification");
