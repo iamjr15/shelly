@@ -321,11 +321,20 @@ to the same daemon-owned `shell`/`bash` session after Android sends
 `echo android_live_ok`; that transcript must contain `android_live_ok` so the
 round proves phone and laptop are looking at the same PTY rather than a mirrored
 screen or disconnected view.
+The same verifier now requires dedicated background/foreground, network
+reconnect, daemon restart restore, and multi-session switching evidence:
+`background-replay.txt` must include `ANDROID_BACKGROUND_REPLAY_OUTPUT` and
+`after_background_ok`, `reconnect-replay.txt` must include
+`NETWORK_REPLAY_OUTPUT`, `after_reconnect_ok`, and `reconnect_ms=<elapsed-ms>`
+at or below 2000, `restart-replay.txt` must include `fw_restart_session` and
+`ANDROID_RESTART_SCROLLBACK`, and the three multisession replay files must prove
+`multi_a_ok`, `multi_b_ok`, and `multi_c_ok` stay isolated to `fwm_a`, `fwm_b`,
+and `fwm_c`.
 
 A later direct adb live-test-shaped emulator bundle on 2026-05-21 captured the
 then-current evidence layout under `/tmp/fieldwork-live-emulator-8UZh53hL` and
-passed the verifier before the stricter `terminal-replay.txt` requirement was
-added.
+passed the verifier before the stricter desktop replay and state-preservation
+requirements were added.
 It launched the default locked APK, paired a debug-only payload build through
 explicit desktop approval, showed desktop-created `refactoringjob`, `shell`,
 `editor`, and `extra` sessions on the dashboard, opened the dedicated `editor`

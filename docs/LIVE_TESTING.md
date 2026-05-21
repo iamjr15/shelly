@@ -157,6 +157,42 @@ adb logcat -d > "$FW_LIVE_DIR/tui-logcat.log"
 adb logcat -d -b crash > "$FW_LIVE_DIR/tui-crash.log"
 ```
 
+For the state-preservation rows in the matrix, capture dedicated evidence sets
+instead of relying on human notes. Use visible marker strings so the verifier can
+prove the Android app rejoined the same daemon-owned PTY:
+
+- Background/foreground: while the app is backgrounded, emit
+  `ANDROID_BACKGROUND_REPLAY_OUTPUT` from the PTY, foreground the app, type
+  `after_background_ok` from Android, then capture `background.png`,
+  `background-ui.xml`, `background-logcat.log`, `background-crash.log`, and a
+  desktop reattach transcript at `background-replay.txt`.
+- Network reconnect: toggle Wi-Fi or airplane mode, emit `NETWORK_REPLAY_OUTPUT`
+  while disconnected, restore the network, type `after_reconnect_ok` from
+  Android, record `reconnect_ms=<elapsed-ms>` in the transcript, and capture
+  `reconnect.png`, `reconnect-ui.xml`, `reconnect-logcat.log`,
+  `reconnect-crash.log`, and `reconnect-replay.txt`.
+- Daemon restart restore: use a desktop-created `fw_restart_session` that has
+  persisted `ANDROID_RESTART_SCROLLBACK`, restart the daemon, relaunch Android,
+  open the restored session, and capture `restart.png`, `restart-ui.xml`,
+  `restart-logcat.log`, `restart-crash.log`, and `restart-replay.txt`.
+- Multi-session switching: use desktop-created `fwm_a`, `fwm_b`, and `fwm_c`
+  sessions, switch among all three on Android, send `multi_a_ok`, `multi_b_ok`,
+  and `multi_c_ok` only to their matching sessions, and capture
+  `multisession.png`, `multisession-ui.xml`, `multisession-logcat.log`,
+  `multisession-crash.log`, `multisession-a-replay.txt`,
+  `multisession-b-replay.txt`, and `multisession-c-replay.txt`.
+
+Each screenshot/UI/log/crash capture follows the same direct `adb` pattern as
+the attached session evidence:
+
+```sh
+adb exec-out screencap -p > "$FW_LIVE_DIR/<name>.png"
+adb shell uiautomator dump /sdcard/window.xml
+adb pull /sdcard/window.xml "$FW_LIVE_DIR/<name>-ui.xml"
+adb logcat -d > "$FW_LIVE_DIR/<name>-logcat.log"
+adb logcat -d -b crash > "$FW_LIVE_DIR/<name>-crash.log"
+```
+
 After the required files are captured, run the local evidence verifier:
 
 ```sh
@@ -169,8 +205,11 @@ the locked UI did not expose session or terminal content, the paired run listed
 the expected desktop-created sessions, the desktop replay transcript contains
 `android_live_ok` from the Android-originated shell input, the TUI attach
 evidence shows real `vim`/`htop` terminal content in the Android terminal
-surface, and captured logs/crash buffers do
-not contain Fieldwork fatal, ANR, or crash entries.
+surface, the background/foreground, network reconnect, daemon restart restore,
+and multi-session switching transcripts contain the expected replay/no-leakage
+markers, the network reconnect transcript records `reconnect_ms=<elapsed-ms>`
+at or below 2000, and captured logs/crash buffers do not contain Fieldwork
+fatal, ANR, or crash entries.
 
 ## Test Matrix
 

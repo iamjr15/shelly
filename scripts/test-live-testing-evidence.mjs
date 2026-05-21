@@ -40,6 +40,21 @@ try {
   fs.writeFileSync(path.join(badReplay, "terminal-replay.txt"), "shell prompt only\n");
   expectStatus(badReplay, 1, "desktop replay without Android marker should fail", "terminal-replay.txt must prove Android-originated input/output");
 
+  const badBackground = path.join(temp, "bad-background");
+  writeFixture(badBackground);
+  fs.writeFileSync(path.join(badBackground, "background-replay.txt"), "after_background_ok only\n");
+  expectStatus(badBackground, 1, "background replay without missed output should fail", "background-replay.txt must include output emitted while Android was backgrounded");
+
+  const slowReconnect = path.join(temp, "slow-reconnect");
+  writeFixture(slowReconnect);
+  fs.writeFileSync(path.join(slowReconnect, "reconnect-replay.txt"), "reconnect_ms=2501\nNETWORK_REPLAY_OUTPUT\nafter_reconnect_ok\n");
+  expectStatus(slowReconnect, 1, "slow reconnect timing should fail", "reconnect-replay.txt records reconnect_ms=2501");
+
+  const leakedMultisession = path.join(temp, "leaked-multisession");
+  writeFixture(leakedMultisession);
+  fs.writeFileSync(path.join(leakedMultisession, "multisession-a-replay.txt"), "fwm_a\nmulti_a_ok\nmulti_b_ok\n");
+  expectStatus(leakedMultisession, 1, "cross-session output leakage should fail", "multisession-a-replay.txt must not contain multi_b_ok");
+
   const crash = path.join(temp, "crash");
   writeFixture(crash);
   fs.writeFileSync(path.join(crash, "session-crash.log"), "FATAL EXCEPTION: main\nProcess: app.fieldwork.android\n");
@@ -60,6 +75,10 @@ function writeFixture(dir) {
   writePng(path.join(dir, "locked.png"));
   writePng(path.join(dir, "session.png"));
   writePng(path.join(dir, "tui.png"));
+  writePng(path.join(dir, "background.png"));
+  writePng(path.join(dir, "reconnect.png"));
+  writePng(path.join(dir, "restart.png"));
+  writePng(path.join(dir, "multisession.png"));
   fs.writeFileSync(
     path.join(dir, "launch.txt"),
     ["Status: ok", "LaunchState: COLD", "Activity: app.fieldwork.android/.MainActivity", "TotalTime: 934"].join("\n"),
@@ -67,6 +86,10 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "locked-ui.xml"), '<hierarchy><node text="Unlock"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "session-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="android_live_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "tui-ui.xml"), '<hierarchy><node text="tui"/><node text="Attached"/><node text="F1Help F2Setup F10Quit"/></hierarchy>\n');
+  fs.writeFileSync(path.join(dir, "background-ui.xml"), '<hierarchy><node text="Attached"/><node text="after_background_ok"/></hierarchy>\n');
+  fs.writeFileSync(path.join(dir, "reconnect-ui.xml"), '<hierarchy><node text="Attached"/><node text="after_reconnect_ok"/></hierarchy>\n');
+  fs.writeFileSync(path.join(dir, "restart-ui.xml"), '<hierarchy><node text="fw_restart_session"/><node text="Attached"/></hierarchy>\n');
+  fs.writeFileSync(path.join(dir, "multisession-ui.xml"), '<hierarchy><node text="fwm_a"/><node text="fwm_b"/><node text="fwm_c"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "locked-logcat.log"), "I Fieldwork: locked launch\n");
   fs.writeFileSync(path.join(dir, "locked-crash.log"), "");
   fs.writeFileSync(
@@ -80,8 +103,22 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "session-crash.log"), "");
   fs.writeFileSync(path.join(dir, "tui-logcat.log"), "I Fieldwork: terminal attached\n");
   fs.writeFileSync(path.join(dir, "tui-crash.log"), "");
+  fs.writeFileSync(path.join(dir, "background-logcat.log"), "I Fieldwork: background replay attached\n");
+  fs.writeFileSync(path.join(dir, "background-crash.log"), "");
+  fs.writeFileSync(path.join(dir, "reconnect-logcat.log"), "I Fieldwork: reconnect attached\n");
+  fs.writeFileSync(path.join(dir, "reconnect-crash.log"), "");
+  fs.writeFileSync(path.join(dir, "restart-logcat.log"), "I Fieldwork: restart restore attached\n");
+  fs.writeFileSync(path.join(dir, "restart-crash.log"), "");
+  fs.writeFileSync(path.join(dir, "multisession-logcat.log"), "I Fieldwork: multisession switched\n");
+  fs.writeFileSync(path.join(dir, "multisession-crash.log"), "");
   fs.writeFileSync(path.join(dir, "devices.txt"), "Pixel 8 Pro paired\n");
   fs.writeFileSync(path.join(dir, "terminal-replay.txt"), "shell bash\n$ echo android_live_ok\nandroid_live_ok\n");
+  fs.writeFileSync(path.join(dir, "background-replay.txt"), "shell bash\nANDROID_BACKGROUND_REPLAY_OUTPUT\nafter_background_ok\n");
+  fs.writeFileSync(path.join(dir, "reconnect-replay.txt"), "reconnect_ms=843\nNETWORK_REPLAY_OUTPUT\nafter_reconnect_ok\n");
+  fs.writeFileSync(path.join(dir, "restart-replay.txt"), "fw_restart_session\nANDROID_RESTART_SCROLLBACK\n");
+  fs.writeFileSync(path.join(dir, "multisession-a-replay.txt"), "fwm_a\nmulti_a_ok\n");
+  fs.writeFileSync(path.join(dir, "multisession-b-replay.txt"), "fwm_b\nmulti_b_ok\n");
+  fs.writeFileSync(path.join(dir, "multisession-c-replay.txt"), "fwm_c\nmulti_c_ok\n");
   fs.writeFileSync(
     path.join(dir, "sessions.txt"),
     ["waffle claude", "refactoringjob claude", "shell bash", "editor vim"].join("\n"),

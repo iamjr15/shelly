@@ -32,6 +32,28 @@ const requiredFiles = [
   "tui-crash.log",
   "devices.txt",
   "sessions.txt",
+  "background.png",
+  "background-ui.xml",
+  "background-logcat.log",
+  "background-crash.log",
+  "background-replay.txt",
+  "reconnect.png",
+  "reconnect-ui.xml",
+  "reconnect-logcat.log",
+  "reconnect-crash.log",
+  "reconnect-replay.txt",
+  "restart.png",
+  "restart-ui.xml",
+  "restart-logcat.log",
+  "restart-crash.log",
+  "restart-replay.txt",
+  "multisession.png",
+  "multisession-ui.xml",
+  "multisession-logcat.log",
+  "multisession-crash.log",
+  "multisession-a-replay.txt",
+  "multisession-b-replay.txt",
+  "multisession-c-replay.txt",
 ];
 
 for (const file of requiredFiles) {
@@ -42,6 +64,10 @@ if (failures.length === 0) {
   verifyPng("locked.png");
   verifyPng("session.png");
   verifyPng("tui.png");
+  verifyPng("background.png");
+  verifyPng("reconnect.png");
+  verifyPng("restart.png");
+  verifyPng("multisession.png");
   verifyLaunch(readText("launch.txt"));
   verifyLockedSurface(readText("locked-ui.xml"));
   verifySessionEvidence(
@@ -51,6 +77,15 @@ if (failures.length === 0) {
     readText("terminal-replay.txt"),
   );
   verifyTuiEvidence(readText("tui-ui.xml"));
+  verifyBackgroundEvidence(readText("background-ui.xml"), readText("background-replay.txt"));
+  verifyReconnectEvidence(readText("reconnect-ui.xml"), readText("reconnect-replay.txt"));
+  verifyRestartEvidence(readText("restart-ui.xml"), readText("restart-replay.txt"));
+  verifyMultisessionEvidence(
+    readText("multisession-ui.xml"),
+    readText("multisession-a-replay.txt"),
+    readText("multisession-b-replay.txt"),
+    readText("multisession-c-replay.txt"),
+  );
   verifyDevices(readText("devices.txt"));
   verifyLogs([
     ["locked-logcat.log", readText("locked-logcat.log")],
@@ -59,6 +94,14 @@ if (failures.length === 0) {
     ["session-crash.log", readText("session-crash.log")],
     ["tui-logcat.log", readText("tui-logcat.log")],
     ["tui-crash.log", readText("tui-crash.log")],
+    ["background-logcat.log", readText("background-logcat.log")],
+    ["background-crash.log", readText("background-crash.log")],
+    ["reconnect-logcat.log", readText("reconnect-logcat.log")],
+    ["reconnect-crash.log", readText("reconnect-crash.log")],
+    ["restart-logcat.log", readText("restart-logcat.log")],
+    ["restart-crash.log", readText("restart-crash.log")],
+    ["multisession-logcat.log", readText("multisession-logcat.log")],
+    ["multisession-crash.log", readText("multisession-crash.log")],
   ]);
 }
 
@@ -113,6 +156,71 @@ function verifyTuiEvidence(text) {
     /(F1\s*Help|F1Help|F2\s*Setup|F2Setup|F10\s*Quit|F10Quit|VIM|--\s*INSERT\s*--|\/etc\/hosts|~\s*$)/im,
     "tui-ui.xml must include visible vim/htop terminal content",
   );
+}
+
+function verifyBackgroundEvidence(ui, replay) {
+  requirePatternText(ui, /\bAttached\b/i, "background-ui.xml must show the app returned to an attached terminal after foreground");
+  requirePatternText(
+    replay,
+    /\bANDROID_BACKGROUND_REPLAY_OUTPUT\b/,
+    "background-replay.txt must include output emitted while Android was backgrounded",
+  );
+  requirePatternText(
+    replay,
+    /\bafter_background_ok\b/,
+    "background-replay.txt must include Android-originated input after foreground resume",
+  );
+}
+
+function verifyReconnectEvidence(ui, replay) {
+  requirePatternText(ui, /\bAttached\b/i, "reconnect-ui.xml must show the app returned to an attached terminal after network reconnect");
+  requirePatternText(
+    replay,
+    /\b(?:NETWORK_REPLAY_OUTPUT|ANDROID_RECONNECT_REPLAY_OUTPUT)\b/,
+    "reconnect-replay.txt must include output emitted during the network gap",
+  );
+  requirePatternText(
+    replay,
+    /\bafter_reconnect_ok\b/,
+    "reconnect-replay.txt must include Android-originated input after network restore",
+  );
+  const timing = replay.match(/\breconnect_ms=(\d+)\b/);
+  if (!timing) {
+    failures.push("reconnect-replay.txt must record reconnect_ms=<elapsed-ms>");
+  } else if (Number(timing[1]) > 2_000) {
+    failures.push(`reconnect-replay.txt records reconnect_ms=${timing[1]}, expected <=2000`);
+  }
+}
+
+function verifyRestartEvidence(ui, replay) {
+  requirePatternText(ui, /\b(?:fw_restart_session|Attached)\b/i, "restart-ui.xml must show the restored session after daemon restart");
+  requirePatternText(
+    replay,
+    /\bANDROID_RESTART_SCROLLBACK\b/,
+    "restart-replay.txt must include restored daemon scrollback from before restart",
+  );
+  requirePatternText(
+    replay,
+    /\bfw_restart_session\b/,
+    "restart-replay.txt must identify the restored desktop-created session",
+  );
+}
+
+function verifyMultisessionEvidence(ui, replayA, replayB, replayC) {
+  requirePatternText(ui, /\bfwm_a\b/i, "multisession-ui.xml must include fwm_a in the switched session set");
+  requirePatternText(ui, /\bfwm_b\b/i, "multisession-ui.xml must include fwm_b in the switched session set");
+  requirePatternText(ui, /\bfwm_c\b/i, "multisession-ui.xml must include fwm_c in the switched session set");
+  verifyMultisessionReplay("multisession-a-replay.txt", replayA, "fwm_a", "multi_a_ok", ["multi_b_ok", "multi_c_ok"]);
+  verifyMultisessionReplay("multisession-b-replay.txt", replayB, "fwm_b", "multi_b_ok", ["multi_a_ok", "multi_c_ok"]);
+  verifyMultisessionReplay("multisession-c-replay.txt", replayC, "fwm_c", "multi_c_ok", ["multi_a_ok", "multi_b_ok"]);
+}
+
+function verifyMultisessionReplay(file, text, sessionName, requiredMarker, forbiddenMarkers) {
+  requirePatternText(text, new RegExp(`\\b${escapeRegExp(sessionName)}\\b`, "i"), `${file} must identify ${sessionName}`);
+  requirePatternText(text, new RegExp(`\\b${escapeRegExp(requiredMarker)}\\b`), `${file} must contain ${requiredMarker}`);
+  for (const marker of forbiddenMarkers) {
+    rejectPatternText(text, new RegExp(`\\b${escapeRegExp(marker)}\\b`), `${file} must not contain ${marker} from another session`);
+  }
 }
 
 function verifyDevices(text) {
@@ -171,4 +279,8 @@ function rejectPatternText(text, pattern, message) {
   if (pattern.test(text)) {
     failures.push(message);
   }
+}
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

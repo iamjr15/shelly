@@ -243,6 +243,21 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "background/foreground, network reconnect, daemon restart restore, and multi-session transcript markers",
+    "release audit must describe live-test state-preservation evidence coverage",
+  );
+  requireText(
+    audit,
+    "`reconnect_ms=<elapsed-ms>` at or below 2000",
+    "release audit must record live-test reconnect timing evidence",
+  );
+  requireText(
+    audit,
+    "per-session no-leakage replay files",
+    "release audit must record live-test multisession no-leakage evidence",
+  );
+  requireText(
+    audit,
     "a temporary source-build `fw` shim",
     "release audit must record the source-build fw live-test shim",
   );
@@ -874,6 +889,11 @@ function verifyLiveTestingRunbook() {
     "fw new -- vim",
     "fw pair",
     "script -q \"$FW_LIVE_DIR/terminal-replay.txt\" fw attach shell",
+    "background-replay.txt",
+    "reconnect-replay.txt",
+    "`reconnect_ms=<elapsed-ms>`",
+    "restart-replay.txt",
+    "multisession-a-replay.txt",
     "generated one-word name such as `waffle` or `kazoo`",
     "`refactoringjob` appear as active sessions in the Android dashboard",
     "auto-named default `claude` session",
