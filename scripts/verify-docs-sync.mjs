@@ -412,6 +412,7 @@ function verifyPlanDoc() {
     "`TotalTime=5105ms`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
     "empty `FIELDWORK_DEBUG_PAIRING_PAYLOAD`",
+    "30-minute physical Android device dogfood is now a counted unchecked Section 13 release gate before Play internal distribution",
   ]) {
     requireText(docs.plan, needle, `PLAN.md must preserve v1 contract text: ${needle}`);
   }
