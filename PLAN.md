@@ -1757,6 +1757,24 @@ contained `FIELDWORK_BIOMETRIC_BYPASS = false` and
 plus UI XML verified the locked surface, and the restored crash buffer was
 empty.
 
+**Direct Android adb TUI attach refresh (2026-05-21)**: a follow-up direct
+`adb` pass on `Medium_Phone_API_36.1` created a daemon-owned `htop` session
+named `tui`, paired the Android app through explicit desktop approval, and
+opened it from the dashboard. Evidence under
+`/tmp/fieldwork-adb-tui-live-20260521160229` captured the dashboard showing
+`tui` as `Working`, the attached `tui` terminal with `Attached` status,
+termlib-rendered `htop` function-key chrome (`F1Help`, `F2Setup`, `F10Quit`),
+the terminal accessory bar, no global Sessions/Settings bottom navigation, the
+focused termlib IME target, app logcat, and an empty terminal crash buffer. This
+is emulator substitute evidence for arbitrary TUI handoff only; physical-device
+biometric, QR-camera, 30-minute renderer dogfood, and release-device runtime
+gates remain unchecked. The default debug APK was then rebuilt/reinstalled,
+`BuildConfig.java` again contained `FIELDWORK_BIOMETRIC_BYPASS = false` and
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, the restored locked build launched in
+`TotalTime=3967ms`, `/tmp/fieldwork-adb-tui-live-20260521160229/default-restore-160932/locked.png`
+plus UI XML verified the locked surface, and the restored crash buffer was
+empty.
+
 **Android background/foreground replay note (2026-05-19)**: `pnpm test:android-emulator-background-replay` pairs the actual Android debug app with an isolated release daemon through the debug-only QR payload path, opens a desktop-created terminal, backgrounds the attached app while the PTY emits `ANDROID_BACKGROUND_REPLAY_OUTPUT`, foregrounds back to `Attached`, sends `after_background_ok`, and verifies the background-emitted output plus post-foreground input through a separately approved verifier. Latest local run passed on `emulator-5554`. This is still emulator substitute evidence; the release gate remains unchecked until the same behavior is observed on physical release devices.
 
 **Android startup hardening note (2026-05-18)**: the Android root now obtains

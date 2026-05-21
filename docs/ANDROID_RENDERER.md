@@ -29,6 +29,12 @@ Local verification status:
   XML, app logcat, an empty crash buffer, and a separately approved verifier
   client that saw `android-direct: android_terminal_fix_ok` from emulator
   keyboard input in the live PTY.
+- A same-day direct adb TUI attach pass opened a daemon-owned `htop` session
+  named `tui` from the Android dashboard and captured the attached terminal
+  rendering `htop` function-key chrome (`F1Help`, `F2Setup`, `F10Quit`) with
+  `Attached` status, the accessory bar, no global bottom navigation, focused
+  termlib IME target, app logcat, and empty crash buffers under
+  `/tmp/fieldwork-adb-tui-live-20260521160229`.
 - The required 30-minute physical Android device dogfood is a counted unchecked
   `PLAN.md` release gate before Play internal distribution. It remains blocked
   in this shell by the lack of an attached Android test device.

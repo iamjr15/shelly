@@ -264,6 +264,20 @@ outside this shell:
   `TotalTime=966ms`, `/tmp/fieldwork-adb-terminalfix-live-20260521155139/default-restore-155738/locked.png`
   plus UI XML verified the locked surface, and the restored crash buffer was
   empty.
+  A same-day direct adb TUI attach pass created a daemon-owned `htop` session
+  named `tui`, paired the Android app through explicit desktop approval, and
+  opened the session from the dashboard. Evidence under
+  `/tmp/fieldwork-adb-tui-live-20260521160229` includes `back-dashboard.png`/XML
+  showing `tui` as `Working`, `tui-terminal.png`/XML showing `Attached` status,
+  termlib-rendered `htop` function-key chrome (`F1Help`, `F2Setup`, `F10Quit`),
+  the terminal accessory bar, no global bottom navigation, and the focused
+  termlib IME target, plus app logcat and an empty terminal crash buffer. The
+  default debug APK was rebuilt/reinstalled afterward with
+  `FIELDWORK_BIOMETRIC_BYPASS = false` and
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`; the restored launch landed on the
+  locked `Unlock` surface in `TotalTime=3967ms` with screenshot/UI XML/logcat
+  under `/tmp/fieldwork-adb-tui-live-20260521160229/default-restore-160932` and
+  an empty restored crash buffer.
   A
   follow-up raw adb
   locked-launch baseline on 2026-05-19 installed the default debug APK, launched
