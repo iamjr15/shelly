@@ -12,6 +12,7 @@ const files = {
   ci: read(".github/workflows/ci.yml"),
   localRelease: read("scripts/check-local-release.mjs"),
   androidEmulatorAll: read("scripts/smoke-android-emulator-all.sh"),
+  androidGradlew: read("apps/android/gradlew"),
   desktopPerf: read("scripts/measure-desktop-performance.mjs"),
   iosPrereqs: read("scripts/check-ios-prereqs.sh"),
   iosPrereqTests: read("scripts/test-ios-prereqs.mjs"),
@@ -195,6 +196,16 @@ function verifyDevelopmentDoc(text) {
   ]) {
     requireText(text, section, `docs/DEVELOPMENT.md must preserve section: ${section}`);
   }
+  requireText(
+    text,
+    "uses Android Studio's bundled JBR when `JAVA_HOME` is unset or points to a pre-21 JDK",
+    "docs/DEVELOPMENT.md must document the Android Gradle JDK 21 fallback",
+  );
+  requireText(
+    text,
+    "JDK 21+ is required because Robolectric runs the Android SDK 36 unit tests in that runtime",
+    "docs/DEVELOPMENT.md must document the Android unit-test Java floor",
+  );
 
   for (const phrase of [
     "creates a default `claude` session through a temp stub command, a `bash` session, and a `vim` TUI session",
@@ -712,6 +723,11 @@ function verifyWiring(allFiles) {
   requireText(allFiles.androidEmulatorAll, "above debug smoke limit", "Android emulator aggregate must only retry debug-smoke timing outliers");
   requireText(allFiles.androidEmulatorAll, "retrying once with the same strict limit", "Android emulator aggregate must document strict retry behavior");
   requireText(allFiles.androidEmulatorAll, "captured output", "Android emulator aggregate must preserve failing smoke output");
+  requireText(allFiles.androidGradlew, "java_major_version()", "Android Gradle launcher must inspect JAVA_HOME major version");
+  requireText(allFiles.androidGradlew, "current_java_major", "Android Gradle launcher must detect old JAVA_HOME values");
+  requireText(allFiles.androidGradlew, '"$current_java_major" -lt 21', "Android Gradle launcher must fall back to Android Studio JBR for pre-21 JAVA_HOME");
+  requireText(allFiles.androidGradlew, '"$java_major" -lt 21', "Android Gradle launcher must reject pre-21 Java after fallback");
+  requireText(allFiles.androidGradlew, "JDK 21+ for Android SDK 36 Robolectric tests", "Android Gradle launcher must explain the Robolectric Java 21 requirement");
   requireText(allFiles.releaseAudit, "Development doc", "docs/RELEASE_AUDIT.md must include development doc evidence");
   requireText(allFiles.releaseAudit, "scripts/verify-development-doc.mjs", "docs/RELEASE_AUDIT.md must cite the development doc verifier");
   requireText(allFiles.desktopPerf, "FIELDWORK_PERF_WARMUP_SAMPLES", "desktop performance script must expose warm-up sample control");

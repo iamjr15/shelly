@@ -162,7 +162,7 @@ scripts/build-rust.sh
 ./gradlew assembleDebug
 ```
 
-The Android target expects Android Studio, `cargo-ndk`, API 36, and NDK r27. The repo-local `./gradlew` downloads and verifies Gradle 8.14.3 and uses Android Studio's bundled JBR when `JAVA_HOME` is unset. `scripts/build-rust.sh` builds Rust `.so` files into `app/src/main/jniLibs`, generates Kotlin UniFFI bindings into `apps/android/generated`, and renders terminal output with `connectbot/termlib`.
+The Android target expects Android Studio, `cargo-ndk`, API 36, NDK r27, and JDK 21+. The repo-local `./gradlew` downloads and verifies Gradle 8.14.3 and uses Android Studio's bundled JBR when `JAVA_HOME` is unset or points to a pre-21 JDK. `scripts/build-rust.sh` builds Rust `.so` files into `app/src/main/jniLibs`, generates Kotlin UniFFI bindings into `apps/android/generated`, and renders terminal output with `connectbot/termlib`.
 
 Windows host support is not part of v1; Windows users will use the Linux build inside WSL2 when v1 packaging lands.
 
