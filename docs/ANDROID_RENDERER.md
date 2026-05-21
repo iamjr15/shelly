@@ -21,6 +21,14 @@ Local verification status:
 - `apps/android/gradlew --no-daemon bundleRelease` builds a release AAB that includes all three ABI slices.
 - `pnpm test:android-emulator` aggregates the direct-adb emulator substitutes: debug launch timing, pair flow, dashboard subscription, terminal flood rendering, background replay, restart restore, multisession, reconnect, and notification tap routing.
 - Latest default aggregate run on 2026-05-19 passed on `emulator-5554` with locked debug launch `TotalTime=7920ms`, pair `pair_flow_ms=2234`, session subscription `visible_ms=3318`, 8440/14400 flood screenshot nonblack samples, no Fieldwork crash log entries, and adb artifacts captured under `/tmp/fieldwork-android-aggregate-*`.
+- A 2026-05-21 direct adb terminal attach/input refresh on `Medium_Phone_API_36.1`
+  kept the terminal surface at the app root while attached, hid the global
+  Sessions/Settings bottom navigation, showed the terminal accessory bar, and
+  explicitly focused termlib's IME target. Evidence under
+  `/tmp/fieldwork-adb-terminalfix-live-20260521155139` includes screenshots, UI
+  XML, app logcat, an empty crash buffer, and a separately approved verifier
+  client that saw `android-direct: android_terminal_fix_ok` from emulator
+  keyboard input in the live PTY.
 - The required 30-minute physical Android device dogfood is a counted unchecked
   `PLAN.md` release gate before Play internal distribution. It remains blocked
   in this shell by the lack of an attached Android test device.

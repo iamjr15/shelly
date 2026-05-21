@@ -1737,6 +1737,26 @@ the runner workspace.
 
 **Direct Android adb refresh (2026-05-20)**: a fresh direct `adb` pass installed the default debug APK, launched the locked app with `Status: ok`, `LaunchState: COLD`, and `TotalTime=2360ms`, captured `/tmp/fieldwork-adb-direct-20260520100608/default-locked.png`, `/tmp/fieldwork-adb-direct-20260520100608/default-ui.xml`, `/tmp/fieldwork-adb-direct-20260520100608/default-logcat.log`, and an empty `/tmp/fieldwork-adb-direct-20260520100608/default-crash.log`, then used an isolated release daemon plus debug-only biometric-bypass/pair-payload APK under `/tmp/fieldwork-adb-direct-pair-20260520100742`. The emulator accepted the runtime camera and notification prompts, paired through explicit desktop approval, listed `bash · fieldwork` with `ANDROID_ADB_DIRECT_READY`, attached the terminal, sent `android_adb_direct_ping` through `adb shell input text`, and `/tmp/fieldwork-adb-direct-pair-20260520100742/terminal-after-input.png` showed `android-direct: android_adb_direct_ping`. `fieldwork devices` listed `sdk_gphone64_arm64`, the terminal crash buffer was empty, and the debug APK was rebuilt back to default with `FIELDWORK_BIOMETRIC_BYPASS = false`, `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, and the locked `Unlock` surface at `/tmp/fieldwork-adb-direct-pair-20260520100742/default-restored-locked.png`. This is direct emulator evidence only; physical-device biometric, QR-camera, and release cold-start gates remain unchecked.
 
+**Direct Android adb terminal focus refresh (2026-05-21)**: a direct
+`adb` pass on `Medium_Phone_API_36.1` verified the terminal attach surface after
+moving `TerminalScreen` to the app root, hiding the global Sessions/Settings
+bottom navigation while attached, and explicitly focusing termlib's IME target.
+Evidence under `/tmp/fieldwork-adb-terminalfix-live-20260521155139` captured
+the paired dashboard with `androidfix`, the attached `androidfix` terminal with
+`Attached` status and the terminal accessory bar, app logcat, an empty crash
+buffer, and post-input screenshots/UI XML. After
+`adb shell input text android_terminal_fix_ok` plus Enter, a separately approved
+verifier client attached to the same daemon-owned PTY and saw
+`android-direct: android_terminal_fix_ok` in replayed terminal bytes. This is
+emulator substitute evidence only; physical-device biometric, QR-camera,
+30-minute renderer dogfood, and release-device runtime gates remain unchecked.
+The default debug APK was then rebuilt/reinstalled, `BuildConfig.java` again
+contained `FIELDWORK_BIOMETRIC_BYPASS = false` and
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, the restored locked build launched in
+`TotalTime=966ms`, `/tmp/fieldwork-adb-terminalfix-live-20260521155139/default-restore-155738/locked.png`
+plus UI XML verified the locked surface, and the restored crash buffer was
+empty.
+
 **Android background/foreground replay note (2026-05-19)**: `pnpm test:android-emulator-background-replay` pairs the actual Android debug app with an isolated release daemon through the debug-only QR payload path, opens a desktop-created terminal, backgrounds the attached app while the PTY emits `ANDROID_BACKGROUND_REPLAY_OUTPUT`, foregrounds back to `Attached`, sends `after_background_ok`, and verifies the background-emitted output plus post-foreground input through a separately approved verifier. Latest local run passed on `emulator-5554`. This is still emulator substitute evidence; the release gate remains unchecked until the same behavior is observed on physical release devices.
 
 **Android startup hardening note (2026-05-18)**: the Android root now obtains

@@ -41,9 +41,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.fieldwork.android.core.AndroidBiometricGate
 import app.fieldwork.android.core.FieldworkViewModel
+import app.fieldwork.android.core.MobileSession
 import app.fieldwork.android.features.pairing.PairingScreen
 import app.fieldwork.android.features.sessions.SessionsScreen
 import app.fieldwork.android.features.settings.SettingsScreen
+import app.fieldwork.android.features.terminal.TerminalScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -79,6 +81,7 @@ fun FieldworkApp(
 ) {
     val state by viewModel.state.collectAsState()
     var selectedTab by remember { mutableStateOf(AppTab.Sessions) }
+    var activeTerminalSession by remember { mutableStateOf<MobileSession?>(null) }
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -90,6 +93,9 @@ fun FieldworkApp(
     LaunchedEffect(state.paired, state.unlocked) {
         if (state.paired && state.unlocked) {
             onRequestNotifications()
+        }
+        if (!state.paired || !state.unlocked) {
+            activeTerminalSession = null
         }
     }
 
@@ -119,19 +125,24 @@ fun FieldworkApp(
             if (state.unlocked) {
                 Scaffold(
                     bottomBar = {
-                        NavigationBar {
-                            NavigationBarItem(
-                                selected = selectedTab == AppTab.Sessions,
-                                onClick = { selectedTab = AppTab.Sessions },
-                                icon = { Icon(Icons.Default.Terminal, contentDescription = null) },
-                                label = { Text("Sessions") },
-                            )
-                            NavigationBarItem(
-                                selected = selectedTab == AppTab.Settings,
-                                onClick = { selectedTab = AppTab.Settings },
-                                icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                                label = { Text("Settings") },
-                            )
+                        if (activeTerminalSession == null) {
+                            NavigationBar {
+                                NavigationBarItem(
+                                    selected = selectedTab == AppTab.Sessions,
+                                    onClick = { selectedTab = AppTab.Sessions },
+                                    icon = { Icon(Icons.Default.Terminal, contentDescription = null) },
+                                    label = { Text("Sessions") },
+                                )
+                                NavigationBarItem(
+                                    selected = selectedTab == AppTab.Settings,
+                                    onClick = {
+                                        activeTerminalSession = null
+                                        selectedTab = AppTab.Settings
+                                    },
+                                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                    label = { Text("Settings") },
+                                )
+                            }
                         }
                     },
                 ) { padding ->
@@ -141,11 +152,22 @@ fun FieldworkApp(
                                 if (state.restoringPairing) {
                                     RestoringPairingPlaceholder(padding)
                                 } else if (state.paired) {
-                                    SessionsScreen(
-                                        padding = padding,
-                                        viewModel = viewModel,
-                                        biometricGate = biometricGate,
-                                    )
+                                    val terminalSession = activeTerminalSession
+                                    if (terminalSession == null) {
+                                        SessionsScreen(
+                                            padding = padding,
+                                            viewModel = viewModel,
+                                            biometricGate = biometricGate,
+                                            onOpenSession = { activeTerminalSession = it },
+                                        )
+                                    } else {
+                                        TerminalScreen(
+                                            session = terminalSession,
+                                            viewModel = viewModel,
+                                            biometricGate = biometricGate,
+                                            onBack = { activeTerminalSession = null },
+                                        )
+                                    }
                                 } else {
                                     PairingScreen(
                                         padding = padding,

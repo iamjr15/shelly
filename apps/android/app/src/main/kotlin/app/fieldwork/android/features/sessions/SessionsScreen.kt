@@ -22,16 +22,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.fieldwork.android.core.AndroidBiometricGate
 import app.fieldwork.android.core.FieldworkViewModel
 import app.fieldwork.android.core.MobileSession
-import app.fieldwork.android.features.terminal.TerminalScreen
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,9 +36,9 @@ fun SessionsScreen(
     padding: PaddingValues,
     viewModel: FieldworkViewModel,
     biometricGate: AndroidBiometricGate,
+    onOpenSession: (MobileSession) -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
-    var selectedSession by remember { mutableStateOf<MobileSession?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.targetSession?.id) {
@@ -50,18 +46,8 @@ fun SessionsScreen(
         val unlocked = biometricGate.unlock("Open terminal session")
         viewModel.consumeTargetSession()
         if (unlocked) {
-            selectedSession = target
+            onOpenSession(target)
         }
-    }
-
-    selectedSession?.let { session ->
-        TerminalScreen(
-            session = session,
-            viewModel = viewModel,
-            biometricGate = biometricGate,
-            onBack = { selectedSession = null },
-        )
-        return
     }
 
     Scaffold(
@@ -99,7 +85,7 @@ fun SessionsScreen(
                 SessionCard(session = session) {
                     scope.launch {
                         if (biometricGate.unlock("Open terminal session")) {
-                            selectedSession = session
+                            onOpenSession(session)
                         }
                     }
                 }

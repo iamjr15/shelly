@@ -1,6 +1,6 @@
 # Fieldwork v1 Release Audit
 
-Last updated: 2026-05-20
+Last updated: 2026-05-21
 
 This file is the current prompt-to-artifact audit for the v1 objective in
 `PLAN.md`, with `FUTURE.md` as the boundary for deferred work. It is not a
@@ -244,6 +244,26 @@ outside this shell:
   default APK had `FIELDWORK_BIOMETRIC_BYPASS = false`,
   `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, and the locked `Unlock` surface at
   `/tmp/fieldwork-empty-direct-20260520162209/default-locked.png`.
+  A 2026-05-21 direct adb terminal attach/input fix pass on
+  `Medium_Phone_API_36.1` then verified the actual terminal path after moving
+  the attached terminal to the app root, hiding the global Sessions/Settings
+  bottom navigation while attached, and explicitly focusing termlib's IME target.
+  Evidence under `/tmp/fieldwork-adb-terminalfix-live-20260521155139` includes
+  `dashboard.png`/XML with `androidfix` and `debug`, `terminal-open.png`/XML
+  with the `androidfix` title, `Attached` status, and accessory keys `Esc`,
+  `Ctrl`, `Alt`, `Tab`, `|`, `/`, `terminal-after-input.png`/XML after
+  `adb shell input text android_terminal_fix_ok`, app logcat, and an empty
+  crash buffer. A separately approved verifier client attached to `androidfix`
+  and saw `android-direct: android_terminal_fix_ok` in replayed terminal bytes,
+  proving emulator keyboard input reached the live PTY. This remains emulator
+  substitute evidence only; physical-device biometric, QR-camera, renderer
+  dogfood, and release-device runtime gates remain unchecked. The default debug
+  APK was then rebuilt/reinstalled, `BuildConfig.java` again contained
+  `FIELDWORK_BIOMETRIC_BYPASS = false` and
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, the restored locked build launched in
+  `TotalTime=966ms`, `/tmp/fieldwork-adb-terminalfix-live-20260521155139/default-restore-155738/locked.png`
+  plus UI XML verified the locked surface, and the restored crash buffer was
+  empty.
   A
   follow-up raw adb
   locked-launch baseline on 2026-05-19 installed the default debug APK, launched

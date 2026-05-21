@@ -26,16 +26,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.fieldwork.android.core.AndroidBiometricGate
 import app.fieldwork.android.core.FieldworkViewModel
 import app.fieldwork.android.core.MobileSession
 import app.fieldwork.android.core.TerminalController
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import org.connectbot.terminal.Terminal
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,12 +46,19 @@ fun TerminalScreen(
     biometricGate: AndroidBiometricGate,
     onBack: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
+    val terminalFocusRequester = remember { FocusRequester() }
     var controller by remember { mutableStateOf<TerminalController?>(null) }
 
     LaunchedEffect(session.id) {
         controller = viewModel.createTerminalController(session) {
             biometricGate.unlock("Send terminal input")
+        }
+    }
+
+    LaunchedEffect(controller) {
+        if (controller != null) {
+            delay(100)
+            runCatching { terminalFocusRequester.requestFocus() }
         }
     }
 
@@ -91,6 +98,10 @@ fun TerminalScreen(
                         .fillMaxSize()
                         .weight(1f),
                     keyboardEnabled = true,
+                    focusRequester = terminalFocusRequester,
+                    onTerminalTap = {
+                        runCatching { terminalFocusRequester.requestFocus() }
+                    },
                     modifierManager = current.modifierManager,
                 )
             }
