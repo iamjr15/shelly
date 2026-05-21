@@ -40,6 +40,7 @@ const checks = [
   ["release audit", node, ["scripts/verify-release-audit.mjs"]],
   ["release audit list mode", node, ["scripts/test-release-audit-list.mjs"]],
   ["live testing evidence verifier self-test", node, ["scripts/test-live-testing-evidence.mjs"]],
+  ["debug instance script syntax", bash, ["-n", "scripts/debug-instance.sh"]],
   [
     "workflow YAML syntax",
     ruby,

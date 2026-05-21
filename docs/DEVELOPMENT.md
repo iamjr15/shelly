@@ -164,6 +164,23 @@ target/debug/fieldwork attach <session-id>
 
 Open a second terminal and attach to the same session to verify multi-client broadcast.
 
+Repeatable isolated debug daemon:
+
+```sh
+scripts/debug-instance.sh start
+eval "$(scripts/debug-instance.sh env)"
+fw ls
+tmux attach -t fieldwork-debug
+scripts/debug-instance.sh stop
+```
+
+The debug instance runs `target/debug/fieldworkd` in a tmux session with an
+isolated `HOME`, XDG config/state/cache/runtime directories, and local `fw`,
+`fieldwork`, and `fieldworkd` symlinks. It deliberately sets
+`FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED=false` inside that isolated state root
+to avoid Keychain prompts during local debugging; production-like and release
+verification paths should leave the encryption override unset.
+
 Desktop performance smoke:
 
 ```sh
