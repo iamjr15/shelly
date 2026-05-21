@@ -160,16 +160,16 @@ NOTE
 
 case "$command" in
   start)
-    require_command cargo
     require_command tmux
     prepare_dirs
-    cargo build -p fieldwork-cli -p fieldwork-daemon
-    write_runner
     if tmux has-session -t "$session" 2>/dev/null; then
       echo "fieldwork debug tmux session already exists: $session"
       print_existing_session_note "$(session_marker_root || true)"
       exit 0
     fi
+    require_command cargo
+    cargo build -p fieldwork-cli -p fieldwork-daemon
+    write_runner
     tmux new-session -d -s "$session" "$runner"
     tmux set-environment -t "$session" FIELDWORK_DEBUG_ROOT "$state_root"
     wait_for_socket

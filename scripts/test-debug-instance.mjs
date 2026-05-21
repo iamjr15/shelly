@@ -29,9 +29,42 @@ try {
   assert(parsed.encryption === "false", "env output must disable scrollback encryption only inside debug root");
   assert(parsed.path.split(path.delimiter)[0] === path.join(tempRoot, "bin"), "env output must prepend debug bin dir");
 
-  const startOutput = run("bash", ["-lc", "scripts/debug-instance.sh --help"], env);
+  const startOutput = run("scripts/debug-instance.sh", ["--help"], env);
   assert(startOutput.includes("FIELDWORK_DEBUG_TMUX_SESSION"), "help output must document custom session override");
   assert(startOutput.includes("FIELDWORK_DEBUG_ROOT"), "help output must document custom root override");
+
+  const fakeBin = path.join(tempRoot, "fake-bin");
+  const calls = path.join(tempRoot, "calls.log");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  fs.writeFileSync(
+    path.join(fakeBin, "tmux"),
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      'printf "tmux %s\\n" "$*" >> "$FIELDWORK_TEST_CALLS"',
+      'if [[ "${1:-}" == "has-session" ]]; then exit 0; fi',
+      'if [[ "${1:-}" == "show-environment" ]]; then echo "FIELDWORK_DEBUG_ROOT=$FIELDWORK_DEBUG_ROOT"; exit 0; fi',
+      "exit 64",
+      "",
+    ].join("\n"),
+  );
+  fs.writeFileSync(
+    path.join(fakeBin, "cargo"),
+    "#!/usr/bin/env bash\nprintf 'cargo %s\\n' \"$*\" >> \"$FIELDWORK_TEST_CALLS\"\nexit 0\n",
+  );
+  fs.chmodSync(path.join(fakeBin, "tmux"), 0o755);
+  fs.chmodSync(path.join(fakeBin, "cargo"), 0o755);
+
+  const existingOutput = run("scripts/debug-instance.sh", ["start"], {
+    ...env,
+    FIELDWORK_TEST_CALLS: calls,
+    PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`,
+  });
+  assert(existingOutput.includes("already exists: fieldwork-debug-test"), "start must report an existing debug tmux session");
+  assert(existingOutput.includes(`FIELDWORK_DEBUG_ROOT=${tempRoot}`), "start must report the existing debug root");
+  const callsText = fs.readFileSync(calls, "utf8");
+  assert(callsText.includes("tmux has-session"), "start must check tmux before reporting an existing session");
+  assert(!callsText.includes("cargo "), "start must not run cargo build when the debug tmux session already exists");
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }
