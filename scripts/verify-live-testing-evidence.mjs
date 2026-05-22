@@ -37,7 +37,9 @@ const autoSessionNames = [
   "gizmo",
   "jellybean",
 ];
-const autoSessionNamePattern = new RegExp(`\\b(?:${autoSessionNames.map(escapeRegExp).join("|")})\\b`, "i");
+const autoSessionNameSource = `(?:${autoSessionNames.map(escapeRegExp).join("|")})`;
+const autoSessionNamePattern = new RegExp(`\\b${autoSessionNameSource}\\b`, "i");
+const autoClaudeSessionLinePattern = new RegExp(`^.*\\b${autoSessionNameSource}\\b.*\\bclaude\\b.*$`, "im");
 
 requireDirectory(evidenceDir);
 
@@ -202,8 +204,13 @@ function verifyDashboardEvidence(dashboardUi, dashboardLogcat, sessionsText) {
   requirePatternText(dashboardLogcat, /FieldworkRepository:\s+listSessions returned \d+ sessions/, "dashboard-logcat.log must show session listing after pair");
   requirePatternText(
     sessionsText,
-    autoSessionNamePattern,
-    "sessions.txt must include the generated one-word default session created by bare fw",
+    autoClaudeSessionLinePattern,
+    "sessions.txt must include the generated one-word default claude session created by bare fw",
+  );
+  requirePatternText(
+    sessionsText,
+    /^.*\brefactoringjob\b.*\bclaude\b.*$/im,
+    "sessions.txt must include the named shortcut refactoringjob claude session",
   );
 }
 

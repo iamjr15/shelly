@@ -66,6 +66,19 @@ try {
     "dashboard-ui.xml must show the generated one-word default session created by bare fw",
   );
 
+  const autoNameWrongCommand = path.join(temp, "auto-name-wrong-command");
+  writeFixture(autoNameWrongCommand);
+  fs.writeFileSync(
+    path.join(autoNameWrongCommand, "sessions.txt"),
+    ["waffle bash", "refactoringjob claude", "shell bash", "editor vim"].join("\n"),
+  );
+  expectStatus(
+    autoNameWrongCommand,
+    1,
+    "auto-named non-claude session should fail",
+    "sessions.txt must include the generated one-word default claude session created by bare fw",
+  );
+
   const bypassBuild = path.join(temp, "bypass-build");
   writeFixture(bypassBuild);
   fs.writeFileSync(
