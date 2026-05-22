@@ -41,6 +41,7 @@ const checks = [
   ["release audit list mode", node, ["scripts/test-release-audit-list.mjs"]],
   ["live testing evidence verifier self-test", node, ["scripts/test-live-testing-evidence.mjs"]],
   ["Android dogfood evidence verifier self-test", node, ["scripts/test-android-dogfood-evidence.mjs"]],
+  ["Android cold-start evidence verifier self-test", node, ["scripts/test-android-cold-start-evidence.mjs"]],
   ["macOS daemon survival evidence verifier self-test", node, ["scripts/test-macos-daemon-survival-evidence.mjs"]],
   ["debug instance env contract", node, ["scripts/test-debug-instance.mjs"]],
   [

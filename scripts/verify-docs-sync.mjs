@@ -14,6 +14,7 @@ const docs = {
   install: read("docs/INSTALL.md"),
   androidRenderer: read("docs/ANDROID_RENDERER.md"),
   androidDogfood: read("docs/ANDROID_DOGFOOD.md"),
+  androidColdStart: read("docs/ANDROID_COLD_START.md"),
   macosDaemonSurvival: read("docs/MACOS_DAEMON_SURVIVAL.md"),
   liveTesting: read("docs/LIVE_TESTING.md"),
   operations: read("docs/OPERATIONS.md"),
@@ -27,6 +28,7 @@ verifyArchitectureDoc();
 verifyInstallDoc();
 verifyAndroidRendererDoc();
 verifyAndroidDogfoodDoc();
+verifyAndroidColdStartDoc();
 verifyMacosDaemonSurvivalDoc();
 verifyLiveTestingDoc();
 verifyOperationsDoc();
@@ -50,6 +52,7 @@ function verifyRequiredDocsExist() {
     "docs/INSTALL.md",
     "docs/ANDROID_RENDERER.md",
     "docs/ANDROID_DOGFOOD.md",
+    "docs/ANDROID_COLD_START.md",
     "docs/MACOS_DAEMON_SURVIVAL.md",
     "docs/LIVE_TESTING.md",
     "docs/OPERATIONS.md",
@@ -126,6 +129,39 @@ function verifyAndroidDogfoodDoc() {
       docs.androidDogfood,
       needle,
       `docs/ANDROID_DOGFOOD.md must document Android dogfood evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidColdStartDoc() {
+  for (const needle of [
+    "Section 13 Android release-device cold-start gate",
+    "physical phone with the signed release artifact",
+    "TotalTime <= 1200ms",
+    "five cold launches",
+    "not an emulator or AVD",
+    "debug build, biometric bypass, or debug pairing payload",
+    "direct `adb`",
+    "node scripts/verify-android-aab.mjs --expect-signed",
+    "Android AAB ok:",
+    "signed release bundle ok",
+    "BUILD_TYPE = \"release\"",
+    "DEBUG = false",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_ANDROID_COLD_DIR/adb-devices.txt\"",
+    "bundletool install-apks",
+    "launch-${sample}.txt",
+    "LaunchState: COLD",
+    "Activity: app.fieldwork.android/.MainActivity",
+    "locked-ui.xml",
+    "crash.log",
+    "pnpm check:android-cold-start-evidence -- \"$FW_ANDROID_COLD_DIR\"",
+  ]) {
+    requireText(
+      docs.androidColdStart,
+      needle,
+      `docs/ANDROID_COLD_START.md must document Android cold-start evidence: ${needle}`,
     );
   }
 }
