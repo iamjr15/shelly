@@ -184,6 +184,51 @@ try {
     "claude-replay.txt must be a dedicated Claude-session transcript",
   );
 
+  const missingFlood = path.join(temp, "missing-flood");
+  writeFixture(missingFlood);
+  fs.rmSync(path.join(missingFlood, "flood-replay.txt"));
+  expectStatus(missingFlood, 1, "missing flood replay transcript should fail", "missing evidence file: flood-replay.txt");
+
+  const badFloodCommand = path.join(temp, "bad-flood-command");
+  writeFixture(badFloodCommand);
+  fs.writeFileSync(path.join(badFloodCommand, "flood-replay.txt"), writeFloodReplay({ command: "printf ANDROID_LIVE_FLOOD" }));
+  expectStatus(
+    badFloodCommand,
+    1,
+    "flood replay without yes head command should fail",
+    "flood-replay.txt must show the Android-originated yes | head -10000 flood command",
+  );
+
+  const shortFlood = path.join(temp, "short-flood");
+  writeFixture(shortFlood);
+  fs.writeFileSync(path.join(shortFlood, "flood-replay.txt"), writeFloodReplay({ lines: 9999, lineMarker: 10_000 }));
+  expectStatus(
+    shortFlood,
+    1,
+    "flood replay with missing output markers should fail",
+    "flood-replay.txt contains",
+  );
+
+  const badFloodLineCount = path.join(temp, "bad-flood-line-count");
+  writeFixture(badFloodLineCount);
+  fs.writeFileSync(path.join(badFloodLineCount, "flood-replay.txt"), writeFloodReplay({ lineMarker: 9999 }));
+  expectStatus(
+    badFloodLineCount,
+    1,
+    "flood replay with wrong line count should fail",
+    "flood-replay.txt records flood_lines=9999",
+  );
+
+  const badFloodUi = path.join(temp, "bad-flood-ui");
+  writeFixture(badFloodUi);
+  fs.writeFileSync(path.join(badFloodUi, "flood-ui.xml"), '<hierarchy><node text="Attached"/></hierarchy>\n');
+  expectStatus(
+    badFloodUi,
+    1,
+    "flood UI without terminal marker should fail",
+    "flood-ui.xml must show the high-volume flood marker in the Android terminal view",
+  );
+
   const missingResize = path.join(temp, "missing-resize");
   writeFixture(missingResize);
   fs.rmSync(path.join(missingResize, "resize-replay.txt"));
@@ -448,6 +493,7 @@ function writeFixture(dir) {
   writePng(path.join(dir, "dashboard.png"));
   writePng(path.join(dir, "session.png"));
   writePng(path.join(dir, "claude.png"));
+  writePng(path.join(dir, "flood.png"));
   writePng(path.join(dir, "tui.png"));
   writePng(path.join(dir, "resize.png"));
   writePng(path.join(dir, "detach.png"));
@@ -468,6 +514,7 @@ function writeFixture(dir) {
   );
   fs.writeFileSync(path.join(dir, "session-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="android_live_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "claude-ui.xml"), '<hierarchy><node text="refactoringjob"/><node text="claude"/><node text="Attached"/><node text="claude_live_ok"/></hierarchy>\n');
+  fs.writeFileSync(path.join(dir, "flood-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="ANDROID_LIVE_FLOOD"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "tui-ui.xml"), '<hierarchy><node text="tui"/><node text="Attached"/><node text="F1Help F2Setup F10Quit"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "resize-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="after_resize_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "detach-ui.xml"), '<hierarchy><node text="refactoringjob"/><node text="shell"/></hierarchy>\n');
@@ -510,6 +557,8 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "session-crash.log"), "");
   fs.writeFileSync(path.join(dir, "claude-logcat.log"), "I Fieldwork: terminal attached\n");
   fs.writeFileSync(path.join(dir, "claude-crash.log"), "");
+  fs.writeFileSync(path.join(dir, "flood-logcat.log"), "I Fieldwork: terminal attached\n");
+  fs.writeFileSync(path.join(dir, "flood-crash.log"), "");
   fs.writeFileSync(path.join(dir, "tui-logcat.log"), "I Fieldwork: terminal attached\n");
   fs.writeFileSync(path.join(dir, "tui-crash.log"), "");
   fs.writeFileSync(path.join(dir, "resize-logcat.log"), "I Fieldwork: terminal resized\n");
@@ -529,6 +578,7 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "devices.txt"), "Pixel 8 Pro paired\n");
   fs.writeFileSync(path.join(dir, "terminal-replay.txt"), "shell bash\n$ echo android_live_ok\nandroid_live_ok\n");
   fs.writeFileSync(path.join(dir, "claude-replay.txt"), "refactoringjob claude\n> claude_live_ok\nclaude_live_ok\n");
+  fs.writeFileSync(path.join(dir, "flood-replay.txt"), writeFloodReplay());
   fs.writeFileSync(path.join(dir, "resize-replay.txt"), "shell bash\nresize_size=32x120\nafter_resize_ok\n");
   fs.writeFileSync(path.join(dir, "detach-replay.txt"), "shell bash\nafter_detach_reattach_ok\n");
   fs.writeFileSync(path.join(dir, "background-replay.txt"), "shell bash\nANDROID_BACKGROUND_REPLAY_OUTPUT\nafter_background_ok\n");
@@ -552,6 +602,20 @@ function readAutoSessionName() {
     throw new Error("cannot read AUTO_SESSION_NAMES from crates/cli/src/main.rs");
   }
   return name;
+}
+
+function writeFloodReplay(options = {}) {
+  const command = options.command ?? "printf 'ANDROID_LIVE_FLOOD_START\\n'; yes ANDROID_LIVE_FLOOD | head -10000; printf 'ANDROID_LIVE_FLOOD_DONE\\n'; printf 'flood_lines=10000\\n'";
+  const lines = options.lines ?? 10_000;
+  const lineMarker = options.lineMarker ?? lines;
+  return [
+    "shell bash",
+    `$ ${command}`,
+    "ANDROID_LIVE_FLOOD_START",
+    ...Array.from({ length: lines }, () => "ANDROID_LIVE_FLOOD"),
+    "ANDROID_LIVE_FLOOD_DONE",
+    `flood_lines=${lineMarker}`,
+  ].join("\n");
 }
 
 function writePng(file, options = {}) {

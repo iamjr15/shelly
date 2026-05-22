@@ -48,6 +48,11 @@ const requiredFiles = [
   "claude-logcat.log",
   "claude-crash.log",
   "claude-replay.txt",
+  "flood.png",
+  "flood-ui.xml",
+  "flood-logcat.log",
+  "flood-crash.log",
+  "flood-replay.txt",
   "tui.png",
   "tui-ui.xml",
   "tui-logcat.log",
@@ -104,6 +109,7 @@ if (failures.length === 0) {
   verifyPng("dashboard.png");
   verifyPng("session.png");
   verifyPng("claude.png");
+  verifyPng("flood.png");
   verifyPng("tui.png");
   verifyPng("resize.png");
   verifyPng("detach.png");
@@ -130,6 +136,7 @@ if (failures.length === 0) {
     readText("terminal-replay.txt"),
   );
   verifyClaudeEvidence(readText("claude-ui.xml"), readText("claude-logcat.log"), readText("claude-replay.txt"));
+  verifyFloodEvidence(readText("flood-ui.xml"), readText("flood-logcat.log"), readText("flood-replay.txt"));
   verifyTuiEvidence(readText("tui-ui.xml"));
   verifyResizeEvidence(readText("resize-ui.xml"), readText("resize-replay.txt"));
   verifyDetachEvidence(readText("detach-ui.xml"), readText("detach-replay.txt"));
@@ -153,6 +160,7 @@ if (failures.length === 0) {
     ["dashboard-ui.xml", readText("dashboard-ui.xml")],
     ["session-ui.xml", readText("session-ui.xml")],
     ["claude-ui.xml", readText("claude-ui.xml")],
+    ["flood-ui.xml", readText("flood-ui.xml")],
     ["tui-ui.xml", readText("tui-ui.xml")],
     ["resize-ui.xml", readText("resize-ui.xml")],
     ["detach-ui.xml", readText("detach-ui.xml")],
@@ -174,6 +182,8 @@ if (failures.length === 0) {
     ["session-crash.log", readText("session-crash.log")],
     ["claude-logcat.log", readText("claude-logcat.log")],
     ["claude-crash.log", readText("claude-crash.log")],
+    ["flood-logcat.log", readText("flood-logcat.log")],
+    ["flood-crash.log", readText("flood-crash.log")],
     ["tui-logcat.log", readText("tui-logcat.log")],
     ["tui-crash.log", readText("tui-crash.log")],
     ["resize-logcat.log", readText("resize-logcat.log")],
@@ -396,6 +406,39 @@ function verifyClaudeEvidence(ui, logcat, replay) {
   );
   requirePatternText(replay, /\b(?:claude|refactoringjob)\b/i, "claude-replay.txt must identify the Claude/default session");
   rejectPatternText(replay, /\bandroid_live_ok\b/, "claude-replay.txt must be a dedicated Claude-session transcript, not the shell replay");
+}
+
+function verifyFloodEvidence(ui, logcat, replay) {
+  rejectPatternText(ui, /\bNo sessions\b/i, "flood-ui.xml must show an attached terminal, not the dashboard");
+  requirePatternText(ui, /\bAttached\b/i, "flood-ui.xml must show the flood terminal attached state");
+  requirePatternText(
+    ui,
+    /\bANDROID_LIVE_FLOOD\b/,
+    "flood-ui.xml must show the high-volume flood marker in the Android terminal view",
+  );
+  requirePatternText(logcat, /Fieldwork:\s+terminal attached|FieldworkRepository:\s+listSessions returned \d+ sessions/i, "flood-logcat.log must show app activity while attached to the flooded terminal");
+  requirePatternText(replay, /\b(shell|bash)\b/i, "flood-replay.txt must identify the desktop-created shell/bash session");
+  requirePatternText(
+    replay,
+    /\byes\s+ANDROID_LIVE_FLOOD\s*\|\s*head\s+-10000\b/,
+    "flood-replay.txt must show the Android-originated yes | head -10000 flood command",
+  );
+  requirePatternText(
+    replay,
+    /\bANDROID_LIVE_FLOOD_DONE\b/,
+    "flood-replay.txt must include the completion marker after the high-volume flood",
+  );
+  const lineMarkerLine = replay.split(/\r?\n/).find((line) => line.trim().match(/^flood_lines=\d+$/));
+  const lineMarker = lineMarkerLine?.match(/^flood_lines=(\d+)$/);
+  if (!lineMarker) {
+    failures.push("flood-replay.txt must record flood_lines=10000");
+  } else if (Number(lineMarker[1]) !== 10_000) {
+    failures.push(`flood-replay.txt records flood_lines=${lineMarker[1]}, expected 10000`);
+  }
+  const markerCount = replay.split(/\r?\n/).filter((line) => line.trim() === "ANDROID_LIVE_FLOOD").length;
+  if (markerCount < 10_000) {
+    failures.push(`flood-replay.txt contains ${markerCount} ANDROID_LIVE_FLOOD markers, expected at least 10000`);
+  }
 }
 
 function verifyTuiEvidence(text) {

@@ -181,6 +181,23 @@ script -q "$FW_LIVE_DIR/terminal-replay.txt" fw attach shell
 # Confirm android_live_ok is visible, then press Ctrl-B followed by D to detach.
 ```
 
+After reattaching the same `shell`/`bash` session from Android, type the
+high-volume flood command below, then capture a dedicated Android terminal view
+and desktop replay transcript. The replay must contain 10000
+`ANDROID_LIVE_FLOOD` output lines plus the completion marker:
+
+```sh
+printf 'ANDROID_LIVE_FLOOD_START\n'; yes ANDROID_LIVE_FLOOD | head -10000; printf 'ANDROID_LIVE_FLOOD_DONE\n'; printf 'flood_lines=10000\n'
+
+adb exec-out screencap -p > "$FW_LIVE_DIR/flood.png"
+adb shell uiautomator dump /sdcard/window.xml
+adb pull /sdcard/window.xml "$FW_LIVE_DIR/flood-ui.xml"
+adb logcat -d > "$FW_LIVE_DIR/flood-logcat.log"
+adb logcat -d -b crash > "$FW_LIVE_DIR/flood-crash.log"
+script -q "$FW_LIVE_DIR/flood-replay.txt" fw attach shell
+# Confirm ANDROID_LIVE_FLOOD_DONE and flood_lines=10000 are visible, then detach.
+```
+
 After attaching the `refactoringjob` or generated default `claude` session from
 Android, send a harmless `claude_live_ok` line, then capture dedicated Claude
 evidence and a desktop reattach transcript for that same session:
@@ -299,6 +316,10 @@ the paired run listed the expected desktop-created sessions, `pairing.txt` prove
 QR payload, device-scan wait, explicit approval prompt, and approved completion,
 records `pair_flow_ms=<elapsed-ms>` at or below 15000, the desktop replay
 transcript contains `android_live_ok` from the Android-originated shell input,
+`flood-ui.xml` shows the `ANDROID_LIVE_FLOOD` marker in the Android terminal
+view and `flood-replay.txt` proves the Android-originated
+`yes ANDROID_LIVE_FLOOD | head -10000` stream completed with
+`flood_lines=10000` and at least 10000 replayed marker lines,
 `claude-replay.txt` contains `claude_live_ok` from Android-originated input in a
 dedicated Claude/default session transcript,
 the captured UI dumps do not expose mobile session creation, session kill, or
@@ -323,20 +344,23 @@ fatal, ANR, or crash entries.
    `refactoringjob` named shortcut session, and desktop-created `bash`,
    `claude`, and TUI sessions.
 5. Attach to `bash`, type `echo android_live_ok`, and verify the output appears.
-6. Attach to `claude`, send `claude_live_ok`, and verify the desktop can reattach
+6. Run `yes ANDROID_LIVE_FLOOD | head -10000` from Android in the same shell and
+   verify the Android terminal view plus desktop replay keep all 10000 marker
+   lines.
+7. Attach to `claude`, send `claude_live_ok`, and verify the desktop can reattach
    to the same Claude/default session and see that output without affecting
    other sessions.
-7. Attach to `vim` or `htop` and verify the TUI renders usable terminal state.
-8. Resize the terminal and verify the PTY reports a plausible row/column size.
-9. Detach and reattach; verify the terminal resumes from the latest seen offset.
-10. Background the app while a PTY emits output, foreground it, and verify replay.
-11. Leave the app backgrounded for at least five minutes, foreground it, and
+8. Attach to `vim` or `htop` and verify the TUI renders usable terminal state.
+9. Resize the terminal and verify the PTY reports a plausible row/column size.
+10. Detach and reattach; verify the terminal resumes from the latest seen offset.
+11. Background the app while a PTY emits output, foreground it, and verify replay.
+12. Leave the app backgrounded for at least five minutes, foreground it, and
     verify BiometricPrompt gates session access and stale terminal input.
-12. Toggle Wi-Fi or airplane mode, reconnect within the release target, and
+13. Toggle Wi-Fi or airplane mode, reconnect within the release target, and
    verify missed output replays.
-13. Restart the daemon, relaunch Android, and verify last-known sessions and
+14. Restart the daemon, relaunch Android, and verify last-known sessions and
     scrollback are listed while exited processes are documented as exited.
-14. Open three sessions and switch among them; verify no output crosses sessions.
+15. Open three sessions and switch among them; verify no output crosses sessions.
 
 ## Pass Criteria
 

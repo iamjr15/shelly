@@ -364,6 +364,12 @@ to the same daemon-owned `shell`/`bash` session after Android sends
 `echo android_live_ok`; that transcript must contain `android_live_ok` so the
 round proves phone and laptop are looking at the same PTY rather than a mirrored
 screen or disconnected view.
+The high-volume terminal renderer gate has its own physical Android evidence:
+`flood.png`, `flood-ui.xml`, `flood-logcat.log`, `flood-crash.log`, and
+`flood-replay.txt`. The UI dump must show `ANDROID_LIVE_FLOOD` in the attached
+terminal view, and the desktop replay must prove the Android-originated
+`yes ANDROID_LIVE_FLOOD | head -10000` stream completed with
+`flood_lines=10000` plus at least 10000 replayed marker lines.
 The same verifier now requires dedicated background/foreground, network
 reconnect, daemon restart restore, and multi-session switching evidence:
 `background-replay.txt` must include `ANDROID_BACKGROUND_REPLAY_OUTPUT` and

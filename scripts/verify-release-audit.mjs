@@ -329,6 +329,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "dedicated high-volume flood screenshot/UI/log/crash evidence plus `flood-replay.txt`",
+    "release audit must record live-test high-volume flood evidence",
+  );
+  requireText(
+    audit,
+    "`yes ANDROID_LIVE_FLOOD | head -10000`",
+    "release audit must record live-test flood command evidence",
+  );
+  requireText(
+    audit,
     "`sessions.txt` rows binding both the generated session and `refactoringjob` to default `claude` commands",
     "release audit must record live-test command binding evidence",
   );
@@ -1014,6 +1024,9 @@ function verifyLiveTestingRunbook() {
     "script -q \"$FW_LIVE_DIR/pairing.txt\" fw pair",
     "pairing.txt` proves the desktop-side\nQR payload, device-scan wait, explicit approval prompt, and approved completion,\nrecords `pair_flow_ms=<elapsed-ms>` at or below 15000",
     "script -q \"$FW_LIVE_DIR/terminal-replay.txt\" fw attach shell",
+    "flood-replay.txt",
+    "yes ANDROID_LIVE_FLOOD | head -10000",
+    "`flood_lines=10000`",
     "claude-replay.txt",
     "claude_live_ok",
     "fw attach refactoringjob",
