@@ -239,7 +239,7 @@ function captureStages() {
       files: ["buildconfig.txt", "adb-devices.txt"],
       commands: [
         "adb devices -l | tee \"$FW_LIVE_DIR/adb-devices.txt\"",
-        "rg 'APPLICATION_ID = \"app\\\\.fieldwork\\\\.android\"|BUILD_TYPE = \"debug\"|DEBUG = Boolean\\\\.parseBoolean\\\\(\"true\"\\\\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"' \\",
+        "rg 'APPLICATION_ID = \"app\\.fieldwork\\.android\"|BUILD_TYPE = \"debug\"|DEBUG = Boolean\\.parseBoolean\\(\"true\"\\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"' \\",
         "  apps/android/app/build/generated/source/buildConfig/debug/app/fieldwork/android/BuildConfig.java \\",
         "  | tee \"$FW_LIVE_DIR/buildconfig.txt\"",
       ],

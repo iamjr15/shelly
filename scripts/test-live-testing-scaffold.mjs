@@ -44,6 +44,16 @@ try {
   expect(checklist.includes("adb exec-out screencap -p"), "capture checklist should include screenshot commands");
   expect(checklist.includes("adb shell uiautomator dump"), "capture checklist should include UI dump commands");
   expect(checklist.includes("adb logcat -d -b crash"), "capture checklist should include crash-buffer commands");
+  expect(
+    checklist.includes('APPLICATION_ID = "app\\.fieldwork\\.android"'),
+    "capture checklist should emit a copyable ripgrep regex for the Android application id",
+  );
+  expect(!checklist.includes('APPLICATION_ID = "app\\\\.fieldwork'), "capture checklist must not over-escape the application-id regex");
+  expect(
+    checklist.includes('DEBUG = Boolean\\.parseBoolean\\("true"\\)'),
+    "capture checklist should emit a copyable ripgrep regex for the debug BuildConfig shape",
+  );
+  expect(!checklist.includes("Boolean\\\\.parseBoolean"), "capture checklist must not over-escape the debug BuildConfig regex");
   for (const file of requiredFiles) {
     expect(checklist.includes(`\`${file}\``), `capture checklist should mention ${file}`);
   }
