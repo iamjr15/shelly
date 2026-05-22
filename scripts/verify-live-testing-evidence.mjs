@@ -28,6 +28,7 @@ const requiredFiles = [
   "locked-ui.xml",
   "locked-logcat.log",
   "locked-crash.log",
+  "pairing.txt",
   "dashboard.png",
   "dashboard-ui.xml",
   "dashboard-logcat.log",
@@ -83,6 +84,7 @@ if (failures.length === 0) {
   verifyPng("multisession.png");
   verifyLaunch(readText("launch.txt"));
   verifyLockedSurface(readText("locked-ui.xml"));
+  verifyPairingTranscript(readText("pairing.txt"));
   verifyDashboardEvidence(
     readText("dashboard-ui.xml"),
     readText("dashboard-logcat.log"),
@@ -155,6 +157,34 @@ function readAutoSessionNames() {
     return fallback;
   }
   return names;
+}
+
+function verifyPairingTranscript(text) {
+  requirePatternText(
+    text,
+    /"pair_token"\s*:/,
+    "pairing.txt must include the JSON QR pairing payload from fw pair",
+  );
+  requirePatternText(
+    text,
+    /Waiting for a device to scan/i,
+    "pairing.txt must show fw pair waited for a device scan",
+  );
+  requirePatternText(
+    text,
+    /Pair request from device\b[\s\S]*approve\?\s*\[y\/N\]/i,
+    "pairing.txt must show the explicit desktop approval prompt",
+  );
+  requirePatternText(
+    text,
+    /Approved\. Device is paired\./,
+    "pairing.txt must show the desktop approval completed pairing",
+  );
+  rejectPatternText(
+    text,
+    /Denied\. Pair token has been consumed\./,
+    "pairing.txt must not be a denied pairing transcript",
+  );
 }
 
 function verifyBuildConfig(text) {

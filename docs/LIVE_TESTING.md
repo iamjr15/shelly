@@ -87,7 +87,6 @@ fw new bash
 fw new -- claude
 fw new -- vim
 fw ls
-fw pair
 ```
 
 The bare `fw` command must create and attach a default `claude` session with a
@@ -98,12 +97,10 @@ name and `refactoringjob` appear as active sessions in the Android dashboard
 after pairing; the phone should still only list and attach, never create or
 choose commands.
 
-Approve the pairing only after the phone scans the QR payload and the CLI asks
-for explicit confirmation.
-
 ## Evidence Capture
 
-Create a timestamped evidence directory:
+Create a timestamped evidence directory before pairing so the desktop approval
+transcript is captured:
 
 ```sh
 export FW_LIVE_DIR="/tmp/fieldwork-live-$(date +%Y%m%d%H%M%S)"
@@ -111,6 +108,13 @@ mkdir -p "$FW_LIVE_DIR"
 rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "debug"|DEBUG = Boolean\.parseBoolean\("true"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
   apps/android/app/build/generated/source/buildConfig/debug/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_LIVE_DIR/buildconfig.txt"
+```
+
+Run `fw pair` inside a desktop transcript. Approve pairing only after the phone
+scans the QR payload and the CLI asks for explicit confirmation:
+
+```sh
+script -q "$FW_LIVE_DIR/pairing.txt" fw pair
 ```
 
 Capture the locked launch surface:
@@ -217,8 +221,10 @@ pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"
 This verifier does not replace human review of the phone behavior. It checks
 that the direct `adb` evidence set is complete, screenshots are nontrivial PNGs,
 the locked UI did not expose session or terminal content, the paired run listed
-the expected desktop-created sessions, the desktop replay transcript contains
-`android_live_ok` from the Android-originated shell input, the TUI attach
+the expected desktop-created sessions, `pairing.txt` proves the desktop-side
+QR payload, device-scan wait, explicit approval prompt, and approved completion,
+the desktop replay transcript contains `android_live_ok` from the
+Android-originated shell input, the TUI attach
 evidence shows real `vim`/`htop` terminal content in the Android terminal
 surface, the background/foreground, network reconnect, daemon restart restore,
 and multi-session switching transcripts contain the expected replay/no-leakage

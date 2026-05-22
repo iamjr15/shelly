@@ -49,6 +49,29 @@ try {
   fs.rmSync(path.join(missingReplay, "terminal-replay.txt"));
   expectStatus(missingReplay, 1, "missing desktop replay transcript should fail", "missing evidence file: terminal-replay.txt");
 
+  const missingPairing = path.join(temp, "missing-pairing");
+  writeFixture(missingPairing);
+  fs.rmSync(path.join(missingPairing, "pairing.txt"));
+  expectStatus(missingPairing, 1, "missing desktop pairing transcript should fail", "missing evidence file: pairing.txt");
+
+  const deniedPairing = path.join(temp, "denied-pairing");
+  writeFixture(deniedPairing);
+  fs.writeFileSync(
+    path.join(deniedPairing, "pairing.txt"),
+    [
+      '{"pair_token":"ABCDE","expires_at_ms":1700000000000}',
+      "Waiting for a device to scan. Pair token expires in 10 minutes.",
+      'Pair request from device "Pixel" (nodeid) — approve? [y/N]',
+      "Denied. Pair token has been consumed.",
+    ].join("\n"),
+  );
+  expectStatus(
+    deniedPairing,
+    1,
+    "denied desktop pairing transcript should fail",
+    "pairing.txt must show the desktop approval completed pairing",
+  );
+
   const badReplay = path.join(temp, "bad-replay");
   writeFixture(badReplay);
   fs.writeFileSync(path.join(badReplay, "terminal-replay.txt"), "shell prompt only\n");
@@ -198,6 +221,15 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "multisession-ui.xml"), '<hierarchy><node text="fwm_a"/><node text="fwm_b"/><node text="fwm_c"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "locked-logcat.log"), "I Fieldwork: locked launch\n");
   fs.writeFileSync(path.join(dir, "locked-crash.log"), "");
+  fs.writeFileSync(
+    path.join(dir, "pairing.txt"),
+    [
+      '{"pair_token":"ABCDE","expires_at_ms":1700000000000}',
+      "Waiting for a device to scan. Pair token expires in 10 minutes.",
+      'Pair request from device "Pixel 8 Pro" (nodeid) — approve? [y/N]',
+      "Approved. Device is paired.",
+    ].join("\n"),
+  );
   fs.writeFileSync(
     path.join(dir, "dashboard-logcat.log"),
     ["I FieldworkRepository: pair completed", "I FieldworkRepository: listSessions returned 4 sessions"].join("\n"),

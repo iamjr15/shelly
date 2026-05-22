@@ -284,6 +284,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`pairing.txt` desktop transcript proof that `fw pair` printed the QR payload, waited for device scan, showed the explicit approval prompt, and completed only after approval",
+    "release audit must record live-test desktop pairing transcript evidence",
+  );
+  requireText(
+    audit,
     "dedicated active-dashboard screenshot/UI/log/crash evidence",
     "release audit must record active-dashboard evidence",
   );
@@ -945,6 +950,8 @@ function verifyLiveTestingRunbook() {
     'DEBUG = Boolean\\.parseBoolean\\("true"\\)',
     "FIELDWORK_BIOMETRIC_BYPASS = false",
     'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "script -q \"$FW_LIVE_DIR/pairing.txt\" fw pair",
+    "pairing.txt` proves the desktop-side\nQR payload, device-scan wait, explicit approval prompt, and approved completion",
     "script -q \"$FW_LIVE_DIR/terminal-replay.txt\" fw attach shell",
     "dashboard.png",
     "dashboard-ui.xml",
