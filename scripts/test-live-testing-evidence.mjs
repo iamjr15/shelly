@@ -8,6 +8,7 @@ import zlib from "node:zlib";
 
 const root = path.resolve(new URL("..", import.meta.url).pathname);
 const verifier = path.join(root, "scripts/verify-live-testing-evidence.mjs");
+const autoSessionName = readAutoSessionName();
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-live-evidence-"));
 const crc32Table = Array.from({ length: 256 }, (_, index) => {
@@ -70,7 +71,7 @@ try {
   writeFixture(autoNameWrongCommand);
   fs.writeFileSync(
     path.join(autoNameWrongCommand, "sessions.txt"),
-    ["waffle bash", "refactoringjob claude", "shell bash", "editor vim"].join("\n"),
+    [`${autoSessionName} bash`, "refactoringjob claude", "shell bash", "editor vim"].join("\n"),
   );
   expectStatus(
     autoNameWrongCommand,
@@ -162,7 +163,7 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "locked-ui.xml"), '<hierarchy><node text="Unlock"/></hierarchy>\n');
   fs.writeFileSync(
     path.join(dir, "dashboard-ui.xml"),
-    '<hierarchy><node text="waffle"/><node text="refactoringjob"/><node text="shell"/></hierarchy>\n',
+    `<hierarchy><node text="${autoSessionName}"/><node text="refactoringjob"/><node text="shell"/></hierarchy>\n`,
   );
   fs.writeFileSync(path.join(dir, "session-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="android_live_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "tui-ui.xml"), '<hierarchy><node text="tui"/><node text="Attached"/><node text="F1Help F2Setup F10Quit"/></hierarchy>\n');
@@ -206,8 +207,18 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "multisession-c-replay.txt"), "fwm_c\nmulti_c_ok\n");
   fs.writeFileSync(
     path.join(dir, "sessions.txt"),
-    ["waffle claude", "refactoringjob claude", "shell bash", "editor vim"].join("\n"),
+    [`${autoSessionName} claude`, "refactoringjob claude", "shell bash", "editor vim"].join("\n"),
   );
+}
+
+function readAutoSessionName() {
+  const source = fs.readFileSync(path.join(root, "crates/cli/src/main.rs"), "utf8");
+  const match = source.match(/const\s+AUTO_SESSION_NAMES\s*:\s*&\[[^\]]+\]\s*=\s*&\[(?<body>[\s\S]*?)\];/);
+  const name = match?.groups?.body.match(/"([^"\n]+)"/)?.[1];
+  if (!name) {
+    throw new Error("cannot read AUTO_SESSION_NAMES from crates/cli/src/main.rs");
+  }
+  return name;
 }
 
 function writePng(file, options = {}) {
