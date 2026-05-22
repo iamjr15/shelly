@@ -151,6 +151,11 @@ function verifyDevelopmentDoc(text) {
   );
   requireText(
     text,
+    "`pnpm check:release-audit:list`",
+    "docs/DEVELOPMENT.md must document the package release-audit list command",
+  );
+  requireText(
+    text,
     "node scripts/verify-release-audit.mjs --list-unchecked",
     "docs/DEVELOPMENT.md must document the unchecked gate list command",
   );

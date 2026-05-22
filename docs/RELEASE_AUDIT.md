@@ -61,7 +61,8 @@ outside this shell:
   `signing`: 4, `publish`: 3, `provider`: 5, `physical-device`: 14,
   `store-console`: 2, `operator`: 9). The release-audit verifier recomputes
   this inventory from `PLAN.md` so count drift fails locally.
-  `node scripts/verify-release-audit.mjs --list-unchecked` prints the same
+  `pnpm check:release-audit:list` (or
+  `node scripts/verify-release-audit.mjs --list-unchecked`) prints the same
   classified gate list for operator handoff, and `pnpm test:release-audit-list`
   pins the grouped list output.
 - A local API 36.1 Android emulator is only a debug substitute for those

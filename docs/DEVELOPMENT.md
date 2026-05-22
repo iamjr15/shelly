@@ -111,8 +111,9 @@ assets, using Python's standard `tomllib` for TOML, lints the iOS project
 plist, Info.plist, and entitlements with `plutil -lint`, and validates Android
 XML resources plus docs SVG assets with
 `xmllint --noout`.
-For operator handoff, `node scripts/verify-release-audit.mjs --list-unchecked`
-prints the current unchecked `PLAN.md` gates grouped by blocker class, and
+For operator handoff, `pnpm check:release-audit:list` (equivalent to
+`node scripts/verify-release-audit.mjs --list-unchecked`) prints the current
+unchecked `PLAN.md` gates grouped by blocker class, and
 `pnpm test:release-audit-list` pins that grouped output.
 
 `pnpm check:release-artifacts` is intentionally fail-closed unless

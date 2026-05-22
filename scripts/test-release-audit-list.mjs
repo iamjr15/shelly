@@ -15,6 +15,11 @@ const pnpmSeparatorResult = spawnSync(process.execPath, ["scripts/verify-release
   encoding: "utf8",
 });
 
+const packageScriptResult = spawnSync("pnpm", ["check:release-audit:list"], {
+  cwd: root,
+  encoding: "utf8",
+});
+
 if (result.status !== 0) {
   failures.push(`release-audit list mode exited ${result.status}`);
 }
@@ -32,6 +37,15 @@ if (pnpmSeparatorResult.stderr.trim() !== "") {
 }
 if (pnpmSeparatorResult.stdout !== result.stdout) {
   failures.push("release-audit list mode with -- separator must match direct list output");
+}
+if (packageScriptResult.status !== 0) {
+  failures.push(`release-audit package list script exited ${packageScriptResult.status}`);
+}
+if (packageScriptResult.stderr.trim() !== "") {
+  failures.push(`release-audit package list script wrote stderr: ${packageScriptResult.stderr.trim()}`);
+}
+if (!packageScriptResult.stdout.includes(result.stdout)) {
+  failures.push("release-audit package list script must print the same grouped output");
 }
 
 for (const expected of [

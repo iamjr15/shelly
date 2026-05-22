@@ -40,7 +40,7 @@ Check the current release gate inventory before starting:
 
 ```sh
 pnpm check:local-release
-node scripts/verify-release-audit.mjs --list-unchecked
+pnpm check:release-audit:list
 ```
 
 ## Build And Install
@@ -267,7 +267,7 @@ the exact evidence paths, then update `docs/RELEASE_AUDIT.md` and rerun:
 pnpm check:release-audit
 pnpm check:docs-sync
 pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"
-node scripts/verify-release-audit.mjs --list-unchecked
+pnpm check:release-audit:list
 ```
 
 Do not check provider-push, signing, publish, store-console, iOS, domain, or

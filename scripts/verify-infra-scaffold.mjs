@@ -186,7 +186,7 @@ for (const handoff of [
   "no arbitrary Terminal.app/iTerm\n  takeover",
   "direct `adb` screenshot/UI/log/crash evidence",
   "pnpm check:local-release -- --with-artifacts --with-runtime",
-  "node scripts/verify-release-audit.mjs --list-unchecked",
+  "pnpm check:release-audit:list",
   "Only check the external boxes in `PLAN.md` after the matching hosted account,\nprovider, signed-artifact, physical-device, or operator-reservation evidence\nexists, and keep `docs/RELEASE_AUDIT.md` synchronized with the evidence",
 ]) {
   requireText(files.operations, handoff, `Operations runbook release-gate handoff must include ${handoff}`);

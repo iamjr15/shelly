@@ -29,6 +29,7 @@
     "check:v1-boundary": "node scripts/verify-v1-boundary.mjs",
     "check:no-ship": "node scripts/verify-no-ship-markers.mjs",
     "check:release-audit": "node scripts/verify-release-audit.mjs",
+    "check:release-audit:list": "node scripts/verify-release-audit.mjs --list-unchecked",
     "check:release-workflows": "node scripts/verify-release-workflows.mjs",
     "check:release-artifacts": "node scripts/verify-release-artifacts.mjs",
     "check:secret-boundaries": "node scripts/verify-secret-boundaries.mjs",

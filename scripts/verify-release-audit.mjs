@@ -82,6 +82,11 @@ function verifyCurrentVerdict() {
   );
   requireText(
     audit,
+    "pnpm check:release-audit:list",
+    "release audit must document the package unchecked gate list command",
+  );
+  requireText(
+    audit,
     "node scripts/verify-release-audit.mjs --list-unchecked",
     "release audit must document the unchecked gate list mode",
   );
@@ -1924,6 +1929,9 @@ function verifyVerifierIsWired() {
   }
   if (packageJson.scripts?.["check:release-audit"] !== "node scripts/verify-release-audit.mjs") {
     failures.push("package.json must expose check:release-audit");
+  }
+  if (packageJson.scripts?.["check:release-audit:list"] !== "node scripts/verify-release-audit.mjs --list-unchecked") {
+    failures.push("package.json must expose check:release-audit:list");
   }
   if (packageJson.scripts?.["test:release-audit-list"] !== "node scripts/test-release-audit-list.mjs") {
     failures.push("package.json must expose test:release-audit-list");
