@@ -15,6 +15,7 @@ const docs = {
   androidRenderer: read("docs/ANDROID_RENDERER.md"),
   androidDogfood: read("docs/ANDROID_DOGFOOD.md"),
   androidColdStart: read("docs/ANDROID_COLD_START.md"),
+  androidBackgroundForeground: read("docs/ANDROID_BACKGROUND_FOREGROUND.md"),
   androidFcmPush: read("docs/ANDROID_FCM_PUSH.md"),
   macosDaemonSurvival: read("docs/MACOS_DAEMON_SURVIVAL.md"),
   liveTesting: read("docs/LIVE_TESTING.md"),
@@ -30,6 +31,7 @@ verifyInstallDoc();
 verifyAndroidRendererDoc();
 verifyAndroidDogfoodDoc();
 verifyAndroidColdStartDoc();
+verifyAndroidBackgroundForegroundDoc();
 verifyAndroidFcmPushDoc();
 verifyMacosDaemonSurvivalDoc();
 verifyLiveTestingDoc();
@@ -55,6 +57,7 @@ function verifyRequiredDocsExist() {
     "docs/ANDROID_RENDERER.md",
     "docs/ANDROID_DOGFOOD.md",
     "docs/ANDROID_COLD_START.md",
+    "docs/ANDROID_BACKGROUND_FOREGROUND.md",
     "docs/ANDROID_FCM_PUSH.md",
     "docs/MACOS_DAEMON_SURVIVAL.md",
     "docs/LIVE_TESTING.md",
@@ -165,6 +168,45 @@ function verifyAndroidColdStartDoc() {
       docs.androidColdStart,
       needle,
       `docs/ANDROID_COLD_START.md must document Android cold-start evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidBackgroundForegroundDoc() {
+  for (const needle of [
+    "Android side of the Section 13\n`Background -> Foreground` survival gate",
+    "signed release build on a\nphysical Android phone",
+    "same daemon-owned PTY session surviving app\nbackgrounding",
+    "not an emulator or AVD",
+    "debug build, biometric bypass, or debug pairing payload",
+    "real QR scanner and explicit desktop approval",
+    "direct `adb`",
+    "node scripts/verify-android-aab.mjs --expect-signed",
+    "signed release bundle ok",
+    "BUILD_TYPE = \"release\"",
+    "DEBUG = false",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_ANDROID_BG_DIR/adb-devices.txt\"",
+    "fw new --name fw_background_session bash",
+    "ANDROID_BACKGROUND_READY",
+    "trigger_background_output",
+    "background_command=adb shell input keyevent KEYCODE_HOME",
+    "background_top_package",
+    "background-output-replay.txt",
+    "ANDROID_BACKGROUND_REPLAY_OUTPUT",
+    "adb shell monkey -p app.fieldwork.android 1",
+    "after_background_ok",
+    "android-background: after_background_ok",
+    "foreground_reconnect_ms",
+    "release_device_background_foreground_candidate=pass",
+    "pnpm check:android-background-foreground-evidence -- \"$FW_ANDROID_BG_DIR\"",
+    "only proves the Android release-device\nbackground/foreground path",
+  ]) {
+    requireText(
+      docs.androidBackgroundForeground,
+      needle,
+      `docs/ANDROID_BACKGROUND_FOREGROUND.md must document Android background/foreground evidence: ${needle}`,
     );
   }
 }
