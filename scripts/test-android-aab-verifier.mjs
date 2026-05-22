@@ -16,10 +16,21 @@ try {
 
   const signed = writeAab("signed", { signed: true });
   run([signed], "signed synthetic AAB should pass content checks when signature policy is not requested");
+  run(["--expect-signed", signed], "signed synthetic AAB should pass signed-release checks");
   expectFailure(
     ["--expect-unsigned", signed],
     "local AAB should be unsigned but contains signature entries",
     "signed synthetic AAB must fail local unsigned-policy checks",
+  );
+  expectFailure(
+    ["--expect-signed", unsigned],
+    "release AAB should be signed but contains no META-INF signature entries",
+    "unsigned synthetic AAB must fail signed-release checks",
+  );
+  expectFailure(
+    ["--expect-unsigned", "--expect-signed", signed],
+    "--expect-unsigned and --expect-signed cannot be used together",
+    "mutually exclusive signing policies should fail",
   );
 
   const forbiddenPermission = writeAab("forbidden-permission", {

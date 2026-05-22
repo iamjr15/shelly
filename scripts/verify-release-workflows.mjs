@@ -216,6 +216,7 @@ function verifyAndroidRelease(text) {
   requireText(text, "node scripts/verify-store-privacy.mjs", "release-android must run store privacy verifier after manifest merge");
   requireText(text, "node scripts/verify-android-aab.mjs", "release-android must verify AAB contents");
   rejectText(text, "node scripts/verify-android-aab.mjs --expect-unsigned", "release-android must not use the local unsigned-AAB verifier mode");
+  requireText(text, "node scripts/verify-android-aab.mjs --expect-signed", "release-android must require signed AAB signature entries before Play upload");
   requireText(text, "jarsigner -verify -certs", "release-android must verify AAB signature");
   requireText(text, "packageName: app.fieldwork.android", "release-android must upload the Fieldwork package");
   requireText(text, "track: internal", "release-android must upload to the Play internal track first");

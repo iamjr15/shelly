@@ -89,7 +89,7 @@ jobs:
       - name: Verify store privacy answer sheet
         run: node scripts/verify-store-privacy.mjs
       - name: Verify release AAB contents
-        run: node scripts/verify-android-aab.mjs
+        run: node scripts/verify-android-aab.mjs --expect-signed
       - name: Verify release AAB signature
         run: |
           set -euo pipefail

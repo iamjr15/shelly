@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 const root = process.cwd();
 const args = process.argv.slice(2);
 const expectUnsigned = args.includes("--expect-unsigned");
+const expectSigned = args.includes("--expect-signed");
 const aabArg = args.find((arg) => !arg.startsWith("--"));
 const aab = path.resolve(
   root,
@@ -61,6 +62,9 @@ const allowedUsesPermissions = new Set([
 if (!fs.existsSync(aab)) {
   fail(`Android App Bundle not found: ${path.relative(root, aab)}`);
 }
+if (expectUnsigned && expectSigned) {
+  fail("--expect-unsigned and --expect-signed cannot be used together");
+}
 
 const result = spawnSync("unzip", ["-Z1", aab], {
   cwd: root,
@@ -82,11 +86,14 @@ for (const entry of requiredEntries) {
 if (entries.has("base/lib/x86/libfieldwork_mobile_core.so")) {
   failures.push("AAB unexpectedly includes 32-bit x86 fieldwork mobile core");
 }
+const signatureEntries = [...entries].filter(isJarSignatureEntry);
 if (expectUnsigned) {
-  const signatureEntries = [...entries].filter(isJarSignatureEntry);
   if (signatureEntries.length > 0) {
     failures.push(`local AAB should be unsigned but contains signature entries: ${signatureEntries.join(", ")}`);
   }
+}
+if (expectSigned && signatureEntries.length === 0) {
+  failures.push("release AAB should be signed but contains no META-INF signature entries");
 }
 
 const manifest = readBundleEntry("base/manifest/AndroidManifest.xml");
@@ -117,7 +124,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Android AAB ok: ${requiredEntries.slice(1).join(", ")}; packaged manifest uses-permission allowlist and privacy surface ok${expectUnsigned ? "; unsigned local bundle ok" : ""}`,
+  `Android AAB ok: ${requiredEntries.slice(1).join(", ")}; packaged manifest uses-permission allowlist and privacy surface ok${expectUnsigned ? "; unsigned local bundle ok" : ""}${expectSigned ? "; signed release bundle ok" : ""}`,
 );
 
 function isJarSignatureEntry(entry) {

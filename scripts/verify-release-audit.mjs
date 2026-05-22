@@ -585,6 +585,8 @@ function verifyPromptToArtifactChecklist() {
   requireText(audit, "forbidden location permission", "release audit must record Android AAB forbidden-permission self-test coverage");
   requireText(audit, "missing notification permission", "release audit must record Android AAB required-permission self-test coverage");
   requireText(audit, "terminal-content metadata such as `last_line`", "release audit must record Android AAB terminal-content metadata self-test coverage");
+  requireText(audit, "Android AAB signing-policy", "release audit must record Android AAB signing-policy test coverage");
+  requireText(audit, "signed AAB signature-entry verifier plus `jarsigner -verify -certs` before Play upload", "release audit must record signed AAB release workflow verification");
   requireText(
     audit,
     "focused TerminalController JVM tests for locked-input refusal",
@@ -1587,8 +1589,11 @@ function verifyLatestRefresh() {
   requireText(audit, "focused Android JVM unit coverage", "release audit must record Android notification hash unit-test coverage");
   requireText(audit, "`825e088bc9c6306cde4273c2d014aa1de851a4f5e849a9f2691f512340a2b215`", "release audit must record the current Android release AAB SHA-256");
   requireText(audit, "`--expect-unsigned`", "release audit must record local unsigned AAB verification");
+  requireText(audit, "`--expect-signed`", "release audit must record signed AAB verification policy");
   requireText(audit, "`jar is unsigned`", "release audit must record local jarsigner unsigned result");
   requireText(audit, "release workflow verifier rejects using\n  `node scripts/verify-android-aab.mjs --expect-unsigned`", "release audit must record release workflow unsigned-mode rejection");
+  requireText(audit, "requires\n  `node scripts/verify-android-aab.mjs --expect-signed`", "release audit must record release workflow signed-mode requirement");
+  requireText(audit, "`jarsigner -verify -certs` before Play upload", "release audit must record jarsigner release AAB verification");
   requireText(audit, "packaged manifest privacy surface", "release audit must record Android AAB packaged manifest privacy verification");
   requireText(audit, "Firebase/Sentry opt-out metadata", "release audit must record packaged manifest opt-out metadata verification");
   requireText(plan, "focused Android JVM tests now verify locked terminal input is refused before it reaches mobile-core plus latest-`lastSeenSeq` `Lag` and attached-stream-error reattach", "PLAN.md must record focused Android locked-input and lag/stream-error reattach coverage");
