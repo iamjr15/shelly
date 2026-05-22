@@ -16,6 +16,7 @@ const docs = {
   androidPairFlow: read("docs/ANDROID_PAIR_FLOW.md"),
   androidSessionSubscription: read("docs/ANDROID_SESSION_SUBSCRIPTION.md"),
   androidTerminalAttach: read("docs/ANDROID_TERMINAL_ATTACH.md"),
+  androidResizeDetach: read("docs/ANDROID_RESIZE_DETACH.md"),
   androidBiometric: read("docs/ANDROID_BIOMETRIC.md"),
   androidDogfood: read("docs/ANDROID_DOGFOOD.md"),
   androidColdStart: read("docs/ANDROID_COLD_START.md"),
@@ -40,6 +41,7 @@ verifyAndroidRendererDoc();
 verifyAndroidPairFlowDoc();
 verifyAndroidSessionSubscriptionDoc();
 verifyAndroidTerminalAttachDoc();
+verifyAndroidResizeDetachDoc();
 verifyAndroidBiometricDoc();
 verifyAndroidDogfoodDoc();
 verifyAndroidColdStartDoc();
@@ -74,6 +76,7 @@ function verifyRequiredDocsExist() {
     "docs/ANDROID_PAIR_FLOW.md",
     "docs/ANDROID_SESSION_SUBSCRIPTION.md",
     "docs/ANDROID_TERMINAL_ATTACH.md",
+    "docs/ANDROID_RESIZE_DETACH.md",
     "docs/ANDROID_BIOMETRIC.md",
     "docs/ANDROID_DOGFOOD.md",
     "docs/ANDROID_COLD_START.md",
@@ -259,6 +262,52 @@ function verifyAndroidTerminalAttachDoc() {
       docs.androidTerminalAttach,
       needle,
       `docs/ANDROID_TERMINAL_ATTACH.md must document Android terminal attach evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidResizeDetachDoc() {
+  for (const needle of [
+    "Android side of the Section 13 terminal resize and\ndetach/reattach replay path",
+    "signed release build on a physical Android\nphone",
+    "resizing the terminal so desktop replay records a plausible `resize_size`",
+    "`after_resize_ok`",
+    "`after_detach_reattach_ok`",
+    "not an emulator or AVD",
+    "debug build, biometric bypass, or debug pairing payload",
+    "real QR scanner and explicit desktop approval",
+    "Mobile must not create sessions, kill sessions, or choose commands",
+    "USB debugging; end users do not need adb",
+    "node scripts/verify-android-aab.mjs --expect-signed",
+    "signed release bundle ok",
+    "BUILD_TYPE = \"release\"",
+    "DEBUG = false",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_ANDROID_RESIZE_DIR/adb-devices.txt\"",
+    "fw new --name shell bash",
+    "sessions.txt",
+    "resize.png",
+    "resize-ui.xml",
+    "resize-logcat.log",
+    "resize-crash.log",
+    "resize-replay.txt",
+    "printf 'resize_size=%sx%s\\n' \"$LINES\" \"$COLUMNS\"",
+    "resize_size=<rows>x<cols>",
+    "rows at least\n5 and columns at least 20",
+    "detach.png",
+    "detach-ui.xml",
+    "detach-logcat.log",
+    "detach-crash.log",
+    "detach-replay.txt",
+    "echo after_detach_reattach_ok",
+    "pnpm check:android-resize-detach-evidence -- \"$FW_ANDROID_RESIZE_DIR\"",
+    "only proves the Android release-device terminal resize,\ndetach, and reattach replay path",
+  ]) {
+    requireText(
+      docs.androidResizeDetach,
+      needle,
+      `docs/ANDROID_RESIZE_DETACH.md must document Android resize/detach evidence: ${needle}`,
     );
   }
 }
@@ -1017,6 +1066,10 @@ function verifyPlanDoc() {
     "Android attaches to desktop-created shell, Claude, and `vim`/`htop` sessions",
     "shell replay contains `android_live_ok`",
     "Claude replay contains `claude_live_ok` without the shell marker",
+    "docs/ANDROID_RESIZE_DETACH.md",
+    "pnpm check:android-resize-detach-evidence -- \"$FW_ANDROID_RESIZE_DIR\"",
+    "resize replay contains a plausible `resize_size` plus `after_resize_ok`",
+    "detach replay contains `after_detach_reattach_ok` after Android reattaches",
     "daemon rejects duplicate session\nnames with `ErrorCode::InvalidRequest`",
     "`fw new --name <name>` if a\ndesired session name collides with a subcommand",
     "Mobile clients still cannot create sessions, kill sessions, or choose\ncommands",

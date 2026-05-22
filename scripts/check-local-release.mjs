@@ -43,6 +43,7 @@ const checks = [
   ["Android pair-flow evidence verifier self-test", node, ["scripts/test-android-pair-flow-evidence.mjs"]],
   ["Android session-subscription evidence verifier self-test", node, ["scripts/test-android-session-subscription-evidence.mjs"]],
   ["Android terminal attach evidence verifier self-test", node, ["scripts/test-android-terminal-attach-evidence.mjs"]],
+  ["Android resize/detach evidence verifier self-test", node, ["scripts/test-android-resize-detach-evidence.mjs"]],
   ["Android biometric evidence verifier self-test", node, ["scripts/test-android-biometric-evidence.mjs"]],
   ["Android dogfood evidence verifier self-test", node, ["scripts/test-android-dogfood-evidence.mjs"]],
   ["Android cold-start evidence verifier self-test", node, ["scripts/test-android-cold-start-evidence.mjs"]],
