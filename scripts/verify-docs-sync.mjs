@@ -16,6 +16,7 @@ const docs = {
   androidDogfood: read("docs/ANDROID_DOGFOOD.md"),
   androidColdStart: read("docs/ANDROID_COLD_START.md"),
   androidBackgroundForeground: read("docs/ANDROID_BACKGROUND_FOREGROUND.md"),
+  androidNetworkReconnect: read("docs/ANDROID_NETWORK_RECONNECT.md"),
   androidFcmPush: read("docs/ANDROID_FCM_PUSH.md"),
   macosDaemonSurvival: read("docs/MACOS_DAEMON_SURVIVAL.md"),
   liveTesting: read("docs/LIVE_TESTING.md"),
@@ -32,6 +33,7 @@ verifyAndroidRendererDoc();
 verifyAndroidDogfoodDoc();
 verifyAndroidColdStartDoc();
 verifyAndroidBackgroundForegroundDoc();
+verifyAndroidNetworkReconnectDoc();
 verifyAndroidFcmPushDoc();
 verifyMacosDaemonSurvivalDoc();
 verifyLiveTestingDoc();
@@ -58,6 +60,7 @@ function verifyRequiredDocsExist() {
     "docs/ANDROID_DOGFOOD.md",
     "docs/ANDROID_COLD_START.md",
     "docs/ANDROID_BACKGROUND_FOREGROUND.md",
+    "docs/ANDROID_NETWORK_RECONNECT.md",
     "docs/ANDROID_FCM_PUSH.md",
     "docs/MACOS_DAEMON_SURVIVAL.md",
     "docs/LIVE_TESTING.md",
@@ -207,6 +210,45 @@ function verifyAndroidBackgroundForegroundDoc() {
       docs.androidBackgroundForeground,
       needle,
       `docs/ANDROID_BACKGROUND_FOREGROUND.md must document Android background/foreground evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidNetworkReconnectDoc() {
+  for (const needle of [
+    "Android side of the Section 13 network-change\nreconnect gate",
+    "signed release build on a physical Android phone",
+    "within\n2000 ms",
+    "not an emulator or AVD",
+    "debug build, biometric bypass, or debug pairing payload",
+    "real QR scanner and explicit desktop approval",
+    "direct `adb`",
+    "node scripts/verify-android-aab.mjs --expect-signed",
+    "signed release bundle ok",
+    "BUILD_TYPE = \"release\"",
+    "DEBUG = false",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_ANDROID_RECONNECT_DIR/adb-devices.txt\"",
+    "fw new --name fw_reconnect_session bash",
+    "ANDROID_RECONNECT_READY",
+    "trigger_offline_output",
+    "network_cut_command=adb shell cmd connectivity airplane-mode enable",
+    "network_state=disconnected",
+    "offline-output-replay.txt",
+    "ANDROID_RECONNECT_OFFLINE_OUTPUT",
+    "network_restore_command=adb shell cmd connectivity airplane-mode disable",
+    "network_ping_ok",
+    "after_reconnect_ok",
+    "android-reconnect: after_reconnect_ok",
+    "reconnect_ms=%s",
+    "pnpm check:android-network-reconnect-evidence -- \"$FW_ANDROID_RECONNECT_DIR\"",
+    "only proves the Android release-device network reconnect\npath",
+  ]) {
+    requireText(
+      docs.androidNetworkReconnect,
+      needle,
+      `docs/ANDROID_NETWORK_RECONNECT.md must document Android network reconnect evidence: ${needle}`,
     );
   }
 }

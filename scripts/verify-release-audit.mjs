@@ -249,6 +249,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "Android network reconnect evidence verifier fixture test",
+    "release audit must record local release aggregate coverage for Android network reconnect evidence verifier self-test",
+  );
+  requireText(
+    audit,
     "Android FCM push evidence verifier fixture test",
     "release audit must record local release aggregate coverage for Android FCM push evidence verifier self-test",
   );
@@ -429,8 +434,8 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
-    "release audit docs-sync row must include Android renderer, dogfood, cold-start, background/foreground, FCM push, macOS daemon survival, live-testing, and operations docs",
+    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
+    "release audit docs-sync row must include Android renderer, dogfood, cold-start, background/foreground, network reconnect, FCM push, macOS daemon survival, live-testing, and operations docs",
   );
   requireText(
     audit,
@@ -637,7 +642,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "current v1 install, protocol, privacy, architecture, Android renderer, Android dogfood, Android cold-start, Android background/foreground, Android FCM push, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
+    "current v1 install, protocol, privacy, architecture, Android renderer, Android dogfood, Android cold-start, Android background/foreground, Android network reconnect, Android FCM push, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
     "release audit must record concrete docs-sync coverage",
   );
   requireText(
@@ -909,6 +914,21 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "signed release-device replay after app backgrounding",
     "release audit must record the Android background/foreground evidence contract",
+  );
+  requireText(
+    audit,
+    "`docs/ANDROID_NETWORK_RECONNECT.md`",
+    "release audit must record the Android network reconnect runbook",
+  );
+  requireText(
+    audit,
+    "`scripts/verify-android-network-reconnect-evidence.mjs` fixture coverage",
+    "release audit must record Android network reconnect evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "`reconnect_ms<=2000` after direct adb network restore",
+    "release audit must record the Android network reconnect evidence contract",
   );
   rejectText(
     audit,
@@ -2220,6 +2240,12 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-background-foreground-evidence"] !== "node scripts/test-android-background-foreground-evidence.mjs") {
     failures.push("package.json must expose test:android-background-foreground-evidence");
   }
+  if (packageJson.scripts?.["check:android-network-reconnect-evidence"] !== "node scripts/verify-android-network-reconnect-evidence.mjs") {
+    failures.push("package.json must expose check:android-network-reconnect-evidence");
+  }
+  if (packageJson.scripts?.["test:android-network-reconnect-evidence"] !== "node scripts/test-android-network-reconnect-evidence.mjs") {
+    failures.push("package.json must expose test:android-network-reconnect-evidence");
+  }
   if (packageJson.scripts?.["check:android-fcm-push-evidence"] !== "node scripts/verify-android-fcm-push-evidence.mjs") {
     failures.push("package.json must expose check:android-fcm-push-evidence");
   }
@@ -2353,6 +2379,7 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/test-android-dogfood-evidence.mjs", "local release gate must include Android dogfood evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-cold-start-evidence.mjs", "local release gate must include Android cold-start evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-background-foreground-evidence.mjs", "local release gate must include Android background/foreground evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-network-reconnect-evidence.mjs", "local release gate must include Android network reconnect evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-fcm-push-evidence.mjs", "local release gate must include Android FCM push evidence verifier self-test");
   requireText(localRelease, "scripts/test-macos-daemon-survival-evidence.mjs", "local release gate must include macOS daemon survival evidence verifier self-test");
   requireText(localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");
