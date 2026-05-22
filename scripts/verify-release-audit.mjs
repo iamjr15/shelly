@@ -234,6 +234,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "Android pair-flow evidence verifier fixture test",
+    "release audit must record local release aggregate coverage for Android pair-flow evidence verifier self-test",
+  );
+  requireText(
+    audit,
     "Android dogfood evidence verifier fixture test",
     "release audit must record local release aggregate coverage for Android dogfood evidence verifier self-test",
   );
@@ -439,8 +444,8 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_RENDERER_FLOOD.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
-    "release audit docs-sync row must include Android renderer, dogfood, cold-start, renderer flood, background/foreground, network reconnect, FCM push, macOS daemon survival, live-testing, and operations docs",
+    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_PAIR_FLOW.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_RENDERER_FLOOD.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
+    "release audit docs-sync row must include Android renderer, pair flow, dogfood, cold-start, renderer flood, background/foreground, network reconnect, FCM push, macOS daemon survival, live-testing, and operations docs",
   );
   requireText(
     audit,
@@ -647,7 +652,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "current v1 install, protocol, privacy, architecture, Android renderer, Android dogfood, Android cold-start, Android renderer flood, Android background/foreground, Android network reconnect, Android FCM push, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
+    "current v1 install, protocol, privacy, architecture, Android renderer, Android pair flow, Android dogfood, Android cold-start, Android renderer flood, Android background/foreground, Android network reconnect, Android FCM push, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
     "release audit must record concrete docs-sync coverage",
   );
   requireText(
@@ -874,6 +879,21 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "physical dogfood and release-device runtime gates remain blocked",
     "release audit must keep Android physical-device runtime gates explicit",
+  );
+  requireText(
+    audit,
+    "`docs/ANDROID_PAIR_FLOW.md`",
+    "release audit must record the Android pair-flow runbook",
+  );
+  requireText(
+    audit,
+    "`scripts/verify-android-pair-flow-evidence.mjs` fixture coverage",
+    "release audit must record Android pair-flow evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "`pair_flow_ms<=15000` real-QR release-device dashboard evidence",
+    "release audit must record the Android pair-flow evidence contract",
   );
   requireText(
     audit,
@@ -2242,6 +2262,12 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["check:android-aab"] !== "node scripts/verify-android-aab.mjs --expect-unsigned") {
     failures.push("package.json must expose check:android-aab");
   }
+  if (packageJson.scripts?.["check:android-pair-flow-evidence"] !== "node scripts/verify-android-pair-flow-evidence.mjs") {
+    failures.push("package.json must expose check:android-pair-flow-evidence");
+  }
+  if (packageJson.scripts?.["test:android-pair-flow-evidence"] !== "node scripts/test-android-pair-flow-evidence.mjs") {
+    failures.push("package.json must expose test:android-pair-flow-evidence");
+  }
   if (packageJson.scripts?.["check:android-dogfood-evidence"] !== "node scripts/verify-android-dogfood-evidence.mjs") {
     failures.push("package.json must expose check:android-dogfood-evidence");
   }
@@ -2402,6 +2428,7 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/verify-release-audit.mjs", "local release gate must include release audit verification");
   requireText(localRelease, "scripts/test-release-audit-list.mjs", "local release gate must include release audit list-mode test");
   requireText(localRelease, "scripts/test-live-testing-evidence.mjs", "local release gate must include live-test evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-pair-flow-evidence.mjs", "local release gate must include Android pair-flow evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-dogfood-evidence.mjs", "local release gate must include Android dogfood evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-cold-start-evidence.mjs", "local release gate must include Android cold-start evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-renderer-flood-evidence.mjs", "local release gate must include Android renderer flood evidence verifier self-test");

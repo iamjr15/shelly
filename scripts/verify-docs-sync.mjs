@@ -13,6 +13,7 @@ const docs = {
   architecture: read("docs/ARCHITECTURE.md"),
   install: read("docs/INSTALL.md"),
   androidRenderer: read("docs/ANDROID_RENDERER.md"),
+  androidPairFlow: read("docs/ANDROID_PAIR_FLOW.md"),
   androidDogfood: read("docs/ANDROID_DOGFOOD.md"),
   androidColdStart: read("docs/ANDROID_COLD_START.md"),
   androidRendererFlood: read("docs/ANDROID_RENDERER_FLOOD.md"),
@@ -31,6 +32,7 @@ verifyPrivacyDoc();
 verifyArchitectureDoc();
 verifyInstallDoc();
 verifyAndroidRendererDoc();
+verifyAndroidPairFlowDoc();
 verifyAndroidDogfoodDoc();
 verifyAndroidColdStartDoc();
 verifyAndroidRendererFloodDoc();
@@ -59,6 +61,7 @@ function verifyRequiredDocsExist() {
     "docs/ARCHITECTURE.md",
     "docs/INSTALL.md",
     "docs/ANDROID_RENDERER.md",
+    "docs/ANDROID_PAIR_FLOW.md",
     "docs/ANDROID_DOGFOOD.md",
     "docs/ANDROID_COLD_START.md",
     "docs/ANDROID_RENDERER_FLOOD.md",
@@ -106,6 +109,47 @@ function verifyAndroidRendererDoc() {
       docs.androidRenderer,
       needle,
       `docs/ANDROID_RENDERER.md must document current renderer evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidPairFlowDoc() {
+  for (const needle of [
+    "Android side of the Section 13 pair-flow gate",
+    "signed release build on a physical Android phone",
+    "`pair_flow_ms<=15000`",
+    "real QR pairing plus explicit desktop approval",
+    "USB debugging; end users do\nnot need adb",
+    "not an emulator or AVD",
+    "debug build, biometric bypass, or debug pairing payload",
+    "real QR scanner and explicit desktop approval",
+    "direct `adb`",
+    "node scripts/verify-android-aab.mjs --expect-signed",
+    "signed release bundle ok",
+    "BUILD_TYPE = \"release\"",
+    "DEBUG = false",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_ANDROID_PAIR_DIR/adb-devices.txt\"",
+    "fw refactoringjob",
+    "fw new --name shell bash",
+    "script -q \"$FW_ANDROID_PAIR_DIR/pairing.txt\" fw pair",
+    "\"pair_token\"",
+    "Waiting for a device to scan",
+    "Pair request from device",
+    "approve? [y/N]",
+    "Approved. Device is paired.",
+    "Do not use `FIELDWORK_DEBUG_PAIRING_PAYLOAD`",
+    "dashboard-ui.xml",
+    "FieldworkRepository: pair completed",
+    "FieldworkRepository: listSessions returned <n> sessions",
+    "pnpm check:android-pair-flow-evidence -- \"$FW_ANDROID_PAIR_DIR\"",
+    "only proves the Android release-device QR pair and\ndashboard path",
+  ]) {
+    requireText(
+      docs.androidPairFlow,
+      needle,
+      `docs/ANDROID_PAIR_FLOW.md must document Android pair-flow evidence: ${needle}`,
     );
   }
 }
