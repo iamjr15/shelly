@@ -97,6 +97,7 @@ if (failures.length === 0) {
   verifyPng("multisession.png");
   verifyLaunch(readText("launch.txt"));
   verifyLockedSurface(readText("locked-ui.xml"));
+  verifyLockedLaunchLog(readText("locked-logcat.log"));
   verifyAdbDevices(readText("adb-devices.txt"));
   verifyPairingTranscript(readText("pairing.txt"));
   verifyDashboardEvidence(
@@ -266,6 +267,14 @@ function verifyLockedSurface(text) {
     text,
     /\b(No sessions|Pairing|Terminal|refactoringjob|bash|claude|ANDROID_)/i,
     "locked-ui.xml must not expose session, pairing, terminal, command, or test-marker content before unlock",
+  );
+}
+
+function verifyLockedLaunchLog(text) {
+  rejectPatternText(
+    text,
+    /\bFieldworkRepository:\s+(?:pair completed|listSessions returned|registerPushToken|attach)|\bterminal attached\b|\bsendInput\b/i,
+    "locked-logcat.log must not show session sync, terminal attach, push-token registration, or input before unlock",
   );
 }
 

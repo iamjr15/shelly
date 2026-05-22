@@ -245,7 +245,7 @@ function verifyLiveTestingDoc() {
     "direct `adb` evidence set is complete",
     "screenshots are nontrivial PNGs",
     "unauthorized/offline/emulator/AVD device state",
-    "the locked UI did not expose session or terminal content",
+    "the locked UI and freshly cleared locked-launch logcat did not expose or fetch\nsession, terminal, push-token, or input content before unlock",
     "do not expose mobile session creation, session kill, or\ncommand-selection controls",
     "logs/crash buffers do not contain Fieldwork\nfatal, ANR, or crash entries",
     "echo android_live_ok",

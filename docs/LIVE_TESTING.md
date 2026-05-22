@@ -255,8 +255,9 @@ This verifier does not replace human review of the phone behavior. It checks
 that the direct `adb` evidence set is complete, screenshots are nontrivial PNGs,
 `adb-devices.txt` shows at least one authorized connected device and no
 unauthorized/offline/emulator/AVD device state,
-the locked UI did not expose session or terminal content, the paired run listed
-the expected desktop-created sessions, `pairing.txt` proves the desktop-side
+the locked UI and freshly cleared locked-launch logcat did not expose or fetch
+session, terminal, push-token, or input content before unlock, the paired run
+listed the expected desktop-created sessions, `pairing.txt` proves the desktop-side
 QR payload, device-scan wait, explicit approval prompt, and approved completion,
 records `pair_flow_ms=<elapsed-ms>` at or below 15000, the desktop replay
 transcript contains `android_live_ok` from the Android-originated shell input,

@@ -250,6 +250,16 @@ try {
   );
   expectStatus(warmLaunch, 1, "warm locked launch should fail", "launch.txt must prove the locked launch was cold");
 
+  const lockedLogSessionSync = path.join(temp, "locked-log-session-sync");
+  writeFixture(lockedLogSessionSync);
+  fs.writeFileSync(path.join(lockedLogSessionSync, "locked-logcat.log"), "I FieldworkRepository: listSessions returned 3 sessions\n");
+  expectStatus(
+    lockedLogSessionSync,
+    1,
+    "locked launch log with session sync should fail",
+    "locked-logcat.log must not show session sync, terminal attach, push-token registration, or input before unlock",
+  );
+
   const badBackground = path.join(temp, "bad-background");
   writeFixture(badBackground);
   fs.writeFileSync(path.join(badBackground, "background-replay.txt"), "after_background_ok only\n");

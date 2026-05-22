@@ -289,6 +289,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "freshly cleared locked-launch logcat that does not show session sync, terminal attach, push-token registration, or input before unlock",
+    "release audit must record locked-launch logcat privacy evidence",
+  );
+  requireText(
+    audit,
     "`pairing.txt` desktop transcript proof that `fw pair` printed the QR payload, waited for device scan, showed the explicit approval prompt, completed only after approval, and recorded `pair_flow_ms=<elapsed-ms>` at or below 15000",
     "release audit must record live-test desktop pairing transcript evidence",
   );
