@@ -111,10 +111,14 @@ rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "debug"|DEBUG = Bool
 ```
 
 Run `fw pair` inside a desktop transcript. Approve pairing only after the phone
-scans the QR payload and the CLI asks for explicit confirmation:
+scans the QR payload and the CLI asks for explicit confirmation. Record
+`pair_flow_ms` in the same transcript; it must be at or below 15000:
 
 ```sh
+pair_start_ms="$(node -e 'console.log(Date.now())')"
 script -q "$FW_LIVE_DIR/pairing.txt" fw pair
+pair_end_ms="$(node -e 'console.log(Date.now())')"
+printf 'pair_flow_ms=%s\n' "$((pair_end_ms - pair_start_ms))" | tee -a "$FW_LIVE_DIR/pairing.txt"
 ```
 
 Capture the locked launch surface:
@@ -223,8 +227,9 @@ that the direct `adb` evidence set is complete, screenshots are nontrivial PNGs,
 the locked UI did not expose session or terminal content, the paired run listed
 the expected desktop-created sessions, `pairing.txt` proves the desktop-side
 QR payload, device-scan wait, explicit approval prompt, and approved completion,
-the desktop replay transcript contains `android_live_ok` from the
-Android-originated shell input, the TUI attach
+records `pair_flow_ms=<elapsed-ms>` at or below 15000, the desktop replay
+transcript contains `android_live_ok` from the Android-originated shell input,
+the TUI attach
 evidence shows real `vim`/`htop` terminal content in the Android terminal
 surface, the background/foreground, network reconnect, daemon restart restore,
 and multi-session switching transcripts contain the expected replay/no-leakage

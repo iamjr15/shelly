@@ -284,7 +284,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "`pairing.txt` desktop transcript proof that `fw pair` printed the QR payload, waited for device scan, showed the explicit approval prompt, and completed only after approval",
+    "`pairing.txt` desktop transcript proof that `fw pair` printed the QR payload, waited for device scan, showed the explicit approval prompt, completed only after approval, and recorded `pair_flow_ms=<elapsed-ms>` at or below 15000",
     "release audit must record live-test desktop pairing transcript evidence",
   );
   requireText(
@@ -950,8 +950,10 @@ function verifyLiveTestingRunbook() {
     'DEBUG = Boolean\\.parseBoolean\\("true"\\)',
     "FIELDWORK_BIOMETRIC_BYPASS = false",
     'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "pair_start_ms=\"$(node -e 'console.log(Date.now())')\"",
+    "pair_flow_ms=%s",
     "script -q \"$FW_LIVE_DIR/pairing.txt\" fw pair",
-    "pairing.txt` proves the desktop-side\nQR payload, device-scan wait, explicit approval prompt, and approved completion",
+    "pairing.txt` proves the desktop-side\nQR payload, device-scan wait, explicit approval prompt, and approved completion,\nrecords `pair_flow_ms=<elapsed-ms>` at or below 15000",
     "script -q \"$FW_LIVE_DIR/terminal-replay.txt\" fw attach shell",
     "dashboard.png",
     "dashboard-ui.xml",

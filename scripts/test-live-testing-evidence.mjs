@@ -72,6 +72,43 @@ try {
     "pairing.txt must show the desktop approval completed pairing",
   );
 
+  const missingPairTiming = path.join(temp, "missing-pair-timing");
+  writeFixture(missingPairTiming);
+  fs.writeFileSync(
+    path.join(missingPairTiming, "pairing.txt"),
+    [
+      '{"pair_token":"ABCDE","expires_at_ms":1700000000000}',
+      "Waiting for a device to scan. Pair token expires in 10 minutes.",
+      'Pair request from device "Pixel" (nodeid) — approve? [y/N]',
+      "Approved. Device is paired.",
+    ].join("\n"),
+  );
+  expectStatus(
+    missingPairTiming,
+    1,
+    "missing pair-flow timing should fail",
+    "pairing.txt must record pair_flow_ms=<elapsed-ms>",
+  );
+
+  const slowPairing = path.join(temp, "slow-pairing");
+  writeFixture(slowPairing);
+  fs.writeFileSync(
+    path.join(slowPairing, "pairing.txt"),
+    [
+      '{"pair_token":"ABCDE","expires_at_ms":1700000000000}',
+      "Waiting for a device to scan. Pair token expires in 10 minutes.",
+      'Pair request from device "Pixel" (nodeid) — approve? [y/N]',
+      "Approved. Device is paired.",
+      "pair_flow_ms=15001",
+    ].join("\n"),
+  );
+  expectStatus(
+    slowPairing,
+    1,
+    "slow pair-flow timing should fail",
+    "pairing.txt records pair_flow_ms=15001",
+  );
+
   const badReplay = path.join(temp, "bad-replay");
   writeFixture(badReplay);
   fs.writeFileSync(path.join(badReplay, "terminal-replay.txt"), "shell prompt only\n");
@@ -228,6 +265,7 @@ function writeFixture(dir) {
       "Waiting for a device to scan. Pair token expires in 10 minutes.",
       'Pair request from device "Pixel 8 Pro" (nodeid) — approve? [y/N]',
       "Approved. Device is paired.",
+      "pair_flow_ms=1200",
     ].join("\n"),
   );
   fs.writeFileSync(

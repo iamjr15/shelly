@@ -180,6 +180,12 @@ function verifyPairingTranscript(text) {
     /Approved\. Device is paired\./,
     "pairing.txt must show the desktop approval completed pairing",
   );
+  const timing = text.match(/\bpair_flow_ms=(\d+)\b/);
+  if (!timing) {
+    failures.push("pairing.txt must record pair_flow_ms=<elapsed-ms>");
+  } else if (Number(timing[1]) > 15_000) {
+    failures.push(`pairing.txt records pair_flow_ms=${timing[1]}, expected <=15000`);
+  }
   rejectPatternText(
     text,
     /Denied\. Pair token has been consumed\./,
