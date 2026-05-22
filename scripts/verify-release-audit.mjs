@@ -1906,7 +1906,7 @@ function verifyLatestRefresh() {
   requireText(audit, "removing the regenerated repo-local `target/debug` after the run", "release audit must record local handoff target/debug cleanup");
   requireText(audit, "`IosApp` and `AndroidApp`", "release audit must record both mobile client kinds in capability verification");
   requirePattern(audit, /paired in\s+2 seconds/, "release audit must record the latest local handoff pair duration");
-  requireText(audit, "13ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
+  requireText(audit, "9ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
   requireText(audit, "`cargo nextest run --workspace`: 170 tests passed.", "release audit must record the current workspace nextest count");
   requireText(audit, "`cargo test --workspace --doc`: workspace doctest harnesses passed", "release audit must record the current workspace doctest result");
   requireText(audit, "`cargo nextest run -p fieldwork-daemon`: 73 daemon tests passed", "release audit must record the current daemon test count");
