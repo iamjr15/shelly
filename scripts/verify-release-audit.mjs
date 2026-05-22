@@ -239,6 +239,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "macOS daemon survival evidence verifier fixture test",
+    "release audit must record local release aggregate coverage for macOS daemon survival evidence verifier self-test",
+  );
+  requireText(
+    audit,
     "macOS signing verifier fixture test",
     "release audit must record local release aggregate coverage for macOS signing verifier self-test",
   );
@@ -409,8 +414,8 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_DOGFOOD.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
-    "release audit docs-sync row must include Android renderer, dogfood, live-testing, and operations docs",
+    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_DOGFOOD.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
+    "release audit docs-sync row must include Android renderer, dogfood, macOS daemon survival, live-testing, and operations docs",
   );
   requireText(
     audit,
@@ -476,6 +481,21 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "macOS Gatekeeper rejection",
     "release audit must record macOS Gatekeeper service preflight coverage",
+  );
+  requireText(
+    audit,
+    "`docs/MACOS_DAEMON_SURVIVAL.md`",
+    "release audit must record the macOS daemon survival runbook",
+  );
+  requireText(
+    audit,
+    "`scripts/verify-macos-daemon-survival-evidence.mjs` fixture coverage",
+    "release audit must record macOS daemon survival evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "signed/notarized launchd sleep/wake plus `pkill -KILL fieldworkd` restart evidence",
+    "release audit must record macOS launchd survival evidence contract",
   );
   requireText(
     audit,
@@ -602,7 +622,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "current v1 install, protocol, privacy, architecture, Android renderer, Android dogfood, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
+    "current v1 install, protocol, privacy, architecture, Android renderer, Android dogfood, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
     "release audit must record concrete docs-sync coverage",
   );
   requireText(
@@ -1801,7 +1821,7 @@ function verifyLatestRefresh() {
   for (const evidence of [
     "Hosted Sentry receipt remains unchecked until a real Sentry project/DSN and signed daemon/mobile builds are available",
     "live Honeycomb receipt gate remains unchecked until a Honeycomb account/API key and hosted relay test traces are available",
-    "real macOS sleep/wake survival remains unchecked until it can be run against the signed/notarized daemon artifact",
+    "Real macOS sleep/wake survival remains unchecked until it can be run against the signed/notarized daemon artifact",
     "real APNs/FCM provider delivery is exercised 10/10 on physical devices",
     "relay validators and provider-client tests assert fixed alert copy, lowercase hash-only data fields",
     "actual APNs/FCM payload is inspected in transit with a test device",
@@ -2123,6 +2143,12 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-dogfood-evidence"] !== "node scripts/test-android-dogfood-evidence.mjs") {
     failures.push("package.json must expose test:android-dogfood-evidence");
   }
+  if (packageJson.scripts?.["check:macos-daemon-survival-evidence"] !== "node scripts/verify-macos-daemon-survival-evidence.mjs") {
+    failures.push("package.json must expose check:macos-daemon-survival-evidence");
+  }
+  if (packageJson.scripts?.["test:macos-daemon-survival-evidence"] !== "node scripts/test-macos-daemon-survival-evidence.mjs") {
+    failures.push("package.json must expose test:macos-daemon-survival-evidence");
+  }
   if (packageJson.scripts?.["check:daemon-service"] !== "node scripts/verify-daemon-service.mjs") {
     failures.push("package.json must expose check:daemon-service");
   }
@@ -2242,6 +2268,7 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/test-release-audit-list.mjs", "local release gate must include release audit list-mode test");
   requireText(localRelease, "scripts/test-live-testing-evidence.mjs", "local release gate must include live-test evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-dogfood-evidence.mjs", "local release gate must include Android dogfood evidence verifier self-test");
+  requireText(localRelease, "scripts/test-macos-daemon-survival-evidence.mjs", "local release gate must include macOS daemon survival evidence verifier self-test");
   requireText(localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");
   requireText(localRelease, "Dir[\".github/workflows/*.yml\"].sort.each", "local release gate must parse all workflow YAML files");
   requireText(localRelease, "\"Node script syntax\"", "local release gate must include Node script syntax checks");

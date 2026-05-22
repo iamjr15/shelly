@@ -14,6 +14,7 @@ const docs = {
   install: read("docs/INSTALL.md"),
   androidRenderer: read("docs/ANDROID_RENDERER.md"),
   androidDogfood: read("docs/ANDROID_DOGFOOD.md"),
+  macosDaemonSurvival: read("docs/MACOS_DAEMON_SURVIVAL.md"),
   liveTesting: read("docs/LIVE_TESTING.md"),
   operations: read("docs/OPERATIONS.md"),
 };
@@ -26,6 +27,7 @@ verifyArchitectureDoc();
 verifyInstallDoc();
 verifyAndroidRendererDoc();
 verifyAndroidDogfoodDoc();
+verifyMacosDaemonSurvivalDoc();
 verifyLiveTestingDoc();
 verifyOperationsDoc();
 verifyPlanDoc();
@@ -48,6 +50,7 @@ function verifyRequiredDocsExist() {
     "docs/INSTALL.md",
     "docs/ANDROID_RENDERER.md",
     "docs/ANDROID_DOGFOOD.md",
+    "docs/MACOS_DAEMON_SURVIVAL.md",
     "docs/LIVE_TESTING.md",
     "docs/OPERATIONS.md",
     "docs/RELEASE_AUDIT.md",
@@ -123,6 +126,37 @@ function verifyAndroidDogfoodDoc() {
       docs.androidDogfood,
       needle,
       `docs/ANDROID_DOGFOOD.md must document Android dogfood evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyMacosDaemonSurvivalDoc() {
+  for (const needle of [
+    "Section 13 macOS daemon survival gates",
+    "Developer ID signed, hardened-runtime enabled, and\n  Gatekeeper-notarized",
+    "user-level launchd service",
+    "30-second macOS sleep/wake cycle",
+    "pkill -KILL fieldworkd",
+    "Do not use this runbook with an unsigned source-build daemon",
+    "node scripts/verify-macos-signing.mjs /path/to/fieldworkd",
+    "macOS signing ok:",
+    "fieldwork daemon install",
+    "daemon-status-before.txt",
+    "fieldwork new --name macos_sleep -- bash -lc",
+    "MACOS_SLEEP_SCROLLBACK_BEFORE",
+    "sleep_duration_ms",
+    "after_sleep_wake_ok",
+    "fieldwork new --name macos_kill -- bash -lc",
+    "MACOS_KILL_SCROLLBACK_BEFORE",
+    "restart_ms",
+    "after_kill_restart_ok",
+    "daemon-log.txt",
+    "pnpm check:macos-daemon-survival-evidence -- \"$FW_MACOS_DIR\"",
+  ]) {
+    requireText(
+      docs.macosDaemonSurvival,
+      needle,
+      `docs/MACOS_DAEMON_SURVIVAL.md must document macOS daemon survival evidence: ${needle}`,
     );
   }
 }
