@@ -4,7 +4,7 @@ import path from "node:path";
 
 const root = path.resolve(new URL("..", import.meta.url).pathname);
 const failures = [];
-const args = process.argv.slice(2);
+const args = process.argv.slice(2).filter((arg) => arg !== "--");
 const listUnchecked = args.includes("--list-unchecked");
 const classifiedUncheckedGates = [];
 

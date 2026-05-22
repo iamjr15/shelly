@@ -10,6 +10,11 @@ const result = spawnSync(process.execPath, ["scripts/verify-release-audit.mjs", 
   encoding: "utf8",
 });
 
+const pnpmSeparatorResult = spawnSync(process.execPath, ["scripts/verify-release-audit.mjs", "--", "--list-unchecked"], {
+  cwd: root,
+  encoding: "utf8",
+});
+
 if (result.status !== 0) {
   failures.push(`release-audit list mode exited ${result.status}`);
 }
@@ -18,6 +23,15 @@ if (result.stderr.trim() !== "") {
 }
 if (result.stdout.includes("release audit ok")) {
   failures.push("release-audit list mode must print the gate list, not the default ok line");
+}
+if (pnpmSeparatorResult.status !== 0) {
+  failures.push(`release-audit list mode with -- separator exited ${pnpmSeparatorResult.status}`);
+}
+if (pnpmSeparatorResult.stderr.trim() !== "") {
+  failures.push(`release-audit list mode with -- separator wrote stderr: ${pnpmSeparatorResult.stderr.trim()}`);
+}
+if (pnpmSeparatorResult.stdout !== result.stdout) {
+  failures.push("release-audit list mode with -- separator must match direct list output");
 }
 
 for (const expected of [
