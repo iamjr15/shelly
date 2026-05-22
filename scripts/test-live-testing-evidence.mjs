@@ -49,6 +49,11 @@ try {
   fs.rmSync(path.join(missingReplay, "terminal-replay.txt"));
   expectStatus(missingReplay, 1, "missing desktop replay transcript should fail", "missing evidence file: terminal-replay.txt");
 
+  const missingAdbDevices = path.join(temp, "missing-adb-devices");
+  writeFixture(missingAdbDevices);
+  fs.rmSync(path.join(missingAdbDevices, "adb-devices.txt"));
+  expectStatus(missingAdbDevices, 1, "missing adb device capture should fail", "missing evidence file: adb-devices.txt");
+
   const missingPairing = path.join(temp, "missing-pairing");
   writeFixture(missingPairing);
   fs.rmSync(path.join(missingPairing, "pairing.txt"));
@@ -208,8 +213,23 @@ try {
 
   const offlineDevice = path.join(temp, "offline-device");
   writeFixture(offlineDevice);
-  fs.writeFileSync(path.join(offlineDevice, "devices.txt"), "emulator-5554 offline\n");
-  expectStatus(offlineDevice, 1, "offline adb device fixture should fail", "devices.txt must not show the tested device as unauthorized or offline");
+  fs.writeFileSync(path.join(offlineDevice, "adb-devices.txt"), "List of devices attached\nemulator-5554 offline transport_id:1\n");
+  expectStatus(offlineDevice, 1, "offline adb device fixture should fail", "adb-devices.txt must show at least one authorized adb device");
+
+  const unauthorizedDevice = path.join(temp, "unauthorized-device");
+  writeFixture(unauthorizedDevice);
+  fs.writeFileSync(path.join(unauthorizedDevice, "adb-devices.txt"), "List of devices attached\nR58M123 unauthorized transport_id:1\n");
+  expectStatus(unauthorizedDevice, 1, "unauthorized adb device fixture should fail", "adb-devices.txt must show at least one authorized adb device");
+
+  const noPairedFieldworkDevice = path.join(temp, "no-paired-fieldwork-device");
+  writeFixture(noPairedFieldworkDevice);
+  fs.writeFileSync(path.join(noPairedFieldworkDevice, "devices.txt"), "no paired devices\n");
+  expectStatus(
+    noPairedFieldworkDevice,
+    1,
+    "empty Fieldwork device list should fail",
+    "devices.txt must show at least one paired Fieldwork device",
+  );
 
   const unlockedLeak = path.join(temp, "locked-leak");
   writeFixture(unlockedLeak);
@@ -258,6 +278,10 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "multisession-ui.xml"), '<hierarchy><node text="fwm_a"/><node text="fwm_b"/><node text="fwm_c"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "locked-logcat.log"), "I Fieldwork: locked launch\n");
   fs.writeFileSync(path.join(dir, "locked-crash.log"), "");
+  fs.writeFileSync(
+    path.join(dir, "adb-devices.txt"),
+    "List of devices attached\nR58M1234567 device product:panther model:Pixel_8_Pro device:panther transport_id:1\n",
+  );
   fs.writeFileSync(
     path.join(dir, "pairing.txt"),
     [

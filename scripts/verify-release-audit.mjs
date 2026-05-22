@@ -274,6 +274,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`adb-devices.txt` proof that at least one authorized Android device was connected for QA with no unauthorized/offline state",
+    "release audit must record adb device-state evidence",
+  );
+  requireText(
+    audit,
     "`buildconfig.txt` proof that `APPLICATION_ID = \"app.fieldwork.android\"`, `BUILD_TYPE = \"debug\"`, `DEBUG = Boolean.parseBoolean(\"true\")`, `FIELDWORK_BIOMETRIC_BYPASS = false`, and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
     "release audit must record live-test normal-build evidence",
   );
@@ -950,6 +955,8 @@ function verifyLiveTestingRunbook() {
     'DEBUG = Boolean\\.parseBoolean\\("true"\\)',
     "FIELDWORK_BIOMETRIC_BYPASS = false",
     'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_LIVE_DIR/adb-devices.txt\"",
+    "adb-devices.txt` shows at least one authorized connected device and no\nunauthorized/offline device state",
     "pair_start_ms=\"$(node -e 'console.log(Date.now())')\"",
     "pair_flow_ms=%s",
     "script -q \"$FW_LIVE_DIR/pairing.txt\" fw pair",

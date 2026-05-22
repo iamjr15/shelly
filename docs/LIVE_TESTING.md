@@ -105,6 +105,7 @@ transcript is captured:
 ```sh
 export FW_LIVE_DIR="/tmp/fieldwork-live-$(date +%Y%m%d%H%M%S)"
 mkdir -p "$FW_LIVE_DIR"
+adb devices -l | tee "$FW_LIVE_DIR/adb-devices.txt"
 rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "debug"|DEBUG = Boolean\.parseBoolean\("true"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
   apps/android/app/build/generated/source/buildConfig/debug/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_LIVE_DIR/buildconfig.txt"
@@ -224,6 +225,8 @@ pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"
 
 This verifier does not replace human review of the phone behavior. It checks
 that the direct `adb` evidence set is complete, screenshots are nontrivial PNGs,
+`adb-devices.txt` shows at least one authorized connected device and no
+unauthorized/offline device state,
 the locked UI did not expose session or terminal content, the paired run listed
 the expected desktop-created sessions, `pairing.txt` proves the desktop-side
 QR payload, device-scan wait, explicit approval prompt, and approved completion,

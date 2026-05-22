@@ -28,6 +28,7 @@ const requiredFiles = [
   "locked-ui.xml",
   "locked-logcat.log",
   "locked-crash.log",
+  "adb-devices.txt",
   "pairing.txt",
   "dashboard.png",
   "dashboard-ui.xml",
@@ -84,6 +85,7 @@ if (failures.length === 0) {
   verifyPng("multisession.png");
   verifyLaunch(readText("launch.txt"));
   verifyLockedSurface(readText("locked-ui.xml"));
+  verifyAdbDevices(readText("adb-devices.txt"));
   verifyPairingTranscript(readText("pairing.txt"));
   verifyDashboardEvidence(
     readText("dashboard-ui.xml"),
@@ -106,7 +108,7 @@ if (failures.length === 0) {
     readText("multisession-b-replay.txt"),
     readText("multisession-c-replay.txt"),
   );
-  verifyDevices(readText("devices.txt"));
+  verifyFieldworkDevices(readText("devices.txt"));
   verifyLogs([
     ["locked-logcat.log", readText("locked-logcat.log")],
     ["locked-crash.log", readText("locked-crash.log")],
@@ -364,9 +366,23 @@ function verifyMultisessionReplay(file, text, sessionName, requiredMarker, forbi
   }
 }
 
-function verifyDevices(text) {
+function verifyAdbDevices(text) {
+  requirePatternText(text, /^List of devices attached\b/im, "adb-devices.txt must include adb devices output");
+  requirePatternText(
+    text,
+    /^[^\s#][^\n]*\s+device(?:\s|$)/im,
+    "adb-devices.txt must show at least one authorized adb device",
+  );
+  rejectPatternText(
+    text,
+    /\b(?:unauthorized|offline|no permissions)\b/i,
+    "adb-devices.txt must not show the tested device as unauthorized, offline, or inaccessible",
+  );
+}
+
+function verifyFieldworkDevices(text) {
   requirePatternText(text, /\S/, "devices.txt must not be empty");
-  rejectPatternText(text, /\b(?:unauthorized|offline)\b/i, "devices.txt must not show the tested device as unauthorized or offline");
+  rejectPatternText(text, /\bno paired devices\b/i, "devices.txt must show at least one paired Fieldwork device");
 }
 
 function verifyLogs(entries) {

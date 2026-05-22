@@ -209,6 +209,8 @@ function verifyLiveTestingDoc() {
     'DEBUG = Boolean\\.parseBoolean\\("true"\\)',
     "FIELDWORK_BIOMETRIC_BYPASS = false",
     'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_LIVE_DIR/adb-devices.txt\"",
+    "adb-devices.txt` shows at least one authorized connected device and no\nunauthorized/offline device state",
     "pair_start_ms=\"$(node -e 'console.log(Date.now())')\"",
     "pair_flow_ms=%s",
     "script -q \"$FW_LIVE_DIR/pairing.txt\" fw pair",
