@@ -159,6 +159,46 @@ try {
   fs.writeFileSync(path.join(badReplay, "terminal-replay.txt"), "shell prompt only\n");
   expectStatus(badReplay, 1, "desktop replay without Android marker should fail", "terminal-replay.txt must prove Android-originated input/output");
 
+  const missingSubscription = path.join(temp, "missing-subscription");
+  writeFixture(missingSubscription);
+  fs.rmSync(path.join(missingSubscription, "subscription-visible.txt"));
+  expectStatus(
+    missingSubscription,
+    1,
+    "missing subscription visibility transcript should fail",
+    "missing evidence file: subscription-visible.txt",
+  );
+
+  const slowSubscription = path.join(temp, "slow-subscription");
+  writeFixture(slowSubscription);
+  fs.writeFileSync(path.join(slowSubscription, "subscription-visible.txt"), "created_by_desktop_cli\nvisible_ms=2001\n");
+  expectStatus(
+    slowSubscription,
+    1,
+    "slow subscription visibility should fail",
+    "subscription-visible.txt records visible_ms=2001",
+  );
+
+  const badSubscriptionUi = path.join(temp, "bad-subscription-ui");
+  writeFixture(badSubscriptionUi);
+  fs.writeFileSync(path.join(badSubscriptionUi, "subscription-ui.xml"), '<hierarchy><node text="refactoringjob"/></hierarchy>\n');
+  expectStatus(
+    badSubscriptionUi,
+    1,
+    "subscription UI without post-pair session should fail",
+    "subscription-ui.xml must show the post-pair desktop-created fw_live_sub session",
+  );
+
+  const badSubscriptionReplay = path.join(temp, "bad-subscription-replay");
+  writeFixture(badSubscriptionReplay);
+  fs.writeFileSync(path.join(badSubscriptionReplay, "subscription-replay.txt"), "fw_live_sub shell\n");
+  expectStatus(
+    badSubscriptionReplay,
+    1,
+    "subscription replay without Android-originated input should fail",
+    "subscription-replay.txt must include Android-originated input after attaching the subscribed session",
+  );
+
   const missingClaude = path.join(temp, "missing-claude");
   writeFixture(missingClaude);
   fs.rmSync(path.join(missingClaude, "claude-replay.txt"));
@@ -491,6 +531,7 @@ function writeFixture(dir) {
   writePng(path.join(dir, "locked.png"));
   writePng(path.join(dir, "biometric.png"));
   writePng(path.join(dir, "dashboard.png"));
+  writePng(path.join(dir, "subscription.png"));
   writePng(path.join(dir, "session.png"));
   writePng(path.join(dir, "claude.png"));
   writePng(path.join(dir, "flood.png"));
@@ -511,6 +552,10 @@ function writeFixture(dir) {
   fs.writeFileSync(
     path.join(dir, "dashboard-ui.xml"),
     `<hierarchy><node text="${autoSessionName}"/><node text="refactoringjob"/><node text="shell"/></hierarchy>\n`,
+  );
+  fs.writeFileSync(
+    path.join(dir, "subscription-ui.xml"),
+    `<hierarchy><node text="${autoSessionName}"/><node text="refactoringjob"/><node text="fw_live_sub"/></hierarchy>\n`,
   );
   fs.writeFileSync(path.join(dir, "session-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="android_live_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "claude-ui.xml"), '<hierarchy><node text="refactoringjob"/><node text="claude"/><node text="Attached"/><node text="claude_live_ok"/></hierarchy>\n');
@@ -546,6 +591,8 @@ function writeFixture(dir) {
     ["I FieldworkRepository: pair completed", "I FieldworkRepository: listSessions returned 4 sessions"].join("\n"),
   );
   fs.writeFileSync(path.join(dir, "dashboard-crash.log"), "");
+  fs.writeFileSync(path.join(dir, "subscription-logcat.log"), "I FieldworkRepository: listSessions returned 5 sessions\n");
+  fs.writeFileSync(path.join(dir, "subscription-crash.log"), "");
   fs.writeFileSync(
     path.join(dir, "session-logcat.log"),
     [
@@ -576,6 +623,8 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "multisession-logcat.log"), "I Fieldwork: multisession switched\n");
   fs.writeFileSync(path.join(dir, "multisession-crash.log"), "");
   fs.writeFileSync(path.join(dir, "devices.txt"), "Pixel 8 Pro paired\n");
+  fs.writeFileSync(path.join(dir, "subscription-visible.txt"), "created_by_desktop_cli\nvisible_ms=1200\n");
+  fs.writeFileSync(path.join(dir, "subscription-replay.txt"), "fw_live_sub shell\nsubscription_attach_ok\n");
   fs.writeFileSync(path.join(dir, "terminal-replay.txt"), "shell bash\n$ echo android_live_ok\nandroid_live_ok\n");
   fs.writeFileSync(path.join(dir, "claude-replay.txt"), "refactoringjob claude\n> claude_live_ok\nclaude_live_ok\n");
   fs.writeFileSync(path.join(dir, "flood-replay.txt"), writeFloodReplay());

@@ -38,6 +38,12 @@ const requiredFiles = [
   "dashboard-ui.xml",
   "dashboard-logcat.log",
   "dashboard-crash.log",
+  "subscription.png",
+  "subscription-ui.xml",
+  "subscription-logcat.log",
+  "subscription-crash.log",
+  "subscription-visible.txt",
+  "subscription-replay.txt",
   "session.png",
   "session-ui.xml",
   "session-logcat.log",
@@ -107,6 +113,7 @@ if (failures.length === 0) {
   verifyPng("locked.png");
   verifyPng("biometric.png");
   verifyPng("dashboard.png");
+  verifyPng("subscription.png");
   verifyPng("session.png");
   verifyPng("claude.png");
   verifyPng("flood.png");
@@ -128,6 +135,12 @@ if (failures.length === 0) {
     readText("dashboard-ui.xml"),
     readText("dashboard-logcat.log"),
     readText("sessions.txt"),
+  );
+  verifySubscriptionEvidence(
+    readText("subscription-ui.xml"),
+    readText("subscription-logcat.log"),
+    readText("subscription-visible.txt"),
+    readText("subscription-replay.txt"),
   );
   verifySessionEvidence(
     readText("session-ui.xml"),
@@ -158,6 +171,7 @@ if (failures.length === 0) {
     ["locked-ui.xml", readText("locked-ui.xml")],
     ["biometric-ui.xml", readText("biometric-ui.xml")],
     ["dashboard-ui.xml", readText("dashboard-ui.xml")],
+    ["subscription-ui.xml", readText("subscription-ui.xml")],
     ["session-ui.xml", readText("session-ui.xml")],
     ["claude-ui.xml", readText("claude-ui.xml")],
     ["flood-ui.xml", readText("flood-ui.xml")],
@@ -178,6 +192,8 @@ if (failures.length === 0) {
     ["biometric-crash.log", readText("biometric-crash.log")],
     ["dashboard-logcat.log", readText("dashboard-logcat.log")],
     ["dashboard-crash.log", readText("dashboard-crash.log")],
+    ["subscription-logcat.log", readText("subscription-logcat.log")],
+    ["subscription-crash.log", readText("subscription-crash.log")],
     ["session-logcat.log", readText("session-logcat.log")],
     ["session-crash.log", readText("session-crash.log")],
     ["claude-logcat.log", readText("claude-logcat.log")],
@@ -370,6 +386,37 @@ function verifyDashboardEvidence(dashboardUi, dashboardLogcat, sessionsText) {
     sessionsText,
     /^.*\brefactoringjob\b.*\bclaude\b.*$/im,
     "sessions.txt must include the named shortcut refactoringjob claude session",
+  );
+}
+
+function verifySubscriptionEvidence(ui, logcat, visibleText, replay) {
+  rejectPatternText(ui, /\bNo sessions\b/i, "subscription-ui.xml must not be the empty dashboard after desktop session creation");
+  requirePatternText(
+    ui,
+    /\bfw_live_sub\b/,
+    "subscription-ui.xml must show the post-pair desktop-created fw_live_sub session",
+  );
+  requirePatternText(
+    logcat,
+    /FieldworkRepository:\s+listSessions returned \d+ sessions/i,
+    "subscription-logcat.log must show session-list subscription activity after desktop creation",
+  );
+  requirePatternText(
+    visibleText,
+    /\bcreated_by_desktop_cli\b/,
+    "subscription-visible.txt must record that fw_live_sub was created from the desktop CLI",
+  );
+  const timing = visibleText.match(/\bvisible_ms=(\d+)\b/);
+  if (!timing) {
+    failures.push("subscription-visible.txt must record visible_ms=<elapsed-ms>");
+  } else if (Number(timing[1]) > 2_000) {
+    failures.push(`subscription-visible.txt records visible_ms=${timing[1]}, expected <=2000`);
+  }
+  requirePatternText(replay, /\bfw_live_sub\b/, "subscription-replay.txt must identify the subscribed desktop-created session");
+  requirePatternText(
+    replay,
+    /\bsubscription_attach_ok\b/,
+    "subscription-replay.txt must include Android-originated input after attaching the subscribed session",
   );
 }
 

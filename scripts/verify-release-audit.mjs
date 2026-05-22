@@ -324,6 +324,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "post-pair subscription screenshot/UI/log/crash evidence proving `fw new --name fw_live_sub bash` appears on Android with `visible_ms=<elapsed-ms>` at or below 2000",
+    "release audit must record live-test post-pair session subscription evidence",
+  );
+  requireText(
+    audit,
+    "`subscription-replay.txt` containing `subscription_attach_ok`",
+    "release audit must record live-test subscribed session input evidence",
+  );
+  requireText(
+    audit,
     "dedicated Claude screenshot/UI/log/crash evidence plus `claude-replay.txt` containing `claude_live_ok`",
     "release audit must record live-test Claude attach/replay evidence",
   );
@@ -1034,6 +1044,11 @@ function verifyLiveTestingRunbook() {
     "dashboard-ui.xml",
     "dashboard-logcat.log",
     "dashboard-crash.log",
+    "fw new --name fw_live_sub bash",
+    "subscription-visible.txt",
+    "visible_ms=<elapsed-ms>",
+    "subscription_attach_ok",
+    "subscription-replay.txt",
     "resize-replay.txt",
     "after_resize_ok",
     "resize_size=<rows>x<cols>",
@@ -1046,6 +1061,7 @@ function verifyLiveTestingRunbook() {
     "multisession-a-replay.txt",
     "generated one-word name such as `waffle` or `kazoo`",
     "`refactoringjob` appear as active sessions in the Android dashboard",
+    "Create `fw_live_sub` from the desktop after pairing",
     "auto-named default `claude` session",
     "Mobile never creates or kills sessions and never chooses commands",
     "Do not check provider-push, signing, publish, store-console, iOS, domain, or\noperator-reservation boxes",

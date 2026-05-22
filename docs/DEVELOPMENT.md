@@ -355,6 +355,11 @@ capture (`dashboard.png`, `dashboard-ui.xml`, `dashboard-logcat.log`, and
 the generated one-word bare-`fw` session, `refactoringjob`, and the
 desktop-created shell/bash session, and `sessions.txt` must bind both the
 generated session and `refactoringjob` to `claude` rows. The verifier also
+requires a post-pair subscription evidence set: desktop-created `fw_live_sub`
+must appear in `subscription-ui.xml`, `subscription-visible.txt` must record
+`created_by_desktop_cli` plus `visible_ms=<elapsed-ms>` at or below 2000, and
+`subscription-replay.txt` must contain Android-originated `subscription_attach_ok`
+after attaching that subscribed session. The verifier also
 requires a dedicated TUI attach capture (`tui.png`, `tui-ui.xml`,
 `tui-logcat.log`, and `tui-crash.log`) in addition to the locked and normal
 session captures, and it fails unless the UI dump shows `Attached` plus visible

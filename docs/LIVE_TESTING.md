@@ -159,6 +159,33 @@ adb logcat -d > "$FW_LIVE_DIR/dashboard-logcat.log"
 adb logcat -d -b crash > "$FW_LIVE_DIR/dashboard-crash.log"
 ```
 
+Create one additional session from the desktop after the phone is already paired
+and watching the dashboard. Record how long it takes to appear in the Android
+session list. This pins the live subscription path; the phone still must not
+create the session or choose the command:
+
+```sh
+sub_start_ms="$(node -e 'console.log(Date.now())')"
+fw new --name fw_live_sub bash
+# When fw_live_sub is visible on Android:
+sub_visible_ms="$(node -e 'console.log(Date.now())')"
+printf 'created_by_desktop_cli\nvisible_ms=%s\n' "$((sub_visible_ms - sub_start_ms))" \
+  | tee "$FW_LIVE_DIR/subscription-visible.txt"
+adb exec-out screencap -p > "$FW_LIVE_DIR/subscription.png"
+adb shell uiautomator dump /sdcard/window.xml
+adb pull /sdcard/window.xml "$FW_LIVE_DIR/subscription-ui.xml"
+adb logcat -d > "$FW_LIVE_DIR/subscription-logcat.log"
+adb logcat -d -b crash > "$FW_LIVE_DIR/subscription-crash.log"
+```
+
+Open `fw_live_sub` from Android, type `echo subscription_attach_ok`, then
+capture the desktop replay transcript:
+
+```sh
+script -q "$FW_LIVE_DIR/subscription-replay.txt" fw attach fw_live_sub
+# Confirm subscription_attach_ok is visible, then detach.
+```
+
 After pairing and attaching each session, capture:
 
 ```sh
@@ -314,8 +341,13 @@ background and `stale-biometric.txt` proves stale terminal input was blocked
 before unlock,
 the paired run listed the expected desktop-created sessions, `pairing.txt` proves the desktop-side
 QR payload, device-scan wait, explicit approval prompt, and approved completion,
-records `pair_flow_ms=<elapsed-ms>` at or below 15000, the desktop replay
-transcript contains `android_live_ok` from the Android-originated shell input,
+records `pair_flow_ms=<elapsed-ms>` at or below 15000,
+`subscription-ui.xml` shows the post-pair desktop-created `fw_live_sub` session,
+`subscription-visible.txt` records `created_by_desktop_cli` plus
+`visible_ms=<elapsed-ms>` at or below 2000, `subscription-replay.txt` contains
+`subscription_attach_ok` from Android-originated input in the subscribed session,
+the desktop replay transcript contains `android_live_ok` from the
+Android-originated shell input,
 `flood-ui.xml` shows the `ANDROID_LIVE_FLOOD` marker in the Android terminal
 view and `flood-replay.txt` proves the Android-originated
 `yes ANDROID_LIVE_FLOOD | head -10000` stream completed with
@@ -343,24 +375,27 @@ fatal, ANR, or crash entries.
 4. Android dashboard lists the auto-named default `claude` session, the
    `refactoringjob` named shortcut session, and desktop-created `bash`,
    `claude`, and TUI sessions.
-5. Attach to `bash`, type `echo android_live_ok`, and verify the output appears.
-6. Run `yes ANDROID_LIVE_FLOOD | head -10000` from Android in the same shell and
+5. Create `fw_live_sub` from the desktop after pairing, verify it appears on the
+   phone within 2 seconds, attach from Android, and verify
+   `subscription_attach_ok` appears in a desktop replay.
+6. Attach to `bash`, type `echo android_live_ok`, and verify the output appears.
+7. Run `yes ANDROID_LIVE_FLOOD | head -10000` from Android in the same shell and
    verify the Android terminal view plus desktop replay keep all 10000 marker
    lines.
-7. Attach to `claude`, send `claude_live_ok`, and verify the desktop can reattach
+8. Attach to `claude`, send `claude_live_ok`, and verify the desktop can reattach
    to the same Claude/default session and see that output without affecting
    other sessions.
-8. Attach to `vim` or `htop` and verify the TUI renders usable terminal state.
-9. Resize the terminal and verify the PTY reports a plausible row/column size.
-10. Detach and reattach; verify the terminal resumes from the latest seen offset.
-11. Background the app while a PTY emits output, foreground it, and verify replay.
-12. Leave the app backgrounded for at least five minutes, foreground it, and
+9. Attach to `vim` or `htop` and verify the TUI renders usable terminal state.
+10. Resize the terminal and verify the PTY reports a plausible row/column size.
+11. Detach and reattach; verify the terminal resumes from the latest seen offset.
+12. Background the app while a PTY emits output, foreground it, and verify replay.
+13. Leave the app backgrounded for at least five minutes, foreground it, and
     verify BiometricPrompt gates session access and stale terminal input.
-13. Toggle Wi-Fi or airplane mode, reconnect within the release target, and
+14. Toggle Wi-Fi or airplane mode, reconnect within the release target, and
    verify missed output replays.
-14. Restart the daemon, relaunch Android, and verify last-known sessions and
+15. Restart the daemon, relaunch Android, and verify last-known sessions and
     scrollback are listed while exited processes are documented as exited.
-15. Open three sessions and switch among them; verify no output crosses sessions.
+16. Open three sessions and switch among them; verify no output crosses sessions.
 
 ## Pass Criteria
 
