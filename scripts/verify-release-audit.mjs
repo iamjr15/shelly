@@ -264,8 +264,23 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`buildconfig.txt` proof that `FIELDWORK_BIOMETRIC_BYPASS = false` and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "release audit must record live-test normal-build evidence",
+  );
+  requireText(
+    audit,
     "nontrivial PNG screenshots, locked-surface privacy",
     "release audit must describe live-test evidence verifier coverage",
+  );
+  requireText(
+    audit,
+    "dedicated active-dashboard screenshot/UI/log/crash evidence",
+    "release audit must record active-dashboard evidence",
+  );
+  requireText(
+    audit,
+    "`sessions.txt` rows binding both the generated session and `refactoringjob` to default `claude` commands",
+    "release audit must record live-test command binding evidence",
   );
   requireText(
     audit,
@@ -914,7 +929,14 @@ function verifyLiveTestingRunbook() {
     "fw new -- claude",
     "fw new -- vim",
     "fw pair",
+    "buildconfig.txt",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
     "script -q \"$FW_LIVE_DIR/terminal-replay.txt\" fw attach shell",
+    "dashboard.png",
+    "dashboard-ui.xml",
+    "dashboard-logcat.log",
+    "dashboard-crash.log",
     "background-replay.txt",
     "reconnect-replay.txt",
     "`reconnect_ms=<elapsed-ms>`",

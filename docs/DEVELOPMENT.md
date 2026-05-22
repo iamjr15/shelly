@@ -341,10 +341,19 @@ and a final restored locked default build with `FIELDWORK_BIOMETRIC_BYPASS =
 false` and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`. This is direct adb emulator
 evidence only; the physical Android dogfood gate remains unchecked.
 
-The first-round live-test evidence verifier now requires a dedicated TUI attach
-capture (`tui.png`, `tui-ui.xml`, `tui-logcat.log`, and `tui-crash.log`) in
-addition to the locked and normal session captures, and it fails unless the UI
-dump shows `Attached` plus visible `vim`/`htop` terminal content.
+The first-round live-test evidence verifier now requires `buildconfig.txt`
+showing `FIELDWORK_BIOMETRIC_BYPASS = false` and
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""` so physical-device evidence cannot be
+captured from a bypass build. It also requires a dedicated active-dashboard
+capture (`dashboard.png`, `dashboard-ui.xml`, `dashboard-logcat.log`, and
+`dashboard-crash.log`) before terminal attach; the dashboard UI dump must show
+the generated one-word bare-`fw` session, `refactoringjob`, and the
+desktop-created shell/bash session, and `sessions.txt` must bind both the
+generated session and `refactoringjob` to `claude` rows. The verifier also
+requires a dedicated TUI attach capture (`tui.png`, `tui-ui.xml`,
+`tui-logcat.log`, and `tui-crash.log`) in addition to the locked and normal
+session captures, and it fails unless the UI dump shows `Attached` plus visible
+`vim`/`htop` terminal content.
 It also requires `terminal-replay.txt`, captured by reattaching from the desktop
 to the same daemon-owned `shell`/`bash` session after Android sends
 `echo android_live_ok`; that transcript must contain `android_live_ok` so the
