@@ -1331,8 +1331,10 @@ function verifyLatestRefresh() {
   requireText(audit, "community scaffold verifier passed", "release audit must record the focused community scaffold verifier result");
   requireText(audit, "PR/issue templates", "release audit must record community template coverage");
   requireText(audit, "pre-commit hooks", "release audit must record pre-commit hook coverage");
-  requireText(audit, "always-run workspace/security gates", "release audit must record pre-commit workspace/security coverage");
-  requireText(audit, "`node scripts/verify-no-ship-markers.mjs --self-test` through local system hooks", "release audit must record pre-commit no-ship self-test coverage");
+  requireText(audit, "nine hooks as always-run workspace/security/lightweight release gates", "release audit must record pre-commit workspace/security/lightweight release coverage");
+  requireText(audit, "node scripts/test-live-testing-evidence.mjs", "release audit must record pre-commit live-testing evidence hook coverage");
+  requireText(audit, "node scripts/test-debug-instance.mjs", "release audit must record pre-commit debug-instance hook coverage");
+  requireText(audit, "node scripts/verify-structured-assets.mjs", "release audit must record pre-commit structured-assets hook coverage");
   requireText(audit, "security model verifier passed", "release audit must record the focused security model verifier result");
   requireText(audit, "v1 trust zones", "release audit must record security trust-zone coverage");
   requireText(audit, "local IPC hardening", "release audit must record security local IPC coverage");

@@ -132,17 +132,20 @@ function verifyPreCommitGate() {
     ["fieldwork-secret-boundaries", "node scripts/verify-secret-boundaries.mjs"],
     ["fieldwork-no-ship-markers", "node scripts/verify-no-ship-markers.mjs"],
     ["fieldwork-no-ship-markers-self-test", "node scripts/verify-no-ship-markers.mjs --self-test"],
+    ["fieldwork-live-testing-evidence", "node scripts/test-live-testing-evidence.mjs"],
+    ["fieldwork-debug-instance", "node scripts/test-debug-instance.mjs"],
+    ["fieldwork-structured-assets", "node scripts/verify-structured-assets.mjs"],
   ]) {
     const [id, entry] = hook;
     requireText(files.preCommit, `id: ${id}`, `.pre-commit-config.yaml must include hook ${id}`);
     requireText(files.preCommit, `entry: ${entry}`, `.pre-commit-config.yaml hook ${id} must run ${entry}`);
   }
   const alwaysRunCount = [...files.preCommit.matchAll(/always_run: true/g)].length;
-  if (alwaysRunCount < 6) {
-    failures.push(".pre-commit-config.yaml must make all six release-critical hooks always_run");
+  if (alwaysRunCount < 9) {
+    failures.push(".pre-commit-config.yaml must make all nine release-critical hooks always_run");
   }
   const noFilenameCount = [...files.preCommit.matchAll(/pass_filenames: false/g)].length;
-  if (noFilenameCount < 6) {
+  if (noFilenameCount < 9) {
     failures.push(".pre-commit-config.yaml must disable filename passing for all workspace hooks");
   }
 }

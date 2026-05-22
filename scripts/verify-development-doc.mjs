@@ -59,8 +59,8 @@ function verifyDevelopmentDoc(text) {
   requireText(text, "Mobile artifacts, release signing, relay deployment, and provider push are separate release gates", "docs/DEVELOPMENT.md must distinguish source build from external release gates");
   requireText(
     text,
-    "`node scripts/verify-secret-boundaries.mjs`, `node scripts/verify-no-ship-markers.mjs`,\nand `node scripts/verify-no-ship-markers.mjs --self-test` through the local\ntoolchain",
-    "docs/DEVELOPMENT.md must document the pre-commit no-ship hooks",
+    "`node scripts/verify-no-ship-markers.mjs --self-test`,\n`node scripts/test-live-testing-evidence.mjs`, `node scripts/test-debug-instance.mjs`,\nand `node scripts/verify-structured-assets.mjs` through the local toolchain",
+    "docs/DEVELOPMENT.md must document the pre-commit lightweight release hooks",
   );
   requireText(text, "one explicit warm-up sample", "docs/DEVELOPMENT.md must document the desktop performance warm-up contract");
   requireText(text, "build-machine first-exec page-cache/code-signing noise", "docs/DEVELOPMENT.md must explain why the desktop performance warm-up exists");

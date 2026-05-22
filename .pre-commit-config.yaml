@@ -37,3 +37,21 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: fieldwork-live-testing-evidence
+        name: node scripts/test-live-testing-evidence.mjs
+        entry: node scripts/test-live-testing-evidence.mjs
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: fieldwork-debug-instance
+        name: node scripts/test-debug-instance.mjs
+        entry: node scripts/test-debug-instance.mjs
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: fieldwork-structured-assets
+        name: node scripts/verify-structured-assets.mjs
+        entry: node scripts/verify-structured-assets.mjs
+        language: system
+        pass_filenames: false
+        always_run: true
