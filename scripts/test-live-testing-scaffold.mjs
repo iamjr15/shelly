@@ -21,7 +21,7 @@ try {
   expectStatus(scaffoldResult, 0, "scaffold should create an evidence directory");
   expectEqual(scaffoldResult.stdout.trim(), evidenceDir, "--print-dir should print only the evidence path");
 
-  for (const file of ["README.md", "manifest.json", "missing-files.txt", "capture-checklist.md"]) {
+  for (const file of ["README.md", "manifest.json", "missing-files.txt", "capture-checklist.md", "preflight.sh"]) {
     expect(fs.existsSync(path.join(evidenceDir, file)), `${file} should exist`);
   }
 
@@ -31,7 +31,7 @@ try {
   expectDeepEqual(manifest.requiredFiles, requiredFiles, "manifest should mirror verifier required files");
   expectDeepEqual(
     manifest.generatedFiles,
-    ["README.md", "manifest.json", "missing-files.txt", "capture-checklist.md"],
+    ["README.md", "manifest.json", "missing-files.txt", "capture-checklist.md", "preflight.sh"],
     "manifest should list every scaffold-generated helper file",
   );
   expectEqual(
@@ -41,6 +41,7 @@ try {
   );
   const checklist = fs.readFileSync(path.join(evidenceDir, "capture-checklist.md"), "utf8");
   expect(checklist.includes("Direct adb capture pattern"), "capture checklist should preserve direct adb capture workflow");
+  expect(checklist.includes("preflight.sh"), "capture checklist should point to the direct adb preflight helper");
   expect(checklist.includes("adb exec-out screencap -p"), "capture checklist should include screenshot commands");
   expect(checklist.includes("adb shell uiautomator dump"), "capture checklist should include UI dump commands");
   expect(checklist.includes("adb logcat -d -b crash"), "capture checklist should include crash-buffer commands");
@@ -57,6 +58,19 @@ try {
   for (const file of requiredFiles) {
     expect(checklist.includes(`\`${file}\``), `capture checklist should mention ${file}`);
   }
+
+  const readme = fs.readFileSync(path.join(evidenceDir, "README.md"), "utf8");
+  expect(readme.includes("preflight.sh"), "README should explain the generated preflight helper");
+
+  const preflight = fs.readFileSync(path.join(evidenceDir, "preflight.sh"), "utf8");
+  expect(preflight.startsWith("#!/usr/bin/env bash"), "preflight helper should be a shell script");
+  expect(preflight.includes("adb devices -l | tee \"$adb_devices\""), "preflight should capture adb device evidence directly");
+  expect(preflight.includes("connect one physical Android phone"), "preflight should reject emulator-only evidence");
+  expect(preflight.includes("FIELDWORK_BIOMETRIC_BYPASS = false"), "preflight should require the normal non-bypass debug build");
+  expect(
+    (fs.statSync(path.join(evidenceDir, "preflight.sh")).mode & 0o700) === 0o700,
+    "preflight helper should be executable by the owner",
+  );
 
   for (const file of requiredFiles) {
     expect(!fs.existsSync(path.join(evidenceDir, file)), `scaffold must not fabricate ${file}`);

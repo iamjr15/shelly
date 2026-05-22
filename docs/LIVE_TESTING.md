@@ -100,10 +100,10 @@ choose commands.
 ## Evidence Capture
 
 Create a timestamped evidence directory before pairing so the desktop approval
-transcript is captured. The scaffold writes only a README, manifest, and
-missing-file checklist, plus `capture-checklist.md` with the stage-by-stage
-direct `adb` capture order; it does not create placeholder screenshots, logs,
-crash buffers, UI dumps, or transcripts:
+transcript is captured. The scaffold writes only a README, manifest,
+missing-file checklist, `capture-checklist.md` with the stage-by-stage direct
+`adb` capture order, and `preflight.sh`; it does not create placeholder
+screenshots, logs, crash buffers, UI dumps, or transcripts:
 
 ```sh
 export FW_LIVE_DIR="$(pnpm --silent scaffold:live-testing-evidence -- --print-dir --quiet)"
@@ -111,6 +111,13 @@ adb devices -l | tee "$FW_LIVE_DIR/adb-devices.txt"
 rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "debug"|DEBUG = Boolean\.parseBoolean\("true"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
   apps/android/app/build/generated/source/buildConfig/debug/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_LIVE_DIR/buildconfig.txt"
+```
+
+The generated helper performs those same direct checks and fails early if the
+ADB target is unauthorized, offline, inaccessible, or an emulator/AVD:
+
+```sh
+"$FW_LIVE_DIR/preflight.sh"
 ```
 
 Use `pnpm scaffold:live-testing-evidence -- --dir "$FW_LIVE_DIR"` if you need

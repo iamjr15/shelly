@@ -374,6 +374,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "generated `preflight.sh` physical-device/BuildConfig helper without fake evidence",
+    "release audit must record the first live-test direct adb preflight helper",
+  );
+  requireText(
+    audit,
     "stage-by-stage direct `adb` capture order",
     "release audit must record the first live-test direct adb capture order",
   );
@@ -1383,6 +1388,7 @@ function verifyLiveTestingRunbook() {
     "FIELDWORK_BIOMETRIC_BYPASS = false",
     'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
     "adb devices -l | tee \"$FW_LIVE_DIR/adb-devices.txt\"",
+    "\"$FW_LIVE_DIR/preflight.sh\"",
     "adb-devices.txt` shows at least one authorized connected device and no\nunauthorized/offline/emulator/AVD device state",
     "pair_start_ms=\"$(node -e 'console.log(Date.now())')\"",
     "pair_flow_ms=%s",

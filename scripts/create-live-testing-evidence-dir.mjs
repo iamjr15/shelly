@@ -27,14 +27,15 @@ const manifest = {
   evidenceDir,
   verifier: path.relative(root, verifier),
   requiredFiles,
-  generatedFiles: ["README.md", "manifest.json", "missing-files.txt", "capture-checklist.md"],
-  note: "This scaffold does not create evidence files. Capture real adb screenshots, UI dumps, logcat, crash buffers, and desktop transcripts before running the verifier.",
+  generatedFiles: ["README.md", "manifest.json", "missing-files.txt", "capture-checklist.md", "preflight.sh"],
+  note: "This scaffold does not create evidence files. Run preflight.sh only when a real physical Android device is attached, then capture real adb screenshots, UI dumps, logcat, crash buffers, and desktop transcripts before running the verifier.",
 };
 
 writeFile("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
 writeFile("missing-files.txt", `${requiredFiles.join("\n")}\n`);
 writeFile("capture-checklist.md", buildCaptureChecklist(evidenceDir, requiredFiles));
 writeFile("README.md", buildReadme(evidenceDir, requiredFiles));
+writeFile("preflight.sh", buildPreflightScript(evidenceDir), 0o700);
 
 if (options.printDir) {
   process.stdout.write(`${evidenceDir}\n`);
@@ -115,8 +116,10 @@ function readRequiredFiles() {
   return files;
 }
 
-function writeFile(relativePath, contents) {
-  fs.writeFileSync(path.join(evidenceDir, relativePath), contents, { mode: 0o600 });
+function writeFile(relativePath, contents, mode = 0o600) {
+  const filePath = path.join(evidenceDir, relativePath);
+  fs.writeFileSync(filePath, contents, { mode });
+  fs.chmodSync(filePath, mode);
 }
 
 function timestampForDir(date) {
@@ -147,6 +150,13 @@ Capture real evidence with the direct \`adb\` commands in \`docs/LIVE_TESTING.md
 Do not create placeholder screenshots, UI dumps, logs, crash buffers, or transcripts.
 Use \`capture-checklist.md\` in this directory as the stage-by-stage capture order
 while running the physical Android test.
+
+Run the generated preflight helper from the repository root after the debug APK
+is installed and a physical Android phone is connected:
+
+\`\`\`sh
+"$FW_LIVE_DIR/preflight.sh"
+\`\`\`
 
 Required files are listed in \`missing-files.txt\` and are derived from
 \`scripts/verify-live-testing-evidence.mjs\`. After capture, run:
@@ -209,6 +219,12 @@ adb logcat -d > "$FW_LIVE_DIR/<stage>-logcat.log"
 adb logcat -d -b crash > "$FW_LIVE_DIR/<stage>-crash.log"
 \`\`\`
 
+Preflight from the repository root after installing the debug APK:
+
+\`\`\`sh
+"$FW_LIVE_DIR/preflight.sh"
+\`\`\`
+
 ${sections.join("\n\n")}
 
 After all files are captured:
@@ -216,6 +232,70 @@ After all files are captured:
 \`\`\`sh
 pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"
 \`\`\`
+`;
+}
+
+function buildPreflightScript(dir) {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+
+evidence_dir="\${FW_LIVE_DIR:-$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)}"
+repo_root="\${FIELDWORK_REPO_ROOT:-$PWD}"
+build_config="$repo_root/apps/android/app/build/generated/source/buildConfig/debug/app/fieldwork/android/BuildConfig.java"
+adb_devices="$evidence_dir/adb-devices.txt"
+buildconfig_out="$evidence_dir/buildconfig.txt"
+
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "$1 is required" >&2
+    exit 127
+  fi
+}
+
+require_command adb
+require_command rg
+
+mkdir -p "$evidence_dir"
+
+if [[ ! -f "$build_config" ]]; then
+  echo "missing debug BuildConfig: $build_config" >&2
+  echo "run apps/android/gradlew --no-daemon :app:assembleDebug from the repo root first" >&2
+  exit 1
+fi
+
+adb devices -l | tee "$adb_devices"
+
+if rg -q '\\b(?:unauthorized|offline|no permissions)\\b' "$adb_devices"; then
+  echo "adb device is unauthorized, offline, or inaccessible" >&2
+  exit 1
+fi
+
+if ! awk 'NR > 1 && $2 == "device" { found = 1 } END { exit(found ? 0 : 1) }' "$adb_devices"; then
+  echo "no authorized adb device found" >&2
+  exit 1
+fi
+
+if rg -q '^(?:emulator-[0-9]+|.*(?:\\bsdk_gphone\\b|\\bsdk_gphone64\\b|\\bgeneric_x86\\b|\\bgeneric_x86_64\\b|\\bgoldfish\\b|\\branchu\\b|\\bqemu\\b|\\bavd\\b|\\bdevice:emu[^[:space:]]*\\b)).*[[:space:]]device(?:[[:space:]]|$)' "$adb_devices"; then
+  echo "adb device list includes an emulator/AVD; connect one physical Android phone for this evidence pass" >&2
+  exit 1
+fi
+
+rg 'APPLICATION_ID = "app\\.fieldwork\\.android"|BUILD_TYPE = "debug"|DEBUG = Boolean\\.parseBoolean\\("true"\\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' "$build_config" | tee "$buildconfig_out"
+
+for required in \\
+  'APPLICATION_ID = "app.fieldwork.android"' \\
+  'BUILD_TYPE = "debug"' \\
+  'DEBUG = Boolean.parseBoolean("true")' \\
+  'FIELDWORK_BIOMETRIC_BYPASS = false' \\
+  'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""'
+do
+  if ! grep -Fq "$required" "$buildconfig_out"; then
+    echo "BuildConfig preflight missing: $required" >&2
+    exit 1
+  fi
+done
+
+echo "live-test preflight ok: physical adb device and normal debug BuildConfig evidence captured"
 `;
 }
 
