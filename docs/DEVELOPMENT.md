@@ -373,7 +373,10 @@ showing `APPLICATION_ID = "app.fieldwork.android"`, `BUILD_TYPE = "debug"`,
 `DEBUG = Boolean.parseBoolean("true")`, `FIELDWORK_BIOMETRIC_BYPASS = false`,
 and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""` so physical-device evidence cannot
 be captured from the wrong app, a release variant, or a bypass build. It also
-requires a dedicated active-dashboard
+uses `scripts/create-live-testing-evidence-dir.mjs` to generate
+`capture-checklist.md`, a stage-by-stage direct `adb` capture checklist derived
+from the verifier's required files, while still fabricating no screenshots, UI
+dumps, logs, crash buffers, or transcripts. It also requires a dedicated active-dashboard
 capture (`dashboard.png`, `dashboard-ui.xml`, `dashboard-logcat.log`, and
 `dashboard-crash.log`) before terminal attach; the dashboard UI dump must show
 the generated one-word bare-`fw` session, `refactoringjob`, and the

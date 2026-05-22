@@ -482,6 +482,8 @@ function verifyDevelopmentDoc(text) {
     "`DEBUG = Boolean.parseBoolean(\"true\")`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
     "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`capture-checklist.md`",
+    "stage-by-stage direct `adb` capture checklist",
     "dedicated active-dashboard\ncapture (`dashboard.png`, `dashboard-ui.xml`, `dashboard-logcat.log`, and\n`dashboard-crash.log`)",
     "the generated one-word bare-`fw` session, `refactoringjob`, and the\ndesktop-created shell/bash session",
     "`sessions.txt` must bind both the\ngenerated session and `refactoringjob` to `claude` rows",

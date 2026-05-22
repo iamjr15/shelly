@@ -21,7 +21,7 @@ try {
   expectStatus(scaffoldResult, 0, "scaffold should create an evidence directory");
   expectEqual(scaffoldResult.stdout.trim(), evidenceDir, "--print-dir should print only the evidence path");
 
-  for (const file of ["README.md", "manifest.json", "missing-files.txt"]) {
+  for (const file of ["README.md", "manifest.json", "missing-files.txt", "capture-checklist.md"]) {
     expect(fs.existsSync(path.join(evidenceDir, file)), `${file} should exist`);
   }
 
@@ -29,11 +29,24 @@ try {
   const manifest = JSON.parse(fs.readFileSync(path.join(evidenceDir, "manifest.json"), "utf8"));
   expectEqual(manifest.schema, "fieldwork-live-testing-evidence-v1", "manifest schema should be pinned");
   expectDeepEqual(manifest.requiredFiles, requiredFiles, "manifest should mirror verifier required files");
+  expectDeepEqual(
+    manifest.generatedFiles,
+    ["README.md", "manifest.json", "missing-files.txt", "capture-checklist.md"],
+    "manifest should list every scaffold-generated helper file",
+  );
   expectEqual(
     fs.readFileSync(path.join(evidenceDir, "missing-files.txt"), "utf8"),
     `${requiredFiles.join("\n")}\n`,
     "missing-files.txt should list every required evidence file",
   );
+  const checklist = fs.readFileSync(path.join(evidenceDir, "capture-checklist.md"), "utf8");
+  expect(checklist.includes("Direct adb capture pattern"), "capture checklist should preserve direct adb capture workflow");
+  expect(checklist.includes("adb exec-out screencap -p"), "capture checklist should include screenshot commands");
+  expect(checklist.includes("adb shell uiautomator dump"), "capture checklist should include UI dump commands");
+  expect(checklist.includes("adb logcat -d -b crash"), "capture checklist should include crash-buffer commands");
+  for (const file of requiredFiles) {
+    expect(checklist.includes(`\`${file}\``), `capture checklist should mention ${file}`);
+  }
 
   for (const file of requiredFiles) {
     expect(!fs.existsSync(path.join(evidenceDir, file)), `scaffold must not fabricate ${file}`);

@@ -1866,8 +1866,9 @@ device runtime gates remain unchecked.
 **Live testing evidence scaffold note (2026-05-22)**:
 `scripts/create-live-testing-evidence-dir.mjs` now creates the first Android
 live-test evidence directory scaffold from the verifier's required-file list and
-writes only `README.md`, `manifest.json`, and `missing-files.txt`; it does not
-fabricate screenshots, UI dumps, logcat, crash buffers, or desktop transcripts.
+writes only `README.md`, `manifest.json`, `missing-files.txt`, and a
+stage-by-stage `capture-checklist.md`; it does not fabricate screenshots, UI
+dumps, logcat, crash buffers, or desktop transcripts.
 `docs/LIVE_TESTING.md` uses the scaffold before pairing, and
 `scripts/test-live-testing-scaffold.mjs` plus `pnpm check:local-release` verify
 that the scaffold mirrors `scripts/verify-live-testing-evidence.mjs` and still

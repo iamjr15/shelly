@@ -369,6 +369,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "capture-checklist.md",
+    "release audit must record the first live-test capture checklist",
+  );
+  requireText(
+    audit,
+    "stage-by-stage direct `adb` capture order",
+    "release audit must record the first live-test direct adb capture order",
+  );
+  requireText(
+    audit,
     'pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"',
     "release audit must include the first live-test evidence verifier command",
   );

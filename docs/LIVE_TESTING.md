@@ -101,8 +101,9 @@ choose commands.
 
 Create a timestamped evidence directory before pairing so the desktop approval
 transcript is captured. The scaffold writes only a README, manifest, and
-missing-file checklist; it does not create placeholder screenshots, logs, crash
-buffers, UI dumps, or transcripts:
+missing-file checklist, plus `capture-checklist.md` with the stage-by-stage
+direct `adb` capture order; it does not create placeholder screenshots, logs,
+crash buffers, UI dumps, or transcripts:
 
 ```sh
 export FW_LIVE_DIR="$(pnpm --silent scaffold:live-testing-evidence -- --print-dir --quiet)"
@@ -113,7 +114,9 @@ rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "debug"|DEBUG = Bool
 ```
 
 Use `pnpm scaffold:live-testing-evidence -- --dir "$FW_LIVE_DIR"` if you need
-to choose the directory yourself.
+to choose the directory yourself. Keep `capture-checklist.md` open while
+testing; it mirrors the verifier-required filenames and groups them by the
+same live-test stages below.
 
 Run `fw pair` inside a desktop transcript. Approve pairing only after the phone
 scans the QR payload and the CLI asks for explicit confirmation. Record

@@ -903,6 +903,8 @@ function verifyLiveTestingDoc() {
     'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
     'export FW_LIVE_DIR="$(pnpm --silent scaffold:live-testing-evidence -- --print-dir --quiet)"',
     "scaffold writes only a README, manifest, and\nmissing-file checklist",
+    "capture-checklist.md",
+    "stage-by-stage\ndirect `adb` capture order",
     "pnpm scaffold:live-testing-evidence -- --dir \"$FW_LIVE_DIR\"",
     "adb devices -l | tee \"$FW_LIVE_DIR/adb-devices.txt\"",
     "adb-devices.txt` shows at least one authorized connected device and no\nunauthorized/offline/emulator/AVD device state",
