@@ -450,6 +450,11 @@ function verifyAdbDevices(text) {
   );
   rejectPatternText(
     text,
+    /^(?:emulator-\d+|[^\n]*(?:\bsdk_gphone\b|\bsdk_gphone64\b|\bgeneric_x86\b|\bgeneric_x86_64\b|\bgoldfish\b|\branchu\b|\bqemu\b|\bavd\b|\bdevice:emu[^\s]*\b))[^\n]*\s+device(?:\s|$)/im,
+    "adb-devices.txt must show a physical Android phone, not an emulator or AVD",
+  );
+  rejectPatternText(
+    text,
     /\b(?:unauthorized|offline|no permissions)\b/i,
     "adb-devices.txt must not show the tested device as unauthorized, offline, or inaccessible",
   );

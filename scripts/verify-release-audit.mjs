@@ -274,7 +274,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "`adb-devices.txt` proof that at least one authorized Android device was connected for QA with no unauthorized/offline state",
+    "`adb-devices.txt` proof that at least one authorized physical Android device was connected for QA with no unauthorized/offline/emulator/AVD state",
     "release audit must record adb device-state evidence",
   );
   requireText(
@@ -331,6 +331,11 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "UI dumps that do not expose mobile session creation, session kill, or command-selection controls",
     "release audit must record live-test mobile capability-boundary UI evidence",
+  );
+  requireText(
+    audit,
+    "authorized physical Android device was connected for QA with no unauthorized/offline/emulator/AVD state",
+    "release audit must record live-test physical adb device evidence",
   );
   requireText(
     audit,
@@ -971,7 +976,7 @@ function verifyLiveTestingRunbook() {
     "FIELDWORK_BIOMETRIC_BYPASS = false",
     'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
     "adb devices -l | tee \"$FW_LIVE_DIR/adb-devices.txt\"",
-    "adb-devices.txt` shows at least one authorized connected device and no\nunauthorized/offline device state",
+    "adb-devices.txt` shows at least one authorized connected device and no\nunauthorized/offline/emulator/AVD device state",
     "pair_start_ms=\"$(node -e 'console.log(Date.now())')\"",
     "pair_flow_ms=%s",
     "script -q \"$FW_LIVE_DIR/pairing.txt\" fw pair",

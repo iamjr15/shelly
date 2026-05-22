@@ -280,6 +280,19 @@ try {
   fs.writeFileSync(path.join(unauthorizedDevice, "adb-devices.txt"), "List of devices attached\nR58M123 unauthorized transport_id:1\n");
   expectStatus(unauthorizedDevice, 1, "unauthorized adb device fixture should fail", "adb-devices.txt must show at least one authorized adb device");
 
+  const emulatorDevice = path.join(temp, "emulator-device");
+  writeFixture(emulatorDevice);
+  fs.writeFileSync(
+    path.join(emulatorDevice, "adb-devices.txt"),
+    "List of devices attached\nemulator-5554 device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a transport_id:1\n",
+  );
+  expectStatus(
+    emulatorDevice,
+    1,
+    "emulator adb device fixture should fail",
+    "adb-devices.txt must show a physical Android phone, not an emulator or AVD",
+  );
+
   const noPairedFieldworkDevice = path.join(temp, "no-paired-fieldwork-device");
   writeFixture(noPairedFieldworkDevice);
   fs.writeFileSync(path.join(noPairedFieldworkDevice, "devices.txt"), "no paired devices\n");

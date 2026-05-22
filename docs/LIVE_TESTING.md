@@ -254,7 +254,7 @@ pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"
 This verifier does not replace human review of the phone behavior. It checks
 that the direct `adb` evidence set is complete, screenshots are nontrivial PNGs,
 `adb-devices.txt` shows at least one authorized connected device and no
-unauthorized/offline device state,
+unauthorized/offline/emulator/AVD device state,
 the locked UI did not expose session or terminal content, the paired run listed
 the expected desktop-created sessions, `pairing.txt` proves the desktop-side
 QR payload, device-scan wait, explicit approval prompt, and approved completion,
