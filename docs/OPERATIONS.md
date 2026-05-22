@@ -73,7 +73,10 @@ operator explicitly asks for that exact refresh.
 - **GitHub Release artifacts**: tag from a clean verified commit, let
   `release-rust.yml` produce signed/notarized Darwin artifacts, Linux archives,
   SHA-256 files, and Sigstore attestations, then verify those artifacts before
-  npm publish or relay deploy.
+  npm publish or relay deploy. The Darwin release job runs
+  `node scripts/verify-macos-signing.mjs target/${{ matrix.target }}/release/fieldworkd`
+  after `rcodesign notary-submit` so the daemon must verify as Developer ID,
+  hardened-runtime, and Gatekeeper-notarized before it is archived.
 - **Relay and provider credentials**: provision the Oracle relay hosts, point DNS
   at them, install relay-only APNs `.p8`, FCM service-account JSON, and Honeycomb
   credentials, deploy both regions, and verify HTTPS `/v1/version`, iroh relay
@@ -320,6 +323,7 @@ pnpm check:release-audit
 pnpm check:infra-terraform
 scripts/smoke-relay-tls-loopback.sh
 node scripts/test-release-artifacts.mjs
+node scripts/test-macos-signing-verifier.mjs
 node scripts/test-npm-publish-plan.mjs
 node scripts/test-bun-install.mjs
 pnpm check:local-release

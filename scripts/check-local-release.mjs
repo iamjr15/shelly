@@ -82,6 +82,7 @@ const checks = [
   ["Android AAB verifier self-test", node, ["scripts/test-android-aab-verifier.mjs"]],
   ["Android pair-button picker self-test", node, ["scripts/test-android-pair-button-picker.mjs"]],
   ["release artifact verifier self-test", node, ["scripts/test-release-artifacts.mjs"]],
+  ["macOS signing verifier self-test", node, ["scripts/test-macos-signing-verifier.mjs"]],
   ["npm artifact pack self-test", node, ["scripts/test-npm-artifact-pack.mjs"]],
 ];
 

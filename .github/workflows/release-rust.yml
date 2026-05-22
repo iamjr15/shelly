@@ -112,6 +112,7 @@ jobs:
             --wait --staple \
             target/${{ matrix.target }}/release/fieldworkd.zip
           codesign --verify --verbose=2 target/${{ matrix.target }}/release/fieldworkd
+          node scripts/verify-macos-signing.mjs target/${{ matrix.target }}/release/fieldworkd
 
       - name: Stage archive
         run: |

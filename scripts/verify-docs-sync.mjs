@@ -111,6 +111,8 @@ function verifyOperationsDoc() {
     "Relay provider credentials are not GitHub repository secrets",
     "APNs `.p8`, FCM service-account JSON, Honeycomb API key, and\ncontrol-plane TLS cert/key",
     "`LoadCredential`",
+    "node scripts/verify-macos-signing.mjs target/${{ matrix.target }}/release/fieldworkd",
+    "Developer ID,\n  hardened-runtime, and Gatekeeper-notarized",
     "npm Ownership Bootstrap",
     "The unscoped `fieldwork` meta package is already operator-owned",
     "Do not run\navailability checks for it",

@@ -74,6 +74,7 @@ function verifyRustRelease(text) {
   requireText(text, "rcodesign notary-submit", "release-rust must submit macOS daemon for notarization");
   requireText(text, "--wait --staple", "release-rust notarization must wait and staple");
   requireText(text, "codesign --verify", "release-rust must verify the signed daemon");
+  requireText(text, "node scripts/verify-macos-signing.mjs", "release-rust must run the macOS signing/notarization verifier before archiving Darwin artifacts");
   for (const binary of ["fieldwork", "fieldworkd"]) {
     requireText(text, `cp target/\${{ matrix.target }}/release/${binary}`, `release-rust archive must include ${binary}`);
   }
@@ -332,6 +333,7 @@ function verifyCiWiresVerifier(text) {
   requireText(text, "node scripts/test-bun-install.mjs", "CI must run the Bun optional-dependency install smoke");
   requireText(text, "node scripts/test-android-aab-verifier.mjs", "CI must run the Android AAB verifier self-test");
   requireText(text, "node scripts/test-release-artifacts.mjs", "CI must run the release artifact verifier tests");
+  requireText(text, "node scripts/test-macos-signing-verifier.mjs", "CI must run the macOS signing verifier self-test");
   requireText(text, "node scripts/test-npm-dispatcher.mjs", "CI must run the npm dispatcher test");
   requireText(text, "node scripts/test-npm-registry-state.mjs", "CI must run the deterministic npm registry-state checker test");
   requireText(text, "node scripts/test-npm-publish-plan.mjs", "CI must run the npm publish-plan test");

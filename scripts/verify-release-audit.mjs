@@ -234,6 +234,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "macOS signing verifier fixture test",
+    "release audit must record local release aggregate coverage for macOS signing verifier self-test",
+  );
+  requireText(
+    audit,
+    "macOS Developer ID/hardened-runtime/Gatekeeper-notarized verifier before Darwin archive staging",
+    "release audit must record release-rust macOS signing verifier coverage",
+  );
+  requireText(
+    audit,
     "`docs/LIVE_TESTING.md` defines the first operator-assisted Android physical-device terminal handoff pass",
     "release audit must include the first Android live-test runbook row",
   );
@@ -1234,6 +1244,7 @@ function verifyLatestRefresh() {
     "node scripts/verify-v1-boundary.mjs",
     "node scripts/verify-release-workflows.mjs",
     "node scripts/verify-infra-scaffold.mjs",
+    "node scripts/test-macos-signing-verifier.mjs",
     "node scripts/smoke-relay-otlp-loopback.mjs",
   ]) {
     requireText(audit, command, `release audit latest refresh is missing command: ${command}`);
@@ -1242,6 +1253,7 @@ function verifyLatestRefresh() {
   requireText(audit, "local run without `artifacts/` or `FIELDWORK_ARTIFACT_DIR` fails closed as\n  expected", "release audit must document fail-closed missing artifact directory behavior");
   requireText(audit, "`pnpm test:release-artifacts` remains the deterministic local\n  verifier substitute", "release audit must document local release artifact substitute");
   requireText(audit, "decoded Apple signing/notarization assets outside the repository workspace with chmod/cleanup", "release audit must document release-rust decoded signing asset hygiene");
+  requireText(audit, "macOS Developer ID/hardened-runtime/Gatekeeper-notarized verifier before Darwin archive staging", "release audit must document macOS signing verifier before Darwin archive staging");
   requireText(audit, "early Darwin signing/notarization preflight before toolchain setup/build", "release audit must document release-rust early Darwin credential preflight");
   requireText(audit, "early `NPM_TOKEN` preflight before npm artifact download", "release audit must document release-npm early token preflight");
   requireText(audit, "early relay SSH-key/inventory preflight before relay artifact download", "release audit must document deploy-relay early prerequisite preflight");
@@ -1264,10 +1276,11 @@ function verifyLatestRefresh() {
   requireText(audit, "The default `pnpm test:android-emulator` aggregate passed on `emulator-5554`", "release audit must summarize the default Android emulator aggregate result");
   requireText(audit, "The release-workflow secret hygiene refresh also passed", "release audit must summarize release workflow secret hygiene verification");
   requireText(audit, "`release-rust.yml` preflights Apple signing/notarization secrets before Darwin\ntoolchain setup and release build", "release audit must record release-rust early Darwin secret preflight");
-  requireText(audit, "`release-rust.yml` decodes Apple signing/notarization assets under\n`RUNNER_TEMP`", "release audit must record release-rust temp signing cleanup");
-  requireText(audit, "`release-ios.yml` keeps App\nStore Connect upload JSON outside the repository workspace", "release audit must record release-ios upload JSON hygiene");
-  requireText(audit, "`release-android.yml` removes generated Firebase/signing\nfiles in an `always()` cleanup step", "release audit must record release-android generated secret cleanup");
-  requireText(audit, "`deploy-relay.yml` removes the decoded\nrelay SSH key in an `always()` cleanup step", "release audit must record deploy-relay SSH cleanup");
+  requireText(audit, "signing/notarization assets under `RUNNER_TEMP`", "release audit must record release-rust temp signing cleanup");
+  requireText(audit, "node scripts/verify-macos-signing.mjs", "release audit must record the macOS signing verifier");
+  requireText(audit, "App Store\nConnect upload JSON outside the repository workspace", "release audit must record release-ios upload JSON hygiene");
+  requireText(audit, "generated Firebase/signing files in an `always()` cleanup step", "release audit must record release-android generated secret cleanup");
+  requireText(audit, "decoded relay SSH key in an `always()` cleanup", "release audit must record deploy-relay SSH cleanup");
   requireText(audit, "LC_ALL=C LANG=C shasum -a 256", "release audit must record macOS-safe release-rust checksum locale");
   requireText(audit, "unsupported inherited\n`C.UTF-8` locale settings", "release audit must record the checksum locale failure mode");
   requireText(audit, "all passed except `pnpm check:ios-prereqs`", "release audit must record the latest focused result summary");
@@ -2262,6 +2275,7 @@ function verifyVerifierIsWired() {
   requireText(ci, "node scripts/test-android-aab-verifier.mjs", "CI must run the deterministic Android AAB verifier tests");
   requireText(ci, "node scripts/test-android-pair-button-picker.mjs", "CI must run the deterministic Android pair-button picker test");
   requireText(ci, "node scripts/test-release-artifacts.mjs", "CI must run the release artifact verifier tests");
+  requireText(ci, "node scripts/test-macos-signing-verifier.mjs", "CI must run the macOS signing verifier self-test");
   requireText(ci, "node scripts/test-npm-artifact-pack.mjs", "CI must run the npm artifact/package dry-run tests");
   requireText(ci, "node scripts/test-external-status-refresh.mjs", "CI must run the deterministic external status refresh guard test");
   requireText(ci, "pnpm --dir site install --ignore-workspace --frozen-lockfile", "CI must install the isolated site lockfile");
