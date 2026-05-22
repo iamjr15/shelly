@@ -135,6 +135,18 @@ adb logcat -d > "$FW_LIVE_DIR/locked-logcat.log"
 adb logcat -d -b crash > "$FW_LIVE_DIR/locked-crash.log"
 ```
 
+Tap the app's `Unlock` button, hold the phone so biometric authentication does
+not complete yet, and capture the Android BiometricPrompt before any session
+list or terminal content appears:
+
+```sh
+adb exec-out screencap -p > "$FW_LIVE_DIR/biometric.png"
+adb shell uiautomator dump /sdcard/window.xml
+adb pull /sdcard/window.xml "$FW_LIVE_DIR/biometric-ui.xml"
+adb logcat -d > "$FW_LIVE_DIR/biometric-logcat.log"
+adb logcat -d -b crash > "$FW_LIVE_DIR/biometric-crash.log"
+```
+
 After pairing, capture the active sessions dashboard before tapping into a
 terminal. The dashboard evidence must show the generated one-word `fw` default
 session, `refactoringjob`, and the desktop-created shell/bash session:
@@ -257,8 +269,9 @@ full-size Android PNGs,
 `adb-devices.txt` shows at least one authorized connected device and no
 unauthorized/offline/emulator/AVD device state,
 the locked UI and freshly cleared locked-launch logcat did not expose or fetch
-session, terminal, push-token, or input content before unlock, the paired run
-listed the expected desktop-created sessions, `pairing.txt` proves the desktop-side
+session, terminal, push-token, or input content before unlock, `biometric-ui.xml`
+shows an Android biometric prompt with no session or terminal content behind it,
+the paired run listed the expected desktop-created sessions, `pairing.txt` proves the desktop-side
 QR payload, device-scan wait, explicit approval prompt, and approved completion,
 records `pair_flow_ms=<elapsed-ms>` at or below 15000, the desktop replay
 transcript contains `android_live_ok` from the Android-originated shell input,

@@ -294,6 +294,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`biometric-ui.xml` proof that Android BiometricPrompt appears before session access with no session or terminal content behind it",
+    "release audit must record Android biometric prompt evidence",
+  );
+  requireText(
+    audit,
     "`pairing.txt` desktop transcript proof that `fw pair` printed the QR payload, waited for device scan, showed the explicit approval prompt, completed only after approval, and recorded `pair_flow_ms=<elapsed-ms>` at or below 15000",
     "release audit must record live-test desktop pairing transcript evidence",
   );

@@ -246,6 +246,7 @@ function verifyLiveTestingDoc() {
     "screenshots are nontrivial\nfull-size Android PNGs",
     "unauthorized/offline/emulator/AVD device state",
     "the locked UI and freshly cleared locked-launch logcat did not expose or fetch\nsession, terminal, push-token, or input content before unlock",
+    "`biometric-ui.xml`\nshows an Android biometric prompt with no session or terminal content behind it",
     "do not expose mobile session creation, session kill, or\ncommand-selection controls",
     "logs/crash buffers do not contain Fieldwork\nfatal, ANR, or crash entries",
     "echo android_live_ok",

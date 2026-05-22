@@ -59,6 +59,41 @@ try {
   fs.rmSync(path.join(missingAdbDevices, "adb-devices.txt"));
   expectStatus(missingAdbDevices, 1, "missing adb device capture should fail", "missing evidence file: adb-devices.txt");
 
+  const missingBiometric = path.join(temp, "missing-biometric");
+  writeFixture(missingBiometric);
+  fs.rmSync(path.join(missingBiometric, "biometric-ui.xml"));
+  expectStatus(missingBiometric, 1, "missing biometric prompt UI should fail", "missing evidence file: biometric-ui.xml");
+
+  const badBiometricPrompt = path.join(temp, "bad-biometric-prompt");
+  writeFixture(badBiometricPrompt);
+  fs.writeFileSync(path.join(badBiometricPrompt, "biometric-ui.xml"), '<hierarchy><node text="Unlock"/></hierarchy>\n');
+  expectStatus(
+    badBiometricPrompt,
+    1,
+    "biometric prompt without system prompt text should fail",
+    "biometric-ui.xml must show the Android biometric prompt before session access",
+  );
+
+  const biometricSessionLeak = path.join(temp, "biometric-session-leak");
+  writeFixture(biometricSessionLeak);
+  fs.writeFileSync(path.join(biometricSessionLeak, "biometric-ui.xml"), '<hierarchy><node text="Confirm fingerprint"/><node text="refactoringjob"/></hierarchy>\n');
+  expectStatus(
+    biometricSessionLeak,
+    1,
+    "biometric prompt with session content should fail",
+    "biometric-ui.xml must not expose session or terminal content behind the prompt",
+  );
+
+  const biometricLogSessionSync = path.join(temp, "biometric-log-session-sync");
+  writeFixture(biometricLogSessionSync);
+  fs.writeFileSync(path.join(biometricLogSessionSync, "biometric-logcat.log"), "I FieldworkRepository: listSessions returned 3 sessions\n");
+  expectStatus(
+    biometricLogSessionSync,
+    1,
+    "biometric prompt log with pre-unlock session sync should fail",
+    "biometric-logcat.log must not show session sync, terminal attach, push-token registration, or input before unlock succeeds",
+  );
+
   const missingPairing = path.join(temp, "missing-pairing");
   writeFixture(missingPairing);
   fs.rmSync(path.join(missingPairing, "pairing.txt"));
@@ -341,6 +376,7 @@ function writeFixture(dir) {
     ].join("\n"),
   );
   writePng(path.join(dir, "locked.png"));
+  writePng(path.join(dir, "biometric.png"));
   writePng(path.join(dir, "dashboard.png"));
   writePng(path.join(dir, "session.png"));
   writePng(path.join(dir, "tui.png"));
@@ -355,6 +391,7 @@ function writeFixture(dir) {
     ["Status: ok", "LaunchState: COLD", "Activity: app.fieldwork.android/.MainActivity", "TotalTime: 934"].join("\n"),
   );
   fs.writeFileSync(path.join(dir, "locked-ui.xml"), '<hierarchy><node text="Unlock"/></hierarchy>\n');
+  fs.writeFileSync(path.join(dir, "biometric-ui.xml"), '<hierarchy><node text="Confirm fingerprint"/><node text="Touch the fingerprint sensor"/></hierarchy>\n');
   fs.writeFileSync(
     path.join(dir, "dashboard-ui.xml"),
     `<hierarchy><node text="${autoSessionName}"/><node text="refactoringjob"/><node text="shell"/></hierarchy>\n`,
@@ -369,6 +406,8 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "multisession-ui.xml"), '<hierarchy><node text="fwm_a"/><node text="fwm_b"/><node text="fwm_c"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "locked-logcat.log"), "I Fieldwork: locked launch\n");
   fs.writeFileSync(path.join(dir, "locked-crash.log"), "");
+  fs.writeFileSync(path.join(dir, "biometric-logcat.log"), "I Fieldwork: biometric prompt shown\n");
+  fs.writeFileSync(path.join(dir, "biometric-crash.log"), "");
   fs.writeFileSync(
     path.join(dir, "adb-devices.txt"),
     "List of devices attached\nR58M1234567 device product:panther model:Pixel_8_Pro device:panther transport_id:1\n",

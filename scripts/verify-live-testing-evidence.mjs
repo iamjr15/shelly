@@ -28,6 +28,10 @@ const requiredFiles = [
   "locked-ui.xml",
   "locked-logcat.log",
   "locked-crash.log",
+  "biometric.png",
+  "biometric-ui.xml",
+  "biometric-logcat.log",
+  "biometric-crash.log",
   "adb-devices.txt",
   "pairing.txt",
   "dashboard.png",
@@ -86,6 +90,7 @@ for (const file of requiredFiles) {
 if (failures.length === 0) {
   verifyBuildConfig(readText("buildconfig.txt"));
   verifyPng("locked.png");
+  verifyPng("biometric.png");
   verifyPng("dashboard.png");
   verifyPng("session.png");
   verifyPng("tui.png");
@@ -98,6 +103,7 @@ if (failures.length === 0) {
   verifyLaunch(readText("launch.txt"));
   verifyLockedSurface(readText("locked-ui.xml"));
   verifyLockedLaunchLog(readText("locked-logcat.log"));
+  verifyBiometricPrompt(readText("biometric-ui.xml"), readText("biometric-logcat.log"));
   verifyAdbDevices(readText("adb-devices.txt"));
   verifyPairingTranscript(readText("pairing.txt"));
   verifyDashboardEvidence(
@@ -125,6 +131,7 @@ if (failures.length === 0) {
   );
   verifyMobileCapabilityBoundary([
     ["locked-ui.xml", readText("locked-ui.xml")],
+    ["biometric-ui.xml", readText("biometric-ui.xml")],
     ["dashboard-ui.xml", readText("dashboard-ui.xml")],
     ["session-ui.xml", readText("session-ui.xml")],
     ["tui-ui.xml", readText("tui-ui.xml")],
@@ -139,6 +146,8 @@ if (failures.length === 0) {
   verifyLogs([
     ["locked-logcat.log", readText("locked-logcat.log")],
     ["locked-crash.log", readText("locked-crash.log")],
+    ["biometric-logcat.log", readText("biometric-logcat.log")],
+    ["biometric-crash.log", readText("biometric-crash.log")],
     ["dashboard-logcat.log", readText("dashboard-logcat.log")],
     ["dashboard-crash.log", readText("dashboard-crash.log")],
     ["session-logcat.log", readText("session-logcat.log")],
@@ -275,6 +284,24 @@ function verifyLockedLaunchLog(text) {
     text,
     /\bFieldworkRepository:\s+(?:pair completed|listSessions returned|registerPushToken|attach)|\bterminal attached\b|\bsendInput\b/i,
     "locked-logcat.log must not show session sync, terminal attach, push-token registration, or input before unlock",
+  );
+}
+
+function verifyBiometricPrompt(ui, logcat) {
+  requirePatternText(
+    ui,
+    /\b(?:Biometric|Fingerprint|fingerprint|Face|face|Confirm|Authenticate|Unlock Fieldwork|Use fingerprint|Touch the fingerprint sensor)\b/i,
+    "biometric-ui.xml must show the Android biometric prompt before session access",
+  );
+  rejectPatternText(
+    ui,
+    /\b(No sessions|Terminal|refactoringjob|bash|claude|ANDROID_)\b/i,
+    "biometric-ui.xml must not expose session or terminal content behind the prompt",
+  );
+  rejectPatternText(
+    logcat,
+    /\bFieldworkRepository:\s+(?:listSessions returned|registerPushToken|attach)|\bterminal attached\b|\bsendInput\b/i,
+    "biometric-logcat.log must not show session sync, terminal attach, push-token registration, or input before unlock succeeds",
   );
 }
 
