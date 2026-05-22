@@ -15,6 +15,7 @@ const docs = {
   androidRenderer: read("docs/ANDROID_RENDERER.md"),
   androidDogfood: read("docs/ANDROID_DOGFOOD.md"),
   androidColdStart: read("docs/ANDROID_COLD_START.md"),
+  androidRendererFlood: read("docs/ANDROID_RENDERER_FLOOD.md"),
   androidBackgroundForeground: read("docs/ANDROID_BACKGROUND_FOREGROUND.md"),
   androidNetworkReconnect: read("docs/ANDROID_NETWORK_RECONNECT.md"),
   androidFcmPush: read("docs/ANDROID_FCM_PUSH.md"),
@@ -32,6 +33,7 @@ verifyInstallDoc();
 verifyAndroidRendererDoc();
 verifyAndroidDogfoodDoc();
 verifyAndroidColdStartDoc();
+verifyAndroidRendererFloodDoc();
 verifyAndroidBackgroundForegroundDoc();
 verifyAndroidNetworkReconnectDoc();
 verifyAndroidFcmPushDoc();
@@ -59,6 +61,7 @@ function verifyRequiredDocsExist() {
     "docs/ANDROID_RENDERER.md",
     "docs/ANDROID_DOGFOOD.md",
     "docs/ANDROID_COLD_START.md",
+    "docs/ANDROID_RENDERER_FLOOD.md",
     "docs/ANDROID_BACKGROUND_FOREGROUND.md",
     "docs/ANDROID_NETWORK_RECONNECT.md",
     "docs/ANDROID_FCM_PUSH.md",
@@ -171,6 +174,39 @@ function verifyAndroidColdStartDoc() {
       docs.androidColdStart,
       needle,
       `docs/ANDROID_COLD_START.md must document Android cold-start evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidRendererFloodDoc() {
+  for (const needle of [
+    "Android side of the Section 13\n`yes | head -10000` terminal renderer gate",
+    "signed release build on a\nphysical Android phone",
+    "at least 10000\n`ANDROID_LIVE_FLOOD` lines",
+    "raw-byte terminal renderer path",
+    "not an emulator or AVD",
+    "debug build, biometric bypass, or debug pairing payload",
+    "real QR scanner and explicit desktop approval",
+    "direct `adb`",
+    "node scripts/verify-android-aab.mjs --expect-signed",
+    "signed release bundle ok",
+    "BUILD_TYPE = \"release\"",
+    "DEBUG = false",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_ANDROID_FLOOD_DIR/adb-devices.txt\"",
+    "fw new --name fw_flood_session bash",
+    "printf 'ANDROID_LIVE_FLOOD_START\\n'; yes ANDROID_LIVE_FLOOD | head -10000",
+    "ANDROID_LIVE_FLOOD_DONE",
+    "flood_lines=10000",
+    "flood-replay.txt",
+    "pnpm check:android-renderer-flood-evidence -- \"$FW_ANDROID_FLOOD_DIR\"",
+    "only proves the Android release-device high-volume\nrenderer path",
+  ]) {
+    requireText(
+      docs.androidRendererFlood,
+      needle,
+      `docs/ANDROID_RENDERER_FLOOD.md must document Android renderer flood evidence: ${needle}`,
     );
   }
 }

@@ -42,6 +42,7 @@ const checks = [
   ["live testing evidence verifier self-test", node, ["scripts/test-live-testing-evidence.mjs"]],
   ["Android dogfood evidence verifier self-test", node, ["scripts/test-android-dogfood-evidence.mjs"]],
   ["Android cold-start evidence verifier self-test", node, ["scripts/test-android-cold-start-evidence.mjs"]],
+  ["Android renderer flood evidence verifier self-test", node, ["scripts/test-android-renderer-flood-evidence.mjs"]],
   ["Android background/foreground evidence verifier self-test", node, ["scripts/test-android-background-foreground-evidence.mjs"]],
   ["Android network reconnect evidence verifier self-test", node, ["scripts/test-android-network-reconnect-evidence.mjs"]],
   ["Android FCM push evidence verifier self-test", node, ["scripts/test-android-fcm-push-evidence.mjs"]],

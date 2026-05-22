@@ -244,6 +244,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "Android renderer flood evidence verifier fixture test",
+    "release audit must record local release aggregate coverage for Android renderer flood evidence verifier self-test",
+  );
+  requireText(
+    audit,
     "Android background/foreground evidence verifier fixture test",
     "release audit must record local release aggregate coverage for Android background/foreground evidence verifier self-test",
   );
@@ -434,8 +439,8 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
-    "release audit docs-sync row must include Android renderer, dogfood, cold-start, background/foreground, network reconnect, FCM push, macOS daemon survival, live-testing, and operations docs",
+    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_RENDERER_FLOOD.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
+    "release audit docs-sync row must include Android renderer, dogfood, cold-start, renderer flood, background/foreground, network reconnect, FCM push, macOS daemon survival, live-testing, and operations docs",
   );
   requireText(
     audit,
@@ -642,7 +647,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "current v1 install, protocol, privacy, architecture, Android renderer, Android dogfood, Android cold-start, Android background/foreground, Android network reconnect, Android FCM push, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
+    "current v1 install, protocol, privacy, architecture, Android renderer, Android dogfood, Android cold-start, Android renderer flood, Android background/foreground, Android network reconnect, Android FCM push, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
     "release audit must record concrete docs-sync coverage",
   );
   requireText(
@@ -899,6 +904,21 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "five physical release-device cold launches with `TotalTime<=1200ms`",
     "release audit must record the Android cold-start evidence contract",
+  );
+  requireText(
+    audit,
+    "`docs/ANDROID_RENDERER_FLOOD.md`",
+    "release audit must record the Android renderer flood runbook",
+  );
+  requireText(
+    audit,
+    "`scripts/verify-android-renderer-flood-evidence.mjs` fixture coverage",
+    "release audit must record Android renderer flood evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "10000 `ANDROID_LIVE_FLOOD` replay markers from a signed release device",
+    "release audit must record the Android renderer flood evidence contract",
   );
   requireText(
     audit,
@@ -2234,6 +2254,12 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-cold-start-evidence"] !== "node scripts/test-android-cold-start-evidence.mjs") {
     failures.push("package.json must expose test:android-cold-start-evidence");
   }
+  if (packageJson.scripts?.["check:android-renderer-flood-evidence"] !== "node scripts/verify-android-renderer-flood-evidence.mjs") {
+    failures.push("package.json must expose check:android-renderer-flood-evidence");
+  }
+  if (packageJson.scripts?.["test:android-renderer-flood-evidence"] !== "node scripts/test-android-renderer-flood-evidence.mjs") {
+    failures.push("package.json must expose test:android-renderer-flood-evidence");
+  }
   if (packageJson.scripts?.["check:android-background-foreground-evidence"] !== "node scripts/verify-android-background-foreground-evidence.mjs") {
     failures.push("package.json must expose check:android-background-foreground-evidence");
   }
@@ -2378,6 +2404,7 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/test-live-testing-evidence.mjs", "local release gate must include live-test evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-dogfood-evidence.mjs", "local release gate must include Android dogfood evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-cold-start-evidence.mjs", "local release gate must include Android cold-start evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-renderer-flood-evidence.mjs", "local release gate must include Android renderer flood evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-background-foreground-evidence.mjs", "local release gate must include Android background/foreground evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-network-reconnect-evidence.mjs", "local release gate must include Android network reconnect evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-fcm-push-evidence.mjs", "local release gate must include Android FCM push evidence verifier self-test");
