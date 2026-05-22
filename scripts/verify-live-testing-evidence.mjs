@@ -115,6 +115,7 @@ console.log(`live testing evidence ok: ${evidenceDir}`);
 
 function verifyLaunch(text) {
   requirePatternText(text, /\bStatus:\s*ok\b/, "launch.txt must contain Android am start Status: ok");
+  requirePatternText(text, /\bLaunchState:\s*COLD\b/, "launch.txt must prove the locked launch was cold after force-stop");
   requirePatternText(text, /\bActivity:\s*app\.fieldwork\.android\/\.MainActivity\b/, "launch.txt must launch app.fieldwork.android/.MainActivity");
   requirePatternText(text, /\bTotalTime:\s*\d+\b/, "launch.txt must record TotalTime");
 }
@@ -226,7 +227,7 @@ function verifyMultisessionReplay(file, text, sessionName, requiredMarker, forbi
 
 function verifyDevices(text) {
   requirePatternText(text, /\S/, "devices.txt must not be empty");
-  rejectPatternText(text, /\bUnauthorized\b/i, "devices.txt must not show the tested device as unauthorized");
+  rejectPatternText(text, /\b(?:unauthorized|offline)\b/i, "devices.txt must not show the tested device as unauthorized or offline");
 }
 
 function verifyLogs(entries) {

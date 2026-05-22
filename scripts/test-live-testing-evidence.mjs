@@ -53,6 +53,14 @@ try {
   fs.writeFileSync(path.join(badReplay, "terminal-replay.txt"), "shell prompt only\n");
   expectStatus(badReplay, 1, "desktop replay without Android marker should fail", "terminal-replay.txt must prove Android-originated input/output");
 
+  const warmLaunch = path.join(temp, "warm-launch");
+  writeFixture(warmLaunch);
+  fs.writeFileSync(
+    path.join(warmLaunch, "launch.txt"),
+    ["Status: ok", "LaunchState: WARM", "Activity: app.fieldwork.android/.MainActivity", "TotalTime: 934"].join("\n"),
+  );
+  expectStatus(warmLaunch, 1, "warm locked launch should fail", "launch.txt must prove the locked launch was cold");
+
   const badBackground = path.join(temp, "bad-background");
   writeFixture(badBackground);
   fs.writeFileSync(path.join(badBackground, "background-replay.txt"), "after_background_ok only\n");
@@ -72,6 +80,11 @@ try {
   writeFixture(crash);
   fs.writeFileSync(path.join(crash, "session-crash.log"), "FATAL EXCEPTION: main\nProcess: app.fieldwork.android\n");
   expectStatus(crash, 1, "Fieldwork crash-buffer fixture should fail", "session-crash.log must not contain");
+
+  const offlineDevice = path.join(temp, "offline-device");
+  writeFixture(offlineDevice);
+  fs.writeFileSync(path.join(offlineDevice, "devices.txt"), "emulator-5554 offline\n");
+  expectStatus(offlineDevice, 1, "offline adb device fixture should fail", "devices.txt must not show the tested device as unauthorized or offline");
 
   const unlockedLeak = path.join(temp, "locked-leak");
   writeFixture(unlockedLeak);

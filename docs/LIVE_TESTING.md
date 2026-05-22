@@ -115,7 +115,7 @@ Capture the locked launch surface:
 ```sh
 adb shell am force-stop app.fieldwork.android
 adb logcat -c
-adb shell am start -W app.fieldwork.android/.MainActivity | tee "$FW_LIVE_DIR/launch.txt"
+adb shell am start -W -n app.fieldwork.android/.MainActivity | tee "$FW_LIVE_DIR/launch.txt"
 adb exec-out screencap -p > "$FW_LIVE_DIR/locked.png"
 adb shell uiautomator dump /sdcard/window.xml
 adb pull /sdcard/window.xml "$FW_LIVE_DIR/locked-ui.xml"

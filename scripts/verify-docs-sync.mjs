@@ -207,6 +207,7 @@ function verifyLiveTestingDoc() {
     "generated one-word name such as `waffle` or `kazoo`",
     "`refactoringjob` appear as active sessions in the Android dashboard",
     "auto-named default `claude` session",
+    "adb shell am start -W -n app.fieldwork.android/.MainActivity",
     "adb exec-out screencap -p",
     "adb shell uiautomator dump",
     "adb logcat -d -b crash",
