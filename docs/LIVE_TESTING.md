@@ -252,7 +252,8 @@ pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"
 ```
 
 This verifier does not replace human review of the phone behavior. It checks
-that the direct `adb` evidence set is complete, screenshots are nontrivial PNGs,
+that the direct `adb` evidence set is complete, screenshots are nontrivial
+full-size Android PNGs,
 `adb-devices.txt` shows at least one authorized connected device and no
 unauthorized/offline/emulator/AVD device state,
 the locked UI and freshly cleared locked-launch logcat did not expose or fetch

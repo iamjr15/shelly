@@ -39,6 +39,11 @@ try {
   writePng(path.join(blankScreenshot, "session.png"), { blank: true });
   expectStatus(blankScreenshot, 1, "blank screenshot should fail", "session.png appears blank or solid-color");
 
+  const tinyScreenshot = path.join(temp, "tiny-screenshot");
+  writeFixture(tinyScreenshot);
+  writePng(path.join(tinyScreenshot, "session.png"), { width: 160, height: 240 });
+  expectStatus(tinyScreenshot, 1, "tiny screenshot should fail", "session.png is too small for Android phone evidence");
+
   const badTui = path.join(temp, "bad-tui");
   writeFixture(badTui);
   fs.writeFileSync(path.join(badTui, "tui-ui.xml"), '<hierarchy><node text="Attached"/><node text="plain shell"/></hierarchy>\n');
@@ -433,8 +438,8 @@ function readAutoSessionName() {
 }
 
 function writePng(file, options = {}) {
-  const width = 360;
-  const height = 640;
+  const width = options.width ?? 360;
+  const height = options.height ?? 640;
   const rowBytes = width * 4;
   const raw = Buffer.alloc((rowBytes + 1) * height);
   let offset = 0;

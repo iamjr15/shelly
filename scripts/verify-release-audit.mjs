@@ -284,7 +284,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "nontrivial PNG screenshots, locked-surface privacy",
+    "nontrivial full-size Android PNG screenshots, locked-surface privacy",
     "release audit must describe live-test evidence verifier coverage",
   );
   requireText(

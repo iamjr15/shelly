@@ -243,7 +243,7 @@ function verifyLiveTestingDoc() {
     "expected replay/no-leakage\nmarkers",
     "pnpm check:live-testing-evidence -- \"$FW_LIVE_DIR\"",
     "direct `adb` evidence set is complete",
-    "screenshots are nontrivial PNGs",
+    "screenshots are nontrivial\nfull-size Android PNGs",
     "unauthorized/offline/emulator/AVD device state",
     "the locked UI and freshly cleared locked-launch logcat did not expose or fetch\nsession, terminal, push-token, or input content before unlock",
     "do not expose mobile session creation, session kill, or\ncommand-selection controls",

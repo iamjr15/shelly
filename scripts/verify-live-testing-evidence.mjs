@@ -497,7 +497,9 @@ function verifyPng(file) {
     failures.push(`${file} is too small to be useful evidence (${bytes.length} bytes)`);
   }
   try {
-    verifyVisiblePng(file, decodePng(bytes));
+    const image = decodePng(bytes);
+    verifyScreenshotDimensions(file, image);
+    verifyVisiblePng(file, image);
   } catch (error) {
     failures.push(`${file} must be a decodable nonblank PNG screenshot: ${error.message}`);
   }
@@ -629,6 +631,14 @@ function paeth(left, up, upLeft) {
     return up;
   }
   return upLeft;
+}
+
+function verifyScreenshotDimensions(file, image) {
+  const shortSide = Math.min(image.width, image.height);
+  const longSide = Math.max(image.width, image.height);
+  if (shortSide < 360 || longSide < 640) {
+    throw new Error(`${file} is too small for Android phone evidence (${image.width}x${image.height})`);
+  }
 }
 
 function verifyVisiblePng(file, image) {
