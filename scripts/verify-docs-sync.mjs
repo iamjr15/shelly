@@ -15,6 +15,7 @@ const docs = {
   androidRenderer: read("docs/ANDROID_RENDERER.md"),
   androidDogfood: read("docs/ANDROID_DOGFOOD.md"),
   androidColdStart: read("docs/ANDROID_COLD_START.md"),
+  androidFcmPush: read("docs/ANDROID_FCM_PUSH.md"),
   macosDaemonSurvival: read("docs/MACOS_DAEMON_SURVIVAL.md"),
   liveTesting: read("docs/LIVE_TESTING.md"),
   operations: read("docs/OPERATIONS.md"),
@@ -29,6 +30,7 @@ verifyInstallDoc();
 verifyAndroidRendererDoc();
 verifyAndroidDogfoodDoc();
 verifyAndroidColdStartDoc();
+verifyAndroidFcmPushDoc();
 verifyMacosDaemonSurvivalDoc();
 verifyLiveTestingDoc();
 verifyOperationsDoc();
@@ -53,6 +55,7 @@ function verifyRequiredDocsExist() {
     "docs/ANDROID_RENDERER.md",
     "docs/ANDROID_DOGFOOD.md",
     "docs/ANDROID_COLD_START.md",
+    "docs/ANDROID_FCM_PUSH.md",
     "docs/MACOS_DAEMON_SURVIVAL.md",
     "docs/LIVE_TESTING.md",
     "docs/OPERATIONS.md",
@@ -162,6 +165,44 @@ function verifyAndroidColdStartDoc() {
       docs.androidColdStart,
       needle,
       `docs/ANDROID_COLD_START.md must document Android cold-start evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidFcmPushDoc() {
+  for (const needle of [
+    "Android side of the Section 13 provider-push gates",
+    "does not cover APNs\nor iOS",
+    "10/10 delivered `AwaitingInput` FCM notifications",
+    "physical Android phone",
+    "signed release App Bundle",
+    "production relay control plane",
+    "relay-held FCM service-account\n  JSON",
+    "debug build, biometric bypass, or debug pairing payload",
+    "direct `adb`",
+    "node scripts/verify-android-aab.mjs --expect-signed",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "curl -fsS https://relay.fieldwork.dev:8443/v1/version",
+    "token-registration.txt",
+    "/v1/push/register-token",
+    "provider-payloads.json",
+    "\"session_id_hash\"",
+    "\"session_name_hash\"",
+    "\"event_type\": \"awaiting_input\"",
+    "\"click_action\": \"FIELDWORK_OPEN_SESSION\"",
+    "last_line",
+    "notification_received_&_ok",
+    "notification-ui.xml",
+    "tap-replay.txt",
+    "notify_tap_ok",
+    "pnpm check:android-fcm-push-evidence -- \"$FW_ANDROID_FCM_DIR\"",
+    "only proves the Android/FCM provider path",
+  ]) {
+    requireText(
+      docs.androidFcmPush,
+      needle,
+      `docs/ANDROID_FCM_PUSH.md must document Android FCM push evidence: ${needle}`,
     );
   }
 }

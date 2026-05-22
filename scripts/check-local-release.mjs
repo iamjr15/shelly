@@ -42,6 +42,7 @@ const checks = [
   ["live testing evidence verifier self-test", node, ["scripts/test-live-testing-evidence.mjs"]],
   ["Android dogfood evidence verifier self-test", node, ["scripts/test-android-dogfood-evidence.mjs"]],
   ["Android cold-start evidence verifier self-test", node, ["scripts/test-android-cold-start-evidence.mjs"]],
+  ["Android FCM push evidence verifier self-test", node, ["scripts/test-android-fcm-push-evidence.mjs"]],
   ["macOS daemon survival evidence verifier self-test", node, ["scripts/test-macos-daemon-survival-evidence.mjs"]],
   ["debug instance env contract", node, ["scripts/test-debug-instance.mjs"]],
   [
