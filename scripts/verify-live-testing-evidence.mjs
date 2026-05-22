@@ -6,6 +6,7 @@ import zlib from "node:zlib";
 
 const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 const failures = [];
+const root = path.resolve(new URL("..", import.meta.url).pathname);
 
 if (rawArgs.length !== 1 || rawArgs[0] === "--help" || rawArgs[0] === "-h") {
   console.error("usage: node scripts/verify-live-testing-evidence.mjs <evidence-dir>");
@@ -13,30 +14,7 @@ if (rawArgs.length !== 1 || rawArgs[0] === "--help" || rawArgs[0] === "-h") {
 }
 
 const evidenceDir = path.resolve(rawArgs[0]);
-const autoSessionNames = [
-  "waffle",
-  "pickle",
-  "noodle",
-  "bagel",
-  "nacho",
-  "spatula",
-  "kazoo",
-  "widget",
-  "pancake",
-  "pretzel",
-  "cupcake",
-  "lollipop",
-  "confetti",
-  "sprocket",
-  "marble",
-  "boomerang",
-  "muffin",
-  "donut",
-  "toaster",
-  "sprinkle",
-  "gizmo",
-  "jellybean",
-];
+const autoSessionNames = readAutoSessionNames();
 const autoSessionNameSource = `(?:${autoSessionNames.map(escapeRegExp).join("|")})`;
 const autoSessionNamePattern = new RegExp(`\\b${autoSessionNameSource}\\b`, "i");
 const autoClaudeSessionLinePattern = new RegExp(`^.*\\b${autoSessionNameSource}\\b.*\\bclaude\\b.*$`, "im");
@@ -153,6 +131,31 @@ if (failures.length > 0) {
 }
 
 console.log(`live testing evidence ok: ${evidenceDir}`);
+
+function readAutoSessionNames() {
+  const sourcePath = path.join(root, "crates/cli/src/main.rs");
+  const fallback = ["__fieldwork_auto_name_source_unavailable__"];
+  let source;
+  try {
+    source = fs.readFileSync(sourcePath, "utf8");
+  } catch (error) {
+    failures.push(`cannot read CLI auto-session names from ${sourcePath}: ${error.message}`);
+    return fallback;
+  }
+
+  const match = source.match(/const\s+AUTO_SESSION_NAMES\s*:\s*&\[[^\]]+\]\s*=\s*&\[(?<body>[\s\S]*?)\];/);
+  if (!match?.groups?.body) {
+    failures.push("cannot locate AUTO_SESSION_NAMES in crates/cli/src/main.rs");
+    return fallback;
+  }
+
+  const names = [...match.groups.body.matchAll(/"([^"\n]+)"/g)].map((nameMatch) => nameMatch[1]);
+  if (names.length === 0) {
+    failures.push("AUTO_SESSION_NAMES in crates/cli/src/main.rs must not be empty");
+    return fallback;
+  }
+  return names;
+}
 
 function verifyBuildConfig(text) {
   requirePatternText(
