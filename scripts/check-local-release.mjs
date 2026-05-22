@@ -40,6 +40,7 @@ const checks = [
   ["release audit", node, ["scripts/verify-release-audit.mjs"]],
   ["release audit list mode", node, ["scripts/test-release-audit-list.mjs"]],
   ["live testing evidence verifier self-test", node, ["scripts/test-live-testing-evidence.mjs"]],
+  ["live testing evidence scaffold self-test", node, ["scripts/test-live-testing-scaffold.mjs"]],
   ["Android pair-flow evidence verifier self-test", node, ["scripts/test-android-pair-flow-evidence.mjs"]],
   ["Android session-subscription evidence verifier self-test", node, ["scripts/test-android-session-subscription-evidence.mjs"]],
   ["Android terminal attach evidence verifier self-test", node, ["scripts/test-android-terminal-attach-evidence.mjs"]],

@@ -82,7 +82,8 @@ boundaries, v1/FUTURE boundary plus no-ship marker scans/self-tests, release
 audit checks, workflow YAML syntax parsing, release workflow contracts, UniFFI
 binding surface, npm registry and publish-plan fixtures, Bun
 optional-dependency behavior, release-artifact
-verifier fixtures, and Android AAB verifier fixtures. It deliberately excludes
+verifier fixtures, live-test evidence verifier/scaffold fixtures, and Android
+AAB verifier fixtures. It deliberately excludes
 network account checks, live publishing, iOS SDK builds, Android emulator
 runtime tests, physical-device checks, and hosted relay deployment. When the
 local platform binaries and Android AAB are staged, run

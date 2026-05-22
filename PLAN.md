@@ -1833,6 +1833,16 @@ and targeted logcat scanning found no Fieldwork `FATAL EXCEPTION` or ANR
 entries. This remains debug-emulator substitute evidence only; physical release
 device cold-start and biometric evidence remain unchecked.
 
+**Live testing evidence scaffold note (2026-05-22)**:
+`scripts/create-live-testing-evidence-dir.mjs` now creates the first Android
+live-test evidence directory scaffold from the verifier's required-file list and
+writes only `README.md`, `manifest.json`, and `missing-files.txt`; it does not
+fabricate screenshots, UI dumps, logcat, crash buffers, or desktop transcripts.
+`docs/LIVE_TESTING.md` uses the scaffold before pairing, and
+`scripts/test-live-testing-scaffold.mjs` plus `pnpm check:local-release` verify
+that the scaffold mirrors `scripts/verify-live-testing-evidence.mjs` and still
+fails the evidence verifier until real physical-device evidence is captured.
+
 **Android background/foreground replay note (2026-05-19)**: `pnpm test:android-emulator-background-replay` pairs the actual Android debug app with an isolated release daemon through the debug-only QR payload path, opens a desktop-created terminal, backgrounds the attached app while the PTY emits `ANDROID_BACKGROUND_REPLAY_OUTPUT`, foregrounds back to `Attached`, sends `after_background_ok`, and verifies the background-emitted output plus post-foreground input through a separately approved verifier. Latest local run passed on `emulator-5554`. This is still emulator substitute evidence; the release gate remains unchecked until the same behavior is observed on physical release devices.
 
 **Android startup hardening note (2026-05-18)**: the Android root now obtains

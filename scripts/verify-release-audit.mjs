@@ -234,6 +234,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "live-testing evidence scaffold self-test",
+    "release audit must record local release aggregate coverage for live-test evidence scaffold self-test",
+  );
+  requireText(
+    audit,
     "Android pair-flow evidence verifier fixture test",
     "release audit must record local release aggregate coverage for Android pair-flow evidence verifier self-test",
   );
@@ -356,6 +361,11 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "direct `adb` screenshot/UI/log/crash capture",
     "release audit must preserve the direct adb evidence requirement",
+  );
+  requireText(
+    audit,
+    "scripts/create-live-testing-evidence-dir.mjs",
+    "release audit must record the first live-test evidence scaffold",
   );
   requireText(
     audit,
@@ -2401,6 +2411,12 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["check:local-release:full"] !== "node scripts/check-local-release.mjs --with-artifacts --with-runtime") {
     failures.push("package.json must expose check:local-release:full");
   }
+  if (packageJson.scripts?.["scaffold:live-testing-evidence"] !== "node scripts/create-live-testing-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:live-testing-evidence");
+  }
+  if (packageJson.scripts?.["test:live-testing-scaffold"] !== "node scripts/test-live-testing-scaffold.mjs") {
+    failures.push("package.json must expose test:live-testing-scaffold");
+  }
   if (packageJson.scripts?.["check:secret-boundaries"] !== "node scripts/verify-secret-boundaries.mjs") {
     failures.push("package.json must expose check:secret-boundaries");
   }
@@ -2648,6 +2664,7 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/verify-release-audit.mjs", "local release gate must include release audit verification");
   requireText(localRelease, "scripts/test-release-audit-list.mjs", "local release gate must include release audit list-mode test");
   requireText(localRelease, "scripts/test-live-testing-evidence.mjs", "local release gate must include live-test evidence verifier self-test");
+  requireText(localRelease, "scripts/test-live-testing-scaffold.mjs", "local release gate must include live-test evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-pair-flow-evidence.mjs", "local release gate must include Android pair-flow evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-session-subscription-evidence.mjs", "local release gate must include Android session-subscription evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-terminal-attach-evidence.mjs", "local release gate must include Android terminal attach evidence verifier self-test");
