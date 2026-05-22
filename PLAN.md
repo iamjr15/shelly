@@ -1795,6 +1795,29 @@ the locked `Unlock` surface, and an empty restored crash buffer. This is still
 emulator substitute evidence only; physical Android biometric, QR-camera,
 renderer dogfood, and release-device runtime gates remain unchecked.
 
+**Direct Android adb pair/input refresh (2026-05-22)**: a direct `adb` pass on
+`Medium_Phone_API_36.1` installed the default debug APK, launched the locked app
+with `Status: ok`, `LaunchState: COLD`, and `TotalTime=6396ms`, and confirmed
+`BuildConfig.java` had `FIELDWORK_BIOMETRIC_BYPASS = false` plus empty
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD`. The paired run used an isolated release
+daemon with a throwaway `FIELDWORK_IROH_SECRET_KEY_B64` test identity, rebuilt a
+debug-only biometric-bypass/pair-payload APK, accepted camera and notification
+runtime prompts, paired through explicit desktop approval, listed the
+desktop-created `shell` session with `ANDROID_ADB_20260522_READY`, attached it,
+and sent `android_adb_20260522_ok` through `adb shell input text` plus Enter.
+A separate desktop attach to the same PTY replayed
+`android-direct-20260522: android_adb_20260522_ok`, proving emulator-originated
+input reached the daemon-owned terminal. Evidence lives under
+`/tmp/fieldwork-adb-direct-20260522093624` and includes locked, pair,
+dashboard, attached-terminal, post-input, logcat, and empty crash-buffer files.
+The debug APK was rebuilt and reinstalled back to default afterward:
+`FIELDWORK_BIOMETRIC_BYPASS = false`,
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, restored launch `TotalTime=8625ms`,
+`default-restored-locked.png`/UI XML verified the locked `Unlock` surface, and
+the restored crash buffer was empty. This remains debug-emulator substitute
+evidence only; physical Android biometric, QR-camera, renderer dogfood, and
+release-device runtime gates remain unchecked.
+
 **Android background/foreground replay note (2026-05-19)**: `pnpm test:android-emulator-background-replay` pairs the actual Android debug app with an isolated release daemon through the debug-only QR payload path, opens a desktop-created terminal, backgrounds the attached app while the PTY emits `ANDROID_BACKGROUND_REPLAY_OUTPUT`, foregrounds back to `Attached`, sends `after_background_ok`, and verifies the background-emitted output plus post-foreground input through a separately approved verifier. Latest local run passed on `emulator-5554`. This is still emulator substitute evidence; the release gate remains unchecked until the same behavior is observed on physical release devices.
 
 **Android startup hardening note (2026-05-18)**: the Android root now obtains
