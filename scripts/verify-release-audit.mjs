@@ -697,7 +697,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "latest pass from `pnpm check:local-release:full` measured CLI max `3.85ms` and daemon max `44.55ms`",
+    "latest pass from `pnpm check:local-release:full` measured CLI max `3.81ms` and daemon max `43.72ms`",
     "release audit must record current desktop max performance evidence",
   );
   requireText(
@@ -1685,8 +1685,8 @@ function verifyLatestRefresh() {
   requireText(audit, "temp-volume exhaustion while unpacking Cargo registry\nfiles", "release audit must record the local temp-space retry reason");
   requireText(audit, "local handoff smoke preserved host\n`CARGO_HOME`/`RUSTUP_HOME`", "release audit must record local handoff cache preservation");
   requireText(audit, "named its subscription/reconnect sessions\nexplicitly under the daemon duplicate-name rule", "release audit must record duplicate-name-safe handoff smoke sessions");
-  requireText(audit, "`3.33ms`, p95 `3.81ms`, max `3.85ms`", "release audit must record latest CLI desktop performance values");
-  requireText(audit, "`42.43ms`, p95 `44.52ms`, max `44.55ms`", "release audit must record latest daemon desktop performance values");
+  requireText(audit, "`3.26ms`, p95 `3.70ms`, max `3.81ms`", "release audit must record latest CLI desktop performance values");
+  requireText(audit, "`41.85ms`, p95 `43.62ms`, max `43.72ms`", "release audit must record latest daemon desktop performance values");
   requireText(audit, "npm binary readiness passed\nwith staged artifacts", "release audit must record staged npm binary readiness");
   requireText(audit, "Cross-target desktop release builds passed on 2026-05-20", "release audit must record the latest cross-target desktop release build date");
   requireText(audit, "Mach-O arm64/x86_64 and ELF x86-64/aarch64 binaries", "release audit must record cross-target binary format verification");
@@ -1905,8 +1905,8 @@ function verifyLatestRefresh() {
   requireText(audit, "clearing\n  reproducible debug/mobile Rust build output to recover disk space", "release audit must record local handoff disk-space recovery");
   requireText(audit, "removing the regenerated repo-local `target/debug` after the run", "release audit must record local handoff target/debug cleanup");
   requireText(audit, "`IosApp` and `AndroidApp`", "release audit must record both mobile client kinds in capability verification");
-  requirePattern(audit, /paired in\s+2 seconds/, "release audit must record the latest local handoff pair duration");
-  requireText(audit, "9ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
+  requirePattern(audit, /paired in\s+3 seconds/, "release audit must record the latest local handoff pair duration");
+  requireText(audit, "15ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
   requireText(audit, "`cargo nextest run --workspace`: 170 tests passed.", "release audit must record the current workspace nextest count");
   requireText(audit, "`cargo test --workspace --doc`: workspace doctest harnesses passed", "release audit must record the current workspace doctest result");
   requireText(audit, "`cargo nextest run -p fieldwork-daemon`: 73 daemon tests passed", "release audit must record the current daemon test count");
