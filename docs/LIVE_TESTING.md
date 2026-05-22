@@ -169,6 +169,34 @@ script -q "$FW_LIVE_DIR/terminal-replay.txt" fw attach shell
 # Confirm android_live_ok is visible, then press Ctrl-B followed by D to detach.
 ```
 
+After resizing the Android terminal, type
+`printf 'resize_size=%s\n' "$(stty size)"; echo after_resize_ok` from Android,
+then capture:
+
+```sh
+adb exec-out screencap -p > "$FW_LIVE_DIR/resize.png"
+adb shell uiautomator dump /sdcard/window.xml
+adb pull /sdcard/window.xml "$FW_LIVE_DIR/resize-ui.xml"
+adb logcat -d > "$FW_LIVE_DIR/resize-logcat.log"
+adb logcat -d -b crash > "$FW_LIVE_DIR/resize-crash.log"
+script -q "$FW_LIVE_DIR/resize-replay.txt" fw attach shell
+# Confirm resize_size=<rows> <cols> or resize_size=<rows>x<cols> and after_resize_ok are visible, then detach.
+```
+
+After detaching from Android, capture the dashboard, reattach to the same shell
+session from Android, type `echo after_detach_reattach_ok`, then capture the
+desktop replay transcript:
+
+```sh
+adb exec-out screencap -p > "$FW_LIVE_DIR/detach.png"
+adb shell uiautomator dump /sdcard/window.xml
+adb pull /sdcard/window.xml "$FW_LIVE_DIR/detach-ui.xml"
+adb logcat -d > "$FW_LIVE_DIR/detach-logcat.log"
+adb logcat -d -b crash > "$FW_LIVE_DIR/detach-crash.log"
+script -q "$FW_LIVE_DIR/detach-replay.txt" fw attach shell
+# Confirm after_detach_reattach_ok is visible, then detach.
+```
+
 After attaching the TUI session (`vim` or `htop`), capture a dedicated TUI
 evidence set. The UI dump must show the `Attached` terminal state plus visible
 TUI terminal content such as `htop` function-key labels or a `vim` status line:
@@ -232,7 +260,9 @@ the expected desktop-created sessions, `pairing.txt` proves the desktop-side
 QR payload, device-scan wait, explicit approval prompt, and approved completion,
 records `pair_flow_ms=<elapsed-ms>` at or below 15000, the desktop replay
 transcript contains `android_live_ok` from the Android-originated shell input,
-the TUI attach
+`resize-replay.txt` contains a plausible `resize_size=<rows>x<cols>` or
+`resize_size=<rows> <cols>` plus `after_resize_ok`, `detach-replay.txt` contains
+`after_detach_reattach_ok`, the TUI attach
 evidence shows real `vim`/`htop` terminal content in the Android terminal
 surface, the background/foreground, network reconnect, daemon restart restore,
 and multi-session switching transcripts contain the expected replay/no-leakage
@@ -253,13 +283,14 @@ fatal, ANR, or crash entries.
 6. Attach to `claude`, send a harmless line, and verify input/output does not
    affect the other sessions.
 7. Attach to `vim` or `htop` and verify the TUI renders usable terminal state.
-8. Background the app while a PTY emits output, foreground it, and verify replay.
-9. Toggle Wi-Fi or airplane mode, reconnect within the release target, and
+8. Resize the terminal and verify the PTY reports a plausible row/column size.
+9. Detach and reattach; verify the terminal resumes from the latest seen offset.
+10. Background the app while a PTY emits output, foreground it, and verify replay.
+11. Toggle Wi-Fi or airplane mode, reconnect within the release target, and
    verify missed output replays.
-10. Restart the daemon, relaunch Android, and verify last-known sessions and
+12. Restart the daemon, relaunch Android, and verify last-known sessions and
     scrollback are listed while exited processes are documented as exited.
-11. Open three sessions and switch among them; verify no output crosses sessions.
-12. Detach and reattach; verify the terminal resumes from the latest seen offset.
+13. Open three sessions and switch among them; verify no output crosses sessions.
 
 ## Pass Criteria
 

@@ -304,6 +304,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "resize screenshot/UI/log/crash evidence plus `resize-replay.txt` with plausible `resize_size=<rows>x<cols>` or `resize_size=<rows> <cols>` and `after_resize_ok`",
+    "release audit must record live-test resize evidence",
+  );
+  requireText(
+    audit,
+    "detach dashboard screenshot/UI/log/crash evidence plus `detach-replay.txt` with `after_detach_reattach_ok`",
+    "release audit must record live-test detach/reattach evidence",
+  );
+  requireText(
+    audit,
     "background/foreground, network reconnect, daemon restart restore, and multi-session transcript markers",
     "release audit must describe live-test state-preservation evidence coverage",
   );
@@ -966,6 +976,11 @@ function verifyLiveTestingRunbook() {
     "dashboard-ui.xml",
     "dashboard-logcat.log",
     "dashboard-crash.log",
+    "resize-replay.txt",
+    "after_resize_ok",
+    "resize_size=<rows>x<cols>",
+    "detach-replay.txt",
+    "after_detach_reattach_ok",
     "background-replay.txt",
     "reconnect-replay.txt",
     "`reconnect_ms=<elapsed-ms>`",

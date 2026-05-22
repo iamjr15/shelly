@@ -119,6 +119,26 @@ try {
   fs.writeFileSync(path.join(badReplay, "terminal-replay.txt"), "shell prompt only\n");
   expectStatus(badReplay, 1, "desktop replay without Android marker should fail", "terminal-replay.txt must prove Android-originated input/output");
 
+  const missingResize = path.join(temp, "missing-resize");
+  writeFixture(missingResize);
+  fs.rmSync(path.join(missingResize, "resize-replay.txt"));
+  expectStatus(missingResize, 1, "missing resize replay should fail", "missing evidence file: resize-replay.txt");
+
+  const badResize = path.join(temp, "bad-resize");
+  writeFixture(badResize);
+  fs.writeFileSync(path.join(badResize, "resize-replay.txt"), "after_resize_ok\nresize_size=1x5\n");
+  expectStatus(badResize, 1, "implausible resize dimensions should fail", "resize-replay.txt records implausible terminal size 1x5");
+
+  const missingDetach = path.join(temp, "missing-detach");
+  writeFixture(missingDetach);
+  fs.rmSync(path.join(missingDetach, "detach-replay.txt"));
+  expectStatus(missingDetach, 1, "missing detach replay should fail", "missing evidence file: detach-replay.txt");
+
+  const badDetach = path.join(temp, "bad-detach");
+  writeFixture(badDetach);
+  fs.writeFileSync(path.join(badDetach, "detach-replay.txt"), "shell bash\n");
+  expectStatus(badDetach, 1, "detach replay without post-reattach marker should fail", "detach-replay.txt must include Android-originated input after detach and reattach");
+
   const missingAutoName = path.join(temp, "missing-auto-name");
   writeFixture(missingAutoName);
   fs.writeFileSync(
@@ -257,6 +277,8 @@ function writeFixture(dir) {
   writePng(path.join(dir, "dashboard.png"));
   writePng(path.join(dir, "session.png"));
   writePng(path.join(dir, "tui.png"));
+  writePng(path.join(dir, "resize.png"));
+  writePng(path.join(dir, "detach.png"));
   writePng(path.join(dir, "background.png"));
   writePng(path.join(dir, "reconnect.png"));
   writePng(path.join(dir, "restart.png"));
@@ -272,6 +294,8 @@ function writeFixture(dir) {
   );
   fs.writeFileSync(path.join(dir, "session-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="android_live_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "tui-ui.xml"), '<hierarchy><node text="tui"/><node text="Attached"/><node text="F1Help F2Setup F10Quit"/></hierarchy>\n');
+  fs.writeFileSync(path.join(dir, "resize-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="after_resize_ok"/></hierarchy>\n');
+  fs.writeFileSync(path.join(dir, "detach-ui.xml"), '<hierarchy><node text="refactoringjob"/><node text="shell"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "background-ui.xml"), '<hierarchy><node text="Attached"/><node text="after_background_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "reconnect-ui.xml"), '<hierarchy><node text="Attached"/><node text="after_reconnect_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "restart-ui.xml"), '<hierarchy><node text="fw_restart_session"/><node text="Attached"/></hierarchy>\n');
@@ -308,6 +332,10 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "session-crash.log"), "");
   fs.writeFileSync(path.join(dir, "tui-logcat.log"), "I Fieldwork: terminal attached\n");
   fs.writeFileSync(path.join(dir, "tui-crash.log"), "");
+  fs.writeFileSync(path.join(dir, "resize-logcat.log"), "I Fieldwork: terminal resized\n");
+  fs.writeFileSync(path.join(dir, "resize-crash.log"), "");
+  fs.writeFileSync(path.join(dir, "detach-logcat.log"), "I Fieldwork: terminal detached\n");
+  fs.writeFileSync(path.join(dir, "detach-crash.log"), "");
   fs.writeFileSync(path.join(dir, "background-logcat.log"), "I Fieldwork: background replay attached\n");
   fs.writeFileSync(path.join(dir, "background-crash.log"), "");
   fs.writeFileSync(path.join(dir, "reconnect-logcat.log"), "I Fieldwork: reconnect attached\n");
@@ -318,6 +346,8 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "multisession-crash.log"), "");
   fs.writeFileSync(path.join(dir, "devices.txt"), "Pixel 8 Pro paired\n");
   fs.writeFileSync(path.join(dir, "terminal-replay.txt"), "shell bash\n$ echo android_live_ok\nandroid_live_ok\n");
+  fs.writeFileSync(path.join(dir, "resize-replay.txt"), "shell bash\nresize_size=32x120\nafter_resize_ok\n");
+  fs.writeFileSync(path.join(dir, "detach-replay.txt"), "shell bash\nafter_detach_reattach_ok\n");
   fs.writeFileSync(path.join(dir, "background-replay.txt"), "shell bash\nANDROID_BACKGROUND_REPLAY_OUTPUT\nafter_background_ok\n");
   fs.writeFileSync(path.join(dir, "reconnect-replay.txt"), "reconnect_ms=843\nNETWORK_REPLAY_OUTPUT\nafter_reconnect_ok\n");
   fs.writeFileSync(path.join(dir, "restart-replay.txt"), "fw_restart_session\nANDROID_RESTART_SCROLLBACK\n");

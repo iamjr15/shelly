@@ -45,6 +45,16 @@ const requiredFiles = [
   "tui-crash.log",
   "devices.txt",
   "sessions.txt",
+  "resize.png",
+  "resize-ui.xml",
+  "resize-logcat.log",
+  "resize-crash.log",
+  "resize-replay.txt",
+  "detach.png",
+  "detach-ui.xml",
+  "detach-logcat.log",
+  "detach-crash.log",
+  "detach-replay.txt",
   "background.png",
   "background-ui.xml",
   "background-logcat.log",
@@ -79,6 +89,8 @@ if (failures.length === 0) {
   verifyPng("dashboard.png");
   verifyPng("session.png");
   verifyPng("tui.png");
+  verifyPng("resize.png");
+  verifyPng("detach.png");
   verifyPng("background.png");
   verifyPng("reconnect.png");
   verifyPng("restart.png");
@@ -99,6 +111,8 @@ if (failures.length === 0) {
     readText("terminal-replay.txt"),
   );
   verifyTuiEvidence(readText("tui-ui.xml"));
+  verifyResizeEvidence(readText("resize-ui.xml"), readText("resize-replay.txt"));
+  verifyDetachEvidence(readText("detach-ui.xml"), readText("detach-replay.txt"));
   verifyBackgroundEvidence(readText("background-ui.xml"), readText("background-replay.txt"));
   verifyReconnectEvidence(readText("reconnect-ui.xml"), readText("reconnect-replay.txt"));
   verifyRestartEvidence(readText("restart-ui.xml"), readText("restart-replay.txt"));
@@ -118,6 +132,10 @@ if (failures.length === 0) {
     ["session-crash.log", readText("session-crash.log")],
     ["tui-logcat.log", readText("tui-logcat.log")],
     ["tui-crash.log", readText("tui-crash.log")],
+    ["resize-logcat.log", readText("resize-logcat.log")],
+    ["resize-crash.log", readText("resize-crash.log")],
+    ["detach-logcat.log", readText("detach-logcat.log")],
+    ["detach-crash.log", readText("detach-crash.log")],
     ["background-logcat.log", readText("background-logcat.log")],
     ["background-crash.log", readText("background-crash.log")],
     ["reconnect-logcat.log", readText("reconnect-logcat.log")],
@@ -299,6 +317,40 @@ function verifyTuiEvidence(text) {
     /(F1\s*Help|F1Help|F2\s*Setup|F2Setup|F10\s*Quit|F10Quit|VIM|--\s*INSERT\s*--|\/etc\/hosts|~\s*$)/im,
     "tui-ui.xml must include visible vim/htop terminal content",
   );
+}
+
+function verifyResizeEvidence(ui, replay) {
+  requirePatternText(ui, /\bAttached\b/i, "resize-ui.xml must show the app remained attached after terminal resize");
+  requirePatternText(
+    replay,
+    /\bafter_resize_ok\b/,
+    "resize-replay.txt must include Android-originated input after terminal resize",
+  );
+  const size = replay.match(/\bresize_size=(\d+)(?:x|\s+)(\d+)\b/);
+  if (!size) {
+    failures.push("resize-replay.txt must record resize_size=<rows>x<cols> or resize_size=<rows> <cols>");
+    return;
+  }
+  const rows = Number(size[1]);
+  const cols = Number(size[2]);
+  if (rows < 5 || cols < 20) {
+    failures.push(`resize-replay.txt records implausible terminal size ${rows}x${cols}`);
+  }
+}
+
+function verifyDetachEvidence(ui, replay) {
+  rejectPatternText(ui, /\bNo sessions\b/i, "detach-ui.xml must show the sessions dashboard after detach, not an empty state");
+  requirePatternText(
+    ui,
+    /\b(refactoringjob|shell|bash)\b/i,
+    "detach-ui.xml must show the sessions dashboard after Android detach",
+  );
+  requirePatternText(
+    replay,
+    /\bafter_detach_reattach_ok\b/,
+    "detach-replay.txt must include Android-originated input after detach and reattach",
+  );
+  requirePatternText(replay, /\b(shell|bash)\b/i, "detach-replay.txt must identify the reattached shell/bash session");
 }
 
 function verifyBackgroundEvidence(ui, replay) {
