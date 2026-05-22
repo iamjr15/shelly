@@ -224,6 +224,7 @@ case "$command" in
     if [[ "$skip_socket_check" == "1" ]]; then
       echo "socket: not checked because this tmux session was not created by scripts/debug-instance.sh"
     else
+      echo "socket path: $runtime_dir/fieldwork/control.sock"
       run_debug "$bin_dir/fw" daemon status || true
     fi
     ;;

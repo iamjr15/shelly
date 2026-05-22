@@ -15,6 +15,7 @@ const docs = {
   androidRenderer: read("docs/ANDROID_RENDERER.md"),
   androidPairFlow: read("docs/ANDROID_PAIR_FLOW.md"),
   androidSessionSubscription: read("docs/ANDROID_SESSION_SUBSCRIPTION.md"),
+  androidTerminalAttach: read("docs/ANDROID_TERMINAL_ATTACH.md"),
   androidBiometric: read("docs/ANDROID_BIOMETRIC.md"),
   androidDogfood: read("docs/ANDROID_DOGFOOD.md"),
   androidColdStart: read("docs/ANDROID_COLD_START.md"),
@@ -38,6 +39,7 @@ verifyInstallDoc();
 verifyAndroidRendererDoc();
 verifyAndroidPairFlowDoc();
 verifyAndroidSessionSubscriptionDoc();
+verifyAndroidTerminalAttachDoc();
 verifyAndroidBiometricDoc();
 verifyAndroidDogfoodDoc();
 verifyAndroidColdStartDoc();
@@ -71,6 +73,7 @@ function verifyRequiredDocsExist() {
     "docs/ANDROID_RENDERER.md",
     "docs/ANDROID_PAIR_FLOW.md",
     "docs/ANDROID_SESSION_SUBSCRIPTION.md",
+    "docs/ANDROID_TERMINAL_ATTACH.md",
     "docs/ANDROID_BIOMETRIC.md",
     "docs/ANDROID_DOGFOOD.md",
     "docs/ANDROID_COLD_START.md",
@@ -203,6 +206,59 @@ function verifyAndroidSessionSubscriptionDoc() {
       docs.androidSessionSubscription,
       needle,
       `docs/ANDROID_SESSION_SUBSCRIPTION.md must document Android session-subscription evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidTerminalAttachDoc() {
+  for (const needle of [
+    "Android side of the Section 13 live terminal handoff\ngate",
+    "signed release build on a physical Android phone",
+    "three desktop-created daemon-owned\nPTY sessions",
+    "shell marker `android_live_ok`",
+    "Claude marker `claude_live_ok`",
+    "not an emulator or AVD",
+    "debug build, biometric bypass, or debug pairing payload",
+    "real QR scanner and explicit desktop approval",
+    "Mobile must not create sessions, kill sessions, or choose commands",
+    "USB debugging; end users do not need adb",
+    "node scripts/verify-android-aab.mjs --expect-signed",
+    "signed release bundle ok",
+    "BUILD_TYPE = \"release\"",
+    "DEBUG = false",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_ANDROID_TERMINAL_DIR/adb-devices.txt\"",
+    "fw refactoringjob",
+    "fw new --name shell bash",
+    "fw new --name editor htop",
+    "sessions.txt",
+    "session.png",
+    "session-ui.xml",
+    "session-logcat.log",
+    "session-crash.log",
+    "terminal-replay.txt",
+    "echo android_live_ok",
+    "claude.png",
+    "claude-ui.xml",
+    "claude-logcat.log",
+    "claude-crash.log",
+    "claude-replay.txt",
+    "echo claude_live_ok",
+    "tui.png",
+    "tui-ui.xml",
+    "tui-logcat.log",
+    "tui-crash.log",
+    "F1Help",
+    "F2Setup",
+    "F10Quit",
+    "pnpm check:android-terminal-attach-evidence -- \"$FW_ANDROID_TERMINAL_DIR\"",
+    "only proves the Android release-device terminal attach,\nshell input, Claude input, and TUI rendering path",
+  ]) {
+    requireText(
+      docs.androidTerminalAttach,
+      needle,
+      `docs/ANDROID_TERMINAL_ATTACH.md must document Android terminal attach evidence: ${needle}`,
     );
   }
 }
@@ -956,6 +1012,11 @@ function verifyPlanDoc() {
     "**Named-session fast path**",
     "`fw <name>` is the product replacement for a\ntmux/mosh/Tailscale alias like `mc refactoringjob`",
     "**Create session from desktop CLI** (`fw new --dir ~/projects claude`)",
+    "docs/ANDROID_TERMINAL_ATTACH.md",
+    "pnpm check:android-terminal-attach-evidence -- \"$FW_ANDROID_TERMINAL_DIR\"",
+    "Android attaches to desktop-created shell, Claude, and `vim`/`htop` sessions",
+    "shell replay contains `android_live_ok`",
+    "Claude replay contains `claude_live_ok` without the shell marker",
     "daemon rejects duplicate session\nnames with `ErrorCode::InvalidRequest`",
     "`fw new --name <name>` if a\ndesired session name collides with a subcommand",
     "Mobile clients still cannot create sessions, kill sessions, or choose\ncommands",
