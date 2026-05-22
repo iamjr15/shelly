@@ -2096,6 +2096,8 @@ function verifyVerifierIsWired() {
   requireText(ci, "pnpm check:demo-video", "CI must run the demo video verifier");
   requireText(ci, "node scripts/verify-development-doc.mjs", "CI must run the development doc verifier");
   requireText(ci, "node scripts/verify-community-scaffold.mjs", "CI must run the community scaffold verifier");
+  requireText(ci, "node scripts/test-live-testing-evidence.mjs", "CI must run the live-testing evidence verifier self-test");
+  requireText(ci, "node scripts/test-debug-instance.mjs", "CI must run the debug-instance env contract test");
   requireText(ci, "node scripts/verify-secret-boundaries.mjs", "CI must run the secret-boundary verifier");
   requireText(ci, "node scripts/verify-secret-boundaries.mjs --self-test", "CI must run the secret-boundary self-test");
   requireText(ci, "node scripts/verify-mobile-privacy.mjs", "CI must run the mobile privacy verifier");
@@ -2118,6 +2120,9 @@ function verifyVerifierIsWired() {
   requireText(ci, "node scripts/verify-daemon-service.mjs", "CI must run the daemon service verifier");
   requireText(ci, "node scripts/verify-daemon-resize.mjs", "CI must run the daemon resize verifier");
   requireText(ci, "node scripts/verify-infra-scaffold.mjs", "CI must run the infra scaffold verifier");
+  requireText(ci, "node scripts/verify-structured-assets.mjs", "CI must run the structured asset syntax verifier");
+  requireText(ci, "node script syntax ok", "CI must syntax-check tracked Node scripts");
+  requireText(ci, "shell script syntax ok", "CI must syntax-check tracked shell scripts");
   requireText(ci, "name: Terraform Validate", "CI must run the Terraform validation job");
   requireText(ci, "hashicorp/setup-terraform@v3", "CI must install Terraform for validation");
   requireText(ci, "scripts/check-infra-terraform.sh", "CI must run the shared Terraform validation script");

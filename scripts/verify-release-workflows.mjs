@@ -321,8 +321,13 @@ function verifyCiWiresVerifier(text) {
   requireText(text, "sudo apt-get update && sudo apt-get install -y ffmpeg", "CI must install ffprobe before the demo video verifier");
   requireText(text, "pnpm check:demo-video", "CI must verify the committed demo video artifact");
   requireText(text, "node scripts/verify-community-scaffold.mjs", "CI must run the community scaffold verifier");
+  requireText(text, "node scripts/test-live-testing-evidence.mjs", "CI must run the live-testing evidence verifier self-test");
+  requireText(text, "node scripts/test-debug-instance.mjs", "CI must run the debug-instance env contract test");
   requireText(text, "node scripts/verify-secret-boundaries.mjs", "CI must run the secret-boundary verifier");
   requireText(text, "node scripts/verify-security-model.mjs", "CI must run the security model verifier");
+  requireText(text, "node scripts/verify-structured-assets.mjs", "CI must run the structured asset syntax verifier");
+  requireText(text, "node script syntax ok", "CI must syntax-check tracked Node scripts");
+  requireText(text, "shell script syntax ok", "CI must syntax-check tracked shell scripts");
   requireText(text, "oven-sh/setup-bun@v2", "CI must install Bun before the Bun npm-compatibility smoke");
   requireText(text, "node scripts/test-bun-install.mjs", "CI must run the Bun optional-dependency install smoke");
   requireText(text, "node scripts/test-android-aab-verifier.mjs", "CI must run the Android AAB verifier self-test");

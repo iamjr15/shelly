@@ -119,6 +119,8 @@ jobs:
       - run: pnpm check:demo-video
       - run: node scripts/verify-development-doc.mjs
       - run: node scripts/verify-community-scaffold.mjs
+      - run: node scripts/test-live-testing-evidence.mjs
+      - run: node scripts/test-debug-instance.mjs
       - run: node scripts/verify-secret-boundaries.mjs
       - run: node scripts/verify-secret-boundaries.mjs --self-test
       - run: node scripts/verify-mobile-privacy.mjs
@@ -136,6 +138,9 @@ jobs:
       - run: node scripts/verify-daemon-resize.mjs
       - run: node scripts/verify-infra-scaffold.mjs
       - run: node scripts/verify-site-content.mjs
+      - run: node scripts/verify-structured-assets.mjs
+      - run: bash -lc 'for script in scripts/*.mjs; do node --check "$script" >/dev/null || exit 1; done; printf "node script syntax ok\n"'
+      - run: bash -lc 'for script in scripts/*.sh apps/ios/scripts/*.sh; do bash -n "$script" || exit 1; done; printf "shell script syntax ok\n"'
       - run: node scripts/test-ios-prereqs.mjs
       - run: node scripts/test-npm-dispatcher.mjs
       - run: node scripts/test-npm-registry-state.mjs
