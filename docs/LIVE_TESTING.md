@@ -181,6 +181,20 @@ script -q "$FW_LIVE_DIR/terminal-replay.txt" fw attach shell
 # Confirm android_live_ok is visible, then press Ctrl-B followed by D to detach.
 ```
 
+After attaching the `refactoringjob` or generated default `claude` session from
+Android, send a harmless `claude_live_ok` line, then capture dedicated Claude
+evidence and a desktop reattach transcript for that same session:
+
+```sh
+adb exec-out screencap -p > "$FW_LIVE_DIR/claude.png"
+adb shell uiautomator dump /sdcard/window.xml
+adb pull /sdcard/window.xml "$FW_LIVE_DIR/claude-ui.xml"
+adb logcat -d > "$FW_LIVE_DIR/claude-logcat.log"
+adb logcat -d -b crash > "$FW_LIVE_DIR/claude-crash.log"
+script -q "$FW_LIVE_DIR/claude-replay.txt" fw attach refactoringjob
+# Confirm claude_live_ok is visible, then detach.
+```
+
 After resizing the Android terminal, type
 `printf 'resize_size=%s\n' "$(stty size)"; echo after_resize_ok` from Android,
 then capture:
@@ -285,6 +299,8 @@ the paired run listed the expected desktop-created sessions, `pairing.txt` prove
 QR payload, device-scan wait, explicit approval prompt, and approved completion,
 records `pair_flow_ms=<elapsed-ms>` at or below 15000, the desktop replay
 transcript contains `android_live_ok` from the Android-originated shell input,
+`claude-replay.txt` contains `claude_live_ok` from Android-originated input in a
+dedicated Claude/default session transcript,
 the captured UI dumps do not expose mobile session creation, session kill, or
 command-selection controls,
 `resize-replay.txt` contains a plausible `resize_size=<rows>x<cols>` or
@@ -307,8 +323,9 @@ fatal, ANR, or crash entries.
    `refactoringjob` named shortcut session, and desktop-created `bash`,
    `claude`, and TUI sessions.
 5. Attach to `bash`, type `echo android_live_ok`, and verify the output appears.
-6. Attach to `claude`, send a harmless line, and verify input/output does not
-   affect the other sessions.
+6. Attach to `claude`, send `claude_live_ok`, and verify the desktop can reattach
+   to the same Claude/default session and see that output without affecting
+   other sessions.
 7. Attach to `vim` or `htop` and verify the TUI renders usable terminal state.
 8. Resize the terminal and verify the PTY reports a plausible row/column size.
 9. Detach and reattach; verify the terminal resumes from the latest seen offset.

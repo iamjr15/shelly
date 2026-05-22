@@ -159,6 +159,31 @@ try {
   fs.writeFileSync(path.join(badReplay, "terminal-replay.txt"), "shell prompt only\n");
   expectStatus(badReplay, 1, "desktop replay without Android marker should fail", "terminal-replay.txt must prove Android-originated input/output");
 
+  const missingClaude = path.join(temp, "missing-claude");
+  writeFixture(missingClaude);
+  fs.rmSync(path.join(missingClaude, "claude-replay.txt"));
+  expectStatus(missingClaude, 1, "missing Claude replay transcript should fail", "missing evidence file: claude-replay.txt");
+
+  const badClaudeReplay = path.join(temp, "bad-claude-replay");
+  writeFixture(badClaudeReplay);
+  fs.writeFileSync(path.join(badClaudeReplay, "claude-replay.txt"), "refactoringjob claude\nandroid_live_ok\n");
+  expectStatus(
+    badClaudeReplay,
+    1,
+    "Claude replay without Claude marker should fail",
+    "claude-replay.txt must prove Android-originated input/output was visible from a desktop reattach to the Claude session",
+  );
+
+  const shellReplayReusedForClaude = path.join(temp, "shell-replay-reused-for-claude");
+  writeFixture(shellReplayReusedForClaude);
+  fs.writeFileSync(path.join(shellReplayReusedForClaude, "claude-replay.txt"), "refactoringjob claude\nclaude_live_ok\nandroid_live_ok\n");
+  expectStatus(
+    shellReplayReusedForClaude,
+    1,
+    "Claude replay must not reuse shell transcript",
+    "claude-replay.txt must be a dedicated Claude-session transcript",
+  );
+
   const missingResize = path.join(temp, "missing-resize");
   writeFixture(missingResize);
   fs.rmSync(path.join(missingResize, "resize-replay.txt"));
@@ -422,6 +447,7 @@ function writeFixture(dir) {
   writePng(path.join(dir, "biometric.png"));
   writePng(path.join(dir, "dashboard.png"));
   writePng(path.join(dir, "session.png"));
+  writePng(path.join(dir, "claude.png"));
   writePng(path.join(dir, "tui.png"));
   writePng(path.join(dir, "resize.png"));
   writePng(path.join(dir, "detach.png"));
@@ -441,6 +467,7 @@ function writeFixture(dir) {
     `<hierarchy><node text="${autoSessionName}"/><node text="refactoringjob"/><node text="shell"/></hierarchy>\n`,
   );
   fs.writeFileSync(path.join(dir, "session-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="android_live_ok"/></hierarchy>\n');
+  fs.writeFileSync(path.join(dir, "claude-ui.xml"), '<hierarchy><node text="refactoringjob"/><node text="claude"/><node text="Attached"/><node text="claude_live_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "tui-ui.xml"), '<hierarchy><node text="tui"/><node text="Attached"/><node text="F1Help F2Setup F10Quit"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "resize-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="after_resize_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "detach-ui.xml"), '<hierarchy><node text="refactoringjob"/><node text="shell"/></hierarchy>\n');
@@ -481,6 +508,8 @@ function writeFixture(dir) {
     ].join("\n"),
   );
   fs.writeFileSync(path.join(dir, "session-crash.log"), "");
+  fs.writeFileSync(path.join(dir, "claude-logcat.log"), "I Fieldwork: terminal attached\n");
+  fs.writeFileSync(path.join(dir, "claude-crash.log"), "");
   fs.writeFileSync(path.join(dir, "tui-logcat.log"), "I Fieldwork: terminal attached\n");
   fs.writeFileSync(path.join(dir, "tui-crash.log"), "");
   fs.writeFileSync(path.join(dir, "resize-logcat.log"), "I Fieldwork: terminal resized\n");
@@ -499,6 +528,7 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "multisession-crash.log"), "");
   fs.writeFileSync(path.join(dir, "devices.txt"), "Pixel 8 Pro paired\n");
   fs.writeFileSync(path.join(dir, "terminal-replay.txt"), "shell bash\n$ echo android_live_ok\nandroid_live_ok\n");
+  fs.writeFileSync(path.join(dir, "claude-replay.txt"), "refactoringjob claude\n> claude_live_ok\nclaude_live_ok\n");
   fs.writeFileSync(path.join(dir, "resize-replay.txt"), "shell bash\nresize_size=32x120\nafter_resize_ok\n");
   fs.writeFileSync(path.join(dir, "detach-replay.txt"), "shell bash\nafter_detach_reattach_ok\n");
   fs.writeFileSync(path.join(dir, "background-replay.txt"), "shell bash\nANDROID_BACKGROUND_REPLAY_OUTPUT\nafter_background_ok\n");

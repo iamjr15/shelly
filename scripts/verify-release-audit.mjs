@@ -324,6 +324,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "dedicated Claude screenshot/UI/log/crash evidence plus `claude-replay.txt` containing `claude_live_ok`",
+    "release audit must record live-test Claude attach/replay evidence",
+  );
+  requireText(
+    audit,
     "`sessions.txt` rows binding both the generated session and `refactoringjob` to default `claude` commands",
     "release audit must record live-test command binding evidence",
   );
@@ -1009,6 +1014,9 @@ function verifyLiveTestingRunbook() {
     "script -q \"$FW_LIVE_DIR/pairing.txt\" fw pair",
     "pairing.txt` proves the desktop-side\nQR payload, device-scan wait, explicit approval prompt, and approved completion,\nrecords `pair_flow_ms=<elapsed-ms>` at or below 15000",
     "script -q \"$FW_LIVE_DIR/terminal-replay.txt\" fw attach shell",
+    "claude-replay.txt",
+    "claude_live_ok",
+    "fw attach refactoringjob",
     "dashboard.png",
     "dashboard-ui.xml",
     "dashboard-logcat.log",

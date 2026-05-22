@@ -43,6 +43,11 @@ const requiredFiles = [
   "session-logcat.log",
   "session-crash.log",
   "terminal-replay.txt",
+  "claude.png",
+  "claude-ui.xml",
+  "claude-logcat.log",
+  "claude-crash.log",
+  "claude-replay.txt",
   "tui.png",
   "tui-ui.xml",
   "tui-logcat.log",
@@ -98,6 +103,7 @@ if (failures.length === 0) {
   verifyPng("biometric.png");
   verifyPng("dashboard.png");
   verifyPng("session.png");
+  verifyPng("claude.png");
   verifyPng("tui.png");
   verifyPng("resize.png");
   verifyPng("detach.png");
@@ -123,6 +129,7 @@ if (failures.length === 0) {
     readText("sessions.txt"),
     readText("terminal-replay.txt"),
   );
+  verifyClaudeEvidence(readText("claude-ui.xml"), readText("claude-logcat.log"), readText("claude-replay.txt"));
   verifyTuiEvidence(readText("tui-ui.xml"));
   verifyResizeEvidence(readText("resize-ui.xml"), readText("resize-replay.txt"));
   verifyDetachEvidence(readText("detach-ui.xml"), readText("detach-replay.txt"));
@@ -145,6 +152,7 @@ if (failures.length === 0) {
     ["biometric-ui.xml", readText("biometric-ui.xml")],
     ["dashboard-ui.xml", readText("dashboard-ui.xml")],
     ["session-ui.xml", readText("session-ui.xml")],
+    ["claude-ui.xml", readText("claude-ui.xml")],
     ["tui-ui.xml", readText("tui-ui.xml")],
     ["resize-ui.xml", readText("resize-ui.xml")],
     ["detach-ui.xml", readText("detach-ui.xml")],
@@ -164,6 +172,8 @@ if (failures.length === 0) {
     ["dashboard-crash.log", readText("dashboard-crash.log")],
     ["session-logcat.log", readText("session-logcat.log")],
     ["session-crash.log", readText("session-crash.log")],
+    ["claude-logcat.log", readText("claude-logcat.log")],
+    ["claude-crash.log", readText("claude-crash.log")],
     ["tui-logcat.log", readText("tui-logcat.log")],
     ["tui-crash.log", readText("tui-crash.log")],
     ["resize-logcat.log", readText("resize-logcat.log")],
@@ -372,6 +382,20 @@ function verifySessionEvidence(sessionUi, sessionLogcat, sessionsText, terminalR
     /\b(shell|bash)\b/i,
     "terminal-replay.txt must identify the desktop-created shell/bash session",
   );
+}
+
+function verifyClaudeEvidence(ui, logcat, replay) {
+  rejectPatternText(ui, /\bNo sessions\b/i, "claude-ui.xml must show an attached Claude session, not the dashboard");
+  requirePatternText(ui, /\bAttached\b/i, "claude-ui.xml must show the Claude terminal attached state");
+  requirePatternText(ui, /\b(?:claude|refactoringjob|Claude Code)\b/i, "claude-ui.xml must identify the attached Claude/default session");
+  requirePatternText(logcat, /Fieldwork:\s+terminal attached|FieldworkRepository:\s+listSessions returned \d+ sessions/i, "claude-logcat.log must show app activity while attached to the Claude session");
+  requirePatternText(
+    replay,
+    /\bclaude_live_ok\b/,
+    "claude-replay.txt must prove Android-originated input/output was visible from a desktop reattach to the Claude session",
+  );
+  requirePatternText(replay, /\b(?:claude|refactoringjob)\b/i, "claude-replay.txt must identify the Claude/default session");
+  rejectPatternText(replay, /\bandroid_live_ok\b/, "claude-replay.txt must be a dedicated Claude-session transcript, not the shell replay");
 }
 
 function verifyTuiEvidence(text) {
