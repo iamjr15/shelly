@@ -36,8 +36,12 @@ Local verification status:
   termlib IME target, app logcat, and empty crash buffers under
   `/tmp/fieldwork-adb-tui-live-20260521160229`.
 - The required 30-minute physical Android device dogfood is a counted unchecked
-  `PLAN.md` release gate before Play internal distribution. It remains blocked
-  in this shell by the lack of an attached Android test device.
+  `PLAN.md` release gate before Play internal distribution.
+  `docs/ANDROID_DOGFOOD.md` defines the physical runbook, and
+  `pnpm check:android-dogfood-evidence -- "$FW_DOGFOOD_DIR"` verifies the
+  required adb evidence for the attached Claude session, 30-minute duration,
+  typing, scroll, resize, paste, and crash/ANR absence. It remains blocked in
+  this shell by the lack of an attached Android test device.
 
 Sources checked on 2026-05-18:
 

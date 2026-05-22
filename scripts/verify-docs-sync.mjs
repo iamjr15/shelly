@@ -13,6 +13,7 @@ const docs = {
   architecture: read("docs/ARCHITECTURE.md"),
   install: read("docs/INSTALL.md"),
   androidRenderer: read("docs/ANDROID_RENDERER.md"),
+  androidDogfood: read("docs/ANDROID_DOGFOOD.md"),
   liveTesting: read("docs/LIVE_TESTING.md"),
   operations: read("docs/OPERATIONS.md"),
 };
@@ -24,6 +25,7 @@ verifyPrivacyDoc();
 verifyArchitectureDoc();
 verifyInstallDoc();
 verifyAndroidRendererDoc();
+verifyAndroidDogfoodDoc();
 verifyLiveTestingDoc();
 verifyOperationsDoc();
 verifyPlanDoc();
@@ -45,6 +47,7 @@ function verifyRequiredDocsExist() {
     "docs/ARCHITECTURE.md",
     "docs/INSTALL.md",
     "docs/ANDROID_RENDERER.md",
+    "docs/ANDROID_DOGFOOD.md",
     "docs/LIVE_TESTING.md",
     "docs/OPERATIONS.md",
     "docs/RELEASE_AUDIT.md",
@@ -77,12 +80,49 @@ function verifyAndroidRendererDoc() {
     "8440/14400 flood screenshot nonblack samples",
     "no Fieldwork crash log entries",
     "30-minute physical Android device dogfood is a counted unchecked\n  `PLAN.md` release gate before Play internal distribution",
+    "docs/ANDROID_DOGFOOD.md",
+    "pnpm check:android-dogfood-evidence",
     "lack of an attached Android test device",
   ]) {
     requireText(
       docs.androidRenderer,
       needle,
       `docs/ANDROID_RENDERER.md must document current renderer evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidDogfoodDoc() {
+  for (const needle of [
+    "Section 7.6 physical Android terminal renderer decision\ngate",
+    "connectbot/termlib",
+    "30 minutes",
+    "type, scroll, resize, and paste",
+    "must not create sessions,\nkill sessions, or choose commands",
+    "USB debugging is not an end-user requirement",
+    "adb devices -l | tee \"$FW_DOGFOOD_DIR/adb-devices.txt\"",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "fw refactoringjob",
+    "dogfood_duration_ms",
+    "termlib_decision_candidate=pass",
+    "typing-replay.txt",
+    "dogfood_typing_ok",
+    "DOGFOOD_SCROLL_TOP",
+    "scroll_verified_by_operator",
+    "resize_size=%s",
+    "dogfood_resize_ok",
+    "DOGFOOD_PASTE_BEGIN",
+    "dogfood_paste_line_020",
+    "dogfood_paste_ok",
+    "final-crash.log",
+    "pnpm check:android-dogfood-evidence -- \"$FW_DOGFOOD_DIR\"",
+    "Passing the verifier does not\nreplace human review",
+  ]) {
+    requireText(
+      docs.androidDogfood,
+      needle,
+      `docs/ANDROID_DOGFOOD.md must document Android dogfood evidence: ${needle}`,
     );
   }
 }
