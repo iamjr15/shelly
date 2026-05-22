@@ -240,6 +240,25 @@ class FieldworkViewModelTest {
     }
 
     @Test
+    fun pairWhileUnlockedKeepsLoadedSessionsAfterInitialEmptySubscriptionUpdate() {
+        val session = testSession(id = "018f0000-0000-7000-8000-000000000009")
+        val repository = FakeRepository(
+            restoredPairing = null,
+            pairResult = testPairing(),
+            sessions = listOf(session),
+            initialSubscriptionSessions = emptyList(),
+        )
+        val viewModel = testViewModel(repository)
+
+        viewModel.setUnlocked(true)
+        viewModel.pair("fieldwork-pair:v1:payload")
+        drainMainLooper()
+
+        assertEquals(listOf(session), viewModel.state.value.sessions)
+        assertEquals(1, repository.subscribeCalls)
+    }
+
+    @Test
     fun pairWhileLockedDoesNotLoadSessionsStartSubscriptionOrSyncFcmToken() {
         val session = testSession(id = "018f0000-0000-7000-8000-00000000000b")
         val repository = FakeRepository(
@@ -497,6 +516,7 @@ class FieldworkViewModelTest {
         private val restoredPairing: PairedDaemonRecord?,
         private val pairResult: PairedDaemonRecord? = restoredPairing,
         private val sessions: List<MobileSession> = emptyList(),
+        private val initialSubscriptionSessions: List<MobileSession>? = sessions,
         private val attachedSessions: ArrayDeque<AttachedSession> = ArrayDeque(),
         private val onRestore: (() -> Unit)? = null,
         private val onListSessions: (() -> Unit)? = null,
@@ -532,7 +552,7 @@ class FieldworkViewModelTest {
         override suspend fun subscribeSessions(onUpdate: (List<MobileSession>) -> Unit) {
             subscribeCalls += 1
             subscriptionSink = onUpdate
-            onUpdate(sessions)
+            initialSubscriptionSessions?.let(onUpdate)
         }
 
         fun emitSessions(sessions: List<MobileSession>) {

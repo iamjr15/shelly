@@ -1874,6 +1874,26 @@ dumps, logcat, crash buffers, or desktop transcripts.
 that the scaffold mirrors `scripts/verify-live-testing-evidence.mjs` and still
 fails the evidence verifier until real physical-device evidence is captured.
 
+**Direct Android adb post-pair dashboard fix (2026-05-22)**: a raw `adb`
+resume pass under `/tmp/fieldwork-adb-direct-20260522-resume.mtHG9a` reproduced
+a post-pair dashboard race where the Android app displayed `No sessions` until
+manual refresh even though logcat had already recorded
+`FieldworkRepository: listSessions returned 1 sessions`. The Android view model
+now starts the session subscription before the explicit post-pair list refresh,
+so an initial stale empty subscription update cannot blank the loaded desktop
+session. Focused JVM coverage asserts this ordering. The rebuilt debug-only
+biometric-bypass/pair-payload APK paired through explicit desktop approval,
+dismissed the `Paired` dialog, and immediately showed the desktop-created
+`shell` session without tapping refresh. The same pass created a later
+desktop-side `livebash` session while the phone was watching the dashboard;
+the session appeared through subscription, attached as `Attached`, and a
+direct accessory-key tap from Android was visible in a desktop replay of the
+same PTY. Captured evidence includes direct `adb` launch output, screenshots,
+UI dumps, logcat files, empty crash buffers, desktop pairing transcripts, device
+lists, and replay transcripts. This remains debug-emulator substitute evidence;
+physical Android biometric, QR-camera, renderer dogfood, software-keyboard text
+entry, and release-device runtime gates remain unchecked.
+
 **Android background/foreground replay note (2026-05-19)**: `pnpm test:android-emulator-background-replay` pairs the actual Android debug app with an isolated release daemon through the debug-only QR payload path, opens a desktop-created terminal, backgrounds the attached app while the PTY emits `ANDROID_BACKGROUND_REPLAY_OUTPUT`, foregrounds back to `Attached`, sends `after_background_ok`, and verifies the background-emitted output plus post-foreground input through a separately approved verifier. Latest local run passed on `emulator-5554`. This is still emulator substitute evidence; the release gate remains unchecked until the same behavior is observed on physical release devices.
 
 **Android startup hardening note (2026-05-18)**: the Android root now obtains

@@ -98,8 +98,8 @@ class FieldworkViewModel internal constructor(
                     message = "Paired",
                 )
                 if (_state.value.unlocked) {
-                    loadSessions()
                     startSessionSubscription()
+                    loadSessions()
                     syncFcmToken()
                 }
             }
