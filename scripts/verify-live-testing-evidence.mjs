@@ -122,6 +122,18 @@ if (failures.length === 0) {
     readText("multisession-b-replay.txt"),
     readText("multisession-c-replay.txt"),
   );
+  verifyMobileCapabilityBoundary([
+    ["locked-ui.xml", readText("locked-ui.xml")],
+    ["dashboard-ui.xml", readText("dashboard-ui.xml")],
+    ["session-ui.xml", readText("session-ui.xml")],
+    ["tui-ui.xml", readText("tui-ui.xml")],
+    ["resize-ui.xml", readText("resize-ui.xml")],
+    ["detach-ui.xml", readText("detach-ui.xml")],
+    ["background-ui.xml", readText("background-ui.xml")],
+    ["reconnect-ui.xml", readText("reconnect-ui.xml")],
+    ["restart-ui.xml", readText("restart-ui.xml")],
+    ["multisession-ui.xml", readText("multisession-ui.xml")],
+  ]);
   verifyFieldworkDevices(readText("devices.txt"));
   verifyLogs([
     ["locked-logcat.log", readText("locked-logcat.log")],
@@ -415,6 +427,17 @@ function verifyMultisessionReplay(file, text, sessionName, requiredMarker, forbi
   requirePatternText(text, new RegExp(`\\b${escapeRegExp(requiredMarker)}\\b`), `${file} must contain ${requiredMarker}`);
   for (const marker of forbiddenMarkers) {
     rejectPatternText(text, new RegExp(`\\b${escapeRegExp(marker)}\\b`), `${file} must not contain ${marker} from another session`);
+  }
+}
+
+function verifyMobileCapabilityBoundary(entries) {
+  const forbiddenAction = /\b(?:Create|New|Start)\s+(?:session|terminal)\b|\b(?:Kill|Delete|Remove|Terminate)\s+(?:session|terminal)\b|\b(?:Choose|Select|Pick)\s+(?:command|shell|session command)\b|\bcommand picker\b/i;
+  for (const [file, text] of entries) {
+    rejectPatternText(
+      text,
+      forbiddenAction,
+      `${file} must not expose mobile session creation, kill, or command-selection controls`,
+    );
   }
 }
 

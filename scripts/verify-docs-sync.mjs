@@ -245,6 +245,7 @@ function verifyLiveTestingDoc() {
     "direct `adb` evidence set is complete",
     "screenshots are nontrivial PNGs",
     "the locked UI did not expose session or terminal content",
+    "do not expose mobile session creation, session kill, or\ncommand-selection controls",
     "logs/crash buffers do not contain Fieldwork\nfatal, ANR, or crash entries",
     "echo android_live_ok",
     "Resize the terminal and verify the PTY reports a plausible row/column size",

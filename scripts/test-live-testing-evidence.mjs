@@ -139,6 +139,45 @@ try {
   fs.writeFileSync(path.join(badDetach, "detach-replay.txt"), "shell bash\n");
   expectStatus(badDetach, 1, "detach replay without post-reattach marker should fail", "detach-replay.txt must include Android-originated input after detach and reattach");
 
+  const mobileCreateControl = path.join(temp, "mobile-create-control");
+  writeFixture(mobileCreateControl);
+  fs.writeFileSync(
+    path.join(mobileCreateControl, "dashboard-ui.xml"),
+    `<hierarchy><node text="${autoSessionName}"/><node text="refactoringjob"/><node text="shell"/><node text="New session"/></hierarchy>\n`,
+  );
+  expectStatus(
+    mobileCreateControl,
+    1,
+    "mobile session-creation control should fail",
+    "dashboard-ui.xml must not expose mobile session creation, kill, or command-selection controls",
+  );
+
+  const mobileKillControl = path.join(temp, "mobile-kill-control");
+  writeFixture(mobileKillControl);
+  fs.writeFileSync(
+    path.join(mobileKillControl, "session-ui.xml"),
+    '<hierarchy><node text="shell"/><node text="Attached"/><node text="Kill session"/></hierarchy>\n',
+  );
+  expectStatus(
+    mobileKillControl,
+    1,
+    "mobile kill control should fail",
+    "session-ui.xml must not expose mobile session creation, kill, or command-selection controls",
+  );
+
+  const mobileCommandPicker = path.join(temp, "mobile-command-picker");
+  writeFixture(mobileCommandPicker);
+  fs.writeFileSync(
+    path.join(mobileCommandPicker, "dashboard-ui.xml"),
+    `<hierarchy><node text="${autoSessionName}"/><node text="refactoringjob"/><node text="shell"/><node text="Choose command"/></hierarchy>\n`,
+  );
+  expectStatus(
+    mobileCommandPicker,
+    1,
+    "mobile command-selection control should fail",
+    "dashboard-ui.xml must not expose mobile session creation, kill, or command-selection controls",
+  );
+
   const missingAutoName = path.join(temp, "missing-auto-name");
   writeFixture(missingAutoName);
   fs.writeFileSync(

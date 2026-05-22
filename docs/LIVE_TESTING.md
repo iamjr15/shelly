@@ -260,6 +260,8 @@ the expected desktop-created sessions, `pairing.txt` proves the desktop-side
 QR payload, device-scan wait, explicit approval prompt, and approved completion,
 records `pair_flow_ms=<elapsed-ms>` at or below 15000, the desktop replay
 transcript contains `android_live_ok` from the Android-originated shell input,
+the captured UI dumps do not expose mobile session creation, session kill, or
+command-selection controls,
 `resize-replay.txt` contains a plausible `resize_size=<rows>x<cols>` or
 `resize_size=<rows> <cols>` plus `after_resize_ok`, `detach-replay.txt` contains
 `after_detach_reattach_ok`, the TUI attach

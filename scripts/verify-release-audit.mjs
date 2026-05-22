@@ -329,6 +329,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "UI dumps that do not expose mobile session creation, session kill, or command-selection controls",
+    "release audit must record live-test mobile capability-boundary UI evidence",
+  );
+  requireText(
+    audit,
     "a temporary source-build `fw` shim",
     "release audit must record the source-build fw live-test shim",
   );
