@@ -279,6 +279,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "Android multisession evidence verifier fixture test",
+    "release audit must record local release aggregate coverage for Android multisession evidence verifier self-test",
+  );
+  requireText(
+    audit,
     "Android FCM push evidence verifier fixture test",
     "release audit must record local release aggregate coverage for Android FCM push evidence verifier self-test",
   );
@@ -459,7 +464,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_PAIR_FLOW.md`, `docs/ANDROID_SESSION_SUBSCRIPTION.md`, `docs/ANDROID_BIOMETRIC.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_RENDERER_FLOOD.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_RESTART_RESTORE.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
+    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_PAIR_FLOW.md`, `docs/ANDROID_SESSION_SUBSCRIPTION.md`, `docs/ANDROID_BIOMETRIC.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_RENDERER_FLOOD.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_RESTART_RESTORE.md`, `docs/ANDROID_MULTISESSION.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
     "release audit docs-sync row must include Android renderer, pair flow, dogfood, cold-start, renderer flood, background/foreground, network reconnect, FCM push, macOS daemon survival, live-testing, and operations docs",
   );
   requireText(
@@ -667,7 +672,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "current v1 install, protocol, privacy, architecture, Android renderer, Android pair flow, Android session subscription, Android biometric, Android dogfood, Android cold-start, Android renderer flood, Android background/foreground, Android network reconnect, Android restart restore, Android FCM push, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
+    "current v1 install, protocol, privacy, architecture, Android renderer, Android pair flow, Android session subscription, Android biometric, Android dogfood, Android cold-start, Android renderer flood, Android background/foreground, Android network reconnect, Android restart restore, Android multisession, Android FCM push, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
     "release audit must record concrete docs-sync coverage",
   );
   requireText(
@@ -954,6 +959,21 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "saved-pairing restore and `ANDROID_RESTART_SCROLLBACK` replay after daemon restart",
     "release audit must record the Android restart-restore evidence contract",
+  );
+  requireText(
+    audit,
+    "`docs/ANDROID_MULTISESSION.md`",
+    "release audit must record the Android multisession runbook",
+  );
+  requireText(
+    audit,
+    "`scripts/verify-android-multisession-evidence.mjs` fixture coverage",
+    "release audit must record Android multisession evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "three-session switching with no cross-session marker leakage",
+    "release audit must record the Android multisession evidence contract",
   );
   requireText(
     audit,
@@ -2376,6 +2396,12 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-restart-restore-evidence"] !== "node scripts/test-android-restart-restore-evidence.mjs") {
     failures.push("package.json must expose test:android-restart-restore-evidence");
   }
+  if (packageJson.scripts?.["check:android-multisession-evidence"] !== "node scripts/verify-android-multisession-evidence.mjs") {
+    failures.push("package.json must expose check:android-multisession-evidence");
+  }
+  if (packageJson.scripts?.["test:android-multisession-evidence"] !== "node scripts/test-android-multisession-evidence.mjs") {
+    failures.push("package.json must expose test:android-multisession-evidence");
+  }
   if (packageJson.scripts?.["check:android-fcm-push-evidence"] !== "node scripts/verify-android-fcm-push-evidence.mjs") {
     failures.push("package.json must expose check:android-fcm-push-evidence");
   }
@@ -2515,6 +2541,7 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/test-android-background-foreground-evidence.mjs", "local release gate must include Android background/foreground evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-network-reconnect-evidence.mjs", "local release gate must include Android network reconnect evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-restart-restore-evidence.mjs", "local release gate must include Android restart-restore evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-multisession-evidence.mjs", "local release gate must include Android multisession evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-fcm-push-evidence.mjs", "local release gate must include Android FCM push evidence verifier self-test");
   requireText(localRelease, "scripts/test-macos-daemon-survival-evidence.mjs", "local release gate must include macOS daemon survival evidence verifier self-test");
   requireText(localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");

@@ -22,6 +22,7 @@ const docs = {
   androidBackgroundForeground: read("docs/ANDROID_BACKGROUND_FOREGROUND.md"),
   androidNetworkReconnect: read("docs/ANDROID_NETWORK_RECONNECT.md"),
   androidRestartRestore: read("docs/ANDROID_RESTART_RESTORE.md"),
+  androidMultisession: read("docs/ANDROID_MULTISESSION.md"),
   androidFcmPush: read("docs/ANDROID_FCM_PUSH.md"),
   macosDaemonSurvival: read("docs/MACOS_DAEMON_SURVIVAL.md"),
   liveTesting: read("docs/LIVE_TESTING.md"),
@@ -44,6 +45,7 @@ verifyAndroidRendererFloodDoc();
 verifyAndroidBackgroundForegroundDoc();
 verifyAndroidNetworkReconnectDoc();
 verifyAndroidRestartRestoreDoc();
+verifyAndroidMultisessionDoc();
 verifyAndroidFcmPushDoc();
 verifyMacosDaemonSurvivalDoc();
 verifyLiveTestingDoc();
@@ -76,6 +78,7 @@ function verifyRequiredDocsExist() {
     "docs/ANDROID_BACKGROUND_FOREGROUND.md",
     "docs/ANDROID_NETWORK_RECONNECT.md",
     "docs/ANDROID_RESTART_RESTORE.md",
+    "docs/ANDROID_MULTISESSION.md",
     "docs/ANDROID_FCM_PUSH.md",
     "docs/MACOS_DAEMON_SURVIVAL.md",
     "docs/LIVE_TESTING.md",
@@ -467,6 +470,52 @@ function verifyAndroidRestartRestoreDoc() {
       docs.androidRestartRestore,
       needle,
       `docs/ANDROID_RESTART_RESTORE.md must document Android restart-restore evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidMultisessionDoc() {
+  for (const needle of [
+    "Android side of the Section 13 multi-session\nno-leakage gate",
+    "signed release build on a physical Android phone",
+    "three desktop-created sessions running in parallel",
+    "fwm_a",
+    "fwm_b",
+    "fwm_c",
+    "multi_a_ok",
+    "multi_b_ok",
+    "multi_c_ok",
+    "no cross-session leakage",
+    "not an emulator or AVD",
+    "debug build, biometric bypass, or debug pairing payload",
+    "real QR scanner and explicit desktop approval",
+    "Mobile must not create sessions, kill sessions, or choose commands",
+    "USB debugging; end users do not need adb",
+    "node scripts/verify-android-aab.mjs --expect-signed",
+    "signed release bundle ok",
+    "BUILD_TYPE = \"release\"",
+    "DEBUG = false",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_ANDROID_MULTISESSION_DIR/adb-devices.txt\"",
+    "fw new --name fwm_a bash",
+    "fw new --name fwm_b bash",
+    "fw new --name fwm_c bash",
+    "sessions.txt",
+    "multisession.png",
+    "multisession-ui.xml",
+    "multisession-logcat.log",
+    "multisession-crash.log",
+    "multisession-a-replay.txt",
+    "multisession-b-replay.txt",
+    "multisession-c-replay.txt",
+    "pnpm check:android-multisession-evidence -- \"$FW_ANDROID_MULTISESSION_DIR\"",
+    "only proves the Android release-device multi-session\nswitching and no-leakage replay path",
+  ]) {
+    requireText(
+      docs.androidMultisession,
+      needle,
+      `docs/ANDROID_MULTISESSION.md must document Android multisession evidence: ${needle}`,
     );
   }
 }
