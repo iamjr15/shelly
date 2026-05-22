@@ -108,6 +108,9 @@ Create a timestamped evidence directory:
 ```sh
 export FW_LIVE_DIR="/tmp/fieldwork-live-$(date +%Y%m%d%H%M%S)"
 mkdir -p "$FW_LIVE_DIR"
+rg 'FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
+  apps/android/app/build/generated/source/buildConfig/debug/app/fieldwork/android/BuildConfig.java \
+  | tee "$FW_LIVE_DIR/buildconfig.txt"
 ```
 
 Capture the locked launch surface:

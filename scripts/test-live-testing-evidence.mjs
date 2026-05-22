@@ -53,6 +53,22 @@ try {
   fs.writeFileSync(path.join(badReplay, "terminal-replay.txt"), "shell prompt only\n");
   expectStatus(badReplay, 1, "desktop replay without Android marker should fail", "terminal-replay.txt must prove Android-originated input/output");
 
+  const bypassBuild = path.join(temp, "bypass-build");
+  writeFixture(bypassBuild);
+  fs.writeFileSync(
+    path.join(bypassBuild, "buildconfig.txt"),
+    [
+      "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = true;",
+      'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "{\\"pairing\\":true}";',
+    ].join("\n"),
+  );
+  expectStatus(
+    bypassBuild,
+    1,
+    "debug bypass BuildConfig should fail",
+    "buildconfig.txt must prove the installed test build has biometric bypass disabled",
+  );
+
   const warmLaunch = path.join(temp, "warm-launch");
   writeFixture(warmLaunch);
   fs.writeFileSync(
@@ -98,6 +114,13 @@ console.log("live testing evidence verifier ok");
 
 function writeFixture(dir) {
   fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "buildconfig.txt"),
+    [
+      "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
+      'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "";',
+    ].join("\n"),
+  );
   writePng(path.join(dir, "locked.png"));
   writePng(path.join(dir, "session.png"));
   writePng(path.join(dir, "tui.png"));

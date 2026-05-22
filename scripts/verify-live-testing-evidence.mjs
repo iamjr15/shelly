@@ -17,6 +17,7 @@ const evidenceDir = path.resolve(rawArgs[0]);
 requireDirectory(evidenceDir);
 
 const requiredFiles = [
+  "buildconfig.txt",
   "launch.txt",
   "locked.png",
   "locked-ui.xml",
@@ -62,6 +63,7 @@ for (const file of requiredFiles) {
 }
 
 if (failures.length === 0) {
+  verifyBuildConfig(readText("buildconfig.txt"));
   verifyPng("locked.png");
   verifyPng("session.png");
   verifyPng("tui.png");
@@ -112,6 +114,19 @@ if (failures.length > 0) {
 }
 
 console.log(`live testing evidence ok: ${evidenceDir}`);
+
+function verifyBuildConfig(text) {
+  requirePatternText(
+    text,
+    /\bFIELDWORK_BIOMETRIC_BYPASS\s*=\s*false\b/,
+    "buildconfig.txt must prove the installed test build has biometric bypass disabled",
+  );
+  requirePatternText(
+    text,
+    /\bFIELDWORK_DEBUG_PAIRING_PAYLOAD\s*=\s*""/,
+    "buildconfig.txt must prove the installed test build has no debug pairing payload",
+  );
+}
 
 function verifyLaunch(text) {
   requirePatternText(text, /\bStatus:\s*ok\b/, "launch.txt must contain Android am start Status: ok");
