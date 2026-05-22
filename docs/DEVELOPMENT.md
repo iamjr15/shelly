@@ -114,6 +114,18 @@ assets, using Python's standard `tomllib` for TOML, lints the iOS project
 plist, Info.plist, and entitlements with `plutil -lint`, and validates Android
 XML resources plus docs SVG assets with
 `xmllint --noout`.
+
+For a local artifact-plus-runtime release-candidate pass on this Mac, first run
+`pnpm build:local-npm-artifacts`. That helper builds host release
+`fieldwork`/`fieldworkd`/`fieldwork-relay`, builds Darwin arm64/x64 platform
+package binaries with Cargo, builds Linux x64/arm64 platform package binaries
+with `cargo zigbuild`, stages the generated `packages/cli-*/bin/fieldwork` and
+`fieldworkd` files, copies `LICENSE`/`NOTICE` into all five npm package dirs,
+and then runs `node scripts/verify-npm-packages.mjs --require-binaries` plus
+`node scripts/publish-npm-packages.mjs --check-ready`. The staged platform bins
+are generated artifacts ignored by git; release CI still publishes from
+downloaded GitHub Release archives and attestations, not this local helper.
+
 For operator handoff, `pnpm check:release-audit:list` (equivalent to
 `node scripts/verify-release-audit.mjs --list-unchecked`) prints the current
 unchecked `PLAN.md` gates grouped by blocker class, and
@@ -156,6 +168,14 @@ cargo test -p fieldwork-mobile-core
 ```
 
 Desktop release build matrix:
+
+```sh
+pnpm build:local-npm-artifacts
+```
+
+The helper above is the preferred local command when the goal is to stage npm
+platform package binaries and then run `pnpm check:local-release:full`. The
+underlying per-target release commands are:
 
 ```sh
 rustup target add aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu

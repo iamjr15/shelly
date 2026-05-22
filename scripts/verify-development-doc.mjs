@@ -11,6 +11,7 @@ const files = {
   packageJson: read("package.json"),
   ci: read(".github/workflows/ci.yml"),
   localRelease: read("scripts/check-local-release.mjs"),
+  localNpmArtifacts: read("scripts/build-local-npm-artifacts.sh"),
   structuredAssets: read("scripts/verify-structured-assets.mjs"),
   androidEmulatorAll: read("scripts/smoke-android-emulator-all.sh"),
   androidGradlew: read("apps/android/gradlew"),
@@ -65,6 +66,8 @@ function verifyDevelopmentDoc(text) {
   requireText(text, "one explicit warm-up sample", "docs/DEVELOPMENT.md must document the desktop performance warm-up contract");
   requireText(text, "build-machine first-exec page-cache/code-signing noise", "docs/DEVELOPMENT.md must explain why the desktop performance warm-up exists");
   requireText(text, "fails if any measured release-build sample exceeds the v1 thresholds", "docs/DEVELOPMENT.md must document max-sample desktop performance enforcement");
+  requireText(text, "pnpm build:local-npm-artifacts", "docs/DEVELOPMENT.md must document local npm artifact staging");
+  requireText(text, "release CI still publishes from\ndownloaded GitHub Release archives and attestations", "docs/DEVELOPMENT.md must keep local npm artifact staging separate from release CI artifacts");
   requireText(text, "RUSTSEC-2026-0002", "docs/DEVELOPMENT.md must document the current lru RustSec advisory");
   requireText(text, "cargo update -p lru@0.12.5 --dry-run", "docs/DEVELOPMENT.md must document the lru dry-run update check");
   requireText(text, "does not use `lru::IterMut` directly", "docs/DEVELOPMENT.md must document direct lru IterMut non-use");
@@ -711,6 +714,9 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["check:demo-video"] !== "node scripts/verify-demo-video.mjs") {
     failures.push("package.json must expose pnpm check:demo-video");
   }
+  if (packageJson.scripts?.["build:local-npm-artifacts"] !== "scripts/build-local-npm-artifacts.sh") {
+    failures.push("package.json must expose pnpm build:local-npm-artifacts");
+  }
   requireText(allFiles.ci, "node scripts/verify-development-doc.mjs", "CI must run the development doc verifier");
   requireText(allFiles.ci, "node --check scripts/check-local-release.mjs", "CI must syntax-check the local release aggregate verifier");
   requireText(
@@ -749,6 +755,11 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "\"npm meta dry-run pack\", npm, [\"pack\", \"./packages/cli\", \"--dry-run\", \"--json\"]", "artifact-aware local release gate must include npm meta dry-run pack");
   requireText(allFiles.localRelease, "cleanNpmEnv()", "local release gate must sanitize inherited npm config for dry-run pack");
   requireText(allFiles.localRelease, "\"Android AAB artifact\", node, [\"scripts/verify-android-aab.mjs\", \"--expect-unsigned\"]", "artifact-aware local release gate must call the Android AAB verifier directly");
+  requireText(allFiles.localNpmArtifacts, "cargo build --release -p fieldwork-cli -p fieldwork-daemon -p fieldwork-relay", "local npm artifact builder must build host release binaries");
+  requireText(allFiles.localNpmArtifacts, "cargo zigbuild --release --target x86_64-unknown-linux-gnu -p fieldwork-cli -p fieldwork-daemon", "local npm artifact builder must build Linux x64 package binaries");
+  requireText(allFiles.localNpmArtifacts, "cargo zigbuild --release --target aarch64-unknown-linux-gnu -p fieldwork-cli -p fieldwork-daemon", "local npm artifact builder must build Linux arm64 package binaries");
+  requireText(allFiles.localNpmArtifacts, "node scripts/verify-npm-packages.mjs --require-binaries", "local npm artifact builder must verify staged package binaries");
+  requireText(allFiles.localNpmArtifacts, "node scripts/publish-npm-packages.mjs --check-ready", "local npm artifact builder must verify publish readiness");
   requireText(allFiles.localRelease, "\"local handoff smoke\", bash, [\"scripts/smoke-local-handoff.sh\"]", "runtime local release gate must include local handoff smoke");
   requireText(allFiles.localRelease, "localHandoffEnv()", "runtime local release gate must run local handoff with an explicit target-dir env");
   requireText(allFiles.localRelease, "env.CARGO_TARGET_DIR ??= \"/tmp/fieldwork-target-checks\"", "runtime local release gate must default handoff target-dir outside repo target");

@@ -62,6 +62,7 @@
     "build:site": "pnpm --dir site build",
     "render:demo-video": "node scripts/render-demo-video.mjs",
     "generate:oss-notices": "node scripts/generate-oss-notices.mjs",
+    "build:local-npm-artifacts": "scripts/build-local-npm-artifacts.sh",
     "measure:desktop-performance": "node scripts/measure-desktop-performance.mjs",
     "test:ios-prereqs": "node scripts/test-ios-prereqs.mjs",
     "test:local-handoff": "scripts/smoke-local-handoff.sh",
