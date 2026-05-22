@@ -1,6 +1,6 @@
 # Fieldwork v1 Release Audit
 
-Last updated: 2026-05-21
+Last updated: 2026-05-22
 
 This file is the current prompt-to-artifact audit for the v1 objective in
 `PLAN.md`, with `FUTURE.md` as the boundary for deferred work. It is not a
@@ -359,6 +359,23 @@ outside this shell:
   dump contained the locked `Unlock` surface, the app process remained focused,
   and targeted logcat scanning found no Fieldwork `FATAL EXCEPTION` or ANR
   entries. This remains debug-emulator substitute evidence only.
+  A later 2026-05-22 direct adb manual terminal refresh under
+  `/tmp/fieldwork-adb-direct-20260522225023` installed a debug-only
+  biometric-bypass/pair-payload build, granted the emulator camera permission,
+  paired the actual Android app to an isolated release daemon through explicit
+  desktop approval, opened the desktop-created `adb_direct` session, and sent
+  `direct_adb_ok` from Android into the daemon-owned PTY. `uiautomator` hung
+  after pairing, so the pass continued with direct `adb` coordinates,
+  screenshots, logcat, and a separately approved desktop verifier;
+  `manual-verifier-success.txt` contains `android-direct: direct_adb_ok`.
+  Evidence includes paired-dashboard and terminal screenshots, app logcat, an
+  empty terminal crash buffer, and restored-default proof. The default debug APK
+  was rebuilt and reinstalled afterward with
+  `FIELDWORK_BIOMETRIC_BYPASS = false`,
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, restored `Unlock` UI, and an empty
+  restored crash buffer. This remains debug-emulator substitute evidence only;
+  physical Android biometric, QR-camera, renderer dogfood, and release-device
+  runtime gates remain unchecked.
   A
   follow-up raw adb
   locked-launch baseline on 2026-05-19 installed the default debug APK, launched

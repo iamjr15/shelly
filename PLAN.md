@@ -1833,6 +1833,24 @@ and targeted logcat scanning found no Fieldwork `FATAL EXCEPTION` or ANR
 entries. This remains debug-emulator substitute evidence only; physical release
 device cold-start and biometric evidence remain unchecked.
 
+**Direct Android adb manual terminal refresh (2026-05-22)**: a later direct
+`adb` pass under `/tmp/fieldwork-adb-direct-20260522225023` installed a
+debug-only biometric-bypass/pair-payload build, granted the emulator camera
+permission, paired the actual Android app to an isolated release daemon through
+explicit desktop approval, opened the desktop-created `adb_direct` session, and
+sent `direct_adb_ok` from Android into the daemon-owned PTY. When
+`uiautomator` hung after pairing, the pass continued with direct `adb`
+coordinates, screenshots, logcat, and a separately approved desktop verifier;
+`manual-verifier-success.txt` contains
+`android-direct: direct_adb_ok`. Evidence includes paired-dashboard and terminal
+screenshots, app logcat, an empty terminal crash buffer, and restored-default
+proof. The default debug APK was rebuilt and reinstalled afterward with
+`FIELDWORK_BIOMETRIC_BYPASS = false`,
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, the locked `Unlock` surface, and an
+empty restored crash buffer. This remains debug-emulator substitute evidence
+only; physical Android biometric, QR-camera, renderer dogfood, and release
+device runtime gates remain unchecked.
+
 **Live testing evidence scaffold note (2026-05-22)**:
 `scripts/create-live-testing-evidence-dir.mjs` now creates the first Android
 live-test evidence directory scaffold from the verifier's required-file list and
