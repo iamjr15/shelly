@@ -94,7 +94,7 @@ operator explicitly asks for that exact refresh.
 Before the release tag, rerun the deterministic local gate from a clean checkout:
 
 ```sh
-pnpm check:local-release -- --with-artifacts --with-runtime
+pnpm check:local-release:full
 pnpm check:release-audit
 pnpm check:release-audit:list
 ```

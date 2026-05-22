@@ -92,13 +92,15 @@ release binaries, Terraform, ffmpeg/ffprobe, and site dependencies are available
 run `pnpm check:local-release -- --with-runtime` to also verify the local
 handoff smoke, demo video, site typecheck/build, Terraform fmt/init/validate,
 relay TLS/OTLP loopbacks, and desktop cold-start thresholds. The flags can be
-combined. Unless `CARGO_TARGET_DIR` is already set, the aggregate runs the local
+combined, and `pnpm check:local-release:full` is the packaged alias for the
+artifact plus runtime release-candidate pass. Unless `CARGO_TARGET_DIR` is
+already set, the aggregate runs the local
 handoff smoke with `/tmp/fieldwork-target-checks` so it does not grow the
 repo-local `target/debug` cache. The smoke preserves the host `CARGO_HOME` and
 `RUSTUP_HOME` while isolating Fieldwork's `HOME`, config, state, and runtime
 directories, so Rustup does not redownload the pinned toolchain into each temp
 run. On hosts with limited temp-volume space, run
-`CARGO_HOME="$HOME/.cargo" CARGO_TARGET_DIR="$PWD/target" pnpm check:local-release -- --with-artifacts --with-runtime`
+`CARGO_HOME="$HOME/.cargo" CARGO_TARGET_DIR="$PWD/target" pnpm check:local-release:full`
 to reuse the normal Cargo cache and repo-local target directory. CI
 syntax-checks the aggregate wrapper and list-checks the combined
 artifact/runtime mode so wrapper drift is caught without duplicating the full

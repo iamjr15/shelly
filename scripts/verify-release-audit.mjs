@@ -179,6 +179,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`pnpm check:local-release:full`",
+    "release audit must record the full local release aggregate package script",
+  );
+  requireText(
+    audit,
     "optional `--with-artifacts` mode",
     "release audit must record artifact-aware local release aggregate mode",
   );
@@ -1944,6 +1949,9 @@ function verifyVerifierIsWired() {
   }
   if (packageJson.scripts?.["check:local-release"] !== "node scripts/check-local-release.mjs") {
     failures.push("package.json must expose check:local-release");
+  }
+  if (packageJson.scripts?.["check:local-release:full"] !== "node scripts/check-local-release.mjs --with-artifacts --with-runtime") {
+    failures.push("package.json must expose check:local-release:full");
   }
   if (packageJson.scripts?.["check:secret-boundaries"] !== "node scripts/verify-secret-boundaries.mjs") {
     failures.push("package.json must expose check:secret-boundaries");

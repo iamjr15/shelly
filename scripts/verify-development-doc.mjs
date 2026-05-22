@@ -141,7 +141,7 @@ function verifyDevelopmentDoc(text) {
   );
   requireText(
     text,
-    'CARGO_HOME="$HOME/.cargo" CARGO_TARGET_DIR="$PWD/target" pnpm check:local-release -- --with-artifacts --with-runtime',
+    'CARGO_HOME="$HOME/.cargo" CARGO_TARGET_DIR="$PWD/target" pnpm check:local-release:full',
     "docs/DEVELOPMENT.md must document the low-temp-space aggregate gate command",
   );
   requireText(
@@ -637,6 +637,9 @@ function verifyWiring(allFiles) {
   }
   if (packageJson.scripts?.["check:local-release"] !== "node scripts/check-local-release.mjs") {
     failures.push("package.json must expose pnpm check:local-release");
+  }
+  if (packageJson.scripts?.["check:local-release:full"] !== "node scripts/check-local-release.mjs --with-artifacts --with-runtime") {
+    failures.push("package.json must expose pnpm check:local-release:full");
   }
   if (packageJson.scripts?.["check:no-ship"] !== "node scripts/verify-no-ship-markers.mjs") {
     failures.push("package.json must expose pnpm check:no-ship");

@@ -185,7 +185,7 @@ for (const handoff of [
   "no screen mirroring",
   "no arbitrary Terminal.app/iTerm\n  takeover",
   "direct `adb` screenshot/UI/log/crash evidence",
-  "pnpm check:local-release -- --with-artifacts --with-runtime",
+  "pnpm check:local-release:full",
   "pnpm check:release-audit:list",
   "Only check the external boxes in `PLAN.md` after the matching hosted account,\nprovider, signed-artifact, physical-device, or operator-reservation evidence\nexists, and keep `docs/RELEASE_AUDIT.md` synchronized with the evidence",
 ]) {
