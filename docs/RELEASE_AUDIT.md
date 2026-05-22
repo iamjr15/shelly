@@ -359,6 +359,19 @@ outside this shell:
   dump contained the locked `Unlock` surface, the app process remained focused,
   and targeted logcat scanning found no Fieldwork `FATAL EXCEPTION` or ANR
   entries. This remains debug-emulator substitute evidence only.
+  A 2026-05-23 direct headless adb locked-launch refresh under
+  `/tmp/fieldwork-adb-direct-20260523-locked` started
+  `Medium_Phone_API_36.1`, installed the existing normal debug APK, resolved
+  `app.fieldwork.android/.MainActivity`, and launched it with `Status: ok`,
+  `LaunchState: COLD`, and `TotalTime=1847ms`. Evidence includes `locked.png`,
+  `locked-ui.xml`, `locked-logcat.log`, empty `locked-crash.log`, `focus.txt`,
+  and `buildconfig.txt` proving `APPLICATION_ID = "app.fieldwork.android"`,
+  `BUILD_TYPE = "debug"`, `DEBUG = Boolean.parseBoolean("true")`,
+  `FIELDWORK_BIOMETRIC_BYPASS = false`, and
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`. The screenshot was 1080x2400, the UI
+  dump contained the locked `Unlock` surface, the app process remained focused,
+  and targeted logcat scanning found no Fieldwork `FATAL EXCEPTION` or ANR
+  entries. This remains debug-emulator substitute evidence only.
   A later 2026-05-22 direct adb manual terminal refresh under
   `/tmp/fieldwork-adb-direct-20260522225023` installed a debug-only
   biometric-bypass/pair-payload build, granted the emulator camera permission,

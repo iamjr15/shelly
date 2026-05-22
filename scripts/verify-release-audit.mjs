@@ -2128,6 +2128,32 @@ function verifyLatestRefresh() {
     requireText(audit, evidence, `release audit 2026-05-22 direct adb locked-launch evidence must include ${evidence}`);
   }
   for (const evidence of [
+    "Direct Android adb locked-launch refresh (2026-05-23)",
+    "`/tmp/fieldwork-adb-direct-20260523-locked`",
+    "`app.fieldwork.android/.MainActivity`",
+    "`TotalTime=1847ms`",
+    "`locked.png`,\n`locked-ui.xml`, `locked-logcat.log`, empty `locked-crash.log`, `focus.txt`, and\n`buildconfig.txt`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "app process remained focused",
+    "targeted logcat scanning found no Fieldwork `FATAL EXCEPTION` or ANR\nentries",
+  ]) {
+    requireText(plan, evidence, `PLAN.md 2026-05-23 direct adb locked-launch evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-23 direct headless adb locked-launch refresh",
+    "`/tmp/fieldwork-adb-direct-20260523-locked`",
+    "`app.fieldwork.android/.MainActivity`",
+    "`TotalTime=1847ms`",
+    "`locked.png`,\n  `locked-ui.xml`, `locked-logcat.log`, empty `locked-crash.log`, `focus.txt`,",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "app process remained focused",
+    "targeted logcat scanning found no Fieldwork `FATAL EXCEPTION` or ANR\n  entries",
+  ]) {
+    requireText(audit, evidence, `release audit 2026-05-23 direct adb locked-launch evidence must include ${evidence}`);
+  }
+  for (const evidence of [
     "Android aggregate emulator QA note",
     "`pnpm test:android-emulator` aggregates the direct-adb emulator substitutes",
     "retries only a locked debug-launch timing outlier once with the same strict limit",
