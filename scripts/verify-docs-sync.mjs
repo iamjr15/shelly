@@ -14,6 +14,7 @@ const docs = {
   install: read("docs/INSTALL.md"),
   androidRenderer: read("docs/ANDROID_RENDERER.md"),
   androidPairFlow: read("docs/ANDROID_PAIR_FLOW.md"),
+  androidSessionSubscription: read("docs/ANDROID_SESSION_SUBSCRIPTION.md"),
   androidDogfood: read("docs/ANDROID_DOGFOOD.md"),
   androidColdStart: read("docs/ANDROID_COLD_START.md"),
   androidRendererFlood: read("docs/ANDROID_RENDERER_FLOOD.md"),
@@ -33,6 +34,7 @@ verifyArchitectureDoc();
 verifyInstallDoc();
 verifyAndroidRendererDoc();
 verifyAndroidPairFlowDoc();
+verifyAndroidSessionSubscriptionDoc();
 verifyAndroidDogfoodDoc();
 verifyAndroidColdStartDoc();
 verifyAndroidRendererFloodDoc();
@@ -62,6 +64,7 @@ function verifyRequiredDocsExist() {
     "docs/INSTALL.md",
     "docs/ANDROID_RENDERER.md",
     "docs/ANDROID_PAIR_FLOW.md",
+    "docs/ANDROID_SESSION_SUBSCRIPTION.md",
     "docs/ANDROID_DOGFOOD.md",
     "docs/ANDROID_COLD_START.md",
     "docs/ANDROID_RENDERER_FLOOD.md",
@@ -150,6 +153,47 @@ function verifyAndroidPairFlowDoc() {
       docs.androidPairFlow,
       needle,
       `docs/ANDROID_PAIR_FLOW.md must document Android pair-flow evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidSessionSubscriptionDoc() {
+  for (const needle of [
+    "Android side of the Section 13 desktop-created\nsession subscription gate",
+    "signed release build on a physical Android\nphone",
+    "`fw_live_sub` must appear on Android\nin `visible_ms<=2000`",
+    "Android must attach and send input that is visible\nwhen the desktop reattaches",
+    "not an emulator or AVD",
+    "debug build, biometric bypass, or debug pairing payload",
+    "real QR scanner and explicit desktop approval",
+    "Mobile must not create sessions, kill sessions, or choose commands",
+    "USB debugging; end users do not need adb",
+    "node scripts/verify-android-aab.mjs --expect-signed",
+    "signed release bundle ok",
+    "BUILD_TYPE = \"release\"",
+    "DEBUG = false",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_ANDROID_SUBSCRIPTION_DIR/adb-devices.txt\"",
+    "dashboard-before-ui.xml",
+    "fw new --name fw_live_sub bash",
+    "desktop-create.txt",
+    "created_by_desktop_cli",
+    "visible_ms=<elapsed-ms>",
+    "subscription.png",
+    "subscription-ui.xml",
+    "subscription-logcat.log",
+    "subscription-crash.log",
+    "sessions-after.txt",
+    "echo subscription_attach_ok",
+    "subscription-replay.txt",
+    "pnpm check:android-session-subscription-evidence -- \"$FW_ANDROID_SUBSCRIPTION_DIR\"",
+    "only proves the Android release-device dashboard\nsubscription and attach/input path",
+  ]) {
+    requireText(
+      docs.androidSessionSubscription,
+      needle,
+      `docs/ANDROID_SESSION_SUBSCRIPTION.md must document Android session-subscription evidence: ${needle}`,
     );
   }
 }
