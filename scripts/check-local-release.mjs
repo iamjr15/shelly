@@ -48,6 +48,7 @@ const checks = [
   ["Android renderer flood evidence verifier self-test", node, ["scripts/test-android-renderer-flood-evidence.mjs"]],
   ["Android background/foreground evidence verifier self-test", node, ["scripts/test-android-background-foreground-evidence.mjs"]],
   ["Android network reconnect evidence verifier self-test", node, ["scripts/test-android-network-reconnect-evidence.mjs"]],
+  ["Android restart-restore evidence verifier self-test", node, ["scripts/test-android-restart-restore-evidence.mjs"]],
   ["Android FCM push evidence verifier self-test", node, ["scripts/test-android-fcm-push-evidence.mjs"]],
   ["macOS daemon survival evidence verifier self-test", node, ["scripts/test-macos-daemon-survival-evidence.mjs"]],
   ["debug instance env contract", node, ["scripts/test-debug-instance.mjs"]],

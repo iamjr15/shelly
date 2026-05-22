@@ -21,6 +21,7 @@ const docs = {
   androidRendererFlood: read("docs/ANDROID_RENDERER_FLOOD.md"),
   androidBackgroundForeground: read("docs/ANDROID_BACKGROUND_FOREGROUND.md"),
   androidNetworkReconnect: read("docs/ANDROID_NETWORK_RECONNECT.md"),
+  androidRestartRestore: read("docs/ANDROID_RESTART_RESTORE.md"),
   androidFcmPush: read("docs/ANDROID_FCM_PUSH.md"),
   macosDaemonSurvival: read("docs/MACOS_DAEMON_SURVIVAL.md"),
   liveTesting: read("docs/LIVE_TESTING.md"),
@@ -42,6 +43,7 @@ verifyAndroidColdStartDoc();
 verifyAndroidRendererFloodDoc();
 verifyAndroidBackgroundForegroundDoc();
 verifyAndroidNetworkReconnectDoc();
+verifyAndroidRestartRestoreDoc();
 verifyAndroidFcmPushDoc();
 verifyMacosDaemonSurvivalDoc();
 verifyLiveTestingDoc();
@@ -73,6 +75,7 @@ function verifyRequiredDocsExist() {
     "docs/ANDROID_RENDERER_FLOOD.md",
     "docs/ANDROID_BACKGROUND_FOREGROUND.md",
     "docs/ANDROID_NETWORK_RECONNECT.md",
+    "docs/ANDROID_RESTART_RESTORE.md",
     "docs/ANDROID_FCM_PUSH.md",
     "docs/MACOS_DAEMON_SURVIVAL.md",
     "docs/LIVE_TESTING.md",
@@ -423,6 +426,47 @@ function verifyAndroidNetworkReconnectDoc() {
       docs.androidNetworkReconnect,
       needle,
       `docs/ANDROID_NETWORK_RECONNECT.md must document Android network reconnect evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidRestartRestoreDoc() {
+  for (const needle of [
+    "Android side of the Section 13 daemon restart restore\ngate",
+    "signed release build on a physical Android phone",
+    "paired Android release\napp relaunches from saved pairing",
+    "`fw_restart_session`",
+    "ANDROID_RESTART_SCROLLBACK",
+    "Running PTY processes are allowed to die on daemon restart",
+    "not an emulator or AVD",
+    "debug build, biometric bypass, or debug pairing payload",
+    "real QR scanner and explicit desktop approval",
+    "USB debugging; end users do not need adb",
+    "node scripts/verify-android-aab.mjs --expect-signed",
+    "signed release bundle ok",
+    "BUILD_TYPE = \"release\"",
+    "DEBUG = false",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_ANDROID_RESTART_DIR/adb-devices.txt\"",
+    "fw new --name fw_restart_session bash",
+    "sessions-before.txt",
+    "devices.txt",
+    "script -q \"$FW_ANDROID_RESTART_DIR/daemon-restart.txt\" fw daemon restart",
+    "restart_ms=<elapsed-ms>",
+    "processes_died_documented",
+    "restart.png",
+    "restart-ui.xml",
+    "restart-logcat.log",
+    "restart-crash.log",
+    "restart-replay.txt",
+    "pnpm check:android-restart-restore-evidence -- \"$FW_ANDROID_RESTART_DIR\"",
+    "only proves the Android release-device saved-pairing\nrestore and scrollback replay path",
+  ]) {
+    requireText(
+      docs.androidRestartRestore,
+      needle,
+      `docs/ANDROID_RESTART_RESTORE.md must document Android restart-restore evidence: ${needle}`,
     );
   }
 }
