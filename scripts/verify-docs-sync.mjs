@@ -26,6 +26,7 @@ const docs = {
   androidRestartRestore: read("docs/ANDROID_RESTART_RESTORE.md"),
   androidMultisession: read("docs/ANDROID_MULTISESSION.md"),
   androidFcmPush: read("docs/ANDROID_FCM_PUSH.md"),
+  relayHoneycomb: read("docs/RELAY_HONEYCOMB.md"),
   macosDaemonSurvival: read("docs/MACOS_DAEMON_SURVIVAL.md"),
   liveTesting: read("docs/LIVE_TESTING.md"),
   operations: read("docs/OPERATIONS.md"),
@@ -51,6 +52,7 @@ verifyAndroidNetworkReconnectDoc();
 verifyAndroidRestartRestoreDoc();
 verifyAndroidMultisessionDoc();
 verifyAndroidFcmPushDoc();
+verifyRelayHoneycombDoc();
 verifyMacosDaemonSurvivalDoc();
 verifyLiveTestingDoc();
 verifyOperationsDoc();
@@ -86,6 +88,7 @@ function verifyRequiredDocsExist() {
     "docs/ANDROID_RESTART_RESTORE.md",
     "docs/ANDROID_MULTISESSION.md",
     "docs/ANDROID_FCM_PUSH.md",
+    "docs/RELAY_HONEYCOMB.md",
     "docs/MACOS_DAEMON_SURVIVAL.md",
     "docs/LIVE_TESTING.md",
     "docs/OPERATIONS.md",
@@ -663,6 +666,43 @@ function verifyAndroidFcmPushDoc() {
   }
 }
 
+function verifyRelayHoneycombDoc() {
+  for (const needle of [
+    "Section 13 hosted Honeycomb trace receipt gate",
+    "does not prove daemon or mobile telemetry",
+    "hosted Honeycomb query export containing a sampled\n`/v1/version` relay span",
+    "`fieldwork-relay`",
+    "`relay.version`",
+    "`/v1/version`",
+    "`service.version`",
+    "FIELDWORK_RELAY_OTLP_ENDPOINT=https://api.honeycomb.io/v1/traces",
+    "production default sample rate at `0.01`",
+    "FIELDWORK_RELAY_OTLP_SAMPLE_RATE=1.0",
+    "receipt_test_window=true",
+    "restored_sample_rate=0.01",
+    "systemd credential named\n  `honeycomb-api-key`",
+    "Do not capture `x-honeycomb-team`",
+    "FW_RELAY_HONEYCOMB_DIR",
+    "relay-version.txt",
+    "relay-config.txt",
+    "systemd-credentials.txt",
+    "request.txt",
+    "relay-log.txt",
+    "honeycomb-query.json",
+    "curl -fsS https://relay.fieldwork.dev:8443/v1/version",
+    "journalctl --user -u fieldwork-control-plane.service",
+    "service.name = fieldwork-relay",
+    "pnpm check:relay-honeycomb-evidence -- \"$FW_RELAY_HONEYCOMB_DIR\"",
+    "only proves the relay/Honeycomb hosted trace receipt path",
+  ]) {
+    requireText(
+      docs.relayHoneycomb,
+      needle,
+      `docs/RELAY_HONEYCOMB.md must document relay Honeycomb evidence: ${needle}`,
+    );
+  }
+}
+
 function verifyMacosDaemonSurvivalDoc() {
   for (const needle of [
     "Section 13 macOS daemon survival gates",
@@ -1070,6 +1110,9 @@ function verifyPlanDoc() {
     "pnpm check:android-resize-detach-evidence -- \"$FW_ANDROID_RESIZE_DIR\"",
     "resize replay contains a plausible `resize_size` plus `after_resize_ok`",
     "detach replay contains `after_detach_reattach_ok` after Android reattaches",
+    "docs/RELAY_HONEYCOMB.md",
+    "scripts/verify-relay-honeycomb-evidence.mjs",
+    "hosted evidence contract for relay config, systemd credential proof, `/v1/version` test traffic, Honeycomb query export, and redacted relay logs",
     "daemon rejects duplicate session\nnames with `ErrorCode::InvalidRequest`",
     "`fw new --name <name>` if a\ndesired session name collides with a subcommand",
     "Mobile clients still cannot create sessions, kill sessions, or choose\ncommands",

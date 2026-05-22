@@ -53,6 +53,7 @@ const checks = [
   ["Android restart-restore evidence verifier self-test", node, ["scripts/test-android-restart-restore-evidence.mjs"]],
   ["Android multisession evidence verifier self-test", node, ["scripts/test-android-multisession-evidence.mjs"]],
   ["Android FCM push evidence verifier self-test", node, ["scripts/test-android-fcm-push-evidence.mjs"]],
+  ["relay Honeycomb evidence verifier self-test", node, ["scripts/test-relay-honeycomb-evidence.mjs"]],
   ["macOS daemon survival evidence verifier self-test", node, ["scripts/test-macos-daemon-survival-evidence.mjs"]],
   ["debug instance env contract", node, ["scripts/test-debug-instance.mjs"]],
   [
