@@ -54,6 +54,7 @@ const checks = [
   ["Android multisession evidence verifier self-test", node, ["scripts/test-android-multisession-evidence.mjs"]],
   ["Android FCM push evidence verifier self-test", node, ["scripts/test-android-fcm-push-evidence.mjs"]],
   ["relay Honeycomb evidence verifier self-test", node, ["scripts/test-relay-honeycomb-evidence.mjs"]],
+  ["Sentry receipt evidence verifier self-test", node, ["scripts/test-sentry-receipt-evidence.mjs"]],
   ["macOS daemon survival evidence verifier self-test", node, ["scripts/test-macos-daemon-survival-evidence.mjs"]],
   ["debug instance env contract", node, ["scripts/test-debug-instance.mjs"]],
   [

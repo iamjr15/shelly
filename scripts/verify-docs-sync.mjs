@@ -27,6 +27,7 @@ const docs = {
   androidMultisession: read("docs/ANDROID_MULTISESSION.md"),
   androidFcmPush: read("docs/ANDROID_FCM_PUSH.md"),
   relayHoneycomb: read("docs/RELAY_HONEYCOMB.md"),
+  sentryReceipt: read("docs/SENTRY_RECEIPT.md"),
   macosDaemonSurvival: read("docs/MACOS_DAEMON_SURVIVAL.md"),
   liveTesting: read("docs/LIVE_TESTING.md"),
   operations: read("docs/OPERATIONS.md"),
@@ -53,6 +54,7 @@ verifyAndroidRestartRestoreDoc();
 verifyAndroidMultisessionDoc();
 verifyAndroidFcmPushDoc();
 verifyRelayHoneycombDoc();
+verifySentryReceiptDoc();
 verifyMacosDaemonSurvivalDoc();
 verifyLiveTestingDoc();
 verifyOperationsDoc();
@@ -89,6 +91,7 @@ function verifyRequiredDocsExist() {
     "docs/ANDROID_MULTISESSION.md",
     "docs/ANDROID_FCM_PUSH.md",
     "docs/RELAY_HONEYCOMB.md",
+    "docs/SENTRY_RECEIPT.md",
     "docs/MACOS_DAEMON_SURVIVAL.md",
     "docs/LIVE_TESTING.md",
     "docs/OPERATIONS.md",
@@ -703,6 +706,46 @@ function verifyRelayHoneycombDoc() {
   }
 }
 
+function verifySentryReceiptDoc() {
+  for (const needle of [
+    "Section 13 hosted Sentry receipt gate",
+    "daemon, Android, and iOS crash reporting",
+    "daemon telemetry is opt-in only",
+    "mobile crash reporting is opt-in only",
+    "trace sampling is `0.0`",
+    "one hosted Sentry event each from `fieldworkd`, the signed\nAndroid release app, and the signed iOS release app",
+    "real Sentry project/DSN and signed daemon/mobile builds",
+    "Do not include raw Sentry DSNs",
+    "FIELDWORK_TELEMETRY_OPT_IN=true",
+    "FW_SENTRY_DIR",
+    "sentry-project.txt",
+    "privacy-review.txt",
+    "send_default_pii=false",
+    "traces_sample_rate=0.0",
+    "session_replay=false",
+    "screenshots=false",
+    "user_interaction_tracing=false",
+    "daemon-telemetry.txt",
+    "fieldworkd_sentry_receipt",
+    "daemon-event.json",
+    "android-buildconfig.txt",
+    "android-settings-ui.xml",
+    "android-event.json",
+    "android_sentry_receipt",
+    "ios-settings.txt",
+    "ios-event.json",
+    "ios_sentry_receipt",
+    "pnpm check:sentry-receipt-evidence -- \"$FW_SENTRY_DIR\"",
+    "only proves the hosted Sentry receipt evidence shape",
+  ]) {
+    requireText(
+      docs.sentryReceipt,
+      needle,
+      `docs/SENTRY_RECEIPT.md must document hosted Sentry receipt evidence: ${needle}`,
+    );
+  }
+}
+
 function verifyMacosDaemonSurvivalDoc() {
   for (const needle of [
     "Section 13 macOS daemon survival gates",
@@ -1113,6 +1156,9 @@ function verifyPlanDoc() {
     "docs/RELAY_HONEYCOMB.md",
     "scripts/verify-relay-honeycomb-evidence.mjs",
     "hosted evidence contract for relay config, systemd credential proof, `/v1/version` test traffic, Honeycomb query export, and redacted relay logs",
+    "docs/SENTRY_RECEIPT.md",
+    "scripts/verify-sentry-receipt-evidence.mjs",
+    "hosted evidence contract for redacted project config, privacy review, daemon opt-in proof, signed Android/iOS release opt-in proof, and exported Sentry event JSON",
     "daemon rejects duplicate session\nnames with `ErrorCode::InvalidRequest`",
     "`fw new --name <name>` if a\ndesired session name collides with a subcommand",
     "Mobile clients still cannot create sessions, kill sessions, or choose\ncommands",

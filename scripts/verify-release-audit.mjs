@@ -304,6 +304,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "Sentry receipt evidence verifier fixture test",
+    "release audit must record local release aggregate coverage for Sentry receipt evidence verifier self-test",
+  );
+  requireText(
+    audit,
     "macOS daemon survival evidence verifier fixture test",
     "release audit must record local release aggregate coverage for macOS daemon survival evidence verifier self-test",
   );
@@ -479,8 +484,8 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_PAIR_FLOW.md`, `docs/ANDROID_SESSION_SUBSCRIPTION.md`, `docs/ANDROID_TERMINAL_ATTACH.md`, `docs/ANDROID_RESIZE_DETACH.md`, `docs/ANDROID_BIOMETRIC.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_RENDERER_FLOOD.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_RESTART_RESTORE.md`, `docs/ANDROID_MULTISESSION.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/RELAY_HONEYCOMB.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
-    "release audit docs-sync row must include Android renderer, pair flow, dogfood, cold-start, renderer flood, background/foreground, network reconnect, FCM push, relay Honeycomb, macOS daemon survival, live-testing, and operations docs",
+    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_PAIR_FLOW.md`, `docs/ANDROID_SESSION_SUBSCRIPTION.md`, `docs/ANDROID_TERMINAL_ATTACH.md`, `docs/ANDROID_RESIZE_DETACH.md`, `docs/ANDROID_BIOMETRIC.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_RENDERER_FLOOD.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_RESTART_RESTORE.md`, `docs/ANDROID_MULTISESSION.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/RELAY_HONEYCOMB.md`, `docs/SENTRY_RECEIPT.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
+    "release audit docs-sync row must include Android renderer, pair flow, dogfood, cold-start, renderer flood, background/foreground, network reconnect, FCM push, relay Honeycomb, Sentry receipt, macOS daemon survival, live-testing, and operations docs",
   );
   requireText(
     audit,
@@ -687,7 +692,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "current v1 install, protocol, privacy, architecture, Android renderer, Android pair flow, Android session subscription, Android terminal attach, Android resize/detach, Android biometric, Android dogfood, Android cold-start, Android renderer flood, Android background/foreground, Android network reconnect, Android restart restore, Android multisession, Android FCM push, relay Honeycomb evidence, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
+    "current v1 install, protocol, privacy, architecture, Android renderer, Android pair flow, Android session subscription, Android terminal attach, Android resize/detach, Android biometric, Android dogfood, Android cold-start, Android renderer flood, Android background/foreground, Android network reconnect, Android restart restore, Android multisession, Android FCM push, relay Honeycomb evidence, hosted Sentry receipt evidence, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
     "release audit must record concrete docs-sync coverage",
   );
   requireText(
@@ -756,6 +761,26 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "MobileTelemetry\ncoverage for default-off crash reporting, declined one-time consent resolution,\nand debug-without-DSN no-start behavior",
     "release audit latest refresh must record MobileTelemetry test coverage",
+  );
+  requireText(
+    audit,
+    "`docs/SENTRY_RECEIPT.md`",
+    "release audit must record the hosted Sentry receipt runbook",
+  );
+  requireText(
+    audit,
+    "`scripts/verify-sentry-receipt-evidence.mjs` fixture coverage",
+    "release audit must record hosted Sentry receipt evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "one Sentry event each from `fieldworkd`, the signed Android release app, and the signed iOS release app",
+    "release audit must record the hosted Sentry event-source evidence contract",
+  );
+  requireText(
+    audit,
+    "rejection of raw DSNs, auth tokens, terminal/session fields, command/path/session-name values, user identity/IP fields, screenshots, and session replay data",
+    "release audit must record hosted Sentry privacy rejection coverage",
   );
   requireText(
     audit,
@@ -2090,6 +2115,7 @@ function verifyLatestRefresh() {
   }
   for (const evidence of [
     "Hosted Sentry receipt remains unchecked until a real Sentry project/DSN and signed daemon/mobile builds are available",
+    "docs/SENTRY_RECEIPT.md` and `scripts/verify-sentry-receipt-evidence.mjs` now define the hosted evidence contract",
     "live Honeycomb receipt gate remains unchecked until a Honeycomb account/API key and hosted relay test traces are available",
     "docs/RELAY_HONEYCOMB.md` and `scripts/verify-relay-honeycomb-evidence.mjs` now define the hosted evidence contract",
     "Real macOS sleep/wake survival remains unchecked until it can be run against the signed/notarized daemon artifact",
@@ -2492,6 +2518,12 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:relay-honeycomb-evidence"] !== "node scripts/test-relay-honeycomb-evidence.mjs") {
     failures.push("package.json must expose test:relay-honeycomb-evidence");
   }
+  if (packageJson.scripts?.["check:sentry-receipt-evidence"] !== "node scripts/verify-sentry-receipt-evidence.mjs") {
+    failures.push("package.json must expose check:sentry-receipt-evidence");
+  }
+  if (packageJson.scripts?.["test:sentry-receipt-evidence"] !== "node scripts/test-sentry-receipt-evidence.mjs") {
+    failures.push("package.json must expose test:sentry-receipt-evidence");
+  }
   if (packageJson.scripts?.["check:macos-daemon-survival-evidence"] !== "node scripts/verify-macos-daemon-survival-evidence.mjs") {
     failures.push("package.json must expose check:macos-daemon-survival-evidence");
   }
@@ -2630,6 +2662,7 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/test-android-multisession-evidence.mjs", "local release gate must include Android multisession evidence verifier self-test");
   requireText(localRelease, "scripts/test-android-fcm-push-evidence.mjs", "local release gate must include Android FCM push evidence verifier self-test");
   requireText(localRelease, "scripts/test-relay-honeycomb-evidence.mjs", "local release gate must include relay Honeycomb evidence verifier self-test");
+  requireText(localRelease, "scripts/test-sentry-receipt-evidence.mjs", "local release gate must include Sentry receipt evidence verifier self-test");
   requireText(localRelease, "scripts/test-macos-daemon-survival-evidence.mjs", "local release gate must include macOS daemon survival evidence verifier self-test");
   requireText(localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");
   requireText(localRelease, "Dir[\".github/workflows/*.yml\"].sort.each", "local release gate must parse all workflow YAML files");
