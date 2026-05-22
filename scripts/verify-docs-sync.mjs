@@ -15,6 +15,7 @@ const docs = {
   androidRenderer: read("docs/ANDROID_RENDERER.md"),
   androidPairFlow: read("docs/ANDROID_PAIR_FLOW.md"),
   androidSessionSubscription: read("docs/ANDROID_SESSION_SUBSCRIPTION.md"),
+  androidBiometric: read("docs/ANDROID_BIOMETRIC.md"),
   androidDogfood: read("docs/ANDROID_DOGFOOD.md"),
   androidColdStart: read("docs/ANDROID_COLD_START.md"),
   androidRendererFlood: read("docs/ANDROID_RENDERER_FLOOD.md"),
@@ -35,6 +36,7 @@ verifyInstallDoc();
 verifyAndroidRendererDoc();
 verifyAndroidPairFlowDoc();
 verifyAndroidSessionSubscriptionDoc();
+verifyAndroidBiometricDoc();
 verifyAndroidDogfoodDoc();
 verifyAndroidColdStartDoc();
 verifyAndroidRendererFloodDoc();
@@ -65,6 +67,7 @@ function verifyRequiredDocsExist() {
     "docs/ANDROID_RENDERER.md",
     "docs/ANDROID_PAIR_FLOW.md",
     "docs/ANDROID_SESSION_SUBSCRIPTION.md",
+    "docs/ANDROID_BIOMETRIC.md",
     "docs/ANDROID_DOGFOOD.md",
     "docs/ANDROID_COLD_START.md",
     "docs/ANDROID_RENDERER_FLOOD.md",
@@ -194,6 +197,53 @@ function verifyAndroidSessionSubscriptionDoc() {
       docs.androidSessionSubscription,
       needle,
       `docs/ANDROID_SESSION_SUBSCRIPTION.md must document Android session-subscription evidence: ${needle}`,
+    );
+  }
+}
+
+function verifyAndroidBiometricDoc() {
+  for (const needle of [
+    "Android side of the Section 13 biometric gate",
+    "signed release build on a physical Android phone",
+    "gates session access behind\nAndroid BiometricPrompt on launch",
+    "after at least five minutes in the\nbackground",
+    "stale terminal input before unlock must be\nblocked",
+    "physical Android phone with biometrics enrolled",
+    "not an emulator or\n  AVD",
+    "debug build, biometric bypass, or debug pairing payload",
+    "real QR scanner and explicit desktop approval",
+    "USB debugging; end users do not need adb",
+    "node scripts/verify-android-aab.mjs --expect-signed",
+    "signed release bundle ok",
+    "BUILD_TYPE = \"release\"",
+    "DEBUG = false",
+    "FIELDWORK_BIOMETRIC_BYPASS = false",
+    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    "adb devices -l | tee \"$FW_ANDROID_BIOMETRIC_DIR/adb-devices.txt\"",
+    "fw refactoringjob",
+    "fw new --name shell bash",
+    "sessions.txt",
+    "devices.txt",
+    "locked.png",
+    "locked-ui.xml",
+    "locked-logcat.log",
+    "biometric.png",
+    "biometric-ui.xml",
+    "biometric-logcat.log",
+    "stale-biometric.png",
+    "stale-biometric-ui.xml",
+    "stale-biometric-logcat.log",
+    "stale-biometric.txt",
+    "stale_background_ms=<elapsed-ms>",
+    "stale_input_before_unlock_blocked",
+    "stale_input_before_unlock_sent",
+    "pnpm check:android-biometric-evidence -- \"$FW_ANDROID_BIOMETRIC_DIR\"",
+    "only proves the Android release-device biometric prompt\nand stale-input gate",
+  ]) {
+    requireText(
+      docs.androidBiometric,
+      needle,
+      `docs/ANDROID_BIOMETRIC.md must document Android biometric evidence: ${needle}`,
     );
   }
 }
