@@ -1818,6 +1818,20 @@ the restored crash buffer was empty. This remains debug-emulator substitute
 evidence only; physical Android biometric, QR-camera, renderer dogfood, and
 release-device runtime gates remain unchecked.
 
+**Direct Android adb locked-launch refresh (2026-05-22)**: a follow-up direct
+`adb` pass started `Medium_Phone_API_36.1`, installed the existing default debug
+APK, resolved `app.fieldwork.android/.MainActivity`, and launched it with
+`Status: ok`, `LaunchState: COLD`, and `TotalTime=4572ms`. Evidence under
+`/tmp/fieldwork-adb-refresh-20260522` includes `locked.png`, `locked-ui.xml`,
+`locked-logcat.log`, empty `locked-crash.log`, and `buildconfig.txt` proving
+`APPLICATION_ID = "app.fieldwork.android"`, `BUILD_TYPE = "debug"`,
+`DEBUG = Boolean.parseBoolean("true")`, `FIELDWORK_BIOMETRIC_BYPASS = false`,
+and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`. The screenshot was 1080x2400, the
+UI dump contained the locked `Unlock` surface, the app process remained focused,
+and targeted logcat scanning found no Fieldwork `FATAL EXCEPTION` or ANR
+entries. This remains debug-emulator substitute evidence only; physical release
+device cold-start and biometric evidence remain unchecked.
+
 **Android background/foreground replay note (2026-05-19)**: `pnpm test:android-emulator-background-replay` pairs the actual Android debug app with an isolated release daemon through the debug-only QR payload path, opens a desktop-created terminal, backgrounds the attached app while the PTY emits `ANDROID_BACKGROUND_REPLAY_OUTPUT`, foregrounds back to `Attached`, sends `after_background_ok`, and verifies the background-emitted output plus post-foreground input through a separately approved verifier. Latest local run passed on `emulator-5554`. This is still emulator substitute evidence; the release gate remains unchecked until the same behavior is observed on physical release devices.
 
 **Android startup hardening note (2026-05-18)**: the Android root now obtains

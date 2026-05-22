@@ -338,6 +338,19 @@ outside this shell:
   the restored crash buffer was empty. This remains debug-emulator substitute
   evidence only; physical Android biometric, QR-camera, renderer dogfood, and
   release-device runtime gates remain unchecked.
+  A follow-up 2026-05-22 direct adb locked-launch refresh under
+  `/tmp/fieldwork-adb-refresh-20260522` started `Medium_Phone_API_36.1`,
+  installed the existing default debug APK, resolved
+  `app.fieldwork.android/.MainActivity`, and launched it with `Status: ok`,
+  `LaunchState: COLD`, and `TotalTime=4572ms`. Evidence includes `locked.png`,
+  `locked-ui.xml`, `locked-logcat.log`, empty `locked-crash.log`, and
+  `buildconfig.txt` proving `APPLICATION_ID = "app.fieldwork.android"`,
+  `BUILD_TYPE = "debug"`, `DEBUG = Boolean.parseBoolean("true")`,
+  `FIELDWORK_BIOMETRIC_BYPASS = false`, and
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`. The screenshot was 1080x2400, the UI
+  dump contained the locked `Unlock` surface, the app process remained focused,
+  and targeted logcat scanning found no Fieldwork `FATAL EXCEPTION` or ANR
+  entries. This remains debug-emulator substitute evidence only.
   A
   follow-up raw adb
   locked-launch baseline on 2026-05-19 installed the default debug APK, launched
