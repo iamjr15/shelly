@@ -299,6 +299,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`stale-biometric-ui.xml` and `stale-biometric.txt` proof that Android BiometricPrompt appears again after at least five minutes in background and stale terminal input is blocked before unlock",
+    "release audit must record stale Android biometric prompt evidence",
+  );
+  requireText(
+    audit,
     "`pairing.txt` desktop transcript proof that `fw pair` printed the QR payload, waited for device scan, showed the explicit approval prompt, completed only after approval, and recorded `pair_flow_ms=<elapsed-ms>` at or below 15000",
     "release audit must record live-test desktop pairing transcript evidence",
   );

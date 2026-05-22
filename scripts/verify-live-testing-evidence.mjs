@@ -64,6 +64,11 @@ const requiredFiles = [
   "background-logcat.log",
   "background-crash.log",
   "background-replay.txt",
+  "stale-biometric.png",
+  "stale-biometric-ui.xml",
+  "stale-biometric-logcat.log",
+  "stale-biometric-crash.log",
+  "stale-biometric.txt",
   "reconnect.png",
   "reconnect-ui.xml",
   "reconnect-logcat.log",
@@ -97,6 +102,7 @@ if (failures.length === 0) {
   verifyPng("resize.png");
   verifyPng("detach.png");
   verifyPng("background.png");
+  verifyPng("stale-biometric.png");
   verifyPng("reconnect.png");
   verifyPng("restart.png");
   verifyPng("multisession.png");
@@ -121,6 +127,11 @@ if (failures.length === 0) {
   verifyResizeEvidence(readText("resize-ui.xml"), readText("resize-replay.txt"));
   verifyDetachEvidence(readText("detach-ui.xml"), readText("detach-replay.txt"));
   verifyBackgroundEvidence(readText("background-ui.xml"), readText("background-replay.txt"));
+  verifyStaleBiometricPrompt(
+    readText("stale-biometric-ui.xml"),
+    readText("stale-biometric-logcat.log"),
+    readText("stale-biometric.txt"),
+  );
   verifyReconnectEvidence(readText("reconnect-ui.xml"), readText("reconnect-replay.txt"));
   verifyRestartEvidence(readText("restart-ui.xml"), readText("restart-replay.txt"));
   verifyMultisessionEvidence(
@@ -138,6 +149,7 @@ if (failures.length === 0) {
     ["resize-ui.xml", readText("resize-ui.xml")],
     ["detach-ui.xml", readText("detach-ui.xml")],
     ["background-ui.xml", readText("background-ui.xml")],
+    ["stale-biometric-ui.xml", readText("stale-biometric-ui.xml")],
     ["reconnect-ui.xml", readText("reconnect-ui.xml")],
     ["restart-ui.xml", readText("restart-ui.xml")],
     ["multisession-ui.xml", readText("multisession-ui.xml")],
@@ -160,6 +172,8 @@ if (failures.length === 0) {
     ["detach-crash.log", readText("detach-crash.log")],
     ["background-logcat.log", readText("background-logcat.log")],
     ["background-crash.log", readText("background-crash.log")],
+    ["stale-biometric-logcat.log", readText("stale-biometric-logcat.log")],
+    ["stale-biometric-crash.log", readText("stale-biometric-crash.log")],
     ["reconnect-logcat.log", readText("reconnect-logcat.log")],
     ["reconnect-crash.log", readText("reconnect-crash.log")],
     ["restart-logcat.log", readText("restart-logcat.log")],
@@ -287,21 +301,24 @@ function verifyLockedLaunchLog(text) {
   );
 }
 
-function verifyBiometricPrompt(ui, logcat) {
+function verifyBiometricPrompt(ui, logcat, options = {}) {
+  const uiFile = options.uiFile ?? "biometric-ui.xml";
+  const logFile = options.logFile ?? "biometric-logcat.log";
+  const stage = options.stage ?? "before session access";
   requirePatternText(
     ui,
     /\b(?:Biometric|Fingerprint|fingerprint|Face|face|Confirm|Authenticate|Unlock Fieldwork|Use fingerprint|Touch the fingerprint sensor)\b/i,
-    "biometric-ui.xml must show the Android biometric prompt before session access",
+    `${uiFile} must show the Android biometric prompt ${stage}`,
   );
   rejectPatternText(
     ui,
     /\b(No sessions|Terminal|refactoringjob|bash|claude|ANDROID_)\b/i,
-    "biometric-ui.xml must not expose session or terminal content behind the prompt",
+    `${uiFile} must not expose session or terminal content behind the prompt`,
   );
   rejectPatternText(
     logcat,
     /\bFieldworkRepository:\s+(?:listSessions returned|registerPushToken|attach)|\bterminal attached\b|\bsendInput\b/i,
-    "biometric-logcat.log must not show session sync, terminal attach, push-token registration, or input before unlock succeeds",
+    `${logFile} must not show session sync, terminal attach, push-token registration, or input before unlock succeeds`,
   );
 }
 
@@ -412,6 +429,30 @@ function verifyBackgroundEvidence(ui, replay) {
     replay,
     /\bafter_background_ok\b/,
     "background-replay.txt must include Android-originated input after foreground resume",
+  );
+}
+
+function verifyStaleBiometricPrompt(ui, logcat, transcript) {
+  verifyBiometricPrompt(ui, logcat, {
+    uiFile: "stale-biometric-ui.xml",
+    logFile: "stale-biometric-logcat.log",
+    stage: "after at least 5 minutes in background",
+  });
+  const timing = transcript.match(/\bstale_background_ms=(\d+)\b/);
+  if (!timing) {
+    failures.push("stale-biometric.txt must record stale_background_ms=<elapsed-ms>");
+  } else if (Number(timing[1]) < 300_000) {
+    failures.push(`stale-biometric.txt records stale_background_ms=${timing[1]}, expected >=300000`);
+  }
+  requirePatternText(
+    transcript,
+    /\bstale_input_before_unlock_blocked\b/,
+    "stale-biometric.txt must prove terminal input was blocked before stale biometric unlock",
+  );
+  rejectPatternText(
+    transcript,
+    /\b(?:stale_input_before_unlock_sent|stale_input_before_unlock_visible)\b/,
+    "stale-biometric.txt must not show stale terminal input was sent before unlock",
   );
 }
 

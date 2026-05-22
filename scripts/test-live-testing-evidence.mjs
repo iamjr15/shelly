@@ -305,6 +305,49 @@ try {
   fs.writeFileSync(path.join(badBackground, "background-replay.txt"), "after_background_ok only\n");
   expectStatus(badBackground, 1, "background replay without missed output should fail", "background-replay.txt must include output emitted while Android was backgrounded");
 
+  const missingStaleBiometric = path.join(temp, "missing-stale-biometric");
+  writeFixture(missingStaleBiometric);
+  fs.rmSync(path.join(missingStaleBiometric, "stale-biometric-ui.xml"));
+  expectStatus(
+    missingStaleBiometric,
+    1,
+    "missing stale biometric prompt UI should fail",
+    "missing evidence file: stale-biometric-ui.xml",
+  );
+
+  const earlyStaleBiometric = path.join(temp, "early-stale-biometric");
+  writeFixture(earlyStaleBiometric);
+  fs.writeFileSync(path.join(earlyStaleBiometric, "stale-biometric.txt"), "stale_background_ms=299999\nstale_input_before_unlock_blocked\n");
+  expectStatus(
+    earlyStaleBiometric,
+    1,
+    "stale biometric evidence before five minutes should fail",
+    "stale-biometric.txt records stale_background_ms=299999",
+  );
+
+  const staleBiometricInputLeak = path.join(temp, "stale-biometric-input-leak");
+  writeFixture(staleBiometricInputLeak);
+  fs.writeFileSync(
+    path.join(staleBiometricInputLeak, "stale-biometric.txt"),
+    "stale_background_ms=300000\nstale_input_before_unlock_blocked\nstale_input_before_unlock_sent\n",
+  );
+  expectStatus(
+    staleBiometricInputLeak,
+    1,
+    "stale biometric input leak should fail",
+    "stale-biometric.txt must not show stale terminal input was sent before unlock",
+  );
+
+  const staleBiometricLogSessionSync = path.join(temp, "stale-biometric-log-session-sync");
+  writeFixture(staleBiometricLogSessionSync);
+  fs.writeFileSync(path.join(staleBiometricLogSessionSync, "stale-biometric-logcat.log"), "I FieldworkRepository: attach session\n");
+  expectStatus(
+    staleBiometricLogSessionSync,
+    1,
+    "stale biometric log with pre-unlock attach should fail",
+    "stale-biometric-logcat.log must not show session sync, terminal attach, push-token registration, or input before unlock succeeds",
+  );
+
   const slowReconnect = path.join(temp, "slow-reconnect");
   writeFixture(slowReconnect);
   fs.writeFileSync(path.join(slowReconnect, "reconnect-replay.txt"), "reconnect_ms=2501\nNETWORK_REPLAY_OUTPUT\nafter_reconnect_ok\n");
@@ -383,6 +426,7 @@ function writeFixture(dir) {
   writePng(path.join(dir, "resize.png"));
   writePng(path.join(dir, "detach.png"));
   writePng(path.join(dir, "background.png"));
+  writePng(path.join(dir, "stale-biometric.png"));
   writePng(path.join(dir, "reconnect.png"));
   writePng(path.join(dir, "restart.png"));
   writePng(path.join(dir, "multisession.png"));
@@ -401,6 +445,7 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "resize-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="after_resize_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "detach-ui.xml"), '<hierarchy><node text="refactoringjob"/><node text="shell"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "background-ui.xml"), '<hierarchy><node text="Attached"/><node text="after_background_ok"/></hierarchy>\n');
+  fs.writeFileSync(path.join(dir, "stale-biometric-ui.xml"), '<hierarchy><node text="Confirm fingerprint"/><node text="Touch the fingerprint sensor"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "reconnect-ui.xml"), '<hierarchy><node text="Attached"/><node text="after_reconnect_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "restart-ui.xml"), '<hierarchy><node text="fw_restart_session"/><node text="Attached"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "multisession-ui.xml"), '<hierarchy><node text="fwm_a"/><node text="fwm_b"/><node text="fwm_c"/></hierarchy>\n');
@@ -444,6 +489,8 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "detach-crash.log"), "");
   fs.writeFileSync(path.join(dir, "background-logcat.log"), "I Fieldwork: background replay attached\n");
   fs.writeFileSync(path.join(dir, "background-crash.log"), "");
+  fs.writeFileSync(path.join(dir, "stale-biometric-logcat.log"), "I Fieldwork: stale biometric prompt shown\n");
+  fs.writeFileSync(path.join(dir, "stale-biometric-crash.log"), "");
   fs.writeFileSync(path.join(dir, "reconnect-logcat.log"), "I Fieldwork: reconnect attached\n");
   fs.writeFileSync(path.join(dir, "reconnect-crash.log"), "");
   fs.writeFileSync(path.join(dir, "restart-logcat.log"), "I Fieldwork: restart restore attached\n");
@@ -455,6 +502,7 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "resize-replay.txt"), "shell bash\nresize_size=32x120\nafter_resize_ok\n");
   fs.writeFileSync(path.join(dir, "detach-replay.txt"), "shell bash\nafter_detach_reattach_ok\n");
   fs.writeFileSync(path.join(dir, "background-replay.txt"), "shell bash\nANDROID_BACKGROUND_REPLAY_OUTPUT\nafter_background_ok\n");
+  fs.writeFileSync(path.join(dir, "stale-biometric.txt"), "stale_background_ms=300000\nstale_input_before_unlock_blocked\n");
   fs.writeFileSync(path.join(dir, "reconnect-replay.txt"), "reconnect_ms=843\nNETWORK_REPLAY_OUTPUT\nafter_reconnect_ok\n");
   fs.writeFileSync(path.join(dir, "restart-replay.txt"), "fw_restart_session\nANDROID_RESTART_SCROLLBACK\n");
   fs.writeFileSync(path.join(dir, "multisession-a-replay.txt"), "fwm_a\nmulti_a_ok\n");

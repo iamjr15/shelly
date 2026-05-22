@@ -230,6 +230,13 @@ prove the Android app rejoined the same daemon-owned PTY:
   `after_background_ok` from Android, then capture `background.png`,
   `background-ui.xml`, `background-logcat.log`, `background-crash.log`, and a
   desktop reattach transcript at `background-replay.txt`.
+- Stale biometric resume: background the app for at least five minutes
+  (`300000ms`), foreground it, tap `Unlock`, hold the phone so biometric
+  authentication does not complete yet, try stale terminal input before unlock
+  and verify it is blocked, then capture `stale-biometric.png`,
+  `stale-biometric-ui.xml`, `stale-biometric-logcat.log`,
+  `stale-biometric-crash.log`, and `stale-biometric.txt` containing
+  `stale_background_ms=<elapsed-ms>` and `stale_input_before_unlock_blocked`.
 - Network reconnect: toggle Wi-Fi or airplane mode, emit `NETWORK_REPLAY_OUTPUT`
   while disconnected, restore the network, type `after_reconnect_ok` from
   Android, record `reconnect_ms=<elapsed-ms>` in the transcript, and capture
@@ -271,6 +278,9 @@ unauthorized/offline/emulator/AVD device state,
 the locked UI and freshly cleared locked-launch logcat did not expose or fetch
 session, terminal, push-token, or input content before unlock, `biometric-ui.xml`
 shows an Android biometric prompt with no session or terminal content behind it,
+`stale-biometric-ui.xml` shows the same prompt after at least five minutes in
+background and `stale-biometric.txt` proves stale terminal input was blocked
+before unlock,
 the paired run listed the expected desktop-created sessions, `pairing.txt` proves the desktop-side
 QR payload, device-scan wait, explicit approval prompt, and approved completion,
 records `pair_flow_ms=<elapsed-ms>` at or below 15000, the desktop replay
@@ -303,17 +313,21 @@ fatal, ANR, or crash entries.
 8. Resize the terminal and verify the PTY reports a plausible row/column size.
 9. Detach and reattach; verify the terminal resumes from the latest seen offset.
 10. Background the app while a PTY emits output, foreground it, and verify replay.
-11. Toggle Wi-Fi or airplane mode, reconnect within the release target, and
+11. Leave the app backgrounded for at least five minutes, foreground it, and
+    verify BiometricPrompt gates session access and stale terminal input.
+12. Toggle Wi-Fi or airplane mode, reconnect within the release target, and
    verify missed output replays.
-12. Restart the daemon, relaunch Android, and verify last-known sessions and
+13. Restart the daemon, relaunch Android, and verify last-known sessions and
     scrollback are listed while exited processes are documented as exited.
-13. Open three sessions and switch among them; verify no output crosses sessions.
+14. Open three sessions and switch among them; verify no output crosses sessions.
 
 ## Pass Criteria
 
 - No Fieldwork `FATAL EXCEPTION`, app ANR, or crash-buffer entry in captured
   logs.
 - Session list and terminal attach are gated by biometric unlock.
+- Five-minute stale resume gates session access and terminal input behind
+  BiometricPrompt.
 - Mobile never creates or kills sessions and never chooses commands.
 - Raw terminal output remains session-correct across attach, background,
   reconnect, daemon restart, and multi-session switching.
