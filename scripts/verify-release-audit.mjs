@@ -264,7 +264,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "`buildconfig.txt` proof that `FIELDWORK_BIOMETRIC_BYPASS = false` and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`buildconfig.txt` proof that `APPLICATION_ID = \"app.fieldwork.android\"`, `BUILD_TYPE = \"debug\"`, `DEBUG = Boolean.parseBoolean(\"true\")`, `FIELDWORK_BIOMETRIC_BYPASS = false`, and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
     "release audit must record live-test normal-build evidence",
   );
   requireText(
@@ -930,6 +930,9 @@ function verifyLiveTestingRunbook() {
     "fw new -- vim",
     "fw pair",
     "buildconfig.txt",
+    'APPLICATION_ID = "app\\.fieldwork\\.android"',
+    'BUILD_TYPE = "debug"',
+    'DEBUG = Boolean\\.parseBoolean\\("true"\\)',
     "FIELDWORK_BIOMETRIC_BYPASS = false",
     'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
     "script -q \"$FW_LIVE_DIR/terminal-replay.txt\" fw attach shell",

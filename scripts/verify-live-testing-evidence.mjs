@@ -160,6 +160,21 @@ function readAutoSessionNames() {
 function verifyBuildConfig(text) {
   requirePatternText(
     text,
+    /\bAPPLICATION_ID\s*=\s*"app\.fieldwork\.android"/,
+    "buildconfig.txt must prove the installed test build targets app.fieldwork.android",
+  );
+  requirePatternText(
+    text,
+    /\bBUILD_TYPE\s*=\s*"debug"/,
+    "buildconfig.txt must prove the installed test build is the debug variant",
+  );
+  requirePatternText(
+    text,
+    /\bDEBUG\s*=\s*(?:true|Boolean\.parseBoolean\("true"\))/,
+    "buildconfig.txt must prove the installed test build has BuildConfig.DEBUG enabled",
+  );
+  requirePatternText(
+    text,
     /\bFIELDWORK_BIOMETRIC_BYPASS\s*=\s*false\b/,
     "buildconfig.txt must prove the installed test build has biometric bypass disabled",
   );

@@ -342,9 +342,11 @@ false` and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`. This is direct adb emulator
 evidence only; the physical Android dogfood gate remains unchecked.
 
 The first-round live-test evidence verifier now requires `buildconfig.txt`
-showing `FIELDWORK_BIOMETRIC_BYPASS = false` and
-`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""` so physical-device evidence cannot be
-captured from a bypass build. It also requires a dedicated active-dashboard
+showing `APPLICATION_ID = "app.fieldwork.android"`, `BUILD_TYPE = "debug"`,
+`DEBUG = Boolean.parseBoolean("true")`, `FIELDWORK_BIOMETRIC_BYPASS = false`,
+and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""` so physical-device evidence cannot
+be captured from the wrong app, a release variant, or a bypass build. It also
+requires a dedicated active-dashboard
 capture (`dashboard.png`, `dashboard-ui.xml`, `dashboard-logcat.log`, and
 `dashboard-crash.log`) before terminal attach; the dashboard UI dump must show
 the generated one-word bare-`fw` session, `refactoringjob`, and the

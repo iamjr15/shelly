@@ -85,6 +85,9 @@ try {
   fs.writeFileSync(
     path.join(bypassBuild, "buildconfig.txt"),
     [
+      "public static final boolean DEBUG = Boolean.parseBoolean(\"true\");",
+      'public static final String APPLICATION_ID = "app.fieldwork.android";',
+      'public static final String BUILD_TYPE = "debug";',
       "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = true;",
       'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "{\\"pairing\\":true}";',
     ].join("\n"),
@@ -94,6 +97,25 @@ try {
     1,
     "debug bypass BuildConfig should fail",
     "buildconfig.txt must prove the installed test build has biometric bypass disabled",
+  );
+
+  const releaseBuild = path.join(temp, "release-build");
+  writeFixture(releaseBuild);
+  fs.writeFileSync(
+    path.join(releaseBuild, "buildconfig.txt"),
+    [
+      "public static final boolean DEBUG = false;",
+      'public static final String APPLICATION_ID = "app.fieldwork.android";',
+      'public static final String BUILD_TYPE = "release";',
+      "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
+      'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "";',
+    ].join("\n"),
+  );
+  expectStatus(
+    releaseBuild,
+    1,
+    "release BuildConfig should fail first live-test debug evidence",
+    "buildconfig.txt must prove the installed test build is the debug variant",
   );
 
   const warmLaunch = path.join(temp, "warm-launch");
@@ -144,6 +166,9 @@ function writeFixture(dir) {
   fs.writeFileSync(
     path.join(dir, "buildconfig.txt"),
     [
+      "public static final boolean DEBUG = Boolean.parseBoolean(\"true\");",
+      'public static final String APPLICATION_ID = "app.fieldwork.android";',
+      'public static final String BUILD_TYPE = "debug";',
       "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
       'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "";',
     ].join("\n"),
