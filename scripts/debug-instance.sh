@@ -4,14 +4,19 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 session="${FIELDWORK_DEBUG_TMUX_SESSION:-fieldwork-debug}"
 state_root="${FIELDWORK_DEBUG_ROOT:-${TMPDIR:-/tmp}/fieldwork-debug-${USER:-$(id -u)}}"
-bin_dir="$state_root/bin"
-home_dir="$state_root/home"
-runtime_dir="$state_root/runtime"
-config_dir="$state_root/config"
-state_dir="$state_root/state"
-cache_dir="$state_root/cache"
-log_dir="$state_root/logs"
-runner="$state_root/run-daemon.sh"
+
+configure_paths() {
+  bin_dir="$state_root/bin"
+  home_dir="$state_root/home"
+  runtime_dir="$state_root/runtime"
+  config_dir="$state_root/config"
+  state_dir="$state_root/state"
+  cache_dir="$state_root/cache"
+  log_dir="$state_root/logs"
+  runner="$state_root/run-daemon.sh"
+}
+
+configure_paths
 
 usage() {
   cat <<USAGE
@@ -73,6 +78,23 @@ RUNNER
 session_marker_root() {
   tmux show-environment -t "$session" FIELDWORK_DEBUG_ROOT 2>/dev/null \
     | sed 's/^FIELDWORK_DEBUG_ROOT=//'
+}
+
+adopt_existing_session_root() {
+  if [[ -n "${FIELDWORK_DEBUG_ROOT+x}" ]]; then
+    return
+  fi
+  if ! command -v tmux >/dev/null 2>&1; then
+    return
+  fi
+  if tmux has-session -t "$session" 2>/dev/null; then
+    local existing_root
+    existing_root="$(session_marker_root || true)"
+    if [[ -n "$existing_root" ]]; then
+      state_root="$existing_root"
+      configure_paths
+    fi
+  fi
 }
 
 wait_for_socket() {
@@ -161,12 +183,17 @@ NOTE
 case "$command" in
   start)
     require_command tmux
-    prepare_dirs
     if tmux has-session -t "$session" 2>/dev/null; then
+      existing_root="$(session_marker_root || true)"
+      if [[ -n "$existing_root" && -z "${FIELDWORK_DEBUG_ROOT+x}" ]]; then
+        state_root="$existing_root"
+        configure_paths
+      fi
       echo "fieldwork debug tmux session already exists: $session"
-      print_existing_session_note "$(session_marker_root || true)"
+      print_existing_session_note "$existing_root"
       exit 0
     fi
+    prepare_dirs
     require_command cargo
     cargo build -p fieldwork-cli -p fieldwork-daemon
     write_runner
@@ -177,13 +204,13 @@ case "$command" in
     print_next_steps
     ;;
   status)
-    prepare_dirs
-    ensure_links
     skip_socket_check=0
     if tmux has-session -t "$session" 2>/dev/null; then
       echo "tmux: running ($session)"
       existing_root="$(session_marker_root || true)"
       if [[ -n "$existing_root" ]]; then
+        state_root="$existing_root"
+        configure_paths
         echo "tmux state root: $existing_root"
       else
         echo "tmux state root: unknown (no FIELDWORK_DEBUG_ROOT marker)"
@@ -192,6 +219,8 @@ case "$command" in
     else
       echo "tmux: not running ($session)"
     fi
+    prepare_dirs
+    ensure_links
     if [[ "$skip_socket_check" == "1" ]]; then
       echo "socket: not checked because this tmux session was not created by scripts/debug-instance.sh"
     else
@@ -199,6 +228,7 @@ case "$command" in
     fi
     ;;
   env)
+    adopt_existing_session_root
     prepare_dirs
     ensure_links
     print_env

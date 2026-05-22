@@ -43,7 +43,7 @@ try {
       "set -euo pipefail",
       'printf "tmux %s\\n" "$*" >> "$FIELDWORK_TEST_CALLS"',
       'if [[ "${1:-}" == "has-session" ]]; then exit 0; fi',
-      'if [[ "${1:-}" == "show-environment" ]]; then echo "FIELDWORK_DEBUG_ROOT=$FIELDWORK_DEBUG_ROOT"; exit 0; fi',
+      'if [[ "${1:-}" == "show-environment" ]]; then echo "FIELDWORK_DEBUG_ROOT=${FIELDWORK_TEST_MARKER_ROOT:-$FIELDWORK_DEBUG_ROOT}"; exit 0; fi',
       "exit 64",
       "",
     ].join("\n"),
@@ -65,6 +65,38 @@ try {
   const callsText = fs.readFileSync(calls, "utf8");
   assert(callsText.includes("tmux has-session"), "start must check tmux before reporting an existing session");
   assert(!callsText.includes("cargo "), "start must not run cargo build when the debug tmux session already exists");
+
+  const markerRoot = path.join(tempRoot, "marker-root");
+  const markerBin = path.join(markerRoot, "bin");
+  fs.mkdirSync(markerBin, { recursive: true });
+  fs.writeFileSync(
+    path.join(markerBin, "fw"),
+    "#!/usr/bin/env bash\nprintf 'socket: reachable\\nHOME=%s\\nRUNTIME=%s\\n' \"$HOME\" \"$XDG_RUNTIME_DIR\"\n",
+  );
+  fs.chmodSync(path.join(markerBin, "fw"), 0o755);
+
+  const markerCalls = path.join(tempRoot, "marker-calls.log");
+  const markerEnv = {
+    ...process.env,
+    FIELDWORK_DEBUG_TMUX_SESSION: "fieldwork-debug-test",
+    FIELDWORK_TEST_CALLS: markerCalls,
+    FIELDWORK_TEST_MARKER_ROOT: markerRoot,
+    PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`,
+  };
+  delete markerEnv.FIELDWORK_DEBUG_ROOT;
+
+  const adoptedEnvOutput = run("scripts/debug-instance.sh", ["env"], markerEnv);
+  assert(
+    adoptedEnvOutput.includes(`export FIELDWORK_DEBUG_ROOT=${markerRoot}`),
+    "env must adopt the marked state root for an existing scripted tmux session",
+  );
+
+  const statusOutput = run("scripts/debug-instance.sh", ["status"], markerEnv);
+  assert(statusOutput.includes(`tmux state root: ${markerRoot}`), "status must report the marked state root");
+  assert(
+    statusOutput.includes(path.join(markerRoot, "runtime", "fieldwork", "control.sock")),
+    "status must check the daemon socket under the marked runtime dir",
+  );
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }

@@ -194,7 +194,10 @@ to avoid Keychain prompts during local debugging; production-like and release
 verification paths should leave the encryption override unset. Custom
 `FIELDWORK_DEBUG_TMUX_SESSION` and `FIELDWORK_DEBUG_ROOT` values are preserved by
 `scripts/debug-instance.sh env`, so copied CLI commands keep pointing at the
-same isolated daemon.
+same isolated daemon. When a scripted tmux session is already running and the
+caller has not supplied `FIELDWORK_DEBUG_ROOT`, `env` and `status` adopt the
+session's stored root marker before printing environment variables or checking
+the debug daemon socket.
 
 Desktop performance smoke:
 

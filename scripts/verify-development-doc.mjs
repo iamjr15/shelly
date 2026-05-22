@@ -182,6 +182,7 @@ function verifyDevelopmentDoc(text) {
     "isolated `HOME`, XDG config/state/cache/runtime directories",
     "`FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED=false` inside that isolated state root",
     "Custom\n`FIELDWORK_DEBUG_TMUX_SESSION` and `FIELDWORK_DEBUG_ROOT` values are preserved by\n`scripts/debug-instance.sh env`",
+    "`env` and `status` adopt the\nsession's stored root marker",
     "Desktop performance smoke",
     "Pairing smoke",
     "Website:",
