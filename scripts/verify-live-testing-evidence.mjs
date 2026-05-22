@@ -13,6 +13,31 @@ if (rawArgs.length !== 1 || rawArgs[0] === "--help" || rawArgs[0] === "-h") {
 }
 
 const evidenceDir = path.resolve(rawArgs[0]);
+const autoSessionNames = [
+  "waffle",
+  "pickle",
+  "noodle",
+  "bagel",
+  "nacho",
+  "spatula",
+  "kazoo",
+  "widget",
+  "pancake",
+  "pretzel",
+  "cupcake",
+  "lollipop",
+  "confetti",
+  "sprocket",
+  "marble",
+  "boomerang",
+  "muffin",
+  "donut",
+  "toaster",
+  "sprinkle",
+  "gizmo",
+  "jellybean",
+];
+const autoSessionNamePattern = new RegExp(`\\b(?:${autoSessionNames.map(escapeRegExp).join("|")})\\b`, "i");
 
 requireDirectory(evidenceDir);
 
@@ -23,6 +48,10 @@ const requiredFiles = [
   "locked-ui.xml",
   "locked-logcat.log",
   "locked-crash.log",
+  "dashboard.png",
+  "dashboard-ui.xml",
+  "dashboard-logcat.log",
+  "dashboard-crash.log",
   "session.png",
   "session-ui.xml",
   "session-logcat.log",
@@ -65,6 +94,7 @@ for (const file of requiredFiles) {
 if (failures.length === 0) {
   verifyBuildConfig(readText("buildconfig.txt"));
   verifyPng("locked.png");
+  verifyPng("dashboard.png");
   verifyPng("session.png");
   verifyPng("tui.png");
   verifyPng("background.png");
@@ -73,6 +103,11 @@ if (failures.length === 0) {
   verifyPng("multisession.png");
   verifyLaunch(readText("launch.txt"));
   verifyLockedSurface(readText("locked-ui.xml"));
+  verifyDashboardEvidence(
+    readText("dashboard-ui.xml"),
+    readText("dashboard-logcat.log"),
+    readText("sessions.txt"),
+  );
   verifySessionEvidence(
     readText("session-ui.xml"),
     readText("session-logcat.log"),
@@ -93,6 +128,8 @@ if (failures.length === 0) {
   verifyLogs([
     ["locked-logcat.log", readText("locked-logcat.log")],
     ["locked-crash.log", readText("locked-crash.log")],
+    ["dashboard-logcat.log", readText("dashboard-logcat.log")],
+    ["dashboard-crash.log", readText("dashboard-crash.log")],
     ["session-logcat.log", readText("session-logcat.log")],
     ["session-crash.log", readText("session-crash.log")],
     ["tui-logcat.log", readText("tui-logcat.log")],
@@ -141,6 +178,32 @@ function verifyLockedSurface(text) {
     text,
     /\b(No sessions|Pairing|Terminal|refactoringjob|bash|claude|ANDROID_)/i,
     "locked-ui.xml must not expose session, pairing, terminal, command, or test-marker content before unlock",
+  );
+}
+
+function verifyDashboardEvidence(dashboardUi, dashboardLogcat, sessionsText) {
+  rejectPatternText(dashboardUi, /\bNo sessions\b/i, "dashboard-ui.xml must not be the empty dashboard after pairing");
+  requirePatternText(
+    dashboardUi,
+    autoSessionNamePattern,
+    "dashboard-ui.xml must show the generated one-word default session created by bare fw",
+  );
+  requirePatternText(
+    dashboardUi,
+    /\brefactoringjob\b/i,
+    "dashboard-ui.xml must show the named shortcut session refactoringjob",
+  );
+  requirePatternText(
+    dashboardUi,
+    /\b(shell|bash)\b/i,
+    "dashboard-ui.xml must show the desktop-created shell/bash session",
+  );
+  requirePatternText(dashboardLogcat, /FieldworkRepository:\s+pair completed/, "dashboard-logcat.log must show repository pair completion");
+  requirePatternText(dashboardLogcat, /FieldworkRepository:\s+listSessions returned \d+ sessions/, "dashboard-logcat.log must show session listing after pair");
+  requirePatternText(
+    sessionsText,
+    autoSessionNamePattern,
+    "sessions.txt must include the generated one-word default session created by bare fw",
   );
 }
 

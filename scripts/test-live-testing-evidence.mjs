@@ -53,6 +53,19 @@ try {
   fs.writeFileSync(path.join(badReplay, "terminal-replay.txt"), "shell prompt only\n");
   expectStatus(badReplay, 1, "desktop replay without Android marker should fail", "terminal-replay.txt must prove Android-originated input/output");
 
+  const missingAutoName = path.join(temp, "missing-auto-name");
+  writeFixture(missingAutoName);
+  fs.writeFileSync(
+    path.join(missingAutoName, "dashboard-ui.xml"),
+    '<hierarchy><node text="refactoringjob"/><node text="shell"/></hierarchy>\n',
+  );
+  expectStatus(
+    missingAutoName,
+    1,
+    "dashboard without generated default session should fail",
+    "dashboard-ui.xml must show the generated one-word default session created by bare fw",
+  );
+
   const bypassBuild = path.join(temp, "bypass-build");
   writeFixture(bypassBuild);
   fs.writeFileSync(
@@ -122,6 +135,7 @@ function writeFixture(dir) {
     ].join("\n"),
   );
   writePng(path.join(dir, "locked.png"));
+  writePng(path.join(dir, "dashboard.png"));
   writePng(path.join(dir, "session.png"));
   writePng(path.join(dir, "tui.png"));
   writePng(path.join(dir, "background.png"));
@@ -133,6 +147,10 @@ function writeFixture(dir) {
     ["Status: ok", "LaunchState: COLD", "Activity: app.fieldwork.android/.MainActivity", "TotalTime: 934"].join("\n"),
   );
   fs.writeFileSync(path.join(dir, "locked-ui.xml"), '<hierarchy><node text="Unlock"/></hierarchy>\n');
+  fs.writeFileSync(
+    path.join(dir, "dashboard-ui.xml"),
+    '<hierarchy><node text="waffle"/><node text="refactoringjob"/><node text="shell"/></hierarchy>\n',
+  );
   fs.writeFileSync(path.join(dir, "session-ui.xml"), '<hierarchy><node text="shell"/><node text="Attached"/><node text="android_live_ok"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "tui-ui.xml"), '<hierarchy><node text="tui"/><node text="Attached"/><node text="F1Help F2Setup F10Quit"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "background-ui.xml"), '<hierarchy><node text="Attached"/><node text="after_background_ok"/></hierarchy>\n');
@@ -141,6 +159,11 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "multisession-ui.xml"), '<hierarchy><node text="fwm_a"/><node text="fwm_b"/><node text="fwm_c"/></hierarchy>\n');
   fs.writeFileSync(path.join(dir, "locked-logcat.log"), "I Fieldwork: locked launch\n");
   fs.writeFileSync(path.join(dir, "locked-crash.log"), "");
+  fs.writeFileSync(
+    path.join(dir, "dashboard-logcat.log"),
+    ["I FieldworkRepository: pair completed", "I FieldworkRepository: listSessions returned 4 sessions"].join("\n"),
+  );
+  fs.writeFileSync(path.join(dir, "dashboard-crash.log"), "");
   fs.writeFileSync(
     path.join(dir, "session-logcat.log"),
     [

@@ -126,6 +126,18 @@ adb logcat -d > "$FW_LIVE_DIR/locked-logcat.log"
 adb logcat -d -b crash > "$FW_LIVE_DIR/locked-crash.log"
 ```
 
+After pairing, capture the active sessions dashboard before tapping into a
+terminal. The dashboard evidence must show the generated one-word `fw` default
+session, `refactoringjob`, and the desktop-created shell/bash session:
+
+```sh
+adb exec-out screencap -p > "$FW_LIVE_DIR/dashboard.png"
+adb shell uiautomator dump /sdcard/window.xml
+adb pull /sdcard/window.xml "$FW_LIVE_DIR/dashboard-ui.xml"
+adb logcat -d > "$FW_LIVE_DIR/dashboard-logcat.log"
+adb logcat -d -b crash > "$FW_LIVE_DIR/dashboard-crash.log"
+```
+
 After pairing and attaching each session, capture:
 
 ```sh
