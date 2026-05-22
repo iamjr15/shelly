@@ -1230,7 +1230,7 @@ Observed results:
   and with the packaged protobuf manifest privacy surface checked for required
   Firebase/Sentry opt-out metadata plus forbidden content/permission strings.
   Current AAB: `54M`, SHA-256
-  `825e088bc9c6306cde4273c2d014aa1de851a4f5e849a9f2691f512340a2b215`.
+  `c2fc1d75969363faab67b861b34dfcd51f24e64fbbc2a777e673bcb50b1c7047`.
   `pnpm check:android-aab` now runs the verifier with `--expect-unsigned`, and
   `node scripts/test-android-aab-verifier.mjs` covers synthetic unsigned and
   signed AABs, including rejection of signature entries under
