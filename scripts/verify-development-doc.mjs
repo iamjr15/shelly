@@ -356,7 +356,7 @@ function verifyDevelopmentDoc(text) {
     "`FieldworkViewModel` from the lifecycle ViewModel store",
     "application-context factory",
     "Debug/source builds compile without `apps/android/app/google-services.json`",
-    "app-release.aab` (`54M`, SHA-256 `875fbfb608f0eb937bbaf466f5299b111611f9d48ada8ffdc59c4bbb30c7c099`)",
+    "app-release.aab` (`54M`, SHA-256 `7a7868df2b8abd8e128b5ba46a40aa58bfac72b482c67e8c83351c4fb60b6ed0`)",
     "packaged protobuf manifest uses-permission allowlist",
     "packaged protobuf manifest privacy surface",
     "required Firebase/Sentry opt-out metadata",
