@@ -502,6 +502,24 @@ because the emulator has no enrolled biometric and did not show Fieldwork
 or ANR entries. This is debug-emulator evidence only, not physical
 BiometricPrompt or release-device evidence.
 
+A 2026-05-23 direct adb locked-launch follow-up under
+`/tmp/fieldwork-emulator-direct-20260523` installed the current normal debug APK
+on `Medium_Phone_API_36.1`, resolved `app.fieldwork.android/.MainActivity`, and
+launched it with `Status: ok`, `LaunchState: COLD`, `TotalTime=4388ms`, and
+`WaitTime=4395ms`. Evidence includes `adb-devices.txt`, `buildconfig.txt`,
+`install.txt`, `launch.txt`, `locked.png`, `locked-ui.xml`,
+`locked-logcat.log`, and `locked-crash.log`; `buildconfig.txt` proves
+`APPLICATION_ID = "app.fieldwork.android"`, `BUILD_TYPE = "debug"`,
+`DEBUG = Boolean.parseBoolean("true")`, `FIELDWORK_BIOMETRIC_BYPASS = false`,
+and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`. The screenshot was a 1080x2400 PNG
+with SHA-256
+`22d6a9638bcc5fc0edc0d771d9b4434844b2d372e0799c4630d828cd376f3e84`, and the
+UI dump contained only the locked `Unlock` app surface. The crash buffer
+contained an emulator system `com.google.android.bluetooth` crash, but targeted
+scanning found no Fieldwork `FATAL EXCEPTION`, ANR, session sync, push-token
+registration, terminal attach, or input before unlock. This is debug-emulator
+evidence only, not physical release-device evidence.
+
 The Android pair smoke now also measures the debug-app Pair tap through explicit desktop approval completion and fails above the local 15-second emulator bound. The adb scripts pick the Pair action from the dumped UI tree by locating the `Pairing payload` field and the first full-width enabled clickable control below it, because the current Compose tree exposes the Pair button itself without stable visible text. `node scripts/test-android-pair-button-picker.mjs` pins that accessibility-tree shape so the emulator smokes fail deterministically if the locator drifts. Latest aggregate-invoked run passed on `emulator-5554` with `pair_flow_ms=2234`. This is app-side timing substitute evidence only; physical QR camera pair-flow timing still needs a release-device run.
 
 `pnpm test:android-emulator-background-replay` is the focused local background/foreground substitute: it pairs the actual Android app, opens a desktop-created terminal, sends input before backgrounding, backgrounds the app while the PTY emits `ANDROID_BACKGROUND_REPLAY_OUTPUT`, foregrounds back to the attached terminal, sends `after_background_ok`, and uses a separately approved verifier client to confirm the background-emitted output and post-foreground input remain replayable. Latest local run on 2026-05-19 passed on `emulator-5554`.

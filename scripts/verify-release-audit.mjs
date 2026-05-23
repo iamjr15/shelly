@@ -2187,6 +2187,50 @@ function verifyLatestRefresh() {
     requireText(audit, evidence, `release audit 2026-05-23 direct adb locked-launch evidence must include ${evidence}`);
   }
   for (const evidence of [
+    "Direct Android adb locked-launch follow-up (2026-05-23)",
+    "`/tmp/fieldwork-emulator-direct-20260523`",
+    "`TotalTime=4388ms`",
+    "`WaitTime=4395ms`",
+    "`locked.png`, `locked-ui.xml`, `locked-logcat.log`, and `locked-crash.log`",
+    "`APPLICATION_ID = \"app.fieldwork.android\"`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`22d6a9638bcc5fc0edc0d771d9b4434844b2d372e0799c4630d828cd376f3e84`",
+    "emulator system `com.google.android.bluetooth` crash",
+    "no Fieldwork `FATAL EXCEPTION`,\nANR, session sync, push-token registration, terminal attach, or input before\nunlock",
+  ]) {
+    requireText(plan, evidence, `PLAN.md 2026-05-23 direct adb locked-launch follow-up evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-23 direct adb locked-launch follow-up",
+    "`/tmp/fieldwork-emulator-direct-20260523`",
+    "`TotalTime=4388ms`",
+    "`WaitTime=4395ms`",
+    "`APPLICATION_ID = \"app.fieldwork.android\"`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`22d6a9638bcc5fc0edc0d771d9b4434844b2d372e0799c4630d828cd376f3e84`",
+    "emulator system `com.google.android.bluetooth` crash",
+    "no Fieldwork `FATAL EXCEPTION`, ANR, session sync, push-token\nregistration, terminal attach, or input before unlock",
+  ]) {
+    requireText(development, evidence, `DEVELOPMENT.md 2026-05-23 direct adb locked-launch follow-up evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-23 direct adb locked-launch follow-up",
+    "`/tmp/fieldwork-emulator-direct-20260523`",
+    "`TotalTime=4388ms`",
+    "`WaitTime=4395ms`",
+    "`locked.png`, `locked-ui.xml`, `locked-logcat.log`, and `locked-crash.log`",
+    "`APPLICATION_ID = \"app.fieldwork.android\"`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`22d6a9638bcc5fc0edc0d771d9b4434844b2d372e0799c4630d828cd376f3e84`",
+    "emulator system `com.google.android.bluetooth` crash",
+    "no Fieldwork `FATAL EXCEPTION`, ANR, session sync, push-token\n  registration, terminal attach, or input before unlock",
+  ]) {
+    requireText(audit, evidence, `release audit 2026-05-23 direct adb locked-launch follow-up evidence must include ${evidence}`);
+  }
+  for (const evidence of [
     "Direct Android adb pre-unlock biometric refresh (2026-05-23)",
     "`/tmp/fieldwork-adb-direct-20260523120245`",
     "`TotalTime=5888ms`",
