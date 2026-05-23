@@ -11,6 +11,7 @@ const files = {
   packageJson: read("package.json"),
   ci: read(".github/workflows/ci.yml"),
   localRelease: read("scripts/check-local-release.mjs"),
+  noArgsSmoke: read("scripts/smoke-cli-no-args.sh"),
   localNpmArtifacts: read("scripts/build-local-npm-artifacts.sh"),
   structuredAssets: read("scripts/verify-structured-assets.mjs"),
   androidEmulatorAll: read("scripts/smoke-android-emulator-all.sh"),
@@ -812,12 +813,20 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "\"desktop performance thresholds\", node, [\"scripts/measure-desktop-performance.mjs\"]", "runtime local release gate must include desktop performance thresholds");
   requireText(
     allFiles.development,
-    "two bare invocations create two distinct auto-named default `claude` sessions",
+    "two bare invocations, one through `fieldwork` and one through a temp `fw` alias,\ncreate two distinct auto-named default `claude` sessions",
     "docs/DEVELOPMENT.md must document the CLI no-args smoke coverage",
   );
   requireText(
     allFiles.development,
-    "detaching with the tmux-style `Ctrl-B` then `D` chord",
+    "lists the isolated daemon through\nthe same `fw` alias",
+    "docs/DEVELOPMENT.md must document that the CLI no-args smoke verifies the fw alias list path",
+  );
+  requireText(allFiles.noArgsSmoke, 'ln -sf "$fieldwork" "$fw"', "CLI no-args smoke must create a real fw alias to the debug CLI");
+  requireText(allFiles.noArgsSmoke, 'run_no_args_and_detach fw "$fw"', "CLI no-args smoke must invoke the fw alias");
+  requireText(allFiles.noArgsSmoke, '"$fw" ls >"$tmp/sessions.log"', "CLI no-args smoke must list sessions through the fw alias");
+  requireText(
+    allFiles.development,
+    "before detaching with\nthe tmux-style `Ctrl-B` then `D` chord",
     "docs/DEVELOPMENT.md must document CLI no-args raw-terminal detach coverage",
   );
   requireText(allFiles.ci, "node scripts/test-ios-prereqs.mjs", "CI must run the deterministic iOS prereq tests");

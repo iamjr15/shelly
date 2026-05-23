@@ -1737,12 +1737,13 @@ GitHub Release archives and Sigstore/SLSA attestations.
 
 **CLI no-args smoke refresh (2026-05-23)**: `scripts/smoke-cli-no-args.sh`
 now provides a raw-terminal local gate for the default shortcut. It starts an
-isolated daemon, installs a temp `claude` stub, runs bare `fieldwork` twice
-through `expect`, waits for attached PTY output, detaches with `Ctrl-B` then
-`D`, verifies two distinct generated one-word names, and confirms both session
-rows list command `claude`. CI runs this before the broader local handoff smoke
-and installs `expect` plus `vim` for that job. The smoke sets its expect PTY to
-24x80, and the CLI normalizes zero terminal dimensions to 80x24 before
+isolated daemon, installs a temp `claude` stub, runs bare `fieldwork` once and a
+temp `fw` alias once through `expect`, waits for attached PTY output, detaches
+with `Ctrl-B` then `D`, verifies two distinct generated one-word names, lists
+through the same `fw` alias, and confirms both session rows list command
+`claude`. CI runs this before the broader local handoff smoke and installs
+`expect` plus `vim` for that job. The smoke sets its expect PTY to 24x80, and
+the CLI normalizes zero terminal dimensions to 80x24 before
 CreateSession/AttachSession so headless pseudo-terminals cannot create unusable
 zero-size PTYs.
 

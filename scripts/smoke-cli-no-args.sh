@@ -54,6 +54,8 @@ cargo build -q -p fieldwork-cli -p fieldwork-daemon
 
 fieldwork="$cargo_target_dir/debug/fieldwork"
 fieldworkd="$cargo_target_dir/debug/fieldworkd"
+fw="$tmp/bin/fw"
+ln -sf "$fieldwork" "$fw"
 
 "$fieldworkd" >"$tmp/daemon.log" 2>&1 &
 daemon_pid=$!
@@ -72,9 +74,10 @@ fi
 
 run_no_args_and_detach() {
   local label="$1"
+  local bin="$2"
   local log_path="$tmp/${label}.log"
 
-  if ! FIELDWORK_BIN="$fieldwork" EXPECT_LOG="$log_path" expect <<'EXPECT'
+  if ! FIELDWORK_BIN="$bin" EXPECT_LOG="$log_path" expect <<'EXPECT'
 set timeout 10
 stty rows 24 columns 80
 log_file -noappend $env(EXPECT_LOG)
@@ -116,20 +119,20 @@ created_name() {
   awk '/created / { print $3; exit }' "$log_path" | tr -d '\r'
 }
 
-run_no_args_and_detach first
-run_no_args_and_detach second
+run_no_args_and_detach fieldwork "$fieldwork"
+run_no_args_and_detach fw "$fw"
 
-first_name="$(created_name "$tmp/first.log")"
-second_name="$(created_name "$tmp/second.log")"
+first_name="$(created_name "$tmp/fieldwork.log")"
+second_name="$(created_name "$tmp/fw.log")"
 
 if [[ -z "$first_name" || -z "$second_name" ]]; then
   echo "no-args run did not print created session names" >&2
-  cat "$tmp/first.log" "$tmp/second.log" >&2 || true
+  cat "$tmp/fieldwork.log" "$tmp/fw.log" >&2 || true
   exit 1
 fi
 
 if [[ "$first_name" == "$second_name" ]]; then
-  echo "second no-args run reused session name $first_name" >&2
+  echo "fw no-args run reused fieldwork session name $first_name" >&2
   exit 1
 fi
 
@@ -140,7 +143,7 @@ for name in "$first_name" "$second_name"; do
   fi
 done
 
-"$fieldwork" ls >"$tmp/sessions.log"
+"$fw" ls >"$tmp/sessions.log"
 
 for name in "$first_name" "$second_name"; do
   if ! awk -v name="$name" '$2 == name && $NF == "claude" { found = 1 } END { exit(found ? 0 : 1) }' "$tmp/sessions.log"; then
@@ -150,4 +153,4 @@ for name in "$first_name" "$second_name"; do
   fi
 done
 
-printf 'PASS no-args created distinct auto-named claude sessions: %s %s\n' "$first_name" "$second_name"
+printf 'PASS fieldwork/fw no-args created distinct auto-named claude sessions: %s %s\n' "$first_name" "$second_name"

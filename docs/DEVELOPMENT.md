@@ -250,9 +250,10 @@ scripts/smoke-local-handoff.sh
 ```
 
 The no-args smoke uses `expect` against the raw terminal attach path and proves
-two bare invocations create two distinct auto-named default `claude` sessions
-before detaching with the tmux-style `Ctrl-B` then `D` chord. It then lists the
-isolated daemon and verifies both generated one-word names are present as
+two bare invocations, one through `fieldwork` and one through a temp `fw` alias,
+create two distinct auto-named default `claude` sessions before detaching with
+the tmux-style `Ctrl-B` then `D` chord. It then lists the isolated daemon through
+the same `fw` alias and verifies both generated one-word names are present as
 `claude` sessions.
 
 The script builds the debug CLI/daemon, creates an isolated temp `HOME` and `XDG_RUNTIME_DIR`, starts `fieldworkd`, creates a default `claude` session through a temp stub command, a `bash` session, and a `vim` TUI session, verifies the iroh transport rejects a mismatched protocol version before pairing, pairs the hidden iroh phone simulator through explicit desktop approval, verifies the simulated pair flow completes within 15 seconds, lists and attaches to the sessions over iroh, starts a mobile session-list subscription before creating an explicitly named desktop session and verifies the new session appears through that subscription, sends mobile-originated input into `bash`, the default `claude`, and the subscribed desktop-created session and waits for matching output, detaches a simulated phone while a separate explicitly named session emits missed output and verifies reconnect-with-replay over iroh within 2 seconds from `last_seen_seq`, verifies switched sessions do not receive each other's output markers, verifies that the paired simulated phone receives `Forbidden` when it tries to create sessions, kill sessions, or emit agent-state hook events, removes the simulated device, verifies that the same device identity is rejected with `Unauthorized`, kills and restarts the daemon, and verifies that all last-known sessions are restored. It honors `CARGO_TARGET_DIR` for debug binaries while preserving the host `CARGO_HOME` and `RUSTUP_HOME`, so local runs can use `/tmp/fieldwork-target-checks` without recreating repo-local `target/debug` or redownloading the Rust toolchain into the isolated Fieldwork `HOME`. It sets `FIELDWORK_IROH_SECRET_KEY_B64` and `FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED=false` only inside that temp environment so the smoke can run on headless machines without keychain prompts. Production-like runs should leave the iroh secret override unset, and release verification must still cover encrypted-at-rest persistence plus physical QR camera scan timing.

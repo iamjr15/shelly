@@ -2911,9 +2911,11 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "env.CARGO_TARGET_DIR ??= \"/tmp/fieldwork-target-checks\"", "runtime local release gate must default handoff target-dir outside repo target");
   requireText(cliNoArgsSmoke, "command -v expect", "CLI no-args smoke must require expect for the raw-terminal attach path");
   requireText(cliNoArgsSmoke, "stty rows 24 columns 80", "CLI no-args smoke must set a deterministic expect PTY size");
-  requireText(cliNoArgsSmoke, "run_no_args_and_detach first", "CLI no-args smoke must create the first bare session");
-  requireText(cliNoArgsSmoke, "run_no_args_and_detach second", "CLI no-args smoke must create the second bare session");
-  requireText(cliNoArgsSmoke, "second no-args run reused session name", "CLI no-args smoke must reject no-args session reuse");
+  requireText(cliNoArgsSmoke, 'ln -sf "$fieldwork" "$fw"', "CLI no-args smoke must create a real fw alias to the debug CLI");
+  requireText(cliNoArgsSmoke, 'run_no_args_and_detach fieldwork "$fieldwork"', "CLI no-args smoke must create the first bare session through fieldwork");
+  requireText(cliNoArgsSmoke, 'run_no_args_and_detach fw "$fw"', "CLI no-args smoke must create the second bare session through fw");
+  requireText(cliNoArgsSmoke, "fw no-args run reused fieldwork session name", "CLI no-args smoke must reject no-args session reuse");
+  requireText(cliNoArgsSmoke, '"$fw" ls >"$tmp/sessions.log"', "CLI no-args smoke must verify listing through the fw alias");
   requireText(cliNoArgsSmoke, "$NF == \"claude\"", "CLI no-args smoke must verify bare sessions use the default claude command");
   requireText(localHandoff, "host_cargo_home=\"${CARGO_HOME:-$HOME/.cargo}\"", "local handoff smoke must preserve host Cargo cache before isolating HOME");
   requireText(localHandoff, "host_rustup_home=\"${RUSTUP_HOME:-$HOME/.rustup}\"", "local handoff smoke must preserve host Rustup cache before isolating HOME");
