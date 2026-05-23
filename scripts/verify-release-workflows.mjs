@@ -311,6 +311,8 @@ function verifyCiWiresVerifier(text) {
   requireText(text, "cargo test --workspace --doc", "CI must run workspace doctests");
   requireText(text, "cargo deny check", "CI must run cargo-deny");
   requireText(text, "cargo audit", "CI must run cargo-audit");
+  requireText(text, "sudo apt-get update && sudo apt-get install -y expect vim", "CI must install expect and vim before local CLI/handoff smokes");
+  requireText(text, "scripts/smoke-cli-no-args.sh", "CI must run the CLI no-args raw-terminal smoke");
   requireText(text, "scripts/smoke-local-handoff.sh", "CI must run the local handoff smoke");
   requireText(text, "node scripts/smoke-relay-otlp-loopback.mjs", "CI must run the relay OTLP loopback smoke");
   requireText(text, "node scripts/verify-release-workflows.mjs", "CI must run the release workflow verifier");

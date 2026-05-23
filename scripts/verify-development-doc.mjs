@@ -92,6 +92,7 @@ function verifyDevelopmentDoc(text) {
     "node scripts/test-npm-registry-state.mjs",
     "node scripts/test-external-status-refresh.mjs",
     "node scripts/test-ios-prereqs.mjs",
+    "pnpm test:cli-no-args",
     "pnpm test:android-unit",
     "pnpm test:android-emulator",
     "node scripts/test-android-aab-verifier.mjs",
@@ -129,18 +130,18 @@ function verifyDevelopmentDoc(text) {
   );
   requireText(
     text,
-    "local\nhandoff smoke, demo video, site typecheck/build, Terraform fmt/init/validate,\nrelay TLS/OTLP loopbacks, and desktop cold-start thresholds",
+    "CLI no-args\nraw-terminal smoke, local handoff smoke, demo video, site typecheck/build,\nTerraform fmt/init/validate, relay TLS/OTLP loopbacks, and desktop cold-start\nthresholds",
     "docs/DEVELOPMENT.md must document what the runtime local release aggregate mode covers",
   );
   requireText(
     text,
-    "runs the local\nhandoff smoke with `/tmp/fieldwork-target-checks`",
-    "docs/DEVELOPMENT.md must document the aggregate local handoff target-dir default",
+    "runs the CLI no-args and local handoff smokes with\n`/tmp/fieldwork-target-checks`",
+    "docs/DEVELOPMENT.md must document the aggregate CLI no-args/local handoff target-dir default",
   );
   requireText(
     text,
-    "preserves the host `CARGO_HOME` and\n`RUSTUP_HOME` while isolating Fieldwork's `HOME`",
-    "docs/DEVELOPMENT.md must document local handoff Cargo/Rustup cache preservation",
+    "smokes preserve the host `CARGO_HOME` and\n`RUSTUP_HOME` while isolating Fieldwork's `HOME`",
+    "docs/DEVELOPMENT.md must document CLI no-args/local handoff Cargo/Rustup cache preservation",
   );
   requireText(
     text,
@@ -675,6 +676,9 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["test:ios-prereqs"] !== "node scripts/test-ios-prereqs.mjs") {
     failures.push("package.json must expose pnpm test:ios-prereqs");
   }
+  if (packageJson.scripts?.["test:cli-no-args"] !== "scripts/smoke-cli-no-args.sh") {
+    failures.push("package.json must expose pnpm test:cli-no-args");
+  }
   if (packageJson.scripts?.["test:android-aab-verifier"] !== "node scripts/test-android-aab-verifier.mjs") {
     failures.push("package.json must expose pnpm test:android-aab-verifier");
   }
@@ -732,6 +736,8 @@ function verifyWiring(allFiles) {
   );
   requireText(allFiles.ci, "node scripts/verify-no-ship-markers.mjs", "CI must run the no-ship marker verifier");
   requireText(allFiles.ci, "node scripts/verify-no-ship-markers.mjs --self-test", "CI must run the no-ship marker self-test");
+  requireText(allFiles.ci, "sudo apt-get update && sudo apt-get install -y expect vim", "CI must install expect and vim before local CLI/handoff smokes");
+  requireText(allFiles.ci, "scripts/smoke-cli-no-args.sh", "CI must run the CLI no-args raw-terminal smoke");
   requireText(allFiles.localRelease, "scripts/verify-release-audit.mjs", "local release gate must include the release audit verifier");
   requireText(allFiles.localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");
   requireText(allFiles.localRelease, "Dir[\".github/workflows/*.yml\"].sort.each", "local release gate must parse all workflow YAML files");
@@ -766,6 +772,7 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localNpmArtifacts, "cargo zigbuild --release --target aarch64-unknown-linux-gnu -p fieldwork-cli -p fieldwork-daemon", "local npm artifact builder must build Linux arm64 package binaries");
   requireText(allFiles.localNpmArtifacts, "node scripts/verify-npm-packages.mjs --require-binaries", "local npm artifact builder must verify staged package binaries");
   requireText(allFiles.localNpmArtifacts, "node scripts/publish-npm-packages.mjs --check-ready", "local npm artifact builder must verify publish readiness");
+  requireText(allFiles.localRelease, "\"CLI no-args smoke\", bash, [\"scripts/smoke-cli-no-args.sh\"]", "runtime local release gate must include CLI no-args smoke");
   requireText(allFiles.localRelease, "\"local handoff smoke\", bash, [\"scripts/smoke-local-handoff.sh\"]", "runtime local release gate must include local handoff smoke");
   requireText(allFiles.localRelease, "localHandoffEnv()", "runtime local release gate must run local handoff with an explicit target-dir env");
   requireText(allFiles.localRelease, "env.CARGO_TARGET_DIR ??= \"/tmp/fieldwork-target-checks\"", "runtime local release gate must default handoff target-dir outside repo target");
@@ -776,6 +783,16 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "\"relay TLS loopback\", bash, [\"scripts/smoke-relay-tls-loopback.sh\"]", "runtime local release gate must include relay TLS smoke");
   requireText(allFiles.localRelease, "\"relay OTLP loopback\", node, [\"scripts/smoke-relay-otlp-loopback.mjs\"]", "runtime local release gate must include relay OTLP smoke");
   requireText(allFiles.localRelease, "\"desktop performance thresholds\", node, [\"scripts/measure-desktop-performance.mjs\"]", "runtime local release gate must include desktop performance thresholds");
+  requireText(
+    allFiles.development,
+    "two bare invocations create two distinct auto-named default `claude` sessions",
+    "docs/DEVELOPMENT.md must document the CLI no-args smoke coverage",
+  );
+  requireText(
+    allFiles.development,
+    "detaching with the tmux-style `Ctrl-B` then `D` chord",
+    "docs/DEVELOPMENT.md must document CLI no-args raw-terminal detach coverage",
+  );
   requireText(allFiles.ci, "node scripts/test-ios-prereqs.mjs", "CI must run the deterministic iOS prereq tests");
   requireText(allFiles.ci, "node scripts/test-android-aab-verifier.mjs", "CI must run the deterministic Android AAB verifier tests");
   requireText(allFiles.ci, "node scripts/test-android-pair-button-picker.mjs", "CI must run the deterministic Android pair-button picker test");

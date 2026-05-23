@@ -24,6 +24,10 @@ pub(crate) async fn recv_attached_event(
     }
 }
 
+pub(crate) fn output_was_replayed(event: &ServerToClientMsg, attached_seq: u64) -> bool {
+    matches!(event, ServerToClientMsg::Output { seq, .. } if *seq <= attached_seq)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,5 +79,29 @@ mod tests {
             }
             other => panic!("expected output event, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn replayed_output_detection_uses_attached_seq() {
+        let session_id = SessionId::new();
+        let replayed = ServerToClientMsg::Output {
+            session_id,
+            seq: 10,
+            bytes: b"already sent".to_vec(),
+        };
+        let live = ServerToClientMsg::Output {
+            session_id,
+            seq: 11,
+            bytes: b"new".to_vec(),
+        };
+        let state = ServerToClientMsg::AgentStateChanged {
+            session_id,
+            state: fieldwork_protocol::AgentState::Working,
+            last_line: None,
+        };
+
+        assert!(output_was_replayed(&replayed, 10));
+        assert!(!output_was_replayed(&live, 10));
+        assert!(!output_was_replayed(&state, 10));
     }
 }

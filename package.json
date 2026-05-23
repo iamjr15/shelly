@@ -65,6 +65,7 @@
     "build:local-npm-artifacts": "scripts/build-local-npm-artifacts.sh",
     "measure:desktop-performance": "node scripts/measure-desktop-performance.mjs",
     "test:ios-prereqs": "node scripts/test-ios-prereqs.mjs",
+    "test:cli-no-args": "scripts/smoke-cli-no-args.sh",
     "test:local-handoff": "scripts/smoke-local-handoff.sh",
     "test:relay-tls": "scripts/smoke-relay-tls-loopback.sh",
     "test:relay-otlp": "node scripts/smoke-relay-otlp-loopback.mjs",

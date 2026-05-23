@@ -23,6 +23,7 @@ const liveTesting = read("docs/LIVE_TESTING.md");
 const ci = read(".github/workflows/ci.yml");
 const localRelease = read("scripts/check-local-release.mjs");
 const structuredAssets = read("scripts/verify-structured-assets.mjs");
+const cliNoArgsSmoke = read("scripts/smoke-cli-no-args.sh");
 const localHandoff = read("scripts/smoke-local-handoff.sh");
 const domainStatus = read("scripts/check-domain-status.mjs");
 const githubNamespace = read("scripts/check-github-namespace.mjs");
@@ -566,13 +567,13 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "local handoff smoke, demo-video, site typecheck/build",
-    "release audit must record local handoff smoke in runtime aggregate mode",
+    "CLI no-args raw-terminal smoke, local handoff smoke, demo-video, site typecheck/build",
+    "release audit must record CLI no-args and local handoff smokes in runtime aggregate mode",
   );
   requireText(
     audit,
-    "defaults to `/tmp/fieldwork-target-checks` unless `CARGO_TARGET_DIR` is already set",
-    "release audit must record the aggregate local handoff target-dir default",
+    "smokes default to `/tmp/fieldwork-target-checks` unless `CARGO_TARGET_DIR` is already set",
+    "release audit must record the aggregate CLI no-args/local handoff target-dir default",
   );
   requireText(
     audit,
@@ -2507,6 +2508,9 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:release-audit-list"] !== "node scripts/test-release-audit-list.mjs") {
     failures.push("package.json must expose test:release-audit-list");
   }
+  if (packageJson.scripts?.["test:cli-no-args"] !== "scripts/smoke-cli-no-args.sh") {
+    failures.push("package.json must expose test:cli-no-args");
+  }
   if (packageJson.scripts?.["check:release-workflows"] !== "node scripts/verify-release-workflows.mjs") {
     failures.push("package.json must expose check:release-workflows");
   }
@@ -2857,9 +2861,16 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/publish-npm-packages.mjs\", \"--check-ready", "artifact-aware local release gate must include publish-readiness verification");
   requireText(localRelease, "cleanNpmEnv()", "local release gate must clean noisy inherited npm config before dry-run pack");
   requireText(localRelease, "\"Android AAB artifact\", node, [\"scripts/verify-android-aab.mjs\", \"--expect-unsigned\"]", "artifact-aware local release gate must call the Android AAB verifier directly");
+  requireText(localRelease, "\"CLI no-args smoke\", bash, [\"scripts/smoke-cli-no-args.sh\"]", "runtime local release gate must include CLI no-args smoke");
   requireText(localRelease, "\"local handoff smoke\", bash, [\"scripts/smoke-local-handoff.sh\"]", "runtime local release gate must include local handoff smoke");
   requireText(localRelease, "localHandoffEnv()", "runtime local release gate must run local handoff with an explicit target-dir env");
   requireText(localRelease, "env.CARGO_TARGET_DIR ??= \"/tmp/fieldwork-target-checks\"", "runtime local release gate must default handoff target-dir outside repo target");
+  requireText(cliNoArgsSmoke, "command -v expect", "CLI no-args smoke must require expect for the raw-terminal attach path");
+  requireText(cliNoArgsSmoke, "stty rows 24 columns 80", "CLI no-args smoke must set a deterministic expect PTY size");
+  requireText(cliNoArgsSmoke, "run_no_args_and_detach first", "CLI no-args smoke must create the first bare session");
+  requireText(cliNoArgsSmoke, "run_no_args_and_detach second", "CLI no-args smoke must create the second bare session");
+  requireText(cliNoArgsSmoke, "second no-args run reused session name", "CLI no-args smoke must reject no-args session reuse");
+  requireText(cliNoArgsSmoke, "$NF == \"claude\"", "CLI no-args smoke must verify bare sessions use the default claude command");
   requireText(localHandoff, "host_cargo_home=\"${CARGO_HOME:-$HOME/.cargo}\"", "local handoff smoke must preserve host Cargo cache before isolating HOME");
   requireText(localHandoff, "host_rustup_home=\"${RUSTUP_HOME:-$HOME/.rustup}\"", "local handoff smoke must preserve host Rustup cache before isolating HOME");
   requireText(localHandoff, "run_fieldwork_new \"$tmp/new-subscribe.log\" --name FW_SUBSCRIBE_SESSION_READY", "local handoff smoke must name the subscription session to avoid duplicate-name collisions");
@@ -2878,6 +2889,8 @@ function verifyVerifierIsWired() {
   requireText(ci, "cargo test --workspace --doc", "CI must run workspace doctests");
   requireText(ci, "cargo deny check", "CI must run cargo-deny");
   requireText(ci, "cargo audit", "CI must run cargo-audit");
+  requireText(ci, "sudo apt-get update && sudo apt-get install -y expect vim", "CI must install expect and vim before local CLI/handoff smokes");
+  requireText(ci, "scripts/smoke-cli-no-args.sh", "CI must run the CLI no-args raw-terminal smoke");
   requireText(ci, "scripts/smoke-local-handoff.sh", "CI must run the local handoff smoke");
   requireText(ci, "node scripts/smoke-relay-otlp-loopback.mjs", "CI must run the relay OTLP loopback smoke");
   requireText(ci, "scripts/smoke-relay-tls-loopback.sh", "CI must run the relay TLS loopback smoke");

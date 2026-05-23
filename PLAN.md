@@ -1735,6 +1735,17 @@ GitHub Release archives and Sigstore/SLSA attestations.
 
 **Reconnect smoke refresh (2026-05-23)**: the local handoff smoke now also creates a PTY that emits output while the simulated iroh phone is detached, reconnects with the previous `last_seen_seq`, and verifies that the missed output arrives through `Attached.initial_bytes` within the 2-second local threshold. The latest local run replayed `FW_RECONNECT_LINE_50` after a 16ms reconnect. Physical network-change timing remains a Section 13 release gate.
 
+**CLI no-args smoke refresh (2026-05-23)**: `scripts/smoke-cli-no-args.sh`
+now provides a raw-terminal local gate for the default shortcut. It starts an
+isolated daemon, installs a temp `claude` stub, runs bare `fieldwork` twice
+through `expect`, waits for attached PTY output, detaches with `Ctrl-B` then
+`D`, verifies two distinct generated one-word names, and confirms both session
+rows list command `claude`. CI runs this before the broader local handoff smoke
+and installs `expect` plus `vim` for that job. The smoke sets its expect PTY to
+24x80, and the CLI normalizes zero terminal dimensions to 80x24 before
+CreateSession/AttachSession so headless pseudo-terminals cannot create unusable
+zero-size PTYs.
+
 **Structured asset gate note (2026-05-21)**: `scripts/verify-structured-assets.mjs` is now part of `pnpm check:local-release`, making the PLAN's structured-file syntax promise explicit in the aggregate gate. It parses tracked repo JSON assets with `JSON.parse`, parses tracked TOML assets with Python's standard `tomllib`, lints the iOS project metadata/Info.plist/entitlements with `plutil -lint`, and validates Android XML resources plus docs SVG assets with `xmllint --noout`.
 
 **Daemon Sentry test note (2026-05-17)**: daemon Sentry initialization now builds explicit `ClientOptions` instead of passing an unchecked DSN string into `sentry::init`; invalid configured DSNs fail daemon logging initialization with context instead of panicking. The daemon test target enables Sentry's `test` feature only as a dev-dependency and verifies three local invariants: crash reporting requires explicit opt-in plus DSN, `send_default_pii=false` and `traces_sample_rate=0.0` remain set, and a Rust panic is captured through Sentry's local test transport. Hosted Sentry receipt from daemon/iOS/Android remains a Section 13 external gate until a real Sentry project/DSN and signed mobile builds are available.

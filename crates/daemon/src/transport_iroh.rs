@@ -1,4 +1,4 @@
-use crate::forward::{ForwardedEvent, recv_attached_event};
+use crate::forward::{ForwardedEvent, output_was_replayed, recv_attached_event};
 use crate::ipc::{AppState, IrohEndpointInfo};
 use crate::persistence::StoredDevice;
 use anyhow::{Context, Result, bail};
@@ -291,6 +291,7 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                         continue;
                     }
                 };
+                let mut rx = session.subscribe();
                 let (seq, initial_bytes) = session.attach_bytes(last_seen_seq);
                 write_msg(
                     &writer,
@@ -314,13 +315,15 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                     continue;
                 }
 
-                let mut rx = session.subscribe();
                 let writer = Arc::clone(&writer);
                 attach_task = Some(tokio::spawn(async move {
                     let _attachment = attachment;
                     loop {
                         match recv_attached_event(&mut rx, session_id).await {
                             ForwardedEvent::Message(event) => {
+                                if output_was_replayed(&event, seq) {
+                                    continue;
+                                }
                                 if write_msg(&writer, &event).await.is_err() {
                                     break;
                                 }

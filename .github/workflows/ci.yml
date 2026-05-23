@@ -68,7 +68,8 @@ jobs:
         with:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install -y vim
+      - run: sudo apt-get update && sudo apt-get install -y expect vim
+      - run: scripts/smoke-cli-no-args.sh
       - run: scripts/smoke-local-handoff.sh
 
   relay-otlp-smoke:

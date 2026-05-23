@@ -916,7 +916,14 @@ async fn resolve_session(
 
 fn terminal_size() -> ClientSize {
     let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
-    ClientSize { cols, rows }
+    normalized_terminal_size(cols, rows)
+}
+
+fn normalized_terminal_size(cols: u16, rows: u16) -> ClientSize {
+    ClientSize {
+        cols: if cols == 0 { 80 } else { cols },
+        rows: if rows == 0 { 24 } else { rows },
+    }
 }
 
 fn session_name(command: &[String], cwd: &std::path::Path) -> String {
@@ -1185,6 +1192,17 @@ mod tests {
                 .chars()
                 .all(|ch| !ch.is_whitespace() && !ch.is_control())
         );
+    }
+
+    #[test]
+    fn terminal_size_normalization_replaces_zero_dimensions() {
+        let size = super::normalized_terminal_size(0, 0);
+        assert_eq!(size.cols, 80);
+        assert_eq!(size.rows, 24);
+
+        let size = super::normalized_terminal_size(120, 0);
+        assert_eq!(size.cols, 120);
+        assert_eq!(size.rows, 24);
     }
 
     fn test_summary(name: &str) -> fieldwork_protocol::SessionSummary {
