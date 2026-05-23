@@ -621,8 +621,8 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "no-subcommand smart default parser and npm\ndispatcher paths for `fieldwork`/`fw`",
-    "release audit must record the no-subcommand CLI smart default coverage",
+    "no-subcommand auto-create parser and npm\ndispatcher paths for `fieldwork`/`fw`",
+    "release audit must record the no-subcommand CLI auto-create coverage",
   );
   requireText(
     audit,
@@ -636,7 +636,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "generates short one-word names and stores them in the\ndaemon session summary that mobile dashboards already render",
+    "always creates a new default `claude` session, generates\nshort one-word names, and stores them in the daemon session summary that mobile\ndashboards already render",
     "release audit must record auto-named no-args session visibility on mobile",
   );
   requireText(

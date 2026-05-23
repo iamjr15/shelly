@@ -113,7 +113,7 @@ function verifyInstallPage() {
     "fw new --name shell bash",
     "`fw` with no subcommand creates and attaches a default `claude` session",
     "generated one-word name",
-    "Mobile shows the same daemon session names in its",
+    "Mobile shows the same daemon session names",
     "cargo build --workspace",
     "target/debug/fieldwork refactoringjob",
     "target/debug/fieldwork new --name shell bash",

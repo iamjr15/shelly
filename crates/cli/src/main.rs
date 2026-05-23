@@ -603,26 +603,14 @@ async fn list_sessions() -> Result<()> {
 
 async fn run_default() -> Result<()> {
     let sessions = fetch_sessions().await?;
-    match sessions.as_slice() {
-        [] => {
-            let summary = create_session_summary(
-                PathBuf::from("."),
-                Some(auto_session_name(&sessions)),
-                Vec::new(),
-            )
-            .await?;
-            eprintln!("created {}\t{}", summary.id, summary.name);
-            attach_session(summary.id.to_string()).await
-        }
-        [session] => attach_session(session.id.to_string()).await,
-        _ => {
-            print_sessions(&sessions);
-            eprintln!(
-                "Multiple sessions are available. Run `fieldwork attach <session-id>` or `fw attach <session-id>`."
-            );
-            Ok(())
-        }
-    }
+    let summary = create_session_summary(
+        PathBuf::from("."),
+        Some(auto_session_name(&sessions)),
+        Vec::new(),
+    )
+    .await?;
+    eprintln!("created {}\t{}", summary.id, summary.name);
+    attach_session(summary.id.to_string()).await
 }
 
 async fn open_named_session(args: Vec<OsString>) -> Result<()> {
@@ -1109,7 +1097,7 @@ mod tests {
     }
 
     #[test]
-    fn no_args_parse_to_smart_default() {
+    fn no_args_parse_to_no_args_fast_path() {
         let cli = Cli::try_parse_from(["fieldwork"]).expect("no-arg CLI parses");
         assert!(cli.command.is_none());
     }

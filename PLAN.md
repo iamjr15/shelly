@@ -685,8 +685,8 @@ fw pair                                 # show QR for new device; prompts to app
 fieldwork pair                          # full command name for the same QR-pairing flow
 fieldwork pair-test --payload <json> [--attach <session|first>]
                                         # hidden headless iroh transport smoke client
-fieldwork                               # smart default: create+attach default claude, attach sole session, or list many
-fw                                      # npm-installed short alias for the same CLI and smart default
+fieldwork                               # no-args fast path: create+attach auto-named default claude
+fw                                      # npm-installed short alias for the same CLI and no-args fast path
 fw <name>                               # named fast path: attach existing name or create+attach default claude
 fw ls                                   # list sessions
 fw new --name <name> --dir <path> [cmd...]
@@ -715,14 +715,13 @@ fw completion <shell>                   # generate completions registered for th
 **No `fieldwork update` subcommand** — npm is the install channel, so updates route through `npm update -g fieldwork`. Having a separate self-updater would let the binary version diverge from the npm-registered version, breaking the user's mental model. The CLI prints a one-line `fieldwork X.Y.Z available - run npm update -g fieldwork` notice to stderr if the npm registry shows a newer version. The check is cached for 24 hours in the private Fieldwork config directory and skipped for QR pairing, shell completions, hooks, `version`, and raw terminal attach flows.
 
 **No-args fast path**: `fieldwork` and npm's `fw` alias with no subcommand route
-through the desktop-only CLI capability boundary. If no sessions exist, the CLI
-creates the default `claude` session with a generated one-word display name such
-as `waffle` or `kazoo` and immediately attaches; if exactly one session exists,
-it attaches that session; if several sessions exist, it prints the session list
-and asks the user to choose explicitly. The generated name is stored in
-`SessionSummary.name`, so mobile apps show the same active session name in the
-dashboard. Mobile clients still cannot create sessions, kill sessions, or choose
-commands.
+through the desktop-only CLI capability boundary. The CLI always creates a new
+default `claude` session with a generated one-word display name such as `waffle`
+or `kazoo` and immediately attaches, even when other sessions already exist. The
+generated name is stored in `SessionSummary.name`, so mobile apps show the same
+active session name in the dashboard. Existing sessions are listed with `fw ls`
+or attached explicitly with `fw attach <session-id|name>` / `fw <name>`. Mobile
+clients still cannot create sessions, kill sessions, or choose commands.
 
 **Named-session fast path**: `fw <name>` is the product replacement for a
 tmux/mosh/Tailscale alias like `mc refactoringjob`. It resolves an existing

@@ -21,11 +21,10 @@ target/debug/fieldwork new bash
 target/debug/fieldwork attach <session-id>
 ```
 
-With no subcommand, `fieldwork` uses the same smart default as the npm `fw`
-alias: create and attach a default `claude` session when none exist, attach the
-only existing session, or list sessions when several are available. New no-name
-default sessions get generated one-word names like `waffle` or `kazoo`, and the
-same daemon session summary appears in the mobile app dashboard. With one
+With no subcommand, `fieldwork` uses the same no-args fast path as the npm `fw`
+alias: create and attach a new default `claude` session with a generated
+one-word name like `waffle` or `kazoo`, even when other sessions already exist.
+The same daemon session summary appears in the mobile app dashboard. With one
 unknown word, `fieldwork`/`fw` uses the named session shortcut: attach the named
 session if it exists, otherwise create a default `claude` PTY with that display
 name and attach. Use `fw new --name <name> [cmd...]` when you want a
@@ -123,12 +122,11 @@ npm pack ./packages/cli --dry-run --json
 starts the same QR-pairing flow as `fieldwork pair`. Postinstall swaps the CLI
 and daemon commands to native binaries when scripts are allowed, and the shipped
 dispatchers run the matching platform package when postinstall is skipped.
-Running either CLI name with no subcommand uses the smart default: create and
-attach a default `claude` session when none exist, attach the only existing
-session, or list sessions when several are available. The create branch
-auto-generates a one-word display name that mobile apps show from the daemon
-session list. Running `fw refactoringjob` uses the named-session fast path, and
-`fw new --name <name> [cmd...]` creates an explicitly named arbitrary-command PTY. The v1 platform
+Running either CLI name with no subcommand uses the no-args fast path: create
+and attach a new default `claude` session with an auto-generated one-word
+display name that mobile apps show from the daemon session list, even when other
+sessions already exist. Running `fw refactoringjob` uses the named-session fast
+path, and `fw new --name <name> [cmd...]` creates an explicitly named arbitrary-command PTY. The v1 platform
 packages are
 `fieldwork-darwin-arm64`, `fieldwork-darwin-x64`,
 `fieldwork-linux-arm64`, and `fieldwork-linux-x64`. Each platform

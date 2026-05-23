@@ -18,11 +18,11 @@ together. `fw` accepts the same arguments as `fieldwork` (`fw pair`,
 session fast path: attach if that session exists, otherwise create a default
 `claude` PTY named `refactoringjob` and attach. Running `fieldwork` or `fw` with
 no subcommand creates and attaches a default `claude` session with a generated
-one-word name like `waffle` or `kazoo` when none exist, attaches the only
-existing session, or lists sessions when there are several. The generated or
-chosen session name is stored in the daemon summary, so it appears as the active
-session name in the mobile app dashboard. The daemon rejects duplicate session
-names, so a named shortcut always resolves to one PTY.
+one-word name like `waffle` or `kazoo` every time, even when other sessions
+already exist. The generated or chosen session name is stored in the daemon
+summary, so it appears as the active session name in the mobile app dashboard.
+The daemon rejects duplicate session names, so a named shortcut always resolves
+to one PTY.
 Desktop distribution is npm-only for v1; Homebrew, `curl | sh`, `cargo install`, and self-update are intentionally out of scope.
 
 ## Screenshots
@@ -62,8 +62,8 @@ target/debug/fieldwork ls
 target/debug/fieldwork attach <session-id>
 ```
 
-With no subcommand, the CLI uses the same smart default as the npm `fw` alias
-and auto-names a new default session with a short one-word name.
+With no subcommand, the CLI uses the same no-args fast path as the npm `fw`
+alias and auto-names a new default session with a short one-word name.
 With an unknown single word, it uses the named session shortcut described above.
 Inside `attach`, press `Ctrl-B` then `D` to detach without killing the session.
 

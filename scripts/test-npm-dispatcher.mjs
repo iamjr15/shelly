@@ -93,7 +93,7 @@ function verifyDispatcher({ platform, arch, key }) {
     const fwAlias = path.join(aliasTmp, "fw");
     fs.symlinkSync(dispatcher, fwAlias);
     for (const aliasCase of [
-      { name: "smart default", args: [], stdout: "fake-fieldwork fw" },
+      { name: "no-args fast path", args: [], stdout: "fake-fieldwork fw" },
       { name: "pair", args: ["pair"], stdout: "fake-fieldwork fw pair" },
       {
         name: "named-session shortcut",

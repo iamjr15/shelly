@@ -42,13 +42,11 @@ fw completion bash
 The shorter `fw` alias accepts the same arguments as `fieldwork`: `fw pair` is
 the short QR-pairing command, and `fw new bash` / `fw attach <session-id>` are
 equivalent to the longer forms. Running `fieldwork` or `fw` with no subcommand
-creates and attaches a default `claude` session when none exist,
-attaches the only existing session, or lists sessions when several are
-available. Running `fw refactoringjob` attaches that named session when it
-exists, or creates and attaches a default `claude` PTY named `refactoringjob`
-when it does not. No-name default sessions get generated one-word names like
-`waffle` or `kazoo`, and the same daemon session name appears in the mobile app
-dashboard.
+creates and attaches a new default `claude` session every time, with a generated
+one-word name like `waffle` or `kazoo` even when other sessions already exist.
+Running `fw refactoringjob` attaches that named session when it exists, or
+creates and attaches a default `claude` PTY named `refactoringjob` when it does
+not. The same daemon session name appears in the mobile app dashboard.
 
 Shell completions follow the command used to generate them. `fw completion bash`
 registers the short alias, while `fieldwork completion bash` registers the long
