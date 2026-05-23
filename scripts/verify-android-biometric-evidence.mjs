@@ -2,7 +2,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { verifyPhysicalAndroidAdbDevices } from "./android-evidence-common.mjs";
+import {
+  verifyCleanAndroidLogs,
+  verifyNoAndroidSystemErrorOverlays,
+  verifyPhysicalAndroidAdbDevices,
+} from "./android-evidence-common.mjs";
 
 const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 const failures = [];
@@ -56,6 +60,11 @@ if (failures.length === 0) {
     readText("stale-biometric-logcat.log"),
     readText("stale-biometric.txt"),
   );
+  verifyNoAndroidSystemErrorOverlays([
+    ["locked-ui.xml", readText("locked-ui.xml")],
+    ["biometric-ui.xml", readText("biometric-ui.xml")],
+    ["stale-biometric-ui.xml", readText("stale-biometric-ui.xml")],
+  ], failures);
   verifyLogs([
     ["locked-logcat.log", readText("locked-logcat.log")],
     ["locked-crash.log", readText("locked-crash.log")],
@@ -181,14 +190,7 @@ function verifyPreUnlockLog(text, file) {
 }
 
 function verifyLogs(entries) {
-  const fatalPattern = /\bFATAL EXCEPTION\b|\bANR in app\.fieldwork\.android\b|Fieldwork.*\b(FATAL|ANR|Exception)\b/i;
-  const crashPattern = /\bapp\.fieldwork\.android\b|\bFATAL EXCEPTION\b|\bANR\b/i;
-  for (const [name, text] of entries) {
-    rejectPatternText(text, fatalPattern, `${name} must not contain Fieldwork fatal, ANR, or exception entries`);
-    if (name.endsWith("-crash.log")) {
-      rejectPatternText(text, crashPattern, `${name} must not contain app.fieldwork.android crash-buffer entries`);
-    }
-  }
+  verifyCleanAndroidLogs(entries, failures);
 }
 
 function verifyPng(file) {

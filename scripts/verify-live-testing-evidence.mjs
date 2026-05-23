@@ -2,7 +2,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { verifyPhysicalAndroidAdbDevices } from "./android-evidence-common.mjs";
+import {
+  verifyCleanAndroidLogs,
+  verifyNoAndroidSystemErrorOverlays,
+  verifyPhysicalAndroidAdbDevices,
+} from "./android-evidence-common.mjs";
 import zlib from "node:zlib";
 
 const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
@@ -651,14 +655,7 @@ function verifyMobileCapabilityBoundary(entries) {
 }
 
 function verifyNoSystemErrorOverlays(entries) {
-  const systemError = /\b(?:System UI|Fieldwork|[^"]+)\s+(?:isn't responding|is not responding)\b|\bClose app\b|\bApp isn't responding\b/i;
-  for (const [file, text] of entries) {
-    rejectPatternText(
-      text,
-      systemError,
-      `${file} must not show an Android system error or not-responding overlay`,
-    );
-  }
+  verifyNoAndroidSystemErrorOverlays(entries, failures);
 }
 
 function verifyAdbDevices(text) {
@@ -671,15 +668,7 @@ function verifyFieldworkDevices(text) {
 }
 
 function verifyLogs(entries) {
-  const fatalPattern = /\bFATAL EXCEPTION\b|\bANR in\b|Fieldwork.*\b(FATAL|ANR|Exception)\b/i;
-  for (const [name, text] of entries) {
-    rejectPatternText(text, fatalPattern, `${name} must not contain Android fatal, ANR, or exception entries`);
-    if (name.endsWith("-crash.log")) {
-      if (text.trim().length > 0) {
-        failures.push(`${name} must be empty after adb logcat -c; crash-buffer entries invalidate Android live-test evidence`);
-      }
-    }
-  }
+  verifyCleanAndroidLogs(entries, failures);
 }
 
 function verifyPng(file) {

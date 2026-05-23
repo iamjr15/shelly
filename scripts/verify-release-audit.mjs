@@ -745,6 +745,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "shared Android clean log/crash guard",
+    "release audit must record shared Android clean log evidence guard coverage",
+  );
+  requireText(
+    audit,
+    "shared Android system not-responding overlay guard",
+    "release audit must record shared Android system overlay evidence guard coverage",
+  );
+  requireText(
+    audit,
     "AAB ABI, packaged uses-permission allowlist and manifest privacy verifier",
     "release audit must record Android AAB packaged manifest verification",
   );
@@ -2870,6 +2880,16 @@ function verifyVerifierIsWired() {
   );
   requireText(
     androidEvidenceCommon,
+    "verifyCleanAndroidLogs",
+    "shared Android evidence helper must export the clean log/crash verifier",
+  );
+  requireText(
+    androidEvidenceCommon,
+    "verifyNoAndroidSystemErrorOverlays",
+    "shared Android evidence helper must export the system overlay verifier",
+  );
+  requireText(
+    androidEvidenceCommon,
     "exactly one authorized physical Android device",
     "shared Android evidence helper must require exactly one authorized physical device",
   );
@@ -2887,13 +2907,38 @@ function verifyVerifierIsWired() {
     const verifier = read(verifierPath);
     requireText(
       verifier,
-      'import { verifyPhysicalAndroidAdbDevices } from "./android-evidence-common.mjs";',
+      'from "./android-evidence-common.mjs";',
+      `${verifierPath} must import shared Android evidence helpers`,
+    );
+    requireText(
+      verifier,
+      "verifyPhysicalAndroidAdbDevices,",
       `${verifierPath} must import the shared Android physical-device adb verifier`,
+    );
+    requireText(
+      verifier,
+      "verifyCleanAndroidLogs,",
+      `${verifierPath} must import the shared Android clean log verifier`,
+    );
+    requireText(
+      verifier,
+      "verifyNoAndroidSystemErrorOverlays,",
+      `${verifierPath} must import the shared Android system overlay verifier`,
     );
     requireText(
       verifier,
       "verifyPhysicalAndroidAdbDevices(text, failures)",
       `${verifierPath} must delegate adb-device validation to the shared helper`,
+    );
+    requireText(
+      verifier,
+      "verifyCleanAndroidLogs(entries, failures)",
+      `${verifierPath} must delegate log/crash validation to the shared helper`,
+    );
+    requireText(
+      verifier,
+      "verifyNoAndroidSystemErrorOverlays(",
+      `${verifierPath} must reject Android system error overlays`,
     );
     rejectText(
       verifier,

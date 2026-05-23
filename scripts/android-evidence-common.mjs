@@ -26,6 +26,45 @@ export function verifyPhysicalAndroidAdbDevices(text, failures, { file = "adb-de
   );
 }
 
+export function verifyNoAndroidSystemErrorOverlays(entries, failures) {
+  if (!Array.isArray(failures)) {
+    throw new TypeError("verifyNoAndroidSystemErrorOverlays requires a failures array");
+  }
+
+  const systemError = /\b(?:System UI|Fieldwork|[^"]+)\s+(?:isn't responding|is not responding)\b|\bClose app\b|\bApp isn't responding\b/i;
+  for (const [file, text] of entries) {
+    rejectPatternText(
+      text,
+      systemError,
+      `${file} must not show an Android system error or not-responding overlay`,
+      failures,
+    );
+  }
+}
+
+export function verifyCleanAndroidLogs(entries, failures) {
+  if (!Array.isArray(failures)) {
+    throw new TypeError("verifyCleanAndroidLogs requires a failures array");
+  }
+
+  const fatalPattern = /\bFATAL EXCEPTION\b|\bANR in\b|Fieldwork.*\b(FATAL|ANR|Exception)\b/i;
+  for (const [file, text] of entries) {
+    rejectPatternText(
+      text,
+      fatalPattern,
+      `${file} must not contain Android fatal, ANR, or exception entries`,
+      failures,
+    );
+    if (isCrashBufferFile(file) && text.trim().length > 0) {
+      failures.push(`${file} must be empty after adb logcat -c; crash-buffer entries invalidate Android evidence`);
+    }
+  }
+}
+
+function isCrashBufferFile(file) {
+  return file === "crash.log" || file.endsWith("-crash.log");
+}
+
 function requirePatternText(text, pattern, message, failures) {
   if (!pattern.test(text)) {
     failures.push(message);

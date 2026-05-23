@@ -118,7 +118,7 @@ try {
   const crash = path.join(temp, "crash");
   writeFixture(crash);
   fs.writeFileSync(path.join(crash, "final-crash.log"), "FATAL EXCEPTION: main\nProcess: app.fieldwork.android\n");
-  expectStatus(crash, 1, "crash-buffer evidence should fail", "final-crash.log must not contain");
+  expectStatus(crash, 1, "crash-buffer evidence should fail", "final-crash.log must be empty after adb logcat -c");
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
 }

@@ -87,7 +87,7 @@ try {
   const badLog = path.join(temp, "bad-log");
   writeFixture(badLog);
   fs.writeFileSync(path.join(badLog, "session-logcat.log"), "FATAL EXCEPTION: main\napp.fieldwork.android crashed\n");
-  expectStatus(badLog, 1, "fatal log should fail", "session-logcat.log must not contain Fieldwork fatal, ANR, or exception entries");
+  expectStatus(badLog, 1, "fatal log should fail", "session-logcat.log must not contain Android fatal, ANR, or exception entries");
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
 }

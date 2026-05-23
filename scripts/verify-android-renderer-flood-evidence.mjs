@@ -2,7 +2,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { verifyPhysicalAndroidAdbDevices } from "./android-evidence-common.mjs";
+import {
+  verifyCleanAndroidLogs,
+  verifyNoAndroidSystemErrorOverlays,
+  verifyPhysicalAndroidAdbDevices,
+} from "./android-evidence-common.mjs";
 
 const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 const failures = [];
@@ -34,6 +38,7 @@ if (failures.length === 0) {
   verifyBuildConfig(readText("buildconfig.txt"));
   verifyPng("flood.png");
   verifyFloodUi(readText("flood-ui.xml"));
+  verifyNoAndroidSystemErrorOverlays([["flood-ui.xml", readText("flood-ui.xml")]], failures);
   verifyFloodReplay(readText("flood-replay.txt"));
   verifyLogs([
     ["logcat.log", readText("logcat.log")],
@@ -108,14 +113,7 @@ function verifyFloodReplay(text) {
 }
 
 function verifyLogs(entries) {
-  const fatalPattern = /\bFATAL EXCEPTION\b|\bANR in app\.fieldwork\.android\b|Fieldwork.*\b(FATAL|ANR|Exception)\b/i;
-  const crashPattern = /\bapp\.fieldwork\.android\b|\bFATAL EXCEPTION\b|\bANR\b/i;
-  for (const [name, text] of entries) {
-    rejectPatternText(text, fatalPattern, `${name} must not contain Fieldwork fatal, ANR, or exception entries`);
-    if (name === "crash.log") {
-      rejectPatternText(text, crashPattern, `${name} must not contain app.fieldwork.android crash-buffer entries`);
-    }
-  }
+  verifyCleanAndroidLogs(entries, failures);
 }
 
 function verifyPng(file) {

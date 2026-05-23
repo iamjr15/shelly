@@ -2,7 +2,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { verifyPhysicalAndroidAdbDevices } from "./android-evidence-common.mjs";
+import {
+  verifyCleanAndroidLogs,
+  verifyNoAndroidSystemErrorOverlays,
+  verifyPhysicalAndroidAdbDevices,
+} from "./android-evidence-common.mjs";
 
 const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 const failures = [];
@@ -55,6 +59,10 @@ if (failures.length === 0) {
     ["resize-ui.xml", readText("resize-ui.xml")],
     ["detach-ui.xml", readText("detach-ui.xml")],
   ]);
+  verifyNoAndroidSystemErrorOverlays([
+    ["resize-ui.xml", readText("resize-ui.xml")],
+    ["detach-ui.xml", readText("detach-ui.xml")],
+  ], failures);
   verifyLogs([
     ["resize-logcat.log", readText("resize-logcat.log")],
     ["resize-crash.log", readText("resize-crash.log")],
@@ -157,14 +165,7 @@ function verifyNoMobileSessionControls(entries) {
 }
 
 function verifyLogs(entries) {
-  const fatalPattern = /\bFATAL EXCEPTION\b|\bANR in app\.fieldwork\.android\b|Fieldwork.*\b(FATAL|ANR|Exception)\b/i;
-  const crashPattern = /\bapp\.fieldwork\.android\b|\bFATAL EXCEPTION\b|\bANR\b/i;
-  for (const [name, text] of entries) {
-    rejectPatternText(text, fatalPattern, `${name} must not contain Fieldwork fatal, ANR, or exception entries`);
-    if (name.endsWith("-crash.log")) {
-      rejectPatternText(text, crashPattern, `${name} must not contain app.fieldwork.android crash-buffer entries`);
-    }
-  }
+  verifyCleanAndroidLogs(entries, failures);
 }
 
 function verifyPng(file) {
