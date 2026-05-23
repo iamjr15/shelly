@@ -73,10 +73,11 @@ Live sessions keep a daemon-side WezTerm terminal model. Warm reconnects replay 
 
 Daemon lifecycle commands currently include `fieldwork daemon start`, `status`, `logs`, `install`, `restart`, and `uninstall`. Service install is user-level only.
 
-Shell completions are generated for the invoked command name:
-`fieldwork completion bash|zsh|fish|powershell|elvish` registers the long
-command, while `fw completion bash|zsh|fish|powershell|elvish` registers the
-short alias.
+Help and shell completions are generated for the invoked command name:
+`fieldwork --help` prints the long command usage, `fw --help` prints
+`Usage: fw`, `fieldwork completion bash|zsh|fish|powershell|elvish` registers
+the long command, and `fw completion bash|zsh|fish|powershell|elvish` registers
+the short alias.
 
 Claude/Codex state hooks are local CLI adapters for this milestone. Claude Stop hooks can run `fieldwork hook claude-stop --session "$FIELDWORK_SESSION_ID"`, and Codex structured events can be piped into `fieldwork hook codex-event`.
 

@@ -900,8 +900,9 @@ function verifyReadme() {
     "Pair tokens are 32 random bytes, base32 encoded, single-use, and expire after 10 minutes",
     "separate encrypted `devices.redb`, with hashed row keys",
     "Keychain prompts are only for local key material",
-    "Shell completions are generated for the invoked command name",
-    "`fw completion bash|zsh|fish|powershell|elvish` registers the\nshort alias",
+    "Help and shell completions are generated for the invoked command name",
+    "`fw --help` prints\n`Usage: fw`",
+    "`fw completion bash|zsh|fish|powershell|elvish` registers\nthe short alias",
     "scripts/smoke-local-handoff.sh",
     "default `claude` session, a `bash` session, and a `vim` TUI session",
     "mobile-kind clients cannot create sessions, kill sessions, or emit agent-state hook events",
@@ -1108,6 +1109,8 @@ function verifyArchitectureDoc() {
     "The meta package exposes `fieldwork`, `fw`, and `fieldworkd` through npm",
     "`fieldwork` and the short `fw` alias both point at the same CLI dispatcher in `bin/fieldwork`",
     "the CLI dispatcher (`fieldwork`/`fw`) and daemon dispatcher fall back to the platform package",
+    "Native help and completion generation use the invoked binary name",
+    "`fw --help` renders `Usage: fw`",
     "`dist-workspace.toml` keeps cargo-dist in archive/audit mode only",
   ]) {
     requireText(docs.architecture, needle, `docs/ARCHITECTURE.md must document current architecture: ${needle}`);
