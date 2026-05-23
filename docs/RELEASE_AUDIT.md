@@ -874,6 +874,25 @@ in `pair_flow_ms=423`, and
 `/tmp/fieldwork-fw-direct-pair-20260520152507/dashboard-crash.log` was empty;
 and the debug APK was restored to `FIELDWORK_BIOMETRIC_BYPASS = false` and
 `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`.
+A 2026-05-23 direct adb refresh under
+`/tmp/fieldwork-adb-direct-20260523103948` repeated that first-live-test shape
+against the current tree without an Android wrapper smoke script. The default
+debug APK launched locked in `TotalTime=1922ms`; a temp npm-layout `fw` shim
+with sibling `fieldworkd` symlink created auto-named `widget`; `fw refactoringjob`
+created the named Claude session; and `fieldwork new --name shell` created a
+desktop-owned shell. Android paired through the actual Pair UI and explicit
+desktop approval, the dashboard showed `widget`,
+`refactoringjob`, and `shell`, app logcat showed `FieldworkRepository: pair
+completed` plus `FieldworkRepository: listSessions returned 3 sessions`,
+Android attached to `shell`, sent `fw_android_live_ok`, and
+`terminal-replay-clean.txt` contained `android-direct: fw_android_live_ok`. A
+force-stop/relaunch restored the paired dashboard in `TotalTime=1266ms` with
+that scrollback. The debug APK was rebuilt/reinstalled afterward,
+`BuildConfig.java` showed `FIELDWORK_BIOMETRIC_BYPASS = false` and
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, the restored locked launch completed in
+`TotalTime=1321ms`, and all Fieldwork crash/ANR scans plus crash buffers were
+empty. This remains debug-emulator evidence only, not physical release-device
+evidence.
 A direct adb empty-dashboard refresh then paired an isolated release daemon with
 no pre-existing sessions through explicit desktop approval and captured
 `/tmp/fieldwork-empty-direct-20260520162209/empty-dashboard.png` plus

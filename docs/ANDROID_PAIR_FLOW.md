@@ -10,6 +10,17 @@ The pass condition is real QR pairing plus explicit desktop approval in
 desktop-created sessions. This is a QA-only use of USB debugging; end users do
 not need adb or debugging enabled.
 
+Latest local substitute: on 2026-05-23, direct adb emulator evidence under
+`/tmp/fieldwork-adb-direct-20260523103948` paired the actual Android Pair UI to
+an isolated release daemon through explicit desktop approval, showed `widget`,
+`refactoringjob`, and `shell` on the dashboard, proved Android-originated shell
+input with `android-direct: fw_android_live_ok` in a desktop replay, restored
+the paired dashboard after app relaunch, and restored the default debug build
+with `FIELDWORK_BIOMETRIC_BYPASS = false` and
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`. This is debug-emulator confidence only;
+the release gate below still requires a physical phone, a signed release build,
+and the real QR camera scan.
+
 ## Scope
 
 - Use a physical Android phone, not an emulator or AVD.
