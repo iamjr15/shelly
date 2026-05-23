@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { verifyPhysicalAndroidAdbDevices } from "./android-evidence-common.mjs";
 
 const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 const failures = [];
@@ -59,27 +60,7 @@ if (failures.length > 0) {
 console.log(`Android background/foreground evidence ok: ${evidenceDir}`);
 
 function verifyAdbDevices(text) {
-  requirePatternText(text, /^List of devices attached\b/im, "adb-devices.txt must include adb devices output");
-  const authorizedDevices = text
-    .split(/\r?\n/)
-    .filter((line) => /^[^\s#][^\n]*\s+device(?:\s|$)/i.test(line));
-  if (authorizedDevices.length === 0) {
-    failures.push("adb-devices.txt must show exactly one authorized physical Android device");
-  } else if (authorizedDevices.length > 1) {
-    failures.push(
-      `adb-devices.txt must show exactly one authorized physical Android device, found ${authorizedDevices.length}`,
-    );
-  }
-  rejectPatternText(
-    text,
-    /^(?:emulator-\d+|[^\n]*(?:\bsdk_gphone\b|\bsdk_gphone64\b|\bgeneric_x86\b|\bgeneric_x86_64\b|\bgoldfish\b|\branchu\b|\bqemu\b|\bavd\b|\bdevice:emu[^\s]*\b))[^\n]*\s+device(?:\s|$)/im,
-    "adb-devices.txt must show a physical Android phone, not an emulator or AVD",
-  );
-  rejectPatternText(
-    text,
-    /\b(?:unauthorized|offline|no permissions)\b/i,
-    "adb-devices.txt must not show the tested device as unauthorized, offline, or inaccessible",
-  );
+  verifyPhysicalAndroidAdbDevices(text, failures);
 }
 
 function verifyArtifactSigning(text) {

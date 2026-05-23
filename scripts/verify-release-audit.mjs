@@ -27,7 +27,24 @@ const localHandoff = read("scripts/smoke-local-handoff.sh");
 const domainStatus = read("scripts/check-domain-status.mjs");
 const githubNamespace = read("scripts/check-github-namespace.mjs");
 const androidEmulatorAll = read("scripts/smoke-android-emulator-all.sh");
+const androidEvidenceCommon = read("scripts/android-evidence-common.mjs");
 const packageJson = JSON.parse(read("package.json"));
+const androidPhysicalEvidenceVerifierPaths = [
+  "scripts/verify-live-testing-evidence.mjs",
+  "scripts/verify-android-pair-flow-evidence.mjs",
+  "scripts/verify-android-session-subscription-evidence.mjs",
+  "scripts/verify-android-terminal-attach-evidence.mjs",
+  "scripts/verify-android-resize-detach-evidence.mjs",
+  "scripts/verify-android-biometric-evidence.mjs",
+  "scripts/verify-android-dogfood-evidence.mjs",
+  "scripts/verify-android-cold-start-evidence.mjs",
+  "scripts/verify-android-renderer-flood-evidence.mjs",
+  "scripts/verify-android-background-foreground-evidence.mjs",
+  "scripts/verify-android-network-reconnect-evidence.mjs",
+  "scripts/verify-android-restart-restore-evidence.mjs",
+  "scripts/verify-android-multisession-evidence.mjs",
+  "scripts/verify-android-fcm-push-evidence.mjs",
+];
 
 verifyCurrentVerdict();
 verifyPromptToArtifactChecklist();
@@ -719,6 +736,11 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "current v1 install, protocol, privacy, architecture, Android renderer, Android pair flow, Android session subscription, Android terminal attach, Android resize/detach, Android biometric, Android dogfood, Android cold-start, Android renderer flood, Android background/foreground, Android network reconnect, Android restart restore, Android multisession, Android FCM push, relay Honeycomb evidence, hosted Sentry receipt evidence, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
     "release audit must record concrete docs-sync coverage",
+  );
+  requireText(
+    audit,
+    "shared `scripts/android-evidence-common.mjs` physical-phone adb guard",
+    "release audit must record shared Android physical-device adb evidence guard coverage",
   );
   requireText(
     audit,
@@ -2749,6 +2771,44 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include release-artifact verifier coverage");
   requireText(localRelease, "scripts/test-npm-artifact-pack.mjs", "local release gate must include npm artifact-pack coverage");
   requireText(localRelease, "scripts/test-android-pair-button-picker.mjs", "local release gate must include Android pair-button picker coverage");
+  requireText(
+    androidEvidenceCommon,
+    "verifyPhysicalAndroidAdbDevices",
+    "shared Android evidence helper must export the physical adb verifier",
+  );
+  requireText(
+    androidEvidenceCommon,
+    "exactly one authorized physical Android device",
+    "shared Android evidence helper must require exactly one authorized physical device",
+  );
+  requireText(
+    androidEvidenceCommon,
+    "physical Android phone, not an emulator or AVD",
+    "shared Android evidence helper must reject emulators and AVDs",
+  );
+  requireText(
+    androidEvidenceCommon,
+    "unauthorized, offline, or inaccessible",
+    "shared Android evidence helper must reject unusable adb states",
+  );
+  for (const verifierPath of androidPhysicalEvidenceVerifierPaths) {
+    const verifier = read(verifierPath);
+    requireText(
+      verifier,
+      'import { verifyPhysicalAndroidAdbDevices } from "./android-evidence-common.mjs";',
+      `${verifierPath} must import the shared Android physical-device adb verifier`,
+    );
+    requireText(
+      verifier,
+      "verifyPhysicalAndroidAdbDevices(text, failures)",
+      `${verifierPath} must delegate adb-device validation to the shared helper`,
+    );
+    rejectText(
+      verifier,
+      "const authorizedDevices = text",
+      `${verifierPath} must not carry a private duplicate adb-device parser`,
+    );
+  }
   requireText(localRelease, "scripts/verify-npm-packages.mjs\", \"--require-binaries", "artifact-aware local release gate must include staged npm binary verification");
   requireText(localRelease, "scripts/publish-npm-packages.mjs\", \"--check-ready", "artifact-aware local release gate must include publish-readiness verification");
   requireText(localRelease, "cleanNpmEnv()", "local release gate must clean noisy inherited npm config before dry-run pack");
