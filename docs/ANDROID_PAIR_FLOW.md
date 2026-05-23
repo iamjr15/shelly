@@ -29,6 +29,8 @@ and the real QR camera scan.
 - Pair through the real QR scanner and explicit desktop approval.
 - Capture evidence with direct `adb`: device listing, dashboard screenshot, UI
   dump, app logcat, crash buffer, and desktop pairing/session transcripts.
+- Evidence must contain no Android fatal/ANR logcat entries, no Android system
+  not-responding overlays, and empty crash buffers after `adb logcat -c`.
 
 ## Evidence Directory
 

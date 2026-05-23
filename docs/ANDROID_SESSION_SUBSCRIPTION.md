@@ -19,6 +19,8 @@ when the desktop reattaches to the same daemon-owned PTY.
   gate, using the same constraints as `docs/ANDROID_PAIR_FLOW.md`.
 - Capture evidence with direct `adb`: device listing, dashboard screenshot, UI
   dumps, app logcat, crash buffer, and desktop CLI/PTY transcripts.
+- Evidence must contain no Android fatal/ANR logcat entries, no Android system
+  not-responding overlays, and empty crash buffers after `adb logcat -c`.
 - Mobile must not create sessions, kill sessions, or choose commands.
 
 This is a QA-only use of USB debugging; end users do not need adb or debugging

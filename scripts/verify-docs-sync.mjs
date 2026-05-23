@@ -53,6 +53,7 @@ verifyAndroidNetworkReconnectDoc();
 verifyAndroidRestartRestoreDoc();
 verifyAndroidMultisessionDoc();
 verifyAndroidFcmPushDoc();
+verifyAndroidCleanEvidenceContracts();
 verifyRelayHoneycombDoc();
 verifySentryReceiptDoc();
 verifyMacosDaemonSurvivalDoc();
@@ -105,6 +106,39 @@ function verifyRequiredDocsExist() {
     if (fs.statSync(fullPath).size < 200) {
       failures.push(`${rel} is unexpectedly small`);
     }
+  }
+}
+
+function verifyAndroidCleanEvidenceContracts() {
+  const cleanEvidenceNeedles = [
+    "Evidence must contain no Android fatal/ANR logcat entries",
+    "no Android system\n  not-responding overlays",
+    "empty crash buffers after `adb logcat -c`",
+  ];
+  for (const [name, text] of [
+    ["docs/ANDROID_PAIR_FLOW.md", docs.androidPairFlow],
+    ["docs/ANDROID_SESSION_SUBSCRIPTION.md", docs.androidSessionSubscription],
+    ["docs/ANDROID_TERMINAL_ATTACH.md", docs.androidTerminalAttach],
+    ["docs/ANDROID_RESIZE_DETACH.md", docs.androidResizeDetach],
+    ["docs/ANDROID_BIOMETRIC.md", docs.androidBiometric],
+    ["docs/ANDROID_COLD_START.md", docs.androidColdStart],
+    ["docs/ANDROID_RENDERER_FLOOD.md", docs.androidRendererFlood],
+    ["docs/ANDROID_BACKGROUND_FOREGROUND.md", docs.androidBackgroundForeground],
+    ["docs/ANDROID_NETWORK_RECONNECT.md", docs.androidNetworkReconnect],
+    ["docs/ANDROID_RESTART_RESTORE.md", docs.androidRestartRestore],
+    ["docs/ANDROID_MULTISESSION.md", docs.androidMultisession],
+    ["docs/ANDROID_FCM_PUSH.md", docs.androidFcmPush],
+  ]) {
+    for (const needle of cleanEvidenceNeedles) {
+      requireText(text, needle, `${name} must document strict Android clean evidence: ${needle}`);
+    }
+  }
+  for (const needle of [
+    "Evidence must contain no Android fatal/ANR logcat entries",
+    "no Android system\nnot-responding overlays",
+    "empty crash buffers after `adb logcat -c`",
+  ]) {
+    requireText(docs.androidDogfood, needle, `docs/ANDROID_DOGFOOD.md must document strict Android clean evidence: ${needle}`);
   }
 }
 

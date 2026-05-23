@@ -19,6 +19,8 @@ hashes, and notification tap-through into the correct daemon-owned session.
 - Do not use a debug build, biometric bypass, or debug pairing payload.
 - Capture evidence with direct `adb`: device listing, notification screenshot,
   UI dumps, app logcat, crash buffer, and desktop PTY replay.
+- Evidence must contain no Android fatal/ANR logcat entries, no Android system
+  not-responding overlays, and empty crash buffers after `adb logcat -c`.
 
 ## Evidence Directory
 

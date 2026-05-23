@@ -22,6 +22,8 @@ last-known session metadata and restored scrollback for this path.
 - Capture evidence with direct `adb`: device listing, restored dashboard and
   terminal screenshots, UI dumps, app logcat, crash buffer, and desktop daemon
   restart/replay transcripts.
+- Evidence must contain no Android fatal/ANR logcat entries, no Android system
+  not-responding overlays, and empty crash buffers after `adb logcat -c`.
 
 This is a QA-only use of USB debugging; end users do not need adb or debugging
 enabled.

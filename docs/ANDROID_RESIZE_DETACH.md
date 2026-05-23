@@ -21,6 +21,8 @@ the corresponding Android actions.
 - Capture evidence with direct `adb`: device listing, resize/detach
   screenshots, UI dumps, app logcat, crash buffers, and desktop PTY replay
   transcripts.
+- Evidence must contain no Android fatal/ANR logcat entries, no Android system
+  not-responding overlays, and empty crash buffers after `adb logcat -c`.
 - Mobile must not create sessions, kill sessions, or choose commands.
 
 This is a QA-only use of USB debugging; end users do not need adb or debugging

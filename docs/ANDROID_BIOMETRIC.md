@@ -21,6 +21,8 @@ blocked.
   gate, using the same constraints as `docs/ANDROID_PAIR_FLOW.md`.
 - Capture evidence with direct `adb`: device listing, locked and biometric
   screenshots, UI dumps, app logcat, crash buffers, and a stale-input transcript.
+- Evidence must contain no Android fatal/ANR logcat entries, no Android system
+  not-responding overlays, and empty crash buffers after `adb logcat -c`.
 
 This is a QA-only use of USB debugging; end users do not need adb or debugging
 enabled.
