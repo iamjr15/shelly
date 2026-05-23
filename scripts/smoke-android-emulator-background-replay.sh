@@ -293,6 +293,7 @@ adb -s "$serial" shell pm clear "$package" >/dev/null
 adb -s "$serial" shell pm grant "$package" android.permission.CAMERA >/dev/null 2>&1 || true
 adb -s "$serial" shell pm grant "$package" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
 adb -s "$serial" logcat -c
+adb -s "$serial" logcat -b crash -c
 adb -s "$serial" shell am force-stop "$package"
 adb -s "$serial" shell am start -W -n "$activity" >"$tmp_dir/launch.log"
 

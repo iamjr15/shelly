@@ -92,6 +92,10 @@ outside this shell:
   `TotalTime=2467ms`, confirmed the locked `Unlock` surface through
   `uiautomator`, found no Fieldwork crash-buffer entry, and verified a nonblank
   1080x2400 `screencap` with 14391/14400 nonblack samples.
+  Each focused smoke clears main logcat plus the crash buffer before collecting
+  current-run crash evidence; the final crash/ANR logcat rejection stays
+  Fieldwork-scoped because Play Store AVDs can emit unrelated Google-service
+  ANRs.
   `FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true pnpm test:android-debug-smoke`
   exists only for debug emulator QA on AVDs without enrolled biometrics; the
   bypass is debug-build-only, requires `BuildConfig.DEBUG`, and release builds

@@ -404,6 +404,7 @@ adb -s "$serial" shell pm clear "$package" >/dev/null
 adb -s "$serial" shell pm grant "$package" android.permission.CAMERA >/dev/null 2>&1 || true
 adb -s "$serial" shell pm grant "$package" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
 adb -s "$serial" logcat -c
+adb -s "$serial" logcat -b crash -c
 launch_app "$tmp_dir/launch.log"
 
 ui_xml="$tmp_dir/ui-before-pair.xml"

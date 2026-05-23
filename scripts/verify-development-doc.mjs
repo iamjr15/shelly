@@ -875,6 +875,11 @@ function verifyWiring(allFiles) {
     "scripts/smoke-android-emulator-notification-tap.sh",
   ]) {
     requireText(allFiles.androidEmulatorAll, script, `Android emulator aggregate must run ${script}`);
+    requireText(
+      read(script),
+      'adb -s "$serial" logcat -b crash -c',
+      `${script} must clear the Android crash log before collecting smoke evidence`,
+    );
   }
   requireText(allFiles.androidEmulatorAll, "--list", "Android emulator aggregate must expose a list mode");
   requireText(allFiles.androidEmulatorAll, "boot-complete", "Android emulator aggregate must require a boot-complete device");

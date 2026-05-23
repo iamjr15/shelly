@@ -1550,6 +1550,8 @@ function verifyExternalBlockers() {
     "notify_tap_ok",
     "TotalTime=2467ms",
     "14391/14400 nonblack samples",
+    "clears main logcat plus the crash buffer",
+    "Fieldwork-scoped because Play Store AVDs can emit unrelated Google-service\n  ANRs",
     "background Google-service ANRs",
     "macOS launchd and sleep/wake survival checks",
     "at least 70 GiB free in `~/Downloads`",
@@ -2820,6 +2822,11 @@ function verifyVerifierIsWired() {
     "scripts/smoke-android-emulator-notification-tap.sh",
   ]) {
     requireText(androidEmulatorAll, script, `Android emulator aggregate must run ${script}`);
+    requireText(
+      read(script),
+      'adb -s "$serial" logcat -b crash -c',
+      `${script} must clear the Android crash log before collecting smoke evidence`,
+    );
   }
   requireText(androidEmulatorAll, "--list", "Android emulator aggregate must expose a list mode");
   requireText(androidEmulatorAll, "boot-complete", "Android emulator aggregate must require a boot-complete device");

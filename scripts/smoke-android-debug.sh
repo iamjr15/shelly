@@ -37,6 +37,7 @@ if [[ "$biometric_bypass" == "true" ]]; then
   adb -s "$serial" shell pm grant "$package" android.permission.CAMERA >/dev/null 2>&1 || true
 fi
 adb -s "$serial" logcat -c
+adb -s "$serial" logcat -b crash -c
 adb -s "$serial" shell am force-stop "$package"
 for _ in {1..50}; do
   if ! adb -s "$serial" shell pidof "$package" >/dev/null 2>&1; then
