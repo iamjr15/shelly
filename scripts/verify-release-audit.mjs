@@ -1739,6 +1739,11 @@ function verifyLatestRefresh() {
   requireText(plan, "latest local `pnpm check:secret-boundaries` run scanned 40 retained non-relay artifacts and still passed", "PLAN.md must record the current post-cleanup secret-boundary scan");
   requireText(plan, "verifier now streams artifact scans instead of materializing large native binaries as one string", "PLAN.md must record streaming artifact secret-boundary scans");
   requireText(plan, "missing-token publish rejection before `npm` is invoked", "PLAN.md must record the npm publish missing-token guard in implementation notes");
+  requireText(
+    plan,
+    "fallback preservation of the invoked `fieldwork`/`fw` alias through `FIELDWORK_CLI_BIN_NAME` plus `argv0`",
+    "PLAN.md must record npm dispatcher alias preservation through fallback",
+  );
   requireText(plan, "has a Terraform Validate job that installs Terraform 1.5.7 and runs the shared cleanup-on-exit Terraform fmt/init/validate script against the Oracle scaffold", "PLAN.md must record the CI Terraform validation job");
   for (const artifact of [
     "`packages/cli-darwin-arm64/bin/fieldwork`",
