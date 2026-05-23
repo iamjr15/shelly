@@ -22,6 +22,24 @@ try {
   );
   expectStatus(emulator, 1, "emulator adb device should fail", "adb-devices.txt must show a physical Android phone");
 
+  const multipleDevices = path.join(temp, "multiple-devices");
+  writeFixture(multipleDevices);
+  fs.writeFileSync(
+    path.join(multipleDevices, "adb-devices.txt"),
+    [
+      "List of devices attached",
+      "R58M1234567 device product:panther model:Pixel_8_Pro device:panther transport_id:1",
+      "R58M7654321 device product:oriole model:Pixel_6 device:oriole transport_id:2",
+      "",
+    ].join("\n"),
+  );
+  expectStatus(
+    multipleDevices,
+    1,
+    "multiple authorized adb devices should fail",
+    "adb-devices.txt must show exactly one authorized physical Android device, found 2",
+  );
+
   const debugBuild = path.join(temp, "debug-build");
   writeFixture(debugBuild);
   fs.writeFileSync(

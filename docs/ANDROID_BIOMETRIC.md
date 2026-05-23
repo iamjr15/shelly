@@ -13,7 +13,7 @@ blocked.
 
 ## Scope
 
-- Use a physical Android phone with biometrics enrolled, not an emulator or
+- Use exactly one physical Android phone with biometrics enrolled, not an emulator or
   AVD.
 - Install the signed release App Bundle output or APKs produced from it.
 - Do not use a debug build, biometric bypass, or debug pairing payload.

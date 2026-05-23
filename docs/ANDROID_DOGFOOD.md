@@ -12,7 +12,7 @@ kill sessions, or choose commands.
 
 ## Prerequisites
 
-- One physical Android phone with biometrics enrolled.
+- Exactly one physical Android phone with biometrics enrolled.
 - Android app installed from the current checkout or release candidate.
 - `FIELDWORK_BIOMETRIC_BYPASS = false`.
 - `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`.

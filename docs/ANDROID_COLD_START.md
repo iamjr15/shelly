@@ -10,7 +10,7 @@ locked biometric surface visible before session access.
 
 ## Scope
 
-- Use a physical Android phone, not an emulator or AVD.
+- Use exactly one physical Android phone, not an emulator or AVD.
 - Install the signed release App Bundle output or APKs produced from it.
 - Do not use a debug build, biometric bypass, or debug pairing payload.
 - Capture evidence with direct `adb`: device listing, install transcript,

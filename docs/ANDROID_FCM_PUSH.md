@@ -11,7 +11,7 @@ hashes, and notification tap-through into the correct daemon-owned session.
 
 ## Scope
 
-- Use a physical Android phone, not an emulator or AVD.
+- Use exactly one physical Android phone, not an emulator or AVD.
 - Install the signed release App Bundle output or APKs produced from it.
 - Use the production relay control plane with relay-held FCM service-account
   JSON. The daemon and Android app must not hold APNs or FCM provider

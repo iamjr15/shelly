@@ -55,11 +55,16 @@ console.log(`Android cold-start evidence ok: ${evidenceDir}`);
 
 function verifyAdbDevices(text) {
   requirePatternText(text, /^List of devices attached\b/im, "adb-devices.txt must include adb devices output");
-  requirePatternText(
-    text,
-    /^[^\s#][^\n]*\s+device(?:\s|$)/im,
-    "adb-devices.txt must show at least one authorized physical Android device",
-  );
+  const authorizedDevices = text
+    .split(/\r?\n/)
+    .filter((line) => /^[^\s#][^\n]*\s+device(?:\s|$)/i.test(line));
+  if (authorizedDevices.length === 0) {
+    failures.push("adb-devices.txt must show exactly one authorized physical Android device");
+  } else if (authorizedDevices.length > 1) {
+    failures.push(
+      `adb-devices.txt must show exactly one authorized physical Android device, found ${authorizedDevices.length}`,
+    );
+  }
   rejectPatternText(
     text,
     /^(?:emulator-\d+|[^\n]*(?:\bsdk_gphone\b|\bsdk_gphone64\b|\bgeneric_x86\b|\bgeneric_x86_64\b|\bgoldfish\b|\branchu\b|\bqemu\b|\bavd\b|\bdevice:emu[^\s]*\b))[^\n]*\s+device(?:\s|$)/im,
