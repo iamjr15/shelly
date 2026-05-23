@@ -171,6 +171,7 @@ fun FieldworkApp(
                                 } else {
                                     PairingScreen(
                                         padding = padding,
+                                        pairing = state.loading,
                                         onPair = viewModel::pair,
                                     )
                                 }

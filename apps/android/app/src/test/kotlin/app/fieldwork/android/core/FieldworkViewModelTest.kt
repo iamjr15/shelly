@@ -280,6 +280,48 @@ class FieldworkViewModelTest {
     }
 
     @Test
+    fun duplicatePairWhileFirstPairIsInFlightIsIgnored() {
+        val pairStarted = CountDownLatch(1)
+        val releasePair = CountDownLatch(1)
+        val repository = FakeRepository(
+            restoredPairing = null,
+            pairResult = testPairing(),
+            onPair = {
+                pairStarted.countDown()
+                assertTrue(releasePair.await(2, TimeUnit.SECONDS))
+            },
+        )
+        val repositoryDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        try {
+            val viewModel = FieldworkViewModel(
+                context,
+                repository,
+                FakeFcmTokenSource(pending = null, current = null),
+                restoreDispatcher = Dispatchers.Unconfined,
+                repositoryDispatcher = repositoryDispatcher,
+            )
+            drainMainLooper()
+            viewModel.setUnlocked(true)
+
+            viewModel.pair("fieldwork-pair:v1:first")
+            drainMainLooper()
+            assertTrue(pairStarted.await(1, TimeUnit.SECONDS))
+            assertTrue(viewModel.state.value.loading)
+
+            viewModel.pair("fieldwork-pair:v1:second")
+            drainMainLooper()
+            assertEquals(listOf("fieldwork-pair:v1:first"), repository.pairedPayloads)
+
+            releasePair.countDown()
+            waitForState { viewModel.state.value.paired && !viewModel.state.value.loading }
+
+            assertEquals(listOf("fieldwork-pair:v1:first"), repository.pairedPayloads)
+        } finally {
+            repositoryDispatcher.close()
+        }
+    }
+
+    @Test
     fun constructorDoesNotBlockOnSavedPairingRestore() {
         val restoreStarted = CountDownLatch(1)
         val restoreRelease = CountDownLatch(1)
@@ -519,12 +561,14 @@ class FieldworkViewModelTest {
         private val initialSubscriptionSessions: List<MobileSession>? = sessions,
         private val attachedSessions: ArrayDeque<AttachedSession> = ArrayDeque(),
         private val onRestore: (() -> Unit)? = null,
+        private val onPair: ((String) -> Unit)? = null,
         private val onListSessions: (() -> Unit)? = null,
         private val onAttach: ((ULong?) -> Unit)? = null,
     ) : FieldworkRepositoryClient {
         override var savedPairing: PairedDaemonRecord? = null
             private set
         val registeredFcmTokens = mutableListOf<String>()
+        val pairedPayloads = mutableListOf<String>()
         var pairedPayload: String? = null
             private set
         var clearCalls = 0
@@ -540,7 +584,9 @@ class FieldworkViewModelTest {
         }
 
         override suspend fun pair(qrPayload: String) {
+            pairedPayloads += qrPayload
             pairedPayload = qrPayload
+            onPair?.invoke(qrPayload)
             savedPairing = pairResult
         }
 

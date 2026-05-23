@@ -47,7 +47,7 @@ import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PairingScreen(padding: PaddingValues, onPair: (String) -> Unit) {
+fun PairingScreen(padding: PaddingValues, pairing: Boolean, onPair: (String) -> Unit) {
     var payload by remember { mutableStateOf(debugPairingPayload()) }
     val context = LocalContext.current
     var cameraGranted by remember {
@@ -79,7 +79,7 @@ fun PairingScreen(padding: PaddingValues, onPair: (String) -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(320.dp),
-                    onPayload = onPair,
+                    onPayload = { if (!pairing) onPair(it) },
                 )
             }
 
@@ -94,7 +94,7 @@ fun PairingScreen(padding: PaddingValues, onPair: (String) -> Unit) {
             Spacer(modifier = Modifier.height(12.dp))
             Button(
                 onClick = { onPair(payload.trim()) },
-                enabled = payload.isNotBlank(),
+                enabled = payload.isNotBlank() && !pairing,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Default.QrCodeScanner, contentDescription = null)

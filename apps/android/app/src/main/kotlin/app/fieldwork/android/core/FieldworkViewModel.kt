@@ -83,12 +83,19 @@ class FieldworkViewModel internal constructor(
     }
 
     fun pair(qrPayload: String) {
+        if (_state.value.loading) {
+            return
+        }
         restoreGeneration += 1
         restoreJob?.cancel()
         restoreJob = null
-        _state.value = _state.value.copy(restoringPairing = false)
+        _state.value = _state.value.copy(
+            restoringPairing = false,
+            loading = true,
+            message = null,
+        )
         viewModelScope.launch {
-            runLoading {
+            try {
                 withContext(repositoryDispatcher) {
                     repository.pair(qrPayload)
                 }
@@ -102,6 +109,10 @@ class FieldworkViewModel internal constructor(
                     loadSessions()
                     syncFcmToken()
                 }
+            } catch (error: Throwable) {
+                _state.value = _state.value.copy(message = error.message ?: error.toString())
+            } finally {
+                _state.value = _state.value.copy(loading = false)
             }
         }
     }
