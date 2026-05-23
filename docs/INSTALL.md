@@ -57,9 +57,10 @@ target/debug/fieldwork completion zsh
 target/debug/fieldwork completion fish
 ```
 
-After npm install, `fw completion bash|zsh|fish|powershell|elvish` generates a
-completion script registered for the short `fw` alias. Running the same
-subcommand through `fieldwork` registers completions for the long command name.
+After npm install, `fw --help` prints `Usage: fw`, and
+`fw completion bash|zsh|fish|powershell|elvish` generates a completion script
+registered for the short `fw` alias. Running the same subcommand through
+`fieldwork` registers completions for the long command name.
 
 Installed npm builds check the npm registry at most once per day for a newer `fieldwork`. The notice is printed to stderr for human-facing commands only and never downloads an update; use `npm update -g fieldwork` to update both `fieldwork` and `fieldworkd`. Set `FIELDWORK_DISABLE_UPDATE_CHECK=1` to suppress the registry check.
 

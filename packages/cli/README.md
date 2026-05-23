@@ -48,9 +48,9 @@ Running `fw refactoringjob` attaches that named session when it exists, or
 creates and attaches a default `claude` PTY named `refactoringjob` when it does
 not. The same daemon session name appears in the mobile app dashboard.
 
-Shell completions follow the command used to generate them. `fw completion bash`
-registers the short alias, while `fieldwork completion bash` registers the long
-command.
+Help and shell completions follow the command used to invoke them. `fw --help`
+prints `Usage: fw`, `fw completion bash` registers the short alias, and
+`fieldwork completion bash` registers the long command.
 
 The default desktop command can be `claude`, but arbitrary PTY commands are
 supported. Mobile clients can pair, list sessions, attach, send input, resize,

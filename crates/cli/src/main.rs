@@ -5,7 +5,7 @@ mod settings;
 mod update_notice;
 
 use anyhow::{Context, Result, bail};
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use clap_complete::Shell;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use fieldwork_protocol::{
@@ -196,7 +196,7 @@ enum HookCommand {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = parse_cli_for_current_invocation();
     if should_check_update_notice(cli.command.as_ref()) {
         update_notice::maybe_print_update_notice().await;
     }
@@ -304,6 +304,33 @@ async fn main() -> Result<()> {
     }
 }
 
+fn parse_cli_for_current_invocation() -> Cli {
+    let command = cli_command_for_current_invocation();
+    let matches = command.get_matches();
+    Cli::from_arg_matches(&matches).unwrap_or_else(|err| err.exit())
+}
+
+fn cli_command_for_current_invocation() -> clap::Command {
+    cli_command_with_bin_name(invoked_cli_bin_name())
+}
+
+fn cli_command_with_bin_name(bin_name: String) -> clap::Command {
+    let bin_name = static_cli_bin_name(bin_name);
+    Cli::command().name(bin_name).bin_name(bin_name)
+}
+
+fn static_cli_bin_name(bin_name: String) -> &'static str {
+    match bin_name.as_str() {
+        "fieldwork" => "fieldwork",
+        "fw" => "fw",
+        _ => {
+            // clap stores command names as static strings; unusual symlink aliases are parsed once per process.
+            let bin_name: &'static str = Box::leak(bin_name.into_boxed_str());
+            bin_name
+        }
+    }
+}
+
 fn should_check_update_notice(command: Option<&Command>) -> bool {
     matches!(
         command,
@@ -317,12 +344,16 @@ fn should_check_update_notice(command: Option<&Command>) -> bool {
 }
 
 fn print_completion(shell: Shell) {
-    let mut command = Cli::command();
-    let bin_name = completion_bin_name_with_override(
+    let bin_name = invoked_cli_bin_name();
+    let mut command = cli_command_with_bin_name(bin_name.clone());
+    clap_complete::generate(shell, &mut command, bin_name, &mut std::io::stdout());
+}
+
+fn invoked_cli_bin_name() -> String {
+    completion_bin_name_with_override(
         std::env::var_os("FIELDWORK_CLI_BIN_NAME"),
         std::env::args_os().next(),
-    );
-    clap_complete::generate(shell, &mut command, bin_name, &mut std::io::stdout());
+    )
 }
 
 fn completion_bin_name_with_override(
@@ -1012,9 +1043,10 @@ impl Drop for RawMode {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUTO_SESSION_NAMES, Cli, Command, HookCommand, auto_session_name, codex_state_from_json,
-        codex_states_from_payload, completion_bin_name_with_override, normalize_session_name,
-        parse_named_shortcut_args, should_check_update_notice,
+        AUTO_SESSION_NAMES, Cli, Command, HookCommand, auto_session_name,
+        cli_command_with_bin_name, codex_state_from_json, codex_states_from_payload,
+        completion_bin_name_with_override, normalize_session_name, parse_named_shortcut_args,
+        should_check_update_notice,
     };
     use clap::Parser;
     use clap_complete::Shell;
@@ -1131,6 +1163,18 @@ mod tests {
             ),
             "fw"
         );
+    }
+
+    #[test]
+    fn help_usage_follows_invoked_alias() {
+        let mut fw_command = cli_command_with_bin_name("fw".to_string());
+        let fw_help = fw_command.render_help().to_string();
+        assert!(fw_help.contains("Usage: fw [COMMAND]"));
+        assert!(!fw_help.contains("Usage: fieldwork [COMMAND]"));
+
+        let mut fieldwork_command = cli_command_with_bin_name("fieldwork".to_string());
+        let fieldwork_help = fieldwork_command.render_help().to_string();
+        assert!(fieldwork_help.contains("Usage: fieldwork [COMMAND]"));
     }
 
     #[test]
