@@ -1985,7 +1985,7 @@ function verifyLatestRefresh() {
   requireText(audit, "rejects `last_line`, command, path, and session-name", "release audit must record free-text push-field rejection coverage");
   requireText(audit, "Mobile notification ingress now mirrors that contract", "release audit must record native notification hash-validation coverage");
   requireText(audit, "focused Android JVM unit coverage", "release audit must record Android notification hash unit-test coverage");
-  requireText(audit, "`c2fc1d75969363faab67b861b34dfcd51f24e64fbbc2a777e673bcb50b1c7047`", "release audit must record the current Android release AAB SHA-256");
+  requireText(audit, "`875fbfb608f0eb937bbaf466f5299b111611f9d48ada8ffdc59c4bbb30c7c099`", "release audit must record the current Android release AAB SHA-256");
   requireText(audit, "`--expect-unsigned`", "release audit must record local unsigned AAB verification");
   requireText(audit, "`--expect-signed`", "release audit must record signed AAB verification policy");
   requireText(audit, "`jar is unsigned`", "release audit must record local jarsigner unsigned result");
