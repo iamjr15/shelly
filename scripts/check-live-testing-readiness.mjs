@@ -130,24 +130,14 @@ function checkAdbState({ localOnly, failures, pending, ok }) {
     return;
   }
 
-  const adbFailures = [];
-  verifyPhysicalAndroidAdbDevices(adb.stdout, adbFailures, { file: "adb devices -l" });
-  const devices = parseAdbDevices(adb.stdout);
-  const hasAnyDevice = devices.length > 0;
-  const hasAuthorizedDevice = devices.some((device) => device.state === "device");
+  const adbState = evaluateAdbStateText(adb.stdout, { localOnly });
+  ok.push(...adbState.ok);
+  pending.push(...adbState.pending);
+  failures.push(...adbState.failures);
 
-  if (adbFailures.length === 0) {
-    ok.push("exactly one authorized physical Android phone is connected over adb");
+  if (adbState.physicalReady) {
     checkInstalledAndroidPackage({ failures, ok });
-    return;
   }
-
-  if (localOnly && !hasAnyDevice && !hasAuthorizedDevice) {
-    pending.push("connect exactly one authorized physical Android phone before the evidence pass");
-    return;
-  }
-
-  failures.push(...adbFailures);
 }
 
 function checkInstalledAndroidPackage({ failures, ok }) {
@@ -163,6 +153,28 @@ function checkInstalledAndroidPackage({ failures, ok }) {
     return;
   }
   ok.push("app.fieldwork.android is installed on the connected adb device");
+}
+
+function evaluateAdbStateText(text, { localOnly }) {
+  const ok = [];
+  const pending = [];
+  const failures = [];
+  const adbFailures = [];
+  verifyPhysicalAndroidAdbDevices(text, adbFailures, { file: "adb devices -l" });
+  const devices = parseAdbDevices(text);
+
+  if (adbFailures.length === 0) {
+    ok.push("exactly one authorized physical Android phone is connected over adb");
+    return { failures, ok, pending, physicalReady: true };
+  }
+
+  if (localOnly && devices.length === 0) {
+    pending.push("connect exactly one authorized physical Android phone before the evidence pass");
+    return { failures, ok, pending, physicalReady: false };
+  }
+
+  failures.push(...adbFailures);
+  return { failures, ok, pending, physicalReady: false };
 }
 
 function parseAdbDevices(text) {
@@ -274,22 +286,46 @@ function runSelfTest() {
   verifyPhysicalAndroidAdbDevices("List of devices attached\n\n", emptyAdbFailures, { file: "adb devices -l" });
   expect(emptyAdbFailures.some((failure) => failure.includes("exactly one authorized physical")), "empty adb output should fail physical-device verification");
   expectEqual(parseAdbDevices("List of devices attached\n\n").length, 0, "empty adb output should parse zero devices");
+  expectDeepEqual(
+    evaluateAdbStateText("List of devices attached\n\n", { localOnly: true }),
+    {
+      failures: [],
+      ok: [],
+      pending: ["connect exactly one authorized physical Android phone before the evidence pass"],
+      physicalReady: false,
+    },
+    "local-only empty adb output should be pending",
+  );
+  expect(
+    evaluateAdbStateText("List of devices attached\n\n", { localOnly: false }).failures.some((failure) =>
+      failure.includes("exactly one authorized physical"),
+    ),
+    "strict empty adb output should fail",
+  );
 
   const emulatorFailures = [];
-  verifyPhysicalAndroidAdbDevices(
-    "List of devices attached\nemulator-5554 device product:sdk_gphone64 model:sdk_gphone64_arm64 device:emu64a transport_id:1\n",
-    emulatorFailures,
-    { file: "adb devices -l" },
-  );
+  const emulatorAdbText = "List of devices attached\nemulator-5554 device product:sdk_gphone64 model:sdk_gphone64_arm64 device:emu64a transport_id:1\n";
+  verifyPhysicalAndroidAdbDevices(emulatorAdbText, emulatorFailures, { file: "adb devices -l" });
   expect(emulatorFailures.some((failure) => failure.includes("not an emulator")), "emulator adb output should fail physical-device verification");
+  expect(
+    evaluateAdbStateText(emulatorAdbText, { localOnly: true }).failures.some((failure) => failure.includes("not an emulator")),
+    "local-only emulator adb output should still fail",
+  );
 
   const physicalFailures = [];
-  verifyPhysicalAndroidAdbDevices(
-    "List of devices attached\nR5CT123ABC device usb:1-1 product:raven model:Pixel_6 device:raven transport_id:2\n",
-    physicalFailures,
-    { file: "adb devices -l" },
-  );
+  const physicalAdbText = "List of devices attached\nR5CT123ABC device usb:1-1 product:raven model:Pixel_6 device:raven transport_id:2\n";
+  verifyPhysicalAndroidAdbDevices(physicalAdbText, physicalFailures, { file: "adb devices -l" });
   expectDeepEqual(physicalFailures, [], "single authorized physical adb output should pass");
+  expectDeepEqual(
+    evaluateAdbStateText(physicalAdbText, { localOnly: false }),
+    {
+      failures: [],
+      ok: ["exactly one authorized physical Android phone is connected over adb"],
+      pending: [],
+      physicalReady: true,
+    },
+    "single authorized physical adb output should be ready",
+  );
 
   console.log("live testing readiness self-test ok");
 }
