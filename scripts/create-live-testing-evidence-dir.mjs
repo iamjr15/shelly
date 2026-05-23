@@ -270,8 +270,9 @@ if rg -q '\\b(?:unauthorized|offline|no permissions)\\b' "$adb_devices"; then
   exit 1
 fi
 
-if ! awk 'NR > 1 && $2 == "device" { found = 1 } END { exit(found ? 0 : 1) }' "$adb_devices"; then
-  echo "no authorized adb device found" >&2
+authorized_count="$(awk 'NR > 1 && $2 == "device" { count += 1 } END { print count + 0 }' "$adb_devices")"
+if [[ "$authorized_count" -ne 1 ]]; then
+  echo "expected exactly one authorized physical Android device, found $authorized_count" >&2
   exit 1
 fi
 
@@ -295,7 +296,7 @@ do
   fi
 done
 
-echo "live-test preflight ok: physical adb device and normal debug BuildConfig evidence captured"
+echo "live-test preflight ok: exactly one physical adb device and normal debug BuildConfig evidence captured"
 `;
 }
 
@@ -315,7 +316,7 @@ function captureStages() {
   return [
     {
       title: "1. Build and device proof",
-      note: "Capture proof that the installed app is the normal debug build and that adb is connected to a physical authorized phone.",
+      note: "Capture proof that the installed app is the normal debug build and that adb is connected to exactly one authorized physical phone.",
       files: ["buildconfig.txt", "adb-devices.txt"],
       commands: [
         "adb devices -l | tee \"$FW_LIVE_DIR/adb-devices.txt\"",

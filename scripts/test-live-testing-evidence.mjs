@@ -476,12 +476,40 @@ try {
   const offlineDevice = path.join(temp, "offline-device");
   writeFixture(offlineDevice);
   fs.writeFileSync(path.join(offlineDevice, "adb-devices.txt"), "List of devices attached\nemulator-5554 offline transport_id:1\n");
-  expectStatus(offlineDevice, 1, "offline adb device fixture should fail", "adb-devices.txt must show at least one authorized adb device");
+  expectStatus(
+    offlineDevice,
+    1,
+    "offline adb device fixture should fail",
+    "adb-devices.txt must show exactly one authorized physical Android device",
+  );
 
   const unauthorizedDevice = path.join(temp, "unauthorized-device");
   writeFixture(unauthorizedDevice);
   fs.writeFileSync(path.join(unauthorizedDevice, "adb-devices.txt"), "List of devices attached\nR58M123 unauthorized transport_id:1\n");
-  expectStatus(unauthorizedDevice, 1, "unauthorized adb device fixture should fail", "adb-devices.txt must show at least one authorized adb device");
+  expectStatus(
+    unauthorizedDevice,
+    1,
+    "unauthorized adb device fixture should fail",
+    "adb-devices.txt must show exactly one authorized physical Android device",
+  );
+
+  const multipleDevices = path.join(temp, "multiple-devices");
+  writeFixture(multipleDevices);
+  fs.writeFileSync(
+    path.join(multipleDevices, "adb-devices.txt"),
+    [
+      "List of devices attached",
+      "R58M1234567 device product:panther model:Pixel_8_Pro device:panther transport_id:1",
+      "R58M7654321 device product:oriole model:Pixel_6 device:oriole transport_id:2",
+      "",
+    ].join("\n"),
+  );
+  expectStatus(
+    multipleDevices,
+    1,
+    "multiple authorized adb devices should fail",
+    "adb-devices.txt must show exactly one authorized physical Android device, found 2",
+  );
 
   const emulatorDevice = path.join(temp, "emulator-device");
   writeFixture(emulatorDevice);

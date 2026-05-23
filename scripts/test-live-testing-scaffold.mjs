@@ -66,6 +66,14 @@ try {
   expect(preflight.startsWith("#!/usr/bin/env bash"), "preflight helper should be a shell script");
   expect(preflight.includes("adb devices -l | tee \"$adb_devices\""), "preflight should capture adb device evidence directly");
   expect(preflight.includes("connect one physical Android phone"), "preflight should reject emulator-only evidence");
+  expect(
+    preflight.includes("expected exactly one authorized physical Android device"),
+    "preflight should reject ambiguous multi-device adb evidence",
+  );
+  expect(
+    preflight.includes("live-test preflight ok: exactly one physical adb device"),
+    "preflight success message should confirm single-device targeting",
+  );
   expect(preflight.includes("FIELDWORK_BIOMETRIC_BYPASS = false"), "preflight should require the normal non-bypass debug build");
   expect(
     (fs.statSync(path.join(evidenceDir, "preflight.sh")).mode & 0o700) === 0o700,

@@ -27,7 +27,7 @@ or FCM provider delivery, domain checks, or release signing in this first round.
 
 ## Prerequisites
 
-- One physical Android phone with biometrics enrolled. USB debugging is not an
+- Exactly one physical Android phone with biometrics enrolled. USB debugging is not an
   end-user requirement; enable it for this QA run only when capturing direct
   `adb` evidence or installing the local debug APK outside Android Studio.
 - Laptop and phone on the same reachable network, or another path where iroh can
@@ -114,7 +114,8 @@ rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "debug"|DEBUG = Bool
 ```
 
 The generated helper performs those same direct checks and fails early if the
-ADB target is unauthorized, offline, inaccessible, or an emulator/AVD:
+ADB target is unauthorized, offline, inaccessible, an emulator/AVD, or
+ambiguous because multiple authorized devices are attached:
 
 ```sh
 "$FW_LIVE_DIR/preflight.sh"
@@ -345,8 +346,8 @@ pnpm check:live-testing-evidence -- "$FW_LIVE_DIR"
 This verifier does not replace human review of the phone behavior. It checks
 that the direct `adb` evidence set is complete, screenshots are nontrivial
 full-size Android PNGs,
-`adb-devices.txt` shows at least one authorized connected device and no
-unauthorized/offline/emulator/AVD device state,
+`adb-devices.txt` shows exactly one authorized connected physical device and no
+unauthorized/offline/emulator/AVD/ambiguous multi-device state,
 the locked UI and freshly cleared locked-launch logcat did not expose or fetch
 session, terminal, push-token, or input content before unlock, `biometric-ui.xml`
 shows an Android biometric prompt with no session or terminal content behind it,
