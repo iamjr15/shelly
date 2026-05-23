@@ -185,6 +185,23 @@ if (failures.length === 0) {
     ["restart-ui.xml", readText("restart-ui.xml")],
     ["multisession-ui.xml", readText("multisession-ui.xml")],
   ]);
+  verifyNoSystemErrorOverlays([
+    ["locked-ui.xml", readText("locked-ui.xml")],
+    ["biometric-ui.xml", readText("biometric-ui.xml")],
+    ["dashboard-ui.xml", readText("dashboard-ui.xml")],
+    ["subscription-ui.xml", readText("subscription-ui.xml")],
+    ["session-ui.xml", readText("session-ui.xml")],
+    ["claude-ui.xml", readText("claude-ui.xml")],
+    ["flood-ui.xml", readText("flood-ui.xml")],
+    ["tui-ui.xml", readText("tui-ui.xml")],
+    ["resize-ui.xml", readText("resize-ui.xml")],
+    ["detach-ui.xml", readText("detach-ui.xml")],
+    ["background-ui.xml", readText("background-ui.xml")],
+    ["stale-biometric-ui.xml", readText("stale-biometric-ui.xml")],
+    ["reconnect-ui.xml", readText("reconnect-ui.xml")],
+    ["restart-ui.xml", readText("restart-ui.xml")],
+    ["multisession-ui.xml", readText("multisession-ui.xml")],
+  ]);
   verifyFieldworkDevices(readText("devices.txt"));
   verifyLogs([
     ["locked-logcat.log", readText("locked-logcat.log")],
@@ -633,6 +650,17 @@ function verifyMobileCapabilityBoundary(entries) {
   }
 }
 
+function verifyNoSystemErrorOverlays(entries) {
+  const systemError = /\b(?:System UI|Fieldwork|[^"]+)\s+(?:isn't responding|is not responding)\b|\bClose app\b|\bApp isn't responding\b/i;
+  for (const [file, text] of entries) {
+    rejectPatternText(
+      text,
+      systemError,
+      `${file} must not show an Android system error or not-responding overlay`,
+    );
+  }
+}
+
 function verifyAdbDevices(text) {
   verifyPhysicalAndroidAdbDevices(text, failures);
 }
@@ -643,12 +671,13 @@ function verifyFieldworkDevices(text) {
 }
 
 function verifyLogs(entries) {
-  const fatalPattern = /\bFATAL EXCEPTION\b|\bANR in app\.fieldwork\.android\b|Fieldwork.*\b(FATAL|ANR|Exception)\b/i;
-  const crashPattern = /\bapp\.fieldwork\.android\b|\bFATAL EXCEPTION\b|\bANR\b/i;
+  const fatalPattern = /\bFATAL EXCEPTION\b|\bANR in\b|Fieldwork.*\b(FATAL|ANR|Exception)\b/i;
   for (const [name, text] of entries) {
-    rejectPatternText(text, fatalPattern, `${name} must not contain Fieldwork fatal, ANR, or exception entries`);
+    rejectPatternText(text, fatalPattern, `${name} must not contain Android fatal, ANR, or exception entries`);
     if (name.endsWith("-crash.log")) {
-      rejectPatternText(text, crashPattern, `${name} must not contain app.fieldwork.android crash-buffer entries`);
+      if (text.trim().length > 0) {
+        failures.push(`${name} must be empty after adb logcat -c; crash-buffer entries invalidate Android live-test evidence`);
+      }
     }
   }
 }

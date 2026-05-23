@@ -390,8 +390,10 @@ evidence shows real `vim`/`htop` terminal content in the Android terminal
 surface, the background/foreground, network reconnect, daemon restart restore,
 and multi-session switching transcripts contain the expected replay/no-leakage
 markers, the network reconnect transcript records `reconnect_ms=<elapsed-ms>`
-at or below 2000, and captured logs/crash buffers do not contain Fieldwork
-fatal, ANR, or crash entries.
+at or below 2000, captured UI dumps do not show Android system
+not-responding overlays, captured logcat files do not contain any Android fatal
+or ANR entries, and every captured crash-buffer file is empty after
+`adb logcat -c`.
 
 ## Test Matrix
 
@@ -426,8 +428,8 @@ fatal, ANR, or crash entries.
 
 ## Pass Criteria
 
-- No Fieldwork `FATAL EXCEPTION`, app ANR, or crash-buffer entry in captured
-  logs.
+- No Android `FATAL EXCEPTION`, ANR, system not-responding overlay, or
+  crash-buffer entry in captured evidence.
 - Session list and terminal attach are gated by biometric unlock.
 - Five-minute stale resume gates session access and terminal input behind
   BiometricPrompt.

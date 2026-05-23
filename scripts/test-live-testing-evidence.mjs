@@ -471,7 +471,40 @@ try {
   const crash = path.join(temp, "crash");
   writeFixture(crash);
   fs.writeFileSync(path.join(crash, "session-crash.log"), "FATAL EXCEPTION: main\nProcess: app.fieldwork.android\n");
-  expectStatus(crash, 1, "Fieldwork crash-buffer fixture should fail", "session-crash.log must not contain");
+  expectStatus(crash, 1, "Fieldwork crash-buffer fixture should fail", "session-crash.log must be empty after adb logcat -c");
+
+  const systemCrash = path.join(temp, "system-crash");
+  writeFixture(systemCrash);
+  fs.writeFileSync(path.join(systemCrash, "locked-crash.log"), "Process: com.google.android.bluetooth\njava.lang.RuntimeException: system service crash\n");
+  expectStatus(
+    systemCrash,
+    1,
+    "non-empty system crash buffer should fail",
+    "locked-crash.log must be empty after adb logcat -c",
+  );
+
+  const systemAnr = path.join(temp, "system-anr");
+  writeFixture(systemAnr);
+  fs.writeFileSync(path.join(systemAnr, "dashboard-logcat.log"), "E ActivityManager: ANR in com.android.phone\n");
+  expectStatus(
+    systemAnr,
+    1,
+    "system ANR logcat fixture should fail",
+    "dashboard-logcat.log must not contain Android fatal, ANR, or exception entries",
+  );
+
+  const systemErrorOverlay = path.join(temp, "system-error-overlay");
+  writeFixture(systemErrorOverlay);
+  fs.writeFileSync(
+    path.join(systemErrorOverlay, "dashboard-ui.xml"),
+    `<hierarchy><node text="System UI isn't responding"/><node text="Close app"/><node text="${autoSessionName}"/><node text="refactoringjob"/><node text="shell"/></hierarchy>\n`,
+  );
+  expectStatus(
+    systemErrorOverlay,
+    1,
+    "system not-responding overlay should fail even if required session text is present",
+    "dashboard-ui.xml must not show an Android system error or not-responding overlay",
+  );
 
   const offlineDevice = path.join(temp, "offline-device");
   writeFixture(offlineDevice);
