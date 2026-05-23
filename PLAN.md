@@ -1861,6 +1861,24 @@ and targeted logcat scanning found no Fieldwork `FATAL EXCEPTION` or ANR
 entries. This remains debug-emulator substitute evidence only; physical release
 device cold-start and biometric evidence remain unchecked.
 
+**Direct Android adb pre-unlock biometric refresh (2026-05-23)**: a later
+direct `adb` pass under `/tmp/fieldwork-adb-direct-20260523120245` booted
+`Medium_Phone_API_36.1` as `emulator-5554`, installed the current normal debug
+APK, cleared app data/logcat, and launched `app.fieldwork.android/.MainActivity`
+with `Status: ok`, `LaunchState: COLD`, and `TotalTime=5888ms`. Evidence
+includes `adb-devices.txt`, `buildconfig.txt`, `locked.png`, `locked-ui.xml`,
+`logcat.log`, empty `crash.log`, `after-unlock-tap.png`,
+`after-unlock-tap-ui.xml`, `after-unlock-tap-logcat.log`, and empty
+`after-unlock-tap-crash.log`. `buildconfig.txt` proves
+`FIELDWORK_BIOMETRIC_BYPASS = false` and
+`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`; the locked and post-Unlock-tap UI dumps
+still showed only the `Unlock` surface; logcat showed `BiometricService`
+rejecting authentication because the emulator has no enrolled biometric, with
+no Fieldwork `listSessions`, `registerPushToken`, terminal attach, input,
+`FATAL EXCEPTION`, or ANR entries. This remains debug-emulator substitute
+evidence only; physical BiometricPrompt and release-device runtime gates remain
+unchecked.
+
 **Direct Android adb manual terminal refresh (2026-05-22)**: a later direct
 `adb` pass under `/tmp/fieldwork-adb-direct-20260522225023` installed a
 debug-only biometric-bypass/pair-payload build, granted the emulator camera

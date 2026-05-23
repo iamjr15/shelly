@@ -1292,6 +1292,17 @@ Observed results:
   confirmed the locked `Unlock` surface through `uiautomator`, found no
   Fieldwork crash-buffer entry, and verified a nonblank 1080x2400 `screencap`
   with 14391/14400 nonblack samples.
+  A 2026-05-23 direct adb pre-unlock biometric refresh under
+  `/tmp/fieldwork-adb-direct-20260523120245` installed the current normal debug
+  APK, launched `app.fieldwork.android/.MainActivity` with `Status: ok`,
+  `LaunchState: COLD`, and `TotalTime=5888ms`, verified
+  `FIELDWORK_BIOMETRIC_BYPASS = false` and
+  `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`, captured locked and post-Unlock-tap
+  screenshots/UI dumps/logcat plus empty crash buffers, and showed the app
+  stayed on the locked `Unlock` surface after `BiometricService` rejected
+  authentication for no enrolled biometric. The filtered logcat did not show
+  Fieldwork `listSessions`, `registerPushToken`, terminal attach, input,
+  `FATAL EXCEPTION`, or ANR entries.
   `FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true pnpm test:android-debug-smoke`
   compiles a debug-build-only bypass guarded by `BuildConfig.DEBUG` so emulator
   QA can reach the unlocked pairing/bottom-navigation UI when no biometric is

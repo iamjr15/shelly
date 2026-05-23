@@ -2186,6 +2186,40 @@ function verifyLatestRefresh() {
     requireText(audit, evidence, `release audit 2026-05-23 direct adb locked-launch evidence must include ${evidence}`);
   }
   for (const evidence of [
+    "Direct Android adb pre-unlock biometric refresh (2026-05-23)",
+    "`/tmp/fieldwork-adb-direct-20260523120245`",
+    "`TotalTime=5888ms`",
+    "`after-unlock-tap-logcat.log`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "BiometricService`\nrejecting authentication because the emulator has no enrolled biometric",
+    "no Fieldwork `listSessions`, `registerPushToken`, terminal attach, input,\n`FATAL EXCEPTION`, or ANR entries",
+  ]) {
+    requireText(plan, evidence, `PLAN.md 2026-05-23 direct adb pre-unlock biometric evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-23 direct adb pre-unlock biometric refresh",
+    "`/tmp/fieldwork-adb-direct-20260523120245`",
+    "`TotalTime=5888ms`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "BiometricService` refusing authentication\nbecause the emulator has no enrolled biometric",
+    "did not show Fieldwork\n`listSessions`, `registerPushToken`, terminal attach, input, `FATAL EXCEPTION`,\nor ANR entries",
+  ]) {
+    requireText(development, evidence, `DEVELOPMENT.md 2026-05-23 direct adb pre-unlock biometric evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-23 direct adb pre-unlock biometric refresh",
+    "`/tmp/fieldwork-adb-direct-20260523120245`",
+    "`TotalTime=5888ms`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "BiometricService` rejected\n  authentication for no enrolled biometric",
+    "did not show\n  Fieldwork `listSessions`, `registerPushToken`, terminal attach, input,\n  `FATAL EXCEPTION`, or ANR entries",
+  ]) {
+    requireText(audit, evidence, `release audit 2026-05-23 direct adb pre-unlock biometric evidence must include ${evidence}`);
+  }
+  for (const evidence of [
     "Android aggregate emulator QA note",
     "`pnpm test:android-emulator` aggregates the direct-adb emulator substitutes",
     "retries only a locked debug-launch timing outlier once with the same strict limit",
