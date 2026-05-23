@@ -554,9 +554,10 @@ function verifyDevelopmentDoc(text) {
 
   for (const phrase of [
     "cargo test -p fieldwork-daemon local_agent_hook",
-    "Codex currently exposes `codex remote-control` and `codex app-server --listen/proxy` locally",
+    "Codex `codex-cli 0.133.0` currently exposes `codex remote-control start`, `codex app-server --listen/proxy`, and `codex app-server daemon {start,enable-remote-control,...}` locally",
     "keeps the `codex` PTY command unchanged",
     "fieldwork hook codex-event",
+    "JSONL event streams",
     "matching LocalCli Claude/Codex hook events",
     "update only matching PTY",
     "mismatched hook sources are ignored",

@@ -509,9 +509,12 @@ async fn run_hook(command: HookCommand) -> Result<()> {
             std::io::stdin()
                 .read_to_string(&mut payload)
                 .context("read Codex event JSON from stdin")?;
-            let state = codex_state_from_json(&payload)
+            let states = codex_states_from_payload(&payload)
                 .with_context(|| format!("unsupported Codex event payload: {payload}"))?;
-            emit_agent_state_event(session_id, AgentSource::Codex, state, None).await
+            for state in states {
+                emit_agent_state_event(session_id, AgentSource::Codex, state, None).await?;
+            }
+            Ok(())
         }
     }
 }
@@ -551,6 +554,27 @@ fn codex_state_from_json(payload: &str) -> Option<AgentState> {
         .into_iter()
         .filter_map(|key| value.get(key).and_then(|event| event.as_str()))
         .find_map(codex_state_from_name)
+}
+
+fn codex_states_from_payload(payload: &str) -> Option<Vec<AgentState>> {
+    let trimmed = payload.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Some(state) = codex_state_from_json(trimmed) {
+        return Some(vec![state]);
+    }
+
+    let states: Vec<_> = trimmed
+        .lines()
+        .filter_map(|line| codex_state_from_json(line.trim()))
+        .collect();
+    if states.is_empty() {
+        None
+    } else {
+        Some(states)
+    }
 }
 
 fn codex_state_from_name(event: &str) -> Option<AgentState> {
@@ -986,8 +1010,8 @@ impl Drop for RawMode {
 mod tests {
     use super::{
         AUTO_SESSION_NAMES, Cli, Command, HookCommand, auto_session_name, codex_state_from_json,
-        completion_bin_name, normalize_session_name, parse_named_shortcut_args,
-        should_check_update_notice,
+        codex_states_from_payload, completion_bin_name, normalize_session_name,
+        parse_named_shortcut_args, should_check_update_notice,
     };
     use clap::Parser;
     use clap_complete::Shell;
@@ -1014,6 +1038,40 @@ mod tests {
     #[test]
     fn rejects_unknown_codex_event() {
         assert_eq!(codex_state_from_json(r#"{"type":"noise"}"#), None);
+    }
+
+    #[test]
+    fn parses_codex_jsonl_event_stream() {
+        assert_eq!(
+            codex_states_from_payload(
+                r#"{"type":"turn_started"}
+{"type":"event","status":"working"}
+{"type":"approval_requested","request_id":"redacted"}
+{"type":"turn_finished"}"#
+            ),
+            Some(vec![
+                AgentState::Working,
+                AgentState::Working,
+                AgentState::AwaitingInput,
+                AgentState::Idle,
+            ])
+        );
+    }
+
+    #[test]
+    fn ignores_unrecognized_codex_stream_events() {
+        assert_eq!(
+            codex_states_from_payload(
+                r#"{"type":"session_configured"}
+{"type":"event","status":"turn_waiting"}
+{"type":"noise"}"#
+            ),
+            Some(vec![AgentState::AwaitingInput])
+        );
+        assert_eq!(
+            codex_states_from_payload(r#"{"type":"session_configured"}"#),
+            None
+        );
     }
 
     #[test]

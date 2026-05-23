@@ -550,6 +550,7 @@ target/debug/fieldwork new claude --version
 target/debug/fieldwork hook claude-stop --session <session-id>
 target/debug/fieldwork ls
 printf '{"type":"approval_requested"}' | target/debug/fieldwork hook codex-event --session <codex-session-id>
+printf '{"type":"turn_started"}\n{"type":"approval_requested"}\n' | target/debug/fieldwork hook codex-event --session <codex-session-id>
 ```
 
 Claude Code Stop hook wiring uses the injected `FIELDWORK_SESSION_ID`. A project or user Claude settings hook can run:
@@ -558,7 +559,7 @@ Claude Code Stop hook wiring uses the injected `FIELDWORK_SESSION_ID`. A project
 fieldwork hook claude-stop --session "$FIELDWORK_SESSION_ID"
 ```
 
-Codex currently exposes `codex remote-control` and `codex app-server --listen/proxy` locally, not the older `codex app-server daemon --remote-control` form in the original plan. Fieldwork therefore keeps the `codex` PTY command unchanged and ingests structured Codex JSON through `fieldwork hook codex-event`.
+Codex `codex-cli 0.133.0` currently exposes `codex remote-control start`, `codex app-server --listen/proxy`, and `codex app-server daemon {start,enable-remote-control,...}` locally, but not a `codex --remote-control` flag or the older `codex app-server daemon --remote-control` form in the original plan. Fieldwork therefore keeps the `codex` PTY command unchanged and ingests structured Codex JSON or JSONL event streams through `fieldwork hook codex-event`.
 
 State inference fixture tests:
 
@@ -571,7 +572,9 @@ cargo test -p fieldwork-cli codex
 The committed fixtures under `crates/daemon/tests/fixtures/` are redacted before
 commit. They exercise Claude approval/permission prompts, reject generic
 question-mark false positives, and cover Codex `type`/`event`/`status` JSON
-event shapes including `Crashed`. The focused daemon local-agent-hook tests
+event shapes including `Crashed`. CLI tests verify that `fieldwork hook
+codex-event` accepts both single JSON objects and JSONL event streams while
+ignoring unrelated Codex stream events. The focused daemon local-agent-hook tests
 verify that matching LocalCli Claude/Codex hook events update only matching PTY
 sessions and that mismatched hook sources are ignored.
 
