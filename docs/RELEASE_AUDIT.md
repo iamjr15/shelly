@@ -496,7 +496,7 @@ outside this shell:
 | Pre-commit developer gate | `.pre-commit-config.yaml` runs `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`, `cargo nextest run --workspace --no-fail-fast`, `node scripts/verify-secret-boundaries.mjs`, `node scripts/verify-no-ship-markers.mjs`, `node scripts/verify-no-ship-markers.mjs --self-test`, `node scripts/test-live-testing-evidence.mjs`, `node scripts/test-debug-instance.mjs`, and `node scripts/verify-structured-assets.mjs` through local system hooks; `scripts/verify-community-scaffold.mjs` pins those nine hooks as always-run workspace/security/lightweight release gates | Locally verified |
 | Daemon service install/restart scaffold | `crates/cli/src/service.rs`, CLI daemon commands, IPC health wait, CLI auto-spawn reuse of validated colocated `fieldworkd` resolution, focused service context/path unit tests including colocated executable `fieldworkd` validation, macOS Gatekeeper rejection, and install rollback when service start fails, fake-command `service-manager` rendering tests for LaunchAgent `KeepAlive`/`SuccessfulExit=false` and systemd `Restart=on-failure`/`RestartSec=5`, local handoff restart-restore smoke, `docs/MACOS_DAEMON_SURVIVAL.md`, `scripts/verify-macos-daemon-survival-evidence.mjs` fixture coverage for signed/notarized launchd sleep/wake plus `pkill -KILL fieldworkd` restart evidence, and `scripts/verify-daemon-service.mjs` | Static/source verified; launchd/systemd survival and macOS sleep/wake gates still need signed/notarized artifact, real sleep/wake cycle, or Linux user-service host |
 | Daemon log retention | `crates/daemon/src/logging.rs`, `logging::tests::prune_old_log_files_removes_only_expired_daemon_logs`, and `scripts/verify-daemon-service.mjs` verify seven-day startup pruning for `daemon.log*` files only | Locally verified |
-| Desktop cold-start performance thresholds | `scripts/measure-desktop-performance.mjs` and `pnpm measure:desktop-performance` build on release binaries, run one explicit warm-up sample to remove build-machine first-exec noise, then fail if any measured `fieldwork version` sample exceeds 50 ms or any measured daemon ready-to-handshake sample exceeds 200 ms; latest pass from `pnpm check:local-release:full` measured CLI max `3.87ms` and daemon max `43.21ms` over 25 measured samples | Locally verified |
+| Desktop cold-start performance thresholds | `scripts/measure-desktop-performance.mjs` and `pnpm measure:desktop-performance` build on release binaries, run one explicit warm-up sample to remove build-machine first-exec noise, then fail if any measured `fieldwork version` sample exceeds 50 ms or any measured daemon ready-to-handshake sample exceeds 200 ms; latest pass from `pnpm check:local-release -- --with-runtime` measured CLI max `6.65ms` and daemon max `101.34ms` over 25 measured samples | Locally verified |
 | Development doc | `docs/DEVELOPMENT.md` documents the 15-minute source-build path, common local checks, protocol/ring/snapshot/mobile-core focused tests, local handoff smoke, desktop release/performance commands, website checks, UniFFI bindgen, iOS/Android development flows, mobile privacy/telemetry facts, daemon logs, and user-service lifecycle; `scripts/verify-development-doc.mjs` pins those claims and CI wiring | Locally verified |
 | Docs synchronized | `scripts/verify-docs-sync.mjs` requires `README.md`, `PLAN.md`, `FUTURE.md`, `docs/PROTOCOL.md`, `docs/PRIVACY.md`, `docs/ARCHITECTURE.md`, `docs/INSTALL.md`, `docs/ANDROID_RENDERER.md`, `docs/ANDROID_PAIR_FLOW.md`, `docs/ANDROID_SESSION_SUBSCRIPTION.md`, `docs/ANDROID_TERMINAL_ATTACH.md`, `docs/ANDROID_RESIZE_DETACH.md`, `docs/ANDROID_BIOMETRIC.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_RENDERER_FLOOD.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_RESTART_RESTORE.md`, `docs/ANDROID_MULTISESSION.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/RELAY_HONEYCOMB.md`, `docs/SENTRY_RECEIPT.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md` to exist and carry the current v1 install, protocol, privacy, architecture, Android renderer, Android pair flow, Android session subscription, Android terminal attach, Android resize/detach, Android biometric, Android dogfood, Android cold-start, Android renderer flood, Android background/foreground, Android network reconnect, Android restart restore, Android multisession, Android FCM push, relay Honeycomb evidence, hosted Sentry receipt evidence, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts; `docs/DEVELOPMENT.md` and `docs/SECURITY.md` remain covered by the focused release, infra, security-model, telemetry, and privacy verifiers | Current |
 | README screenshots and 60-second demo video | README embeds the three screenshot-style SVG captures and links `docs/assets/fieldwork-demo-v1.mp4`; `scripts/render-demo-video.mjs` regenerates the MP4 from those assets plus fixed release-boundary slates, and `pnpm check:demo-video` verifies an H.264 1920x1080 artifact with approximately 60-second duration | Locally verified |
@@ -776,12 +776,12 @@ An earlier rerun hit local temp-volume exhaustion while unpacking Cargo registry
 files under an isolated temp `HOME`; after removing the generated
 `/tmp/fieldwork-target-checks` directory and using the normal Cargo
 cache/target paths, the same gate passed without product-code changes. A
-follow-up 2026-05-20 `pnpm check:local-release -- --with-runtime` pass verified
+follow-up 2026-05-23 `pnpm check:local-release -- --with-runtime` pass verified
 the current source tree after the local handoff smoke preserved host
 `CARGO_HOME`/`RUSTUP_HOME` and named its subscription/reconnect sessions
 explicitly under the daemon duplicate-name rule. The latest performance run
-reported CLI median `3.25ms`, p95 `3.64ms`, max `3.87ms`, and daemon
-ready-to-handshake median `40.27ms`, p95 `43.08ms`, max `43.21ms` over 25
+reported CLI median `4.98ms`, p95 `6.18ms`, max `6.65ms`, and daemon
+ready-to-handshake median `60.50ms`, p95 `93.35ms`, max `101.34ms` over 25
 measured release-build samples; npm binary readiness passed
 with staged artifacts; `publish-npm-packages.mjs --check-ready` confirmed the
 children-first order `fieldwork-darwin-arm64 -> fieldwork-darwin-x64 ->
@@ -1249,9 +1249,9 @@ Observed results:
   `application/x-protobuf` `/v1/traces` POST for `/v1/version`, and the exported
   protobuf body did not contain injected terminal/session/token sentinel strings.
 - Desktop performance passed after one explicit warm-up sample, with CLI median
-  `3.25ms`, p95 `3.64ms`, max `3.87ms`, and daemon ready-to-handshake median
-  `40.27ms`, p95 `43.08ms`, max `43.21ms` over 25 measured release-build
-  samples in the latest `pnpm check:local-release:full` run.
+  `4.98ms`, p95 `6.18ms`, max `6.65ms`, and daemon ready-to-handshake median
+  `60.50ms`, p95 `93.35ms`, max `101.34ms` over 25 measured release-build
+  samples in the latest `pnpm check:local-release -- --with-runtime` run.
 - Site check/build produced 5 static pages with no Astro diagnostics.
 - Agent-browser screenshot smoke captured `/`, `/install`, `/architecture`,
   `/protocol`, and `/privacy`, with expected headings/navigation in snapshots
