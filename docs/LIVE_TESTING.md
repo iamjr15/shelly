@@ -40,7 +40,19 @@ Check the current release gate inventory before starting:
 
 ```sh
 pnpm check:local-release
+pnpm check:live-testing-readiness:local
 pnpm check:release-audit:list
+```
+
+`pnpm check:live-testing-readiness:local` verifies the repo-local release
+`fieldwork`/`fieldworkd` binaries, Android debug APK, unsigned local AAB,
+normal debug `BuildConfig`, live-test scaffold/verifier, and runbook. In local
+mode it treats the missing physical phone as pending, not passing evidence.
+After the test phone is connected, authorized, and the debug APK is installed,
+run the strict form:
+
+```sh
+pnpm check:live-testing-readiness
 ```
 
 ## Build And Install

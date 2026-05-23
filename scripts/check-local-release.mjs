@@ -39,6 +39,7 @@ const checks = [
   ["no-ship marker self-test", node, ["scripts/verify-no-ship-markers.mjs", "--self-test"]],
   ["release audit", node, ["scripts/verify-release-audit.mjs"]],
   ["release audit list mode", node, ["scripts/test-release-audit-list.mjs"]],
+  ["live testing readiness self-test", node, ["scripts/check-live-testing-readiness.mjs", "--self-test"]],
   ["live testing evidence verifier self-test", node, ["scripts/test-live-testing-evidence.mjs"]],
   ["live testing evidence scaffold self-test", node, ["scripts/test-live-testing-scaffold.mjs"]],
   ["Android pair-flow evidence verifier self-test", node, ["scripts/test-android-pair-flow-evidence.mjs"]],

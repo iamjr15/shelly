@@ -67,6 +67,8 @@ pnpm test:cli-no-args
 node scripts/test-npm-publish-plan.mjs
 node scripts/test-npm-artifact-pack.mjs
 node scripts/test-bun-install.mjs
+pnpm test:live-testing-readiness
+pnpm check:live-testing-readiness:local
 pnpm test:android-unit
 pnpm test:android-emulator
 node scripts/test-android-aab-verifier.mjs
@@ -83,8 +85,8 @@ boundaries, v1/FUTURE boundary plus no-ship marker scans/self-tests, release
 audit checks, workflow YAML syntax parsing, release workflow contracts, UniFFI
 binding surface, npm registry and publish-plan fixtures, Bun
 optional-dependency behavior, release-artifact
-verifier fixtures, live-test evidence verifier/scaffold fixtures, and Android
-AAB verifier fixtures. It deliberately excludes
+verifier fixtures, live-test readiness/evidence verifier/scaffold fixtures, and
+Android AAB verifier fixtures. It deliberately excludes
 network account checks, live publishing, iOS SDK builds, Android emulator
 runtime tests, physical-device checks, and hosted relay deployment. When the
 local platform binaries and Android AAB are staged, run
@@ -116,6 +118,15 @@ assets, using Python's standard `tomllib` for TOML, lints the iOS project
 plist, Info.plist, and entitlements with `plutil -lint`, and validates Android
 XML resources plus docs SVG assets with
 `xmllint --noout`.
+
+For first-round Android live-test prep without a connected phone, run
+`pnpm check:live-testing-readiness:local`. It verifies the local release
+`fieldwork`/`fieldworkd` binaries, Android debug APK, unsigned local AAB,
+normal debug `BuildConfig`, live-test scaffold/verifier, and
+`docs/LIVE_TESTING.md`, while treating a missing physical phone as pending only
+in local mode. With exactly one authorized physical Android phone connected and
+`app.fieldwork.android` installed, `pnpm check:live-testing-readiness` is the
+strict direct-`adb` preflight before capture.
 
 For a local artifact-plus-runtime release-candidate pass on this Mac, first run
 `pnpm build:local-npm-artifacts`. That helper builds host release

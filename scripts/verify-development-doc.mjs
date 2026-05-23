@@ -93,6 +93,8 @@ function verifyDevelopmentDoc(text) {
     "node scripts/test-external-status-refresh.mjs",
     "node scripts/test-ios-prereqs.mjs",
     "pnpm test:cli-no-args",
+    "pnpm test:live-testing-readiness",
+    "pnpm check:live-testing-readiness:local",
     "pnpm test:android-unit",
     "pnpm test:android-emulator",
     "node scripts/test-android-aab-verifier.mjs",
@@ -117,6 +119,21 @@ function verifyDevelopmentDoc(text) {
     text,
     "deliberately excludes\nnetwork account checks, live publishing, iOS SDK builds, Android emulator\nruntime tests, physical-device checks, and hosted relay deployment",
     "docs/DEVELOPMENT.md must document what the local release aggregate check excludes",
+  );
+  requireText(
+    text,
+    "`pnpm check:live-testing-readiness:local`",
+    "docs/DEVELOPMENT.md must document the local live-testing readiness check",
+  );
+  requireText(
+    text,
+    "normal debug `BuildConfig`, live-test scaffold/verifier, and\n`docs/LIVE_TESTING.md`, while treating a missing physical phone as pending only\nin local mode",
+    "docs/DEVELOPMENT.md must document local-only live-testing readiness semantics",
+  );
+  requireText(
+    text,
+    "With exactly one authorized physical Android phone connected and\n`app.fieldwork.android` installed, `pnpm check:live-testing-readiness` is the\nstrict direct-`adb` preflight before capture",
+    "docs/DEVELOPMENT.md must document strict live-testing readiness semantics",
   );
   requireText(
     text,
@@ -652,6 +669,15 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["check:local-release:full"] !== "node scripts/check-local-release.mjs --with-artifacts --with-runtime") {
     failures.push("package.json must expose pnpm check:local-release:full");
   }
+  if (packageJson.scripts?.["check:live-testing-readiness"] !== "node scripts/check-live-testing-readiness.mjs") {
+    failures.push("package.json must expose pnpm check:live-testing-readiness");
+  }
+  if (packageJson.scripts?.["check:live-testing-readiness:local"] !== "node scripts/check-live-testing-readiness.mjs --local-only") {
+    failures.push("package.json must expose pnpm check:live-testing-readiness:local");
+  }
+  if (packageJson.scripts?.["test:live-testing-readiness"] !== "node scripts/check-live-testing-readiness.mjs --self-test") {
+    failures.push("package.json must expose pnpm test:live-testing-readiness");
+  }
   if (packageJson.scripts?.["check:no-ship"] !== "node scripts/verify-no-ship-markers.mjs") {
     failures.push("package.json must expose pnpm check:no-ship");
   }
@@ -759,6 +785,7 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include the no-ship marker verifier");
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs\", \"--self-test", "local release gate must include the no-ship marker self-test");
   requireText(allFiles.localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include deterministic release-artifact verifier coverage");
+  requireText(allFiles.localRelease, "scripts/check-live-testing-readiness.mjs\", \"--self-test", "local release gate must include deterministic live-testing readiness coverage");
   requireText(allFiles.localRelease, "scripts/test-npm-artifact-pack.mjs", "local release gate must include deterministic npm artifact packaging coverage");
   requireText(allFiles.localRelease, "scripts/test-android-pair-button-picker.mjs", "local release gate must include deterministic Android pair-button picker coverage");
   requireText(allFiles.localRelease, "scripts/verify-uniffi-bindings.mjs", "local release gate must include UniFFI binding verification");
