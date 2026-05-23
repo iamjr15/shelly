@@ -479,7 +479,7 @@ outside this shell:
 | Pre-commit developer gate | `.pre-commit-config.yaml` runs `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`, `cargo nextest run --workspace --no-fail-fast`, `node scripts/verify-secret-boundaries.mjs`, `node scripts/verify-no-ship-markers.mjs`, `node scripts/verify-no-ship-markers.mjs --self-test`, `node scripts/test-live-testing-evidence.mjs`, `node scripts/test-debug-instance.mjs`, and `node scripts/verify-structured-assets.mjs` through local system hooks; `scripts/verify-community-scaffold.mjs` pins those nine hooks as always-run workspace/security/lightweight release gates | Locally verified |
 | Daemon service install/restart scaffold | `crates/cli/src/service.rs`, CLI daemon commands, IPC health wait, CLI auto-spawn reuse of validated colocated `fieldworkd` resolution, focused service context/path unit tests including colocated executable `fieldworkd` validation, macOS Gatekeeper rejection, and install rollback when service start fails, fake-command `service-manager` rendering tests for LaunchAgent `KeepAlive`/`SuccessfulExit=false` and systemd `Restart=on-failure`/`RestartSec=5`, local handoff restart-restore smoke, `docs/MACOS_DAEMON_SURVIVAL.md`, `scripts/verify-macos-daemon-survival-evidence.mjs` fixture coverage for signed/notarized launchd sleep/wake plus `pkill -KILL fieldworkd` restart evidence, and `scripts/verify-daemon-service.mjs` | Static/source verified; launchd/systemd survival and macOS sleep/wake gates still need signed/notarized artifact, real sleep/wake cycle, or Linux user-service host |
 | Daemon log retention | `crates/daemon/src/logging.rs`, `logging::tests::prune_old_log_files_removes_only_expired_daemon_logs`, and `scripts/verify-daemon-service.mjs` verify seven-day startup pruning for `daemon.log*` files only | Locally verified |
-| Desktop cold-start performance thresholds | `scripts/measure-desktop-performance.mjs` and `pnpm measure:desktop-performance` build on release binaries, run one explicit warm-up sample to remove build-machine first-exec noise, then fail if any measured `fieldwork version` sample exceeds 50 ms or any measured daemon ready-to-handshake sample exceeds 200 ms; latest pass from `pnpm check:local-release:full` measured CLI max `3.81ms` and daemon max `43.72ms` over 25 measured samples | Locally verified |
+| Desktop cold-start performance thresholds | `scripts/measure-desktop-performance.mjs` and `pnpm measure:desktop-performance` build on release binaries, run one explicit warm-up sample to remove build-machine first-exec noise, then fail if any measured `fieldwork version` sample exceeds 50 ms or any measured daemon ready-to-handshake sample exceeds 200 ms; latest pass from `pnpm check:local-release:full` measured CLI max `3.87ms` and daemon max `43.21ms` over 25 measured samples | Locally verified |
 | Development doc | `docs/DEVELOPMENT.md` documents the 15-minute source-build path, common local checks, protocol/ring/snapshot/mobile-core focused tests, local handoff smoke, desktop release/performance commands, website checks, UniFFI bindgen, iOS/Android development flows, mobile privacy/telemetry facts, daemon logs, and user-service lifecycle; `scripts/verify-development-doc.mjs` pins those claims and CI wiring | Locally verified |
 | Docs synchronized | `scripts/verify-docs-sync.mjs` requires `README.md`, `PLAN.md`, `FUTURE.md`, `docs/PROTOCOL.md`, `docs/PRIVACY.md`, `docs/ARCHITECTURE.md`, `docs/INSTALL.md`, `docs/ANDROID_RENDERER.md`, `docs/ANDROID_PAIR_FLOW.md`, `docs/ANDROID_SESSION_SUBSCRIPTION.md`, `docs/ANDROID_TERMINAL_ATTACH.md`, `docs/ANDROID_RESIZE_DETACH.md`, `docs/ANDROID_BIOMETRIC.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_RENDERER_FLOOD.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_RESTART_RESTORE.md`, `docs/ANDROID_MULTISESSION.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/RELAY_HONEYCOMB.md`, `docs/SENTRY_RECEIPT.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md` to exist and carry the current v1 install, protocol, privacy, architecture, Android renderer, Android pair flow, Android session subscription, Android terminal attach, Android resize/detach, Android biometric, Android dogfood, Android cold-start, Android renderer flood, Android background/foreground, Android network reconnect, Android restart restore, Android multisession, Android FCM push, relay Honeycomb evidence, hosted Sentry receipt evidence, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts; `docs/DEVELOPMENT.md` and `docs/SECURITY.md` remain covered by the focused release, infra, security-model, telemetry, and privacy verifiers | Current |
 | README screenshots and 60-second demo video | README embeds the three screenshot-style SVG captures and links `docs/assets/fieldwork-demo-v1.mp4`; `scripts/render-demo-video.mjs` regenerates the MP4 from those assets plus fixed release-boundary slates, and `pnpm check:demo-video` verifies an H.264 1920x1080 artifact with approximately 60-second duration | Locally verified |
@@ -692,7 +692,7 @@ reported `Success! The configuration is valid.`, and the shared script removed
 the ignored `.terraform` provider cache afterward without producing `tfstate` or
 `tfvars` files. The site content verifier passed, pinning the `fieldwork.dev` pages to v1 install, protocol, architecture, privacy, screenshot SVG imports, and future-scope exclusions. Domain status refresh is no longer an agent-owned routine release activity; `scripts/check-domain-status.mjs --operator-refresh` remains available for explicit operator-requested refreshes only, and the script fails closed before network access without that flag. The release-workflow verifier now also pins the Cloudflare Pages deploy scaffold for `fieldwork.dev`, including the isolated site lockfile install, root `pnpm build:site`, fail-closed Cloudflare credentials, and the `fieldwork-dev` Pages project. The release-workflow verifier now also pins the weekly Dependabot matrix for Cargo, root npm package metadata, the isolated `site/` npm lockfile, Android Gradle, and GitHub Actions. The focused daemon state-inference fixture tests passed, and the focused daemon local-agent-hook tests passed for `matching_local_agent_hook_updates_session_state` and `mismatched_local_agent_hook_is_ignored`, verifying that matching LocalCli Claude/Codex hook events update only matching PTY sessions while mismatched hook sources are ignored. The daemon
 service scaffold verifier passed, the direct bincode IPC mobile create/kill rejection test passed for `IosApp` and `AndroidApp`, the direct bincode IPC mobile agent-state hook rejection test passed for `IosApp` and `AndroidApp`, the local handoff smoke now also covers paired iroh mobile agent-state hook rejection, and the latest local handoff smoke paired in 3 seconds before exercising `claude`, `bash`, `vim`, subscribed session updates,
-mobile input, warm reconnect replay over iroh within 2 seconds from `last_seen_seq` (15ms in the latest local run), protocol-mismatch rejection, mobile create/kill/agent-state-event rejection, revocation, and restart restore.
+mobile input, warm reconnect replay over iroh within 2 seconds from `last_seen_seq` (16ms in the latest local run), protocol-mismatch rejection, mobile create/kill/agent-state-event rejection, revocation, and restart restore.
 The Android biometric gate refresh added focused JVM tests for first unlock,
 immediate post-unlock resume, fresh foreground resume, 5-minute stale foreground
 boundary, and terminal input refusal while locked, while preserving the
@@ -763,8 +763,8 @@ follow-up 2026-05-20 `pnpm check:local-release -- --with-runtime` pass verified
 the current source tree after the local handoff smoke preserved host
 `CARGO_HOME`/`RUSTUP_HOME` and named its subscription/reconnect sessions
 explicitly under the daemon duplicate-name rule. The latest performance run
-reported CLI median `3.26ms`, p95 `3.70ms`, max `3.81ms`, and daemon
-ready-to-handshake median `41.85ms`, p95 `43.62ms`, max `43.72ms` over 25
+reported CLI median `3.25ms`, p95 `3.64ms`, max `3.87ms`, and daemon
+ready-to-handshake median `40.27ms`, p95 `43.08ms`, max `43.21ms` over 25
 measured release-build samples; npm binary readiness passed
 with staged artifacts; `publish-npm-packages.mjs --check-ready` confirmed the
 children-first order `fieldwork-darwin-arm64 -> fieldwork-darwin-x64 ->
@@ -1167,7 +1167,7 @@ pnpm test:local-handoff
 
 Observed results:
 
-- `cargo nextest run --workspace`: 170 tests passed.
+- `cargo nextest run --workspace`: 171 tests passed.
 - `cargo test --workspace --doc`: workspace doctest harnesses passed; there
   are currently zero doctests.
 - `cargo nextest run -p fieldwork-daemon`: 73 daemon tests passed, including the
@@ -1212,8 +1212,8 @@ Observed results:
   `application/x-protobuf` `/v1/traces` POST for `/v1/version`, and the exported
   protobuf body did not contain injected terminal/session/token sentinel strings.
 - Desktop performance passed after one explicit warm-up sample, with CLI median
-  `3.26ms`, p95 `3.70ms`, max `3.81ms`, and daemon ready-to-handshake median
-  `41.85ms`, p95 `43.62ms`, max `43.72ms` over 25 measured release-build
+  `3.25ms`, p95 `3.64ms`, max `3.87ms`, and daemon ready-to-handshake median
+  `40.27ms`, p95 `43.08ms`, max `43.21ms` over 25 measured release-build
   samples in the latest `pnpm check:local-release:full` run.
 - Site check/build produced 5 static pages with no Astro diagnostics.
 - Agent-browser screenshot smoke captured `/`, `/install`, `/architecture`,
@@ -1225,7 +1225,7 @@ Observed results:
 - Local handoff smoke passed with `pnpm test:local-handoff` after clearing
   reproducible debug/mobile Rust build output to recover disk space, then
   removing the regenerated repo-local `target/debug` after the run. Simulated
-  pair duration was `2s`: default
+  pair duration was `3s`: default
   `claude`, `bash`, `vim`, and desktop-created subscribed `bash` sessions were
   created; the simulated phone first verified protocol-mismatch rejection on the
   iroh transport, observed the subscribed session, attached, sent input, avoided
