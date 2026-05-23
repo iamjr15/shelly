@@ -156,6 +156,7 @@ pnpm check:android-dogfood-evidence -- "$FW_DOGFOOD_DIR"
 
 The verifier checks physical-device adb evidence, normal app BuildConfig,
 30-minute minimum duration, attached Claude UI, typing, scroll, resize, paste,
-and Fieldwork fatal/ANR/crash-buffer absence. Passing the verifier does not
+Android fatal/ANR logcat absence, no Android system not-responding overlays, and
+empty crash buffers after `adb logcat -c`. Passing the verifier does not
 replace human review; the operator must still confirm the terminal remained
 usable for the full dogfood window before checking the `PLAN.md` gate.

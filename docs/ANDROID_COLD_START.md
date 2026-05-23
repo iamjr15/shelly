@@ -5,8 +5,9 @@ is separate from the first Android live-test runbook because this gate must run
 on a physical phone with the signed release artifact, not the local debug APK.
 
 The pass condition is five cold launches of `app.fieldwork.android/.MainActivity`
-with `TotalTime <= 1200ms`, no Fieldwork fatal/ANR/crash-buffer entries, and the
-locked biometric surface visible before session access.
+with `TotalTime <= 1200ms`, no Android fatal/ANR logcat entries, no Android
+system not-responding overlay in the captured UI, an empty crash buffer after
+`adb logcat -c`, and the locked biometric surface visible before session access.
 
 ## Scope
 
