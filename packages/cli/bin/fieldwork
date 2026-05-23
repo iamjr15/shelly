@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { spawn } = require("node:child_process");
+const path = require("node:path");
 
 const platform = process.env.FIELDWORK_NPM_PLATFORM || process.platform;
 const arch = process.env.FIELDWORK_NPM_ARCH || process.arch;
@@ -27,7 +28,12 @@ try {
   process.exit(1);
 }
 
-const child = spawn(binPath, process.argv.slice(2), { stdio: "inherit" });
+const invokedName = path.basename(process.argv[1] || "fieldwork") || "fieldwork";
+const child = spawn(binPath, process.argv.slice(2), {
+  stdio: "inherit",
+  argv0: invokedName,
+  env: { ...process.env, FIELDWORK_CLI_BIN_NAME: invokedName },
+});
 
 process.on("SIGINT", () => child.kill("SIGINT"));
 process.on("SIGTERM", () => child.kill("SIGTERM"));

@@ -67,7 +67,7 @@ function verifyDispatcher({ platform, arch, key }) {
   );
   fs.writeFileSync(
     path.join(fakePackageDir, "bin/fieldwork"),
-    "#!/usr/bin/env node\nconsole.log('fake-fieldwork ' + process.argv.slice(2).join(' '));\n",
+    "#!/usr/bin/env node\nconsole.log(['fake-fieldwork', process.env.FIELDWORK_CLI_BIN_NAME || '', ...process.argv.slice(2)].join(' ').trim());\n",
   );
   fs.writeFileSync(
     path.join(fakePackageDir, "bin/fieldworkd"),
@@ -86,20 +86,21 @@ function verifyDispatcher({ platform, arch, key }) {
     },
   });
   assert(result.status === 0, `${key} dispatcher should exit 0, got ${result.status}\n${result.stderr}`);
-  assert(result.stdout.trim() === "fake-fieldwork alpha beta", `unexpected ${key} dispatcher stdout: ${result.stdout}`);
+  assert(result.stdout.trim() === "fake-fieldwork fieldwork alpha beta", `unexpected ${key} dispatcher stdout: ${result.stdout}`);
 
   const aliasTmp = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-fw-alias-"));
   try {
     const fwAlias = path.join(aliasTmp, "fw");
     fs.symlinkSync(dispatcher, fwAlias);
     for (const aliasCase of [
-      { name: "smart default", args: [], stdout: "fake-fieldwork" },
-      { name: "pair", args: ["pair"], stdout: "fake-fieldwork pair" },
+      { name: "smart default", args: [], stdout: "fake-fieldwork fw" },
+      { name: "pair", args: ["pair"], stdout: "fake-fieldwork fw pair" },
       {
         name: "named-session shortcut",
         args: ["refactoringjob"],
-        stdout: "fake-fieldwork refactoringjob",
+        stdout: "fake-fieldwork fw refactoringjob",
       },
+      { name: "completion alias", args: ["completion", "bash"], stdout: "fake-fieldwork fw completion bash" },
     ]) {
       result = spawnSync(process.execPath, [fwAlias, ...aliasCase.args], {
         cwd: root,

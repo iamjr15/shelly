@@ -1189,6 +1189,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "JS fallback preservation of the invoked alias through `FIELDWORK_CLI_BIN_NAME` and `argv0`",
+    "release audit must record npm dispatcher alias preservation through fallback",
+  );
+  requireText(
+    audit,
     "dispatcher fallback for the CLI alias\nand daemon commands",
     "release audit must record latest refresh coverage for the npm CLI alias and daemon dispatchers",
   );

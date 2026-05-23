@@ -318,12 +318,20 @@ fn should_check_update_notice(command: Option<&Command>) -> bool {
 
 fn print_completion(shell: Shell) {
     let mut command = Cli::command();
-    let bin_name = completion_bin_name(std::env::args_os().next());
+    let bin_name = completion_bin_name_with_override(
+        std::env::var_os("FIELDWORK_CLI_BIN_NAME"),
+        std::env::args_os().next(),
+    );
     clap_complete::generate(shell, &mut command, bin_name, &mut std::io::stdout());
 }
 
-fn completion_bin_name(arg0: Option<OsString>) -> String {
-    arg0.as_deref()
+fn completion_bin_name_with_override(
+    override_name: Option<OsString>,
+    arg0: Option<OsString>,
+) -> String {
+    override_name
+        .as_deref()
+        .or(arg0.as_deref())
         .and_then(|arg0| std::path::Path::new(arg0).file_name())
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
@@ -1010,7 +1018,7 @@ impl Drop for RawMode {
 mod tests {
     use super::{
         AUTO_SESSION_NAMES, Cli, Command, HookCommand, auto_session_name, codex_state_from_json,
-        codex_states_from_payload, completion_bin_name, normalize_session_name,
+        codex_states_from_payload, completion_bin_name_with_override, normalize_session_name,
         parse_named_shortcut_args, should_check_update_notice,
     };
     use clap::Parser;
@@ -1109,14 +1117,25 @@ mod tests {
     #[test]
     fn completion_bin_name_follows_invoked_alias() {
         assert_eq!(
-            completion_bin_name(Some(OsString::from("/usr/local/bin/fw"))),
+            completion_bin_name_with_override(None, Some(OsString::from("/usr/local/bin/fw"))),
             "fw"
         );
         assert_eq!(
-            completion_bin_name(Some(OsString::from("fieldwork"))),
+            completion_bin_name_with_override(None, Some(OsString::from("fieldwork"))),
             "fieldwork"
         );
-        assert_eq!(completion_bin_name(None), "fieldwork");
+        assert_eq!(completion_bin_name_with_override(None, None), "fieldwork");
+    }
+
+    #[test]
+    fn completion_bin_name_prefers_npm_dispatcher_alias() {
+        assert_eq!(
+            completion_bin_name_with_override(
+                Some(OsString::from("fw")),
+                Some(OsString::from("/package/bin/fieldwork"))
+            ),
+            "fw"
+        );
     }
 
     #[test]
