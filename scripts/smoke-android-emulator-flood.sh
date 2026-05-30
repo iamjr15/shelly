@@ -6,7 +6,9 @@ package="app.fieldwork.android"
 activity="$package/.MainActivity"
 fieldwork="${FIELDWORK_CLI_BINARY:-$root/target/release/fieldwork}"
 fieldworkd="${FIELDWORK_DAEMON_BINARY:-$root/target/release/fieldworkd}"
-iroh_relay_url="${FIELDWORK_ANDROID_IROH_RELAY_URL:-https://aps1-1.relay.n0.iroh-canary.iroh.link./}"
+iroh_relay_url="${FIELDWORK_ANDROID_IROH_RELAY_URL:-}"
+relay_control_url="${FIELDWORK_ANDROID_RELAY_CONTROL_URL:-${FIELDWORK_RELAY_CONTROL_URL:-}}"
+relay_signing_key="${FIELDWORK_RELAY_SIGNING_KEY_B64:-BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc}"
 flood_lines="${FIELDWORK_ANDROID_FLOOD_LINES:-10000}"
 flood_marker="ANDROID_EMULATOR_FLOOD_END"
 
@@ -134,6 +136,8 @@ desktop_env() {
     XDG_RUNTIME_DIR="$run" \
     FIELDWORK_IROH_SECRET_KEY_B64=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI \
     FIELDWORK_IROH_RELAY_URL="$iroh_relay_url" \
+    FIELDWORK_RELAY_CONTROL_URL="$relay_control_url" \
+    FIELDWORK_RELAY_SIGNING_KEY_B64="$relay_signing_key" \
     FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED=false \
     "$@"
 }
@@ -168,22 +172,28 @@ exec 3<>"$tmp_dir/pair.in"
 desktop_env "$fieldwork" pair <"$tmp_dir/pair.in" >"$tmp_dir/pair.log" 2>&1 &
 pair_pid=$!
 
-payload=""
+pairing_code=""
 for _ in {1..100}; do
-  payload="$(grep -m1 '^{' "$tmp_dir/pair.log" || true)"
-  if [[ -n "$payload" ]]; then
+  pairing_code="$(grep -A1 'enter this code:' "$tmp_dir/pair.log" | tail -n1 | tr -d '[:space:]' || true)"
+  if [[ -n "$pairing_code" ]]; then
     break
   fi
   sleep 0.1
 done
-if [[ -z "$payload" ]]; then
-  echo "fieldwork pair did not print a JSON payload" >&2
+if [[ -z "$pairing_code" ]]; then
+  echo "fieldwork pair did not print a 5-char pairing code" >&2
   cat "$tmp_dir/pair.log" >&2 || true
   exit 1
 fi
 
+if [[ -z "$relay_control_url" ]]; then
+  echo "Android emulator flood smoke needs FIELDWORK_ANDROID_RELAY_CONTROL_URL set so the app can resolve the typed pairing code." >&2
+  exit 1
+fi
+
 FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true \
-FIELDWORK_ANDROID_PAIRING_PAYLOAD="$payload" \
+FIELDWORK_ANDROID_PAIRING_CODE="$pairing_code" \
+FIELDWORK_RELAY_CONTROL_URL="$relay_control_url" \
   "$root/apps/android/gradlew" --no-daemon :app:installDebug >"$tmp_dir/install-debug.log"
 
 adb -s "$serial" shell pm clear "$package" >/dev/null
@@ -207,7 +217,7 @@ for _ in {1..60}; do
     sleep 1
     continue
   fi
-  if grep -q 'text="Pairing payload"' "$ui_xml"; then
+  if grep -q 'text="Pairing code"' "$ui_xml"; then
     break
   fi
   if grep -Eq "System UI isn't responding|Application Not Responding|Process system isn't responding" "$ui_xml"; then
@@ -217,7 +227,7 @@ for _ in {1..60}; do
   fi
   sleep 1
 done
-if ! grep -q 'text="Pairing payload"' "$ui_xml"; then
+if ! grep -q 'text="Pairing code"' "$ui_xml"; then
   echo "Android emulator flood smoke did not reach the pairing screen." >&2
   sed -n '1,120p' "$ui_xml" >&2 || true
   exit 1
@@ -444,22 +454,27 @@ exec 4<>"$tmp_dir/verifier-pair.in"
 desktop_env "$fieldwork" pair <"$tmp_dir/verifier-pair.in" >"$tmp_dir/verifier-pair.log" 2>&1 &
 pair_pid=$!
 
-verifier_payload=""
+verifier_code=""
 for _ in {1..100}; do
-  verifier_payload="$(grep -m1 '^{' "$tmp_dir/verifier-pair.log" || true)"
-  if [[ -n "$verifier_payload" ]]; then
+  verifier_code="$(grep -A1 'enter this code:' "$tmp_dir/verifier-pair.log" | tail -n1 | tr -d '[:space:]' || true)"
+  if [[ -n "$verifier_code" ]]; then
     break
   fi
   sleep 0.1
 done
-if [[ -z "$verifier_payload" ]]; then
-  echo "Android emulator flood smoke could not create verifier pairing payload." >&2
+if [[ -z "$verifier_code" ]]; then
+  echo "Android emulator flood smoke could not create verifier pairing code." >&2
   cat "$tmp_dir/verifier-pair.log" >&2 || true
+  exit 1
+fi
+if [[ -z "$relay_control_url" ]]; then
+  echo "Android emulator flood smoke needs FIELDWORK_ANDROID_RELAY_CONTROL_URL set so the verifier can resolve the pairing code." >&2
   exit 1
 fi
 
 desktop_env "$fieldwork" pair-test \
-  --payload "$verifier_payload" \
+  --code "$verifier_code" \
+  --relay-control-url "$relay_control_url" \
   --name android-flood-verifier \
   --attach first \
   --expect-output "ANDROID_EMULATOR_FLOOD" \

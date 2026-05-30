@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import {
   verifyCleanAndroidLogs,
+  verifyInstalledAndroidPackageInfo,
   verifyNoAndroidSystemErrorOverlays,
   verifyPhysicalAndroidAdbDevices,
 } from "./android-evidence-common.mjs";
@@ -21,6 +22,7 @@ const launchFiles = ["launch-1.txt", "launch-2.txt", "launch-3.txt", "launch-4.t
 const requiredFiles = [
   "adb-devices.txt",
   "artifact-signing.txt",
+  "package-info.txt",
   "buildconfig.txt",
   "install.txt",
   ...launchFiles,
@@ -38,6 +40,7 @@ for (const file of requiredFiles) {
 if (failures.length === 0) {
   verifyAdbDevices(readText("adb-devices.txt"));
   verifyArtifactSigning(readText("artifact-signing.txt"));
+  verifyPackageInfo(readText("package-info.txt"));
   verifyBuildConfig(readText("buildconfig.txt"));
   verifyInstall(readText("install.txt"));
   for (const file of launchFiles) {
@@ -76,6 +79,10 @@ function verifyArtifactSigning(text) {
   );
 }
 
+function verifyPackageInfo(text) {
+  verifyInstalledAndroidPackageInfo(text, failures, { forbidDebuggable: true });
+}
+
 function verifyBuildConfig(text) {
   requirePatternText(
     text,
@@ -99,8 +106,8 @@ function verifyBuildConfig(text) {
   );
   requirePatternText(
     text,
-    /\bFIELDWORK_DEBUG_PAIRING_PAYLOAD\s*=\s*""/,
-    "buildconfig.txt must prove no debug pairing payload is compiled into the release build",
+    /\bFIELDWORK_DEBUG_PAIRING_CODE\s*=\s*""/,
+    "buildconfig.txt must prove no debug pairing code is compiled into the release build",
   );
 }
 

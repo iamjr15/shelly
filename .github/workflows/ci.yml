@@ -132,6 +132,7 @@ jobs:
       - run: node scripts/verify-no-ship-markers.mjs --self-test
       - run: node scripts/verify-release-audit.mjs
       - run: node scripts/test-release-audit-list.mjs
+      - run: node scripts/verify-release-workflows.mjs --self-test
       - run: node scripts/verify-release-workflows.mjs
       - run: node scripts/verify-relay-provider-clients.mjs
       - run: node scripts/verify-security-model.mjs
@@ -147,11 +148,18 @@ jobs:
       - run: node scripts/test-npm-registry-state.mjs
       - run: node scripts/test-external-status-refresh.mjs
       - run: node scripts/test-npm-publish-plan.mjs
+      - run: node scripts/test-npm-release-evidence.mjs
+      - run: node scripts/test-npm-release-scaffold.mjs
       - run: node scripts/test-bun-install.mjs
       - run: node scripts/test-android-aab-verifier.mjs
+      - run: node scripts/test-android-debug-apk-verifier.mjs
       - run: node scripts/test-android-pair-button-picker.mjs
       - run: node scripts/test-release-artifacts.mjs
+      - run: node scripts/test-release-artifacts-evidence.mjs
+      - run: node scripts/test-release-artifacts-scaffold.mjs
       - run: node scripts/test-macos-signing-verifier.mjs
+      - run: node scripts/test-macos-signing-evidence.mjs
+      - run: node scripts/test-macos-signing-scaffold.mjs
       - run: node scripts/test-npm-artifact-pack.mjs
 
   site:

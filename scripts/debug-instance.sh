@@ -47,12 +47,22 @@ prepare_dirs() {
 
 ensure_links() {
   if [[ -x "$repo_root/target/debug/fieldwork" ]]; then
-    ln -sf "$repo_root/target/debug/fieldwork" "$bin_dir/fieldwork"
-    ln -sf "$repo_root/target/debug/fieldwork" "$bin_dir/fw"
+    link_binary "$repo_root/target/debug/fieldwork" "$bin_dir/fieldwork"
+    link_binary "$repo_root/target/debug/fieldwork" "$bin_dir/fw"
   fi
   if [[ -x "$repo_root/target/debug/fieldworkd" ]]; then
-    ln -sf "$repo_root/target/debug/fieldworkd" "$bin_dir/fieldworkd"
+    link_binary "$repo_root/target/debug/fieldworkd" "$bin_dir/fieldworkd"
   fi
+}
+
+link_binary() {
+  local target="$1"
+  local link="$2"
+  local tmp="${link}.$$"
+
+  rm -f "$tmp"
+  ln -s "$target" "$tmp"
+  mv -f "$tmp" "$link"
 }
 
 write_runner() {

@@ -15,19 +15,9 @@
     "url": "https://github.com/migueldeicaza/SwiftTerm"
   },
   {
-    "name": "Sentry Cocoa",
-    "license": "MIT",
-    "url": "https://github.com/getsentry/sentry-cocoa"
-  },
-  {
     "name": "AndroidX",
     "license": "Apache-2.0",
     "url": "https://developer.android.com/jetpack/androidx"
-  },
-  {
-    "name": "Sentry Java and Android SDK",
-    "license": "MIT",
-    "url": "https://github.com/getsentry/sentry-java"
   },
   {
     "name": "Firebase Android SDK",

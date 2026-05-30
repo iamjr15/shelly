@@ -16,7 +16,7 @@ reattaches.
 
 - Use exactly one physical Android phone, not an emulator or AVD.
 - Install the signed release App Bundle output or APKs produced from it.
-- Do not use a debug build, biometric bypass, or debug pairing payload.
+- Do not use a debug build, biometric bypass, or debug pairing code.
 - Pair through the real QR scanner and explicit desktop approval.
 - Capture evidence with direct `adb`: device listing, screenshots, UI dumps,
   background state, app logcat, crash buffer, and desktop PTY replay.
@@ -27,7 +27,50 @@ reattaches.
 
 ```sh
 export FW_ANDROID_BG_DIR="/tmp/fieldwork-android-background-$(date +%Y%m%d%H%M%S)"
-mkdir -p "$FW_ANDROID_BG_DIR"
+pnpm scaffold:android-background-foreground-evidence -- --dir "$FW_ANDROID_BG_DIR"
+```
+
+The scaffold writes `README.md`, `manifest.json`, `missing-files.txt`,
+`capture-checklist.md`, and a direct-adb `preflight.sh`. It captures signed
+release/device/package proof plus before-background, background-state,
+after-foreground, logcat, and crash-buffer evidence; it does not create desktop
+sessions, type terminal commands, write timing review, or create
+`background-output-replay.txt` / `post-foreground-replay.txt`.
+
+Before pairing, capture signed release/device/package proof and clear Android
+logs:
+
+```sh
+FIELDWORK_ANDROID_AAB=apps/android/app/build/outputs/bundle/release/app-release.aab \
+"$FW_ANDROID_BG_DIR/preflight.sh"
+```
+
+After Android is attached to `fw_background_session`, capture the attached
+terminal before backgrounding:
+
+```sh
+FIELDWORK_ANDROID_BG_CAPTURE_BEFORE=true "$FW_ANDROID_BG_DIR/preflight.sh"
+```
+
+After typing `trigger_background_output` from Android, background the app with
+direct adb and capture the focused package proof:
+
+```sh
+FIELDWORK_ANDROID_BG_CAPTURE_BACKGROUND=true "$FW_ANDROID_BG_DIR/preflight.sh"
+```
+
+After foregrounding and sending `after_background_ok` from Android, capture
+the post-foreground terminal plus logs:
+
+```sh
+FIELDWORK_ANDROID_BG_CAPTURE_AFTER=true "$FW_ANDROID_BG_DIR/preflight.sh"
+```
+
+After `background-output-replay.txt`, `post-foreground-replay.txt`, and
+`timing.txt` exist from the real run, run the helper verifier:
+
+```sh
+FIELDWORK_ANDROID_BG_VERIFY=true "$FW_ANDROID_BG_DIR/preflight.sh"
 ```
 
 ## Release Build
@@ -45,7 +88,7 @@ The transcript must include `Android AAB ok:` and `signed release bundle ok`.
 Capture the release `BuildConfig` values:
 
 ```sh
-rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
+rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""' \
   apps/android/app/build/generated/source/buildConfig/release/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_ANDROID_BG_DIR/buildconfig.txt"
 ```
@@ -55,9 +98,18 @@ Capture the physical device list and install the release artifact:
 ```sh
 adb devices -l | tee "$FW_ANDROID_BG_DIR/adb-devices.txt"
 bundletool install-apks --apks /path/to/fieldwork-release.apks
+{
+  echo '$ adb shell pm path app.fieldwork.android'
+  adb shell pm path app.fieldwork.android
+  echo '$ adb shell dumpsys package app.fieldwork.android'
+  adb shell dumpsys package app.fieldwork.android
+} | tee "$FW_ANDROID_BG_DIR/package-info.txt"
 adb logcat -c
 adb logcat -b crash -c
 ```
+`package-info.txt` must prove the installed app is `app.fieldwork.android` with
+`versionName=1.0`, `versionCode=1`, and no `DEBUGGABLE` or `debuggable=true` markers.
+
 
 ## Pair And Attach
 

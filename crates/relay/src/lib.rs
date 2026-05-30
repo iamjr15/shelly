@@ -7,7 +7,7 @@ mod fcm;
 use axum::{
     Router,
     body::Bytes,
-    extract::State,
+    extract::{Path as AxumPath, State},
     http::{HeaderMap, Method, StatusCode, header::CONTENT_TYPE},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -16,7 +16,7 @@ use axum_server::tls_rustls::RustlsConfig;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use fieldwork_protocol::CONTRACT_VERSION;
+use fieldwork_protocol::{CONTRACT_VERSION, is_valid_code, normalize_code};
 use garde::Validate;
 use moka::sync::Cache;
 use rusqlite::{Connection, params};
@@ -33,10 +33,15 @@ use std::{
 };
 
 const SIGNATURE_HEADER: &str = "x-fieldwork-signature";
+const FORWARDED_FOR_HEADER: &str = "x-forwarded-for";
 const CLOCK_SKEW_MS: i64 = 5 * 60 * 1000;
 const RATE_LIMIT_PER_MINUTE: u32 = 50;
 const RATE_LIMIT_CACHE_CAPACITY: u64 = 100_000;
 const PUSH_TOKEN_TTL_MS: u64 = 90 * 24 * 60 * 60 * 1000;
+/// Per-IP cap on pairing-code resolution attempts inside one minute window.
+const RESOLVE_ATTEMPTS_PER_MINUTE: u32 = 20;
+/// Failed resolves a single code tolerates before it is locked and deleted.
+const RESOLVE_MAX_FAILURES_PER_CODE: u32 = 5;
 
 /// Shared relay application state.
 #[derive(Clone, Default)]
@@ -44,6 +49,7 @@ pub struct RelayState {
     inner: Arc<Mutex<RelayInner>>,
     metrics: Arc<RelayMetrics>,
     rate_limits: RateLimitCache,
+    resolve_rate_limits: RateLimitCache,
     version_cache: VersionCache,
     providers: PushProviders,
     store: Option<RelayStore>,
@@ -54,8 +60,17 @@ struct RelayInner {
     daemons: HashMap<String, VerifyingKey>,
     tokens: HashMap<String, TokenOwner>,
     seen_nonces: HashSet<(String, String)>,
+    pairing_codes: HashMap<String, PairingCodeEntry>,
     #[cfg(test)]
     delivered: Vec<DeliveredPush>,
+}
+
+#[derive(Clone)]
+struct PairingCodeEntry {
+    daemon_node_id: String,
+    ticket_blob: String,
+    expires_at_ms: u64,
+    failed_resolves: u32,
 }
 
 #[derive(Default)]
@@ -64,6 +79,8 @@ struct RelayMetrics {
     token_registrations: AtomicU64,
     token_unregistrations: AtomicU64,
     push_accepts: AtomicU64,
+    pairing_code_publishes: AtomicU64,
+    pairing_code_resolves: AtomicU64,
 }
 
 #[derive(Clone)]
@@ -104,6 +121,7 @@ type LoadedRelayState = (
     HashMap<String, VerifyingKey>,
     HashMap<String, TokenOwner>,
     HashSet<(String, String)>,
+    HashMap<String, PairingCodeEntry>,
 );
 
 #[derive(Clone)]
@@ -193,6 +211,23 @@ struct UnregisterTokenRequest {
 
 #[derive(Clone, Debug, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields)]
+struct PublishPairingCodeRequest {
+    #[garde(ascii, length(min = 16, max = 128))]
+    daemon_node_id: String,
+    #[garde(ascii, length(min = 4, max = 8))]
+    code: String,
+    #[garde(length(min = 16, max = 1024))]
+    ticket_blob: String,
+    #[garde(range(min = 1))]
+    expires_at_ms: u64,
+    #[garde(ascii, length(min = 16, max = 128))]
+    nonce: String,
+    #[garde(range(min = 1))]
+    ts_ms: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Validate)]
+#[serde(deny_unknown_fields)]
 struct PushRequest {
     #[garde(ascii, length(min = 16, max = 128))]
     daemon_node_id: String,
@@ -235,6 +270,11 @@ struct VersionResponse {
 #[derive(Debug, Serialize)]
 struct ApiOk {
     ok: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ResolvePairingCodeResponse {
+    ticket_blob: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -299,6 +339,22 @@ impl ApiError {
         }
     }
 
+    fn resolve_rate_limited() -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "rate_limited",
+            message: "per-client pairing-code resolve rate limit exceeded".to_string(),
+        }
+    }
+
+    fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
+            code: "not_found",
+            message: message.into(),
+        }
+    }
+
     fn internal(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -333,17 +389,19 @@ impl RelayState {
     /// Opens a persistent SQLite-backed relay state store.
     pub fn open_sqlite(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let store = RelayStore::open(path.as_ref())?;
-        let (daemons, tokens, seen_nonces) = store.load_state(now_ms())?;
+        let (daemons, tokens, seen_nonces, pairing_codes) = store.load_state(now_ms())?;
         Ok(Self {
             inner: Arc::new(Mutex::new(RelayInner {
                 daemons,
                 tokens,
                 seen_nonces,
+                pairing_codes,
                 #[cfg(test)]
                 delivered: Vec::new(),
             })),
             metrics: Arc::default(),
             rate_limits: RateLimitCache::default(),
+            resolve_rate_limits: RateLimitCache::default(),
             version_cache: VersionCache::default(),
             providers: PushProviders::from_env()?,
             store: Some(store),
@@ -499,6 +557,14 @@ impl RelayStore {
                 PRIMARY KEY (daemon_node_id, nonce)
             );
             CREATE INDEX IF NOT EXISTS seen_nonces_ts_ms_idx ON seen_nonces(ts_ms);
+            CREATE TABLE IF NOT EXISTS pairing_codes (
+                code TEXT PRIMARY KEY NOT NULL,
+                daemon_node_id TEXT NOT NULL,
+                ticket_blob TEXT NOT NULL,
+                expires_at_ms INTEGER NOT NULL,
+                published_at_ms INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS pairing_codes_expires_at_ms_idx ON pairing_codes(expires_at_ms);
             "#,
         )?;
         set_private_database_permissions(path)?;
@@ -511,6 +577,7 @@ impl RelayStore {
     fn load_state(&self, now_ms: u64) -> anyhow::Result<LoadedRelayState> {
         self.prune_old_nonces(now_ms)?;
         self.prune_old_tokens(now_ms)?;
+        self.prune_expired_codes(now_ms)?;
         let conn = self.conn.lock().expect("relay sqlite lock poisoned");
 
         let mut daemons = HashMap::new();
@@ -564,7 +631,33 @@ impl RelayStore {
             seen_nonces.insert(row?);
         }
 
-        Ok((daemons, tokens, seen_nonces))
+        let mut pairing_codes = HashMap::new();
+        let mut stmt = conn.prepare(
+            "SELECT code, daemon_node_id, ticket_blob, expires_at_ms FROM pairing_codes",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let code: String = row.get(0)?;
+            let daemon_node_id: String = row.get(1)?;
+            let ticket_blob: String = row.get(2)?;
+            let expires_at_ms: i64 = row.get(3)?;
+            Ok((code, daemon_node_id, ticket_blob, expires_at_ms))
+        })?;
+        for row in rows {
+            let (code, daemon_node_id, ticket_blob, expires_at_ms) = row?;
+            pairing_codes.insert(
+                code,
+                PairingCodeEntry {
+                    daemon_node_id,
+                    ticket_blob,
+                    expires_at_ms: expires_at_ms
+                        .try_into()
+                        .map_err(|_| anyhow::anyhow!("stored pairing code expiry is negative"))?,
+                    failed_resolves: 0,
+                },
+            );
+        }
+
+        Ok((daemons, tokens, seen_nonces, pairing_codes))
     }
 
     fn save_daemon(&self, daemon_node_id: &str, public_key: &VerifyingKey) -> anyhow::Result<()> {
@@ -680,6 +773,59 @@ impl RelayStore {
         Ok(())
     }
 
+    fn save_pairing_code(
+        &self,
+        code: &str,
+        daemon_node_id: &str,
+        ticket_blob: &str,
+        expires_at_ms: u64,
+    ) -> anyhow::Result<()> {
+        {
+            let conn = self.conn.lock().expect("relay sqlite lock poisoned");
+            conn.execute(
+                r#"
+                INSERT INTO pairing_codes (code, daemon_node_id, ticket_blob, expires_at_ms, published_at_ms)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                ON CONFLICT(code) DO UPDATE SET
+                    daemon_node_id = excluded.daemon_node_id,
+                    ticket_blob = excluded.ticket_blob,
+                    expires_at_ms = excluded.expires_at_ms,
+                    published_at_ms = excluded.published_at_ms
+                "#,
+                params![
+                    code,
+                    daemon_node_id,
+                    ticket_blob,
+                    expires_at_ms as i64,
+                    now_ms() as i64
+                ],
+            )?;
+        }
+        self.set_private_permissions()?;
+        Ok(())
+    }
+
+    fn delete_pairing_code(&self, code: &str) -> anyhow::Result<()> {
+        {
+            let conn = self.conn.lock().expect("relay sqlite lock poisoned");
+            conn.execute("DELETE FROM pairing_codes WHERE code = ?1", [code])?;
+        }
+        self.set_private_permissions()?;
+        Ok(())
+    }
+
+    fn prune_expired_codes(&self, now_ms: u64) -> anyhow::Result<()> {
+        {
+            let conn = self.conn.lock().expect("relay sqlite lock poisoned");
+            conn.execute(
+                "DELETE FROM pairing_codes WHERE expires_at_ms <= ?1",
+                [now_ms as i64],
+            )?;
+        }
+        self.set_private_permissions()?;
+        Ok(())
+    }
+
     fn set_private_permissions(&self) -> anyhow::Result<()> {
         set_private_database_permissions(&self.db_path)
     }
@@ -745,6 +891,8 @@ pub fn app(state: RelayState) -> Router {
         .route("/v1/push/register-token", post(register_token))
         .route("/v1/push/unregister-token", post(unregister_token))
         .route("/v1/push", post(push))
+        .route("/v1/pair/publish", post(publish_pairing_code))
+        .route("/v1/pair/resolve/{code}", get(resolve_pairing_code))
         .with_state(state)
 }
 
@@ -1028,6 +1176,222 @@ async fn push(
     Ok((StatusCode::ACCEPTED, axum::Json(ApiOk { ok: true })))
 }
 
+#[tracing::instrument(
+    name = "relay.publish_pairing_code",
+    skip_all,
+    fields(endpoint = "/v1/pair/publish")
+)]
+async fn publish_pairing_code(
+    State(state): State<RelayState>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> Result<impl IntoResponse, ApiError> {
+    let request: PublishPairingCodeRequest = parse_validated(&bytes)?;
+    verify_signed_request(
+        &state,
+        SignedRequestContext {
+            method: Method::POST.as_str(),
+            path: "/v1/pair/publish",
+            body: &bytes,
+            headers: &headers,
+            daemon_node_id: &request.daemon_node_id,
+            nonce: &request.nonce,
+            ts_ms: request.ts_ms,
+        },
+    )?;
+
+    if request.expires_at_ms <= now_ms() {
+        return Err(ApiError::bad_request(
+            "pairing code is already expired at publish time",
+        ));
+    }
+
+    let code = normalize_code(&request.code);
+
+    // A daemon advertises a single active code at a time; supersede any prior
+    // code it published so stale entries cannot linger in the resolve oracle.
+    let superseded = evict_codes_for_daemon(&state, &request.daemon_node_id, &code);
+
+    if let Some(store) = &state.store {
+        for stale in &superseded {
+            if let Err(error) = store.delete_pairing_code(stale) {
+                tracing::warn!(%error, "failed to delete superseded pairing code");
+            }
+        }
+        store
+            .save_pairing_code(
+                &code,
+                &request.daemon_node_id,
+                &request.ticket_blob,
+                request.expires_at_ms,
+            )
+            .map_err(|error| ApiError::internal(format!("persist pairing code: {error}")))?;
+    }
+    state
+        .inner
+        .lock()
+        .expect("relay state lock poisoned")
+        .pairing_codes
+        .insert(
+            code,
+            PairingCodeEntry {
+                daemon_node_id: request.daemon_node_id,
+                ticket_blob: request.ticket_blob,
+                expires_at_ms: request.expires_at_ms,
+                failed_resolves: 0,
+            },
+        );
+    state
+        .metrics
+        .pairing_code_publishes
+        .fetch_add(1, Ordering::Relaxed);
+    tracing::info!("relay pairing code publish accepted");
+    Ok((StatusCode::CREATED, axum::Json(ApiOk { ok: true })))
+}
+
+#[tracing::instrument(
+    name = "relay.resolve_pairing_code",
+    skip_all,
+    fields(endpoint = "/v1/pair/resolve/{code}")
+)]
+async fn resolve_pairing_code(
+    State(state): State<RelayState>,
+    headers: HeaderMap,
+    AxumPath(code): AxumPath<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Defend the internet-facing oracle before touching the code store: a
+    // weak short code only stays secret behind per-client throttling.
+    let client = client_identifier(&headers);
+    let minute = now_ms() / 60_000;
+    if state.resolve_rate_limits.increment(&client, minute) > RESOLVE_ATTEMPTS_PER_MINUTE {
+        return Err(ApiError::resolve_rate_limited());
+    }
+
+    let code = normalize_code(&code);
+    if !is_valid_code(&code) {
+        // Uniform 404: never reveal whether the format or the lookup failed.
+        return Err(ApiError::not_found("pairing code not found"));
+    }
+
+    let resolution = {
+        let mut inner = state.inner.lock().expect("relay state lock poisoned");
+        match inner.pairing_codes.get_mut(&code) {
+            Some(entry) if entry.expires_at_ms <= now_ms() => {
+                inner.pairing_codes.remove(&code);
+                CodeResolution::Miss { delete: true }
+            }
+            Some(entry) => CodeResolution::Hit {
+                ticket_blob: entry.ticket_blob.clone(),
+            },
+            None => CodeResolution::Miss { delete: false },
+        }
+    };
+
+    match resolution {
+        CodeResolution::Hit { ticket_blob } => {
+            // A correct guess consumes the code so it cannot be replayed.
+            forget_pairing_code(&state, &code);
+            state
+                .metrics
+                .pairing_code_resolves
+                .fetch_add(1, Ordering::Relaxed);
+            tracing::info!("relay pairing code resolve hit");
+            Ok((
+                StatusCode::OK,
+                axum::Json(ResolvePairingCodeResponse { ticket_blob }),
+            ))
+        }
+        CodeResolution::Miss { delete } => {
+            if delete {
+                // Expired entry already dropped from memory; clear sqlite too.
+                if let Some(store) = &state.store
+                    && let Err(error) = store.delete_pairing_code(&code)
+                {
+                    tracing::warn!(%error, "failed to delete expired pairing code");
+                }
+            } else {
+                register_failed_resolve(&state, &code);
+            }
+            Err(ApiError::not_found("pairing code not found"))
+        }
+    }
+}
+
+enum CodeResolution {
+    Hit { ticket_blob: String },
+    Miss { delete: bool },
+}
+
+/// Records a wrong guess against a present code and locks it after the cap so a
+/// brute-force walk over the short keyspace cannot outlast a single code.
+fn register_failed_resolve(state: &RelayState, code: &str) {
+    let lock_out = {
+        let mut inner = state.inner.lock().expect("relay state lock poisoned");
+        match inner.pairing_codes.get_mut(code) {
+            Some(entry) => {
+                entry.failed_resolves += 1;
+                if entry.failed_resolves >= RESOLVE_MAX_FAILURES_PER_CODE {
+                    inner.pairing_codes.remove(code);
+                    true
+                } else {
+                    false
+                }
+            }
+            None => false,
+        }
+    };
+    if lock_out
+        && let Some(store) = &state.store
+        && let Err(error) = store.delete_pairing_code(code)
+    {
+        tracing::warn!(%error, "failed to delete locked-out pairing code");
+    }
+}
+
+/// Drops every in-memory code owned by `daemon_node_id` except `keep`,
+/// returning the evicted codes so the caller can mirror the deletion to sqlite.
+fn evict_codes_for_daemon(state: &RelayState, daemon_node_id: &str, keep: &str) -> Vec<String> {
+    let mut inner = state.inner.lock().expect("relay state lock poisoned");
+    let stale: Vec<String> = inner
+        .pairing_codes
+        .iter()
+        .filter(|(code, entry)| entry.daemon_node_id == daemon_node_id && code.as_str() != keep)
+        .map(|(code, _)| code.clone())
+        .collect();
+    for code in &stale {
+        inner.pairing_codes.remove(code);
+    }
+    stale
+}
+
+/// Removes a resolved code from both memory and the durable store.
+fn forget_pairing_code(state: &RelayState, code: &str) {
+    state
+        .inner
+        .lock()
+        .expect("relay state lock poisoned")
+        .pairing_codes
+        .remove(code);
+    if let Some(store) = &state.store
+        && let Err(error) = store.delete_pairing_code(code)
+    {
+        tracing::warn!(%error, "failed to delete resolved pairing code");
+    }
+}
+
+/// Derives the rate-limit bucket for a resolve caller. Behind the hosted
+/// reverse proxy the real client is the first `x-forwarded-for` hop; absent
+/// that header (e.g. direct/local callers) every request shares one bucket.
+fn client_identifier(headers: &HeaderMap) -> String {
+    headers
+        .get(FORWARDED_FOR_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 fn remove_push_token_binding(
     state: &RelayState,
     push_token: &str,
@@ -1205,6 +1569,8 @@ impl RelayState {
         let token_registrations = self.metrics.token_registrations.load(Ordering::Relaxed);
         let token_unregistrations = self.metrics.token_unregistrations.load(Ordering::Relaxed);
         let push_accepts = self.metrics.push_accepts.load(Ordering::Relaxed);
+        let pairing_code_publishes = self.metrics.pairing_code_publishes.load(Ordering::Relaxed);
+        let pairing_code_resolves = self.metrics.pairing_code_resolves.load(Ordering::Relaxed);
 
         let base_metrics = format!(
             concat!(
@@ -1220,6 +1586,12 @@ impl RelayState {
                 "# HELP fieldwork_relay_push_accepts_total Privacy-preserving push requests accepted for provider delivery.\n",
                 "# TYPE fieldwork_relay_push_accepts_total counter\n",
                 "fieldwork_relay_push_accepts_total {}\n",
+                "# HELP fieldwork_relay_pairing_code_publishes_total Pairing codes published by paired daemons.\n",
+                "# TYPE fieldwork_relay_pairing_code_publishes_total counter\n",
+                "fieldwork_relay_pairing_code_publishes_total {}\n",
+                "# HELP fieldwork_relay_pairing_code_resolves_total Pairing codes successfully resolved to reachability tickets.\n",
+                "# TYPE fieldwork_relay_pairing_code_resolves_total counter\n",
+                "fieldwork_relay_pairing_code_resolves_total {}\n",
                 "# HELP fieldwork_relay_active_daemons Active daemon public keys retained in relay memory.\n",
                 "# TYPE fieldwork_relay_active_daemons gauge\n",
                 "fieldwork_relay_active_daemons {}\n",
@@ -1231,6 +1603,8 @@ impl RelayState {
             token_registrations,
             token_unregistrations,
             push_accepts,
+            pairing_code_publishes,
+            pairing_code_resolves,
             active_daemons,
             registered_tokens,
         );
@@ -1807,18 +2181,20 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
             axum::serve(listener, app).await.unwrap();
         });
 
-        let mut state = RelayState::default();
-        state.providers = PushProviders {
-            apns: Some(
-                apns::ApnsClient::new(apns::ApnsCredentials {
-                    team_id: "TEAMID1234".to_string(),
-                    key_id: "KEYID1234".to_string(),
-                    topic: "app.fieldwork.ios".to_string(),
-                    private_key_pem: TEST_P8.as_bytes().to_vec(),
-                    endpoint: format!("http://{addr}"),
-                })
-                .unwrap(),
-            ),
+        let state = RelayState {
+            providers: PushProviders {
+                apns: Some(
+                    apns::ApnsClient::new(apns::ApnsCredentials {
+                        team_id: "TEAMID1234".to_string(),
+                        key_id: "KEYID1234".to_string(),
+                        topic: "app.fieldwork.ios".to_string(),
+                        private_key_pem: TEST_P8.as_bytes().to_vec(),
+                        endpoint: format!("http://{addr}"),
+                    })
+                    .unwrap(),
+                ),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let key = SigningKey::from_bytes(&[7; 32]);
@@ -1884,6 +2260,285 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    const CODE: &str = "A1B2C";
+    const TICKET_BLOB: &str = "fw1abcdefghijklmnopqrstuvwxyz234567";
+
+    fn publish_body(code: &str, expires_at_ms: u64, nonce: &str, ts_ms: u64) -> Vec<u8> {
+        serde_json::to_vec(&PublishPairingCodeRequest {
+            daemon_node_id: DAEMON_A.to_string(),
+            code: code.to_string(),
+            ticket_blob: TICKET_BLOB.to_string(),
+            expires_at_ms,
+            nonce: nonce.to_string(),
+            ts_ms,
+        })
+        .unwrap()
+    }
+
+    async fn resolve(state: &RelayState, code: &str) -> axum::response::Response {
+        app(state.clone())
+            .oneshot(
+                Request::get(format!("/v1/pair/resolve/{code}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    }
+
+    async fn resolve_from_ip(
+        state: &RelayState,
+        code: &str,
+        client_ip: &str,
+    ) -> axum::response::Response {
+        app(state.clone())
+            .oneshot(
+                Request::get(format!("/v1/pair/resolve/{code}"))
+                    .header(FORWARDED_FOR_HEADER, client_ip)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn publishes_then_resolves_pairing_code() {
+        let state = RelayState::default();
+        let key = SigningKey::from_bytes(&[7; 32]);
+        register_daemon_key(&state, DAEMON_A, &key).await;
+
+        let expires = now_ms() + 10 * 60 * 1000;
+        let body = publish_body(CODE, expires, "nonce-pair-publish1", now_ms());
+        let response = signed_post(
+            &state,
+            &key,
+            "/v1/pair/publish",
+            body,
+            "nonce-pair-publish1",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        // Case-insensitive: lowercase input normalizes to the published code.
+        let response = resolve(&state, "a1b2c").await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let value: serde_json::Value =
+            serde_json::from_str(&response_text(response).await).unwrap();
+        assert_eq!(value["ticket_blob"], TICKET_BLOB);
+
+        // A successful resolve consumes the code (single-use).
+        assert_eq!(resolve(&state, CODE).await.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn unsigned_publish_is_rejected() {
+        let state = RelayState::default();
+        let key = SigningKey::from_bytes(&[7; 32]);
+        register_daemon_key(&state, DAEMON_A, &key).await;
+
+        let body = publish_body(
+            CODE,
+            now_ms() + 10 * 60 * 1000,
+            "nonce-pair-unsigned",
+            now_ms(),
+        );
+        let response = app(state.clone())
+            .oneshot(
+                Request::post("/v1/pair/publish")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(resolve(&state, CODE).await.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn publish_rejects_already_expired_code() {
+        let state = RelayState::default();
+        let key = SigningKey::from_bytes(&[7; 32]);
+        register_daemon_key(&state, DAEMON_A, &key).await;
+
+        let expired = now_ms().saturating_sub(1);
+        let body = publish_body(CODE, expired, "nonce-pair-expired1", now_ms());
+        let response = signed_post(
+            &state,
+            &key,
+            "/v1/pair/publish",
+            body,
+            "nonce-pair-expired1",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(resolve(&state, CODE).await.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn expired_code_is_not_resolvable() {
+        let state = RelayState::default();
+        let key = SigningKey::from_bytes(&[7; 32]);
+        register_daemon_key(&state, DAEMON_A, &key).await;
+
+        // Publish a valid code, then age it out directly in state.
+        let body = publish_body(
+            CODE,
+            now_ms() + 10 * 60 * 1000,
+            "nonce-pair-aged1",
+            now_ms(),
+        );
+        let response =
+            signed_post(&state, &key, "/v1/pair/publish", body, "nonce-pair-aged1").await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        {
+            let mut inner = state.inner.lock().expect("relay state lock poisoned");
+            inner
+                .pairing_codes
+                .get_mut(CODE)
+                .expect("published code")
+                .expires_at_ms = now_ms().saturating_sub(1);
+        }
+
+        assert_eq!(resolve(&state, CODE).await.status(), StatusCode::NOT_FOUND);
+        // Expired entry is evicted on the resolve miss.
+        assert!(
+            !state
+                .inner
+                .lock()
+                .expect("relay state lock poisoned")
+                .pairing_codes
+                .contains_key(CODE)
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_locks_out_code_after_repeated_wrong_guesses() {
+        // Per-code lockout fires on a code that EXISTS but is repeatedly missed.
+        // Resolution only misses a present code when the supplied code does not
+        // match it, so seed a present entry and drive failures against its key
+        // through register_failed_resolve (the same path the handler invokes on
+        // a non-matching present code) to exercise the cap deterministically.
+        let state = RelayState::default();
+        {
+            let mut inner = state.inner.lock().expect("relay state lock poisoned");
+            inner.pairing_codes.insert(
+                CODE.to_string(),
+                PairingCodeEntry {
+                    daemon_node_id: DAEMON_A.to_string(),
+                    ticket_blob: TICKET_BLOB.to_string(),
+                    expires_at_ms: now_ms() + 10 * 60 * 1000,
+                    failed_resolves: 0,
+                },
+            );
+        }
+
+        for _ in 0..(RESOLVE_MAX_FAILURES_PER_CODE - 1) {
+            register_failed_resolve(&state, CODE);
+            assert!(
+                state
+                    .inner
+                    .lock()
+                    .expect("relay state lock poisoned")
+                    .pairing_codes
+                    .contains_key(CODE),
+                "code should survive until the failure cap"
+            );
+        }
+        // The final failure trips the lockout and deletes the code.
+        register_failed_resolve(&state, CODE);
+        assert!(
+            !state
+                .inner
+                .lock()
+                .expect("relay state lock poisoned")
+                .pairing_codes
+                .contains_key(CODE)
+        );
+        // A locked-out code resolves as a uniform miss thereafter.
+        assert_eq!(resolve(&state, CODE).await.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn resolve_rate_limits_per_client_ip() {
+        let state = RelayState::default();
+
+        for index in 0..RESOLVE_ATTEMPTS_PER_MINUTE {
+            let response = resolve_from_ip(&state, "ABCDE", "203.0.113.7").await;
+            assert_eq!(
+                response.status(),
+                StatusCode::NOT_FOUND,
+                "attempt {index} should miss, not throttle yet"
+            );
+        }
+        // The next request from the same IP within the window is throttled.
+        let response = resolve_from_ip(&state, "ABCDE", "203.0.113.7").await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+
+        // A different client IP still gets a fresh budget.
+        let response = resolve_from_ip(&state, "ABCDE", "203.0.113.8").await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn resolve_rejects_malformed_code_format() {
+        let state = RelayState::default();
+        // 'U' is not in the Crockford alphabet, and length is wrong: uniform 404.
+        let response = resolve(&state, "UU").await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn sqlite_persists_pairing_code_across_restart() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("relay.db");
+        let key = SigningKey::from_bytes(&[7; 32]);
+        let state = RelayState::open_sqlite(&db_path).unwrap();
+        register_daemon_key(&state, DAEMON_A, &key).await;
+
+        let body = publish_body(
+            CODE,
+            now_ms() + 10 * 60 * 1000,
+            "nonce-pair-sqlite1",
+            now_ms(),
+        );
+        let response =
+            signed_post(&state, &key, "/v1/pair/publish", body, "nonce-pair-sqlite1").await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        drop(state);
+
+        let restored = RelayState::open_sqlite(&db_path).unwrap();
+        let response = resolve(&restored, CODE).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let value: serde_json::Value =
+            serde_json::from_str(&response_text(response).await).unwrap();
+        assert_eq!(value["ticket_blob"], TICKET_BLOB);
+    }
+
+    #[tokio::test]
+    async fn pairing_code_metrics_are_aggregate() {
+        let state = RelayState::default();
+        let key = SigningKey::from_bytes(&[7; 32]);
+        register_daemon_key(&state, DAEMON_A, &key).await;
+
+        let body = publish_body(
+            CODE,
+            now_ms() + 10 * 60 * 1000,
+            "nonce-pair-metric1",
+            now_ms(),
+        );
+        let response =
+            signed_post(&state, &key, "/v1/pair/publish", body, "nonce-pair-metric1").await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(resolve(&state, CODE).await.status(), StatusCode::OK);
+
+        let metrics = state.metrics_text();
+        assert!(metrics.contains("fieldwork_relay_pairing_code_publishes_total 1"));
+        assert!(metrics.contains("fieldwork_relay_pairing_code_resolves_total 1"));
+        assert!(!metrics.contains(CODE));
+        assert!(!metrics.contains(TICKET_BLOB));
     }
 
     async fn register_daemon_key(state: &RelayState, daemon: &str, key: &SigningKey) {

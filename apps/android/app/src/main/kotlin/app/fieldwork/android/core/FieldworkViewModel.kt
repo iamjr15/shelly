@@ -9,6 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +26,7 @@ data class FieldworkUiState(
     val message: String? = null,
     val pairedDaemon: PairedDaemonRecord? = null,
     val targetSession: MobileSession? = null,
+    val activeTerminalSessionId: String? = null,
     val telemetryConsentPromptVisible: Boolean = false,
 )
 
@@ -48,6 +50,7 @@ class FieldworkViewModel internal constructor(
     private val fcmTokens: FcmTokenSource,
     private val restoreDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val repositoryDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val sessionSubscriptionRetryDelayMillis: Long = 750L,
 ) : ViewModel() {
     constructor(context: Context) : this(context, FieldworkRepository(context), AndroidFcmTokenSource)
 
@@ -68,7 +71,10 @@ class FieldworkViewModel internal constructor(
 
     fun setUnlocked(unlocked: Boolean) {
         val wasUnlocked = _state.value.unlocked
-        _state.value = _state.value.copy(unlocked = unlocked)
+        _state.value = _state.value.copy(
+            unlocked = unlocked,
+            activeTerminalSessionId = if (unlocked) _state.value.activeTerminalSessionId else null,
+        )
         if (!unlocked) {
             if (wasUnlocked) {
                 stopSessionSubscription()
@@ -83,6 +89,14 @@ class FieldworkViewModel internal constructor(
     }
 
     fun pair(qrPayload: String) {
+        runPairing { repository.pair(qrPayload) }
+    }
+
+    fun pairWithCode(code: String) {
+        runPairing { repository.pairWithCode(code) }
+    }
+
+    private fun runPairing(pairAction: suspend () -> Unit) {
         if (_state.value.loading) {
             return
         }
@@ -97,7 +111,7 @@ class FieldworkViewModel internal constructor(
         viewModelScope.launch {
             try {
                 withContext(repositoryDispatcher) {
-                    repository.pair(qrPayload)
+                    pairAction()
                 }
                 _state.value = _state.value.copy(
                     paired = true,
@@ -181,6 +195,14 @@ class FieldworkViewModel internal constructor(
         _state.value = _state.value.copy(targetSession = null)
     }
 
+    fun openTerminalSession(session: MobileSession) {
+        _state.value = _state.value.copy(activeTerminalSessionId = session.id)
+    }
+
+    fun closeTerminalSession() {
+        _state.value = _state.value.copy(activeTerminalSessionId = null)
+    }
+
     fun syncFcmToken() {
         if (!_state.value.paired || !_state.value.unlocked) {
             return
@@ -208,7 +230,7 @@ class FieldworkViewModel internal constructor(
     }
 
     fun answerTelemetryConsent(accepted: Boolean) {
-        MobileTelemetry.setCrashReportingEnabled(appContext, accepted)
+        MobileTelemetry.setDiagnosticsEnabled(appContext, accepted)
         _state.value = _state.value.copy(telemetryConsentPromptVisible = false)
     }
 
@@ -216,7 +238,7 @@ class FieldworkViewModel internal constructor(
         val sessions = withContext(repositoryDispatcher) {
             repository.listSessions()
         }
-        _state.value = _state.value.copy(sessions = sessions)
+        applySessions(sessions)
         resolvePendingPushTarget(sessions)
     }
 
@@ -255,16 +277,25 @@ class FieldworkViewModel internal constructor(
             return
         }
         sessionSubscriptionJob = viewModelScope.launch(repositoryDispatcher) {
-            runCatching {
-                repository.subscribeSessions { sessions ->
-                    if (!_state.value.unlocked) {
-                        return@subscribeSessions
+            while (_state.value.unlocked && _state.value.paired) {
+                try {
+                    repository.subscribeSessions { sessions ->
+                        if (!_state.value.unlocked) {
+                            return@subscribeSessions
+                        }
+                        applySessions(sessions)
+                        resolvePendingPushTarget(sessions)
                     }
-                    _state.value = _state.value.copy(sessions = sessions)
-                    resolvePendingPushTarget(sessions)
+                    return@launch
+                } catch (error: Throwable) {
+                    if (error is CancellationException) {
+                        throw error
+                    }
+                    if (!_state.value.unlocked || !_state.value.paired) {
+                        return@launch
+                    }
+                    delay(sessionSubscriptionRetryDelayMillis)
                 }
-            }.onFailure { error ->
-                _state.value = _state.value.copy(message = error.message ?: error.toString())
             }
         }
     }
@@ -290,6 +321,17 @@ class FieldworkViewModel internal constructor(
         val session = sessions.firstOrNull { sha256Hex(it.id) == hash } ?: return
         pendingPushSessionIdHash = null
         _state.value = _state.value.copy(targetSession = session)
+    }
+
+    private fun applySessions(sessions: List<MobileSession>) {
+        val activeSessionId = _state.value.activeTerminalSessionId
+        val retainedActiveSessionId = activeSessionId?.takeIf { id ->
+            sessions.any { it.id == id }
+        }
+        _state.value = _state.value.copy(
+            sessions = sessions,
+            activeTerminalSessionId = retainedActiveSessionId,
+        )
     }
 
     private fun recordTelemetryExperience() {

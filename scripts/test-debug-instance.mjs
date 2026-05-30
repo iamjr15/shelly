@@ -29,6 +29,37 @@ try {
   assert(parsed.encryption === "false", "env output must disable scrollback encryption only inside debug root");
   assert(parsed.path.split(path.delimiter)[0] === path.join(tempRoot, "bin"), "env output must prepend debug bin dir");
 
+  const repeatedEnv = runFull("scripts/debug-instance.sh", ["env"], env);
+  assert(repeatedEnv.stderr === "", "env output must stay clean when debug binary links already exist");
+  assert(
+    repeatedEnv.stdout.includes(`export FIELDWORK_DEBUG_ROOT=${tempRoot}`),
+    "env output must remain usable when called repeatedly",
+  );
+  const concurrentEnv = runFull(
+    "bash",
+    [
+      "-lc",
+      [
+        "set -euo pipefail",
+        "pids=()",
+        "for i in 1 2 3 4 5 6; do",
+        '  scripts/debug-instance.sh env > "$FIELDWORK_DEBUG_ROOT/env-$i.out" 2> "$FIELDWORK_DEBUG_ROOT/env-$i.err" &',
+        '  pids+=("$!")',
+        "done",
+        "failed=0",
+        'for pid in "${pids[@]}"; do',
+        '  if ! wait "$pid"; then',
+        "    failed=1",
+        "  fi",
+        "done",
+        'cat "$FIELDWORK_DEBUG_ROOT"/env-*.err >&2',
+        'exit "$failed"',
+      ].join("\n"),
+    ],
+    env,
+  );
+  assert(concurrentEnv.stderr === "", "parallel env/status calls must not race while refreshing debug binary links");
+
   const startOutput = run("scripts/debug-instance.sh", ["--help"], env);
   assert(startOutput.includes("FIELDWORK_DEBUG_TMUX_SESSION"), "help output must document custom session override");
   assert(startOutput.includes("FIELDWORK_DEBUG_ROOT"), "help output must document custom root override");
@@ -104,6 +135,10 @@ try {
 console.log("debug instance env contract ok");
 
 function run(command, args, env) {
+  return runFull(command, args, env).stdout;
+}
+
+function runFull(command, args, env) {
   const result = spawnSync(command, args, {
     cwd: root,
     encoding: "utf8",
@@ -112,7 +147,7 @@ function run(command, args, env) {
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} failed with ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
   }
-  return result.stdout;
+  return result;
 }
 
 function assert(condition, message) {

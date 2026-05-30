@@ -7,16 +7,17 @@
 
 use fieldwork_protocol::{
     AgentState as ProtocolAgentState, CONTRACT_VERSION, ClientKind, ClientSize, ClientToServerMsg,
-    ErrorCode, PairingPayload, PushPlatform as ProtocolPushPlatform, ServerToClientMsg, SessionId,
-    SessionSummary as ProtocolSessionSummary, max_frame_len,
+    ErrorCode, PairingTicket, PushPlatform as ProtocolPushPlatform, ServerToClientMsg, SessionId,
+    SessionSummary as ProtocolSessionSummary, max_frame_len, normalize_code,
 };
 use iroh::endpoint::{RecvStream, SendStream, presets};
-use iroh::{Endpoint, EndpointAddr, RelayUrl, SecretKey, TransportAddr};
+use iroh::{Endpoint, EndpointAddr, RelayConfig, RelayUrl, SecretKey, TransportAddr};
 use serde::{Serialize, de::DeserializeOwned};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::Mutex;
+use tokio::time::{Duration, timeout};
 
 const FIELDWORK_ALPN: &[u8] = b"fieldwork/1";
 
@@ -31,6 +32,13 @@ pub struct ClientConfig {
     pub device_secret_key: Option<Vec<u8>>,
     /// Persisted daemon connection target after successful pairing.
     pub paired_daemon: Option<DaemonConfig>,
+    /// Relay control URL used to resolve a typed pairing code to a ticket.
+    ///
+    /// Injected from the `FIELDWORK_RELAY_CONTROL_URL` environment value via the
+    /// iOS `FieldworkRelayControlURL` Info.plist key and the Android
+    /// `FIELDWORK_RELAY_CONTROL_URL` BuildConfig field. Absent when no relay is
+    /// hosted, in which case the typed-code path is unavailable but QR still works.
+    pub relay_control_url: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -205,46 +213,62 @@ impl FieldworkClient {
         }))
     }
 
-    /// Pairs with a daemon using the JSON payload embedded in the desktop QR.
+    /// Pairs with a daemon using the compact ticket embedded in the desktop QR.
+    ///
+    /// The scanned string is a `fw1`-prefixed [`PairingTicket`] carrying both the
+    /// daemon's reachability and the short code, so a scan needs no typing.
     pub async fn pair_with_qr(
         self: Arc<Self>,
         qr_payload: String,
     ) -> Result<DaemonInfo, FieldworkError> {
-        let payload: PairingPayload = serde_json::from_str(extract_json_payload(&qr_payload)?)
+        let ticket = PairingTicket::decode(qr_payload.trim())
             .map_err(|error| FieldworkError::Protocol(error.to_string()))?;
-        let target = DaemonTarget::from_payload(&payload);
-        let endpoint = self.endpoint().await?;
-        let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
+        self.pair_with_ticket(ticket).await
+    }
 
-        write_hello(&mut send, self.config.platform).await?;
-        expect_welcome(&mut recv).await?;
-        write_msg(
-            &mut send,
-            &ClientToServerMsg::PairWithToken {
-                pair_token: payload.pair_token,
-                device_name: self.config.device_name.clone(),
-                device_node_id: endpoint.id().to_string(),
-            },
-        )
-        .await?;
+    /// Pairs with a daemon using a short typed code resolved through the relay.
+    ///
+    /// The code is normalized, then exchanged for the daemon's [`PairingTicket`]
+    /// via the relay rendezvous endpoint. Requires a configured relay control
+    /// URL; the typed-code path is unavailable when no relay is hosted.
+    pub async fn pair_with_code(
+        self: Arc<Self>,
+        code: String,
+    ) -> Result<DaemonInfo, FieldworkError> {
+        let code = normalize_code(&code);
+        let relay_control_url = self
+            .config
+            .relay_control_url
+            .as_deref()
+            .ok_or_else(|| {
+                FieldworkError::InvalidConfig("relay control URL not configured".to_string())
+            })?
+            .trim_end_matches('/');
+        let url = format!("{relay_control_url}/v1/pair/resolve/{code}");
 
-        match read_msg::<ServerToClientMsg>(&mut recv).await? {
-            ServerToClientMsg::PairingComplete { daemon_node_id } => {
-                *self.daemon.lock().await = Some(target.clone());
-                *self.connected.lock().await = true;
-                Ok(DaemonInfo {
-                    daemon_node_id,
-                    relay_url: target.relay_url,
-                    addrs: target.addrs,
-                    device_node_id: endpoint.id().to_string(),
-                    device_secret_key: self.secret_key.to_bytes().to_vec(),
-                })
-            }
-            ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
-            other => Err(FieldworkError::Protocol(format!(
-                "unexpected daemon response during pairing: {other:?}"
-            ))),
+        let response = reqwest::Client::new()
+            .get(&url)
+            .send()
+            .await
+            .map_err(|error| FieldworkError::Transport(error.to_string()))?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(FieldworkError::NotFound(
+                "code not found or expired".to_string(),
+            ));
         }
+        if !response.status().is_success() {
+            return Err(FieldworkError::Protocol(format!(
+                "relay resolve returned {}",
+                response.status()
+            )));
+        }
+        let resolved: ResolvePairingResponse = response
+            .json()
+            .await
+            .map_err(|error| FieldworkError::Protocol(error.to_string()))?;
+        let ticket = PairingTicket::decode(resolved.ticket_blob.trim())
+            .map_err(|error| FieldworkError::Protocol(error.to_string()))?;
+        self.pair_with_ticket(ticket).await
     }
 
     /// Connects to a previously paired daemon and verifies authorization with a ping.
@@ -383,6 +407,43 @@ impl FieldworkClient {
 }
 
 impl FieldworkClient {
+    /// Shared dial-and-pair path for both the QR and typed-code flows.
+    async fn pair_with_ticket(&self, ticket: PairingTicket) -> Result<DaemonInfo, FieldworkError> {
+        let target = DaemonTarget::from_ticket(&ticket);
+        let endpoint = self.endpoint().await?;
+        let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
+
+        write_hello(&mut send, self.config.platform).await?;
+        expect_welcome(&mut recv).await?;
+        write_msg(
+            &mut send,
+            &ClientToServerMsg::PairWithCode {
+                code: ticket.code,
+                device_name: self.config.device_name.clone(),
+                device_node_id: endpoint.id().to_string(),
+            },
+        )
+        .await?;
+
+        match read_msg::<ServerToClientMsg>(&mut recv).await? {
+            ServerToClientMsg::PairingComplete { daemon_node_id } => {
+                *self.daemon.lock().await = Some(target.clone());
+                *self.connected.lock().await = true;
+                Ok(DaemonInfo {
+                    daemon_node_id,
+                    relay_url: target.relay_url,
+                    addrs: target.addrs,
+                    device_node_id: endpoint.id().to_string(),
+                    device_secret_key: self.secret_key.to_bytes().to_vec(),
+                })
+            }
+            ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
+            other => Err(FieldworkError::Protocol(format!(
+                "unexpected daemon response during pairing: {other:?}"
+            ))),
+        }
+    }
+
     async fn daemon_target(&self) -> Result<DaemonTarget, FieldworkError> {
         self.daemon
             .lock()
@@ -562,11 +623,11 @@ impl AttachedSession {
 }
 
 impl DaemonTarget {
-    fn from_payload(payload: &PairingPayload) -> Self {
+    fn from_ticket(ticket: &PairingTicket) -> Self {
         Self {
-            node_id: payload.node_id.clone(),
-            relay_url: payload.relay_url.clone(),
-            addrs: payload.addrs.clone(),
+            node_id: ticket.node_id.clone(),
+            relay_url: ticket.relay_url.clone(),
+            addrs: ticket.addrs.clone(),
         }
     }
 
@@ -615,10 +676,24 @@ async fn open_stream(
     endpoint: &Endpoint,
     target: &DaemonTarget,
 ) -> Result<(SendStream, RecvStream), FieldworkError> {
-    let conn = endpoint
-        .connect(target.endpoint_addr()?, FIELDWORK_ALPN)
-        .await
-        .map_err(|error| FieldworkError::Transport(error.to_string()))?;
+    if let Some(relay_url) = &target.relay_url {
+        let relay_url: RelayUrl =
+            relay_url
+                .parse()
+                .map_err(|error: iroh::RelayUrlParseError| {
+                    FieldworkError::Protocol(error.to_string())
+                })?;
+        endpoint
+            .insert_relay(relay_url.clone(), Arc::new(RelayConfig::from(relay_url)))
+            .await;
+    }
+    let conn = timeout(
+        Duration::from_secs(15),
+        endpoint.connect(target.endpoint_addr()?, FIELDWORK_ALPN),
+    )
+    .await
+    .map_err(|_| FieldworkError::Transport("timed out connecting to daemon".to_string()))?
+    .map_err(|error| FieldworkError::Transport(error.to_string()))?;
     conn.open_bi()
         .await
         .map_err(|error| FieldworkError::Transport(error.to_string()))
@@ -693,19 +768,11 @@ where
     Ok(())
 }
 
-fn extract_json_payload(input: &str) -> Result<&str, FieldworkError> {
-    let start = input
-        .find('{')
-        .ok_or_else(|| FieldworkError::Protocol("QR payload does not contain JSON".to_string()))?;
-    let end = input
-        .rfind('}')
-        .ok_or_else(|| FieldworkError::Protocol("QR payload does not contain JSON".to_string()))?;
-    if end < start {
-        return Err(FieldworkError::Protocol(
-            "QR payload does not contain JSON".to_string(),
-        ));
-    }
-    Ok(&input[start..=end])
+#[derive(serde::Deserialize)]
+/// Relay rendezvous response carrying the opaque encoded [`PairingTicket`].
+struct ResolvePairingResponse {
+    /// `fw1`-prefixed ticket string published by the daemon under this code.
+    ticket_blob: String,
 }
 
 fn error_from_server(code: ErrorCode, message: String) -> FieldworkError {
@@ -882,14 +949,32 @@ mod tests {
         }
     }
 
+    fn sample_ticket() -> PairingTicket {
+        PairingTicket {
+            code: "AB234".to_string(),
+            node_id: "node".to_string(),
+            relay_url: Some("https://relay.example".to_string()),
+            addrs: vec!["127.0.0.1:9000".to_string()],
+            expires_at: 1,
+        }
+    }
+
     #[test]
-    fn extracts_json_from_qr_output() {
-        let payload =
-            "qr\n{\"node_id\":\"n\",\"addrs\":[],\"pair_token\":\"t\",\"expires_at\":1}\n";
-        assert_eq!(
-            extract_json_payload(payload).unwrap(),
-            "{\"node_id\":\"n\",\"addrs\":[],\"pair_token\":\"t\",\"expires_at\":1}"
-        );
+    fn pairing_ticket_round_trips_through_qr_string() {
+        let ticket = sample_ticket();
+        let encoded = ticket.encode().expect("encode ticket");
+        assert!(encoded.starts_with("fw1"));
+        assert_eq!(PairingTicket::decode(&encoded).unwrap(), ticket);
+    }
+
+    #[test]
+    fn pair_with_qr_input_tolerates_trailing_newline() {
+        let ticket = sample_ticket();
+        let encoded = ticket.encode().expect("encode ticket");
+        // pair_with_qr trims its input before decoding; a scanner that appends a
+        // trailing newline must still resolve to the same ticket.
+        let scanned = format!("{encoded}\n");
+        assert_eq!(PairingTicket::decode(scanned.trim()).unwrap(), ticket);
     }
 
     #[test]
@@ -899,6 +984,7 @@ mod tests {
             platform: MobilePlatform::Ios,
             device_secret_key: Some(vec![1, 2, 3]),
             paired_daemon: None,
+            relay_control_url: None,
         });
 
         assert!(matches!(result, Err(FieldworkError::InvalidConfig(_))));

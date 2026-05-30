@@ -6,7 +6,14 @@ package="app.fieldwork.android"
 activity="$package/.MainActivity"
 fieldwork="${FIELDWORK_CLI_BINARY:-$root/target/release/fieldwork}"
 fieldworkd="${FIELDWORK_DAEMON_BINARY:-$root/target/release/fieldworkd}"
-iroh_relay_url="${FIELDWORK_ANDROID_IROH_RELAY_URL:-https://aps1-1.relay.n0.iroh-canary.iroh.link./}"
+iroh_relay_url="${FIELDWORK_ANDROID_IROH_RELAY_URL:-}"
+relay_control_url="${FIELDWORK_ANDROID_RELAY_CONTROL_URL:-}"
+relay_signing_key="${FIELDWORK_RELAY_SIGNING_KEY_B64:-BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc}"
+
+if [[ -z "$relay_control_url" ]]; then
+  echo "Set FIELDWORK_ANDROID_RELAY_CONTROL_URL to the Fieldwork relay rendezvous base URL so the daemon can publish the typed pairing code and the phone can resolve it." >&2
+  exit 1
+fi
 
 if [[ ! -x "$fieldwork" || ! -x "$fieldworkd" ]]; then
   echo "Expected executable release binaries at $fieldwork and $fieldworkd." >&2
@@ -37,7 +44,9 @@ fi
 dump_ui() {
   local out="$1"
   local tmp="$out.tmp"
+  local remote="/sdcard/fieldwork-window.xml"
   rm -f "$tmp"
+  ensure_fieldwork_foreground
   if python3 - "$serial" "$tmp" <<'PY'
 import subprocess
 import sys
@@ -59,7 +68,57 @@ PY
     return 0
   fi
   rm -f "$tmp"
+
+  # Some Android emulator images intermittently hang or omit the streamed
+  # hierarchy when dumping to /dev/tty. The file-backed path is slower but more
+  # reliable, especially after another app steals focus during a long smoke.
+  ensure_fieldwork_foreground
+  if adb -s "$serial" shell uiautomator dump "$remote" >/dev/null 2>&1 \
+    && adb -s "$serial" exec-out cat "$remote" >"$tmp" \
+    && [[ -s "$tmp" ]]; then
+    adb -s "$serial" shell rm -f "$remote" >/dev/null 2>&1 || true
+    mv "$tmp" "$out"
+    return 0
+  fi
+  adb -s "$serial" shell rm -f "$remote" >/dev/null 2>&1 || true
+  rm -f "$tmp"
   return 1
+}
+
+current_focus_package() {
+  local focus_file="$tmp_dir/window-focus.txt"
+  adb -s "$serial" shell dumpsys window >"$focus_file" 2>/dev/null || return 1
+  python3 - "$focus_file" <<'PY'
+import re
+import sys
+
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+for pattern in (
+    r"mCurrentFocus=Window\{[^ ]+ [^ ]+ ([^/ ]+)/",
+    r"focusedApp=ActivityRecord\{[^ ]+ [^ ]+ ([^/ ]+)/",
+):
+    match = re.search(pattern, text)
+    if match:
+        print(match.group(1))
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+ensure_fieldwork_foreground() {
+  local focused
+  focused="$(current_focus_package || true)"
+  case "$focused" in
+    ""|"$package"|com.android.systemui|com.google.android.apps.nexuslauncher)
+      ;;
+    *)
+      echo "Recovering Fieldwork foreground from $focused." >&2
+      adb -s "$serial" shell am force-stop "$focused" >/dev/null 2>&1 || true
+      sleep 0.5
+      ;;
+  esac
+  adb -s "$serial" shell am start -n "$activity" >/dev/null 2>&1 || true
+  sleep 0.5
 }
 
 tap_text_node() {
@@ -174,6 +233,94 @@ wait_for_input_log() {
   return 1
 }
 
+# Captures the human pairing code printed by `fieldwork pair`. The command emits
+# a QR (unparseable unicode blocks) plus a grouped code line ("    AB C12"); we
+# squeeze it back to the 5-char Crockford code the daemon generated.
+capture_pair_code() {
+  local log_path="$1"
+  local code=""
+  for _ in {1..100}; do
+    code="$(
+      awk '
+        prev ~ /enter this code:/ { gsub(/[[:space:]]/, "", $0); print; exit }
+        { prev = $0 }
+      ' "$log_path"
+    )"
+    if [[ -n "$code" ]]; then
+      printf '%s' "$code"
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+tap_pairing_code_button() {
+  local ui_file="$1"
+  local coords_file="$tmp_dir/pair-button-coords.txt"
+  python3 - "$ui_file" >"$coords_file" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+text = open(sys.argv[1], encoding="utf-8").read()
+end = text.find("</hierarchy>")
+if end >= 0:
+    text = text[:end + len("</hierarchy>")]
+root = ET.fromstring(text)
+
+
+def parse_bounds(bounds):
+    values = list(map(int, re.findall(r"\d+", bounds)))
+    return tuple(values) if len(values) == 4 else None
+
+
+def code_field_bottom():
+    for node in root.iter("node"):
+        if node.attrib.get("class") != "android.widget.EditText":
+            continue
+        if any(child.attrib.get("text") == "Pairing code" for child in node.iter()):
+            bounds = parse_bounds(node.attrib.get("bounds", ""))
+            if bounds is not None:
+                return bounds[3]
+    for node in root.iter("node"):
+        if node.attrib.get("text") == "Pairing code":
+            bounds = parse_bounds(node.attrib.get("bounds", ""))
+            if bounds is not None:
+                return bounds[3]
+    return None
+
+
+bottom = code_field_bottom()
+if bottom is None:
+    raise SystemExit("pairing code field not found")
+
+candidates = []
+for node in root.iter("node"):
+    bounds = parse_bounds(node.attrib.get("bounds", ""))
+    if bounds is None:
+        continue
+    left, top, right, low = bounds
+    if (
+        node.attrib.get("clickable") == "true"
+        and node.attrib.get("enabled") == "true"
+        and right - left > 500
+        and 48 <= low - top <= 240
+        and top >= bottom - 2
+    ):
+        candidates.append((top, left, right, low))
+
+if not candidates:
+    raise SystemExit("pair button not found")
+
+top, left, right, low = sorted(candidates)[0]
+print((left + right) // 2, (top + low) // 2)
+PY
+  local tap_x tap_y
+  read -r tap_x tap_y <"$coords_file"
+  adb -s "$serial" shell input tap "$tap_x" "$tap_y"
+}
+
 tmp_parent="${FIELDWORK_ANDROID_SUBSCRIBE_TMPDIR:-/tmp}"
 tmp_dir="$(mktemp -d "${tmp_parent%/}/fw-as.XXXXXX")"
 home="$tmp_dir/home"
@@ -224,6 +371,8 @@ desktop_env() {
     PATH="$bin:$PATH" \
     FIELDWORK_IROH_SECRET_KEY_B64=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI \
     FIELDWORK_IROH_RELAY_URL="$iroh_relay_url" \
+    FIELDWORK_RELAY_CONTROL_URL="$relay_control_url" \
+    FIELDWORK_RELAY_SIGNING_KEY_B64="$relay_signing_key" \
     FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED=false \
     "$@"
 }
@@ -256,22 +405,18 @@ exec 3<>"$tmp_dir/pair.in"
 desktop_env "$fieldwork" pair <"$tmp_dir/pair.in" >"$tmp_dir/pair.log" 2>&1 &
 pair_pid=$!
 
-payload=""
-for _ in {1..100}; do
-  payload="$(grep -m1 '^{' "$tmp_dir/pair.log" || true)"
-  if [[ -n "$payload" ]]; then
-    break
-  fi
-  sleep 0.1
-done
-if [[ -z "$payload" ]]; then
-  echo "fieldwork pair did not print a JSON payload" >&2
+pair_code="$(capture_pair_code "$tmp_dir/pair.log" || true)"
+if [[ -z "$pair_code" ]]; then
+  echo "fieldwork pair did not print a 5-char pairing code" >&2
   cat "$tmp_dir/pair.log" >&2 || true
   exit 1
 fi
 
+# The debug build prefills the typed-code field; the phone resolves the code's
+# reachability through the relay rendezvous (GET /v1/pair/resolve/{code}).
 FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true \
-FIELDWORK_ANDROID_PAIRING_PAYLOAD="$payload" \
+FIELDWORK_ANDROID_PAIRING_CODE="$pair_code" \
+FIELDWORK_RELAY_CONTROL_URL="$relay_control_url" \
   "$root/apps/android/gradlew" --no-daemon :app:installDebug >"$tmp_dir/install-debug.log"
 
 adb -s "$serial" shell pm clear "$package" >/dev/null
@@ -295,7 +440,13 @@ for _ in {1..60}; do
     sleep 1
     continue
   fi
-  if grep -q 'text="Pairing payload"' "$ui_xml"; then
+  # Select the typed-code path before asserting the "Pairing code" field.
+  if grep -q 'text="Enter code"' "$ui_xml" && ! grep -q 'text="Pairing code"' "$ui_xml"; then
+    tap_text_node "$ui_xml" "Enter code" || true
+    sleep 1
+    continue
+  fi
+  if grep -q 'text="Pairing code"' "$ui_xml"; then
     break
   fi
   if grep -Eq "isn't responding|Application Not Responding" "$ui_xml"; then
@@ -305,14 +456,13 @@ for _ in {1..60}; do
   fi
   sleep 1
 done
-if ! grep -q 'text="Pairing payload"' "$ui_xml"; then
-  echo "Android emulator session-subscription smoke did not reach the pairing screen." >&2
+if ! grep -q 'text="Pairing code"' "$ui_xml"; then
+  echo "Android emulator session-subscription smoke did not reach the typed-code pairing screen." >&2
   sed -n '1,120p' "$ui_xml" >&2 || true
   exit 1
 fi
 
-read -r pair_x pair_y < <(python3 "$root/scripts/pick-android-pair-button.py" "$ui_xml")
-adb -s "$serial" shell input tap "$pair_x" "$pair_y"
+tap_pairing_code_button "$ui_xml"
 
 for _ in {1..600}; do
   if grep -q 'approve?' "$tmp_dir/pair.log"; then

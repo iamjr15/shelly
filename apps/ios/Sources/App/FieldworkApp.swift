@@ -55,7 +55,7 @@ struct FieldworkApp: App {
                         model.answerTelemetryConsent(accepted: false)
                     }
                 } message: {
-                    Text("Crash reports only. No code, prompts, terminal output, or file paths.")
+                    Text("Product diagnostics only. No code, prompts, terminal output, or file paths.")
                 }
         }
     }

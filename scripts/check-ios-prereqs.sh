@@ -269,7 +269,6 @@ if [ "$release_mode" -eq 0 ]; then
 
   check_reference_checkout SwiftTerm v1.13.0
   check_reference_checkout blink
-  check_reference_checkout sentry-cocoa 9.13.0
 fi
 
 if [ "$download_xcode" -eq 1 ]; then

@@ -15,7 +15,7 @@ the corresponding Android actions.
 
 - Use exactly one physical Android phone, not an emulator or AVD.
 - Install the signed release App Bundle output or APKs produced from it.
-- Do not use a debug build, biometric bypass, or debug pairing payload.
+- Do not use a debug build, biometric bypass, or debug pairing code.
 - Pair through the real QR scanner and explicit desktop approval before this
   gate, using the same constraints as `docs/ANDROID_PAIR_FLOW.md`.
 - Capture evidence with direct `adb`: device listing, resize/detach
@@ -28,11 +28,63 @@ the corresponding Android actions.
 This is a QA-only use of USB debugging; end users do not need adb or debugging
 enabled.
 
+## Latest Local Substitute
+
+A 2026-05-30 raw `adb` emulator refresh captured debug-only local substitute
+evidence under
+`/tmp/fieldwork-direct-adb-resize-detach-20260530.fixed5.sCedcI/evidence`.
+The run paired the Android app through the actual Enter-code UI using hosted
+relay code `HJ0CQ` plus explicit desktop approval, attached the desktop-created
+`android-resize` PTY, sent `before_resize_ok`, resized the emulator viewport
+from `1080x2400` to `720x1280`, and verified the app stayed on the `Attached`
+terminal instead of returning to Sessions. Android then ran `stty size`, which
+reported `23 42`, and sent `after_resize_ok`. The same run detached back to
+the dashboard, reattached to `android-resize`, and sent
+`after_detach_reattach_ok`. Screenshots, UI dumps, logcat, crash buffer,
+desktop session listings, and install/restore transcripts are in the evidence
+directory. The default debug APK was rebuilt/reinstalled afterward, app data was
+cleared, the emulator viewport was reset, and debug `BuildConfig` returned to
+no biometric bypass, no debug pairing code, and no relay-control URL.
+
+This remains emulator/debug substitute evidence only. The physical signed
+release-device gate in this runbook still requires a real Android phone, real
+QR camera pairing, no debug bypass, no debug pairing code, and a signed release
+artifact.
+
 ## Evidence Directory
 
 ```sh
 export FW_ANDROID_RESIZE_DIR="/tmp/fieldwork-android-resize-detach-$(date +%Y%m%d%H%M%S)"
-mkdir -p "$FW_ANDROID_RESIZE_DIR"
+pnpm scaffold:android-resize-detach-evidence -- --dir "$FW_ANDROID_RESIZE_DIR"
+```
+
+The scaffold writes `README.md`, `manifest.json`, `missing-files.txt`,
+`capture-checklist.md`, and a direct-adb `preflight.sh`. It captures
+release/device/package proof plus Android screenshots, UI dumps, logcat, and
+crash buffers; it does not create desktop sessions, change Android commands, or
+create PTY replay transcripts.
+
+Before pairing or resizing, capture release/device/package proof and clear
+Android logs:
+
+```sh
+FIELDWORK_ANDROID_AAB=apps/android/app/build/outputs/bundle/release/app-release.aab \
+"$FW_ANDROID_RESIZE_DIR/preflight.sh"
+```
+
+After the Android resize stage and after the detach/reattach stage, use the
+helper capture modes:
+
+```sh
+FIELDWORK_ANDROID_RESIZE_CAPTURE_RESIZE=true "$FW_ANDROID_RESIZE_DIR/preflight.sh"
+FIELDWORK_ANDROID_RESIZE_CAPTURE_DETACH=true "$FW_ANDROID_RESIZE_DIR/preflight.sh"
+```
+
+After `resize-replay.txt` and `detach-replay.txt` are captured from real
+desktop `fw attach` transcripts, run the helper verifier:
+
+```sh
+FIELDWORK_ANDROID_RESIZE_VERIFY=true "$FW_ANDROID_RESIZE_DIR/preflight.sh"
 ```
 
 ## Release Build
@@ -50,7 +102,7 @@ The transcript must include `Android AAB ok:` and `signed release bundle ok`.
 Capture the release `BuildConfig` values:
 
 ```sh
-rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
+rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""' \
   apps/android/app/build/generated/source/buildConfig/release/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_ANDROID_RESIZE_DIR/buildconfig.txt"
 ```
@@ -60,9 +112,18 @@ Capture the physical device list and install the release artifact:
 ```sh
 adb devices -l | tee "$FW_ANDROID_RESIZE_DIR/adb-devices.txt"
 bundletool install-apks --apks /path/to/fieldwork-release.apks
+{
+  echo '$ adb shell pm path app.fieldwork.android'
+  adb shell pm path app.fieldwork.android
+  echo '$ adb shell dumpsys package app.fieldwork.android'
+  adb shell dumpsys package app.fieldwork.android
+} | tee "$FW_ANDROID_RESIZE_DIR/package-info.txt"
 adb logcat -c
 adb logcat -b crash -c
 ```
+`package-info.txt` must prove the installed app is `app.fieldwork.android` with
+`versionName=1.0`, `versionCode=1`, and no `DEBUGGABLE` or `debuggable=true` markers.
+
 
 ## Create Desktop Session
 

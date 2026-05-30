@@ -34,7 +34,8 @@ or FCM provider delivery, domain checks, or release signing in this first round.
   connect without production relay assumptions.
 - Local release desktop binaries already built in `target/release/`.
 - Android debug APK built from the current checkout.
-- No debug biometric bypass and no debug pairing payload for this physical test.
+- No debug biometric bypass, no debug pairing code, and no debug relay-control
+  override for this physical test.
 
 Check the current release gate inventory before starting:
 
@@ -45,11 +46,22 @@ pnpm check:release-audit:list
 ```
 
 `pnpm check:live-testing-readiness:local` verifies the repo-local release
-`fieldwork`/`fieldworkd` binaries, Android debug APK, unsigned local AAB,
-normal debug `BuildConfig`, live-test scaffold/verifier, and runbook. In local
-mode it treats the missing physical phone as pending, not passing evidence.
+`fieldwork`/`fieldworkd` binaries, their command surfaces with
+`target/release/fieldwork doctor --help` and
+`target/release/fieldworkd --help`, Android debug APK, unsigned local AAB,
+normal debug `BuildConfig`, live-test scaffold/verifier, and runbook. If a
+global `fw` command is not on `PATH`, local mode creates an internal temporary
+shim to prove the repo-local release binary renders `Usage: fw` and
+`Usage: fw doctor`. In local mode it treats a missing physical phone,
+unauthorized/offline adb target, extra attached target, or emulator/AVD as
+pending guidance, not passing evidence.
 After the test phone is connected, authorized, and the debug APK is installed,
-run the strict form:
+run the strict form after the Desktop Setup shim has put `fw` on `PATH`. It
+also queries the connected device with
+`adb shell pm path app.fieldwork.android` and
+`adb shell dumpsys package app.fieldwork.android`, so the installed package must
+be `app.fieldwork.android` with `versionName=1.0` and `versionCode=1` before
+capture starts:
 
 ```sh
 pnpm check:live-testing-readiness
@@ -71,25 +83,74 @@ still need an equivalent bug report, screen recording, logs, and crash data.
 Confirm the installed build is the normal debug app, not a bypass build:
 
 ```sh
-rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "debug"|DEBUG = Boolean\.parseBoolean\("true"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
+rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "debug"|DEBUG = Boolean\.parseBoolean\("true"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""|FIELDWORK_RELAY_CONTROL_URL = ""' \
   apps/android/app/build/generated/source/buildConfig/debug/app/fieldwork/android/BuildConfig.java
 ```
 
 ## Desktop Setup
 
 Use a clean terminal so the captured command output is easy to audit. If this
-round is running from source before the npm package is installed globally, put a
-temporary `fw` shim on `PATH` so the test exercises the same short command users
-will type after install:
+round is running from source before the npm package is installed globally, create
+the temporary npm-style command shim so the test exercises the same short
+command users will type after install:
+
+For the shortest source-checkout setup, create a combined live-testing pack. It
+creates both the temporary `fw`/`fieldwork`/`fieldworkd` command shim and the
+timestamped evidence scaffold:
+
+```sh
+export FW_LIVE_PACK="$(pnpm --silent scaffold:live-testing-pack -- --print-dir --quiet)"
+source "$FW_LIVE_PACK/setup.sh"
+fw --help
+fw doctor
+pnpm check:live-testing-readiness:local
+```
+
+The pack sets `FW_LIVE_BIN`, `FW_LIVE_DIR`, and `PATH`. Its top-level
+`preflight.sh` runs the local readiness check with the generated `fw` shim and
+runs `fw doctor` to prove the desktop CLI can start and handshake with
+`fieldworkd`, then delegates to the evidence directory's direct-`adb` preflight
+once the physical phone is connected:
+
+```sh
+"$FW_LIVE_PACK/preflight.sh"
+```
+
+The pack is only a source-checkout convenience wrapper. It does not replace npm
+package, provenance, platform package, release signing, or physical evidence
+verification.
+
+To create only the command shim without the evidence directory:
+
+```sh
+export FW_LIVE_BIN="$(pnpm --silent scaffold:live-testing-fw-shim -- --print-dir --quiet)"
+source "$FW_LIVE_BIN/activate.sh"
+fw --help
+fieldworkd --help || true
+pnpm check:live-testing-readiness:local
+```
+
+The shim directory contains `fw`, `fieldwork`, and `fieldworkd` symlinks to the
+repo-local release binaries plus an `activate.sh`. It is only for source-checkout
+live testing and does not replace npm package, provenance, platform package, or
+release signing checks. To generate a one-line shell export instead:
+
+```sh
+eval "$(pnpm --silent scaffold:live-testing-fw-shim -- --print-export --quiet)"
+```
+
+Manual fallback if the helper is unavailable:
 
 ```sh
 export FW_LIVE_BIN="$(mktemp -d /tmp/fieldwork-live-bin.XXXXXX)"
-trap 'rm -rf "$FW_LIVE_BIN"' EXIT
 ln -sf "$PWD/target/release/fieldwork" "$FW_LIVE_BIN/fieldwork"
 ln -sf "$PWD/target/release/fieldwork" "$FW_LIVE_BIN/fw"
 ln -sf "$PWD/target/release/fieldworkd" "$FW_LIVE_BIN/fieldworkd"
 export PATH="$FW_LIVE_BIN:$PATH"
+fw --help
+```
 
+```sh
 fw daemon start
 fw
 fw refactoringjob
@@ -117,17 +178,33 @@ missing-file checklist, `capture-checklist.md` with the stage-by-stage direct
 `adb` capture order, and `preflight.sh`; it does not create placeholder
 screenshots, logs, crash buffers, UI dumps, or transcripts:
 
+If you did not use the combined live-testing pack, create the evidence directory:
+
 ```sh
 export FW_LIVE_DIR="$(pnpm --silent scaffold:live-testing-evidence -- --print-dir --quiet)"
+```
+
+Then capture the preflight files:
+
+```sh
+export FW_LIVE_DIR="${FW_LIVE_DIR:-$(pnpm --silent scaffold:live-testing-evidence -- --print-dir --quiet)}"
 adb devices -l | tee "$FW_LIVE_DIR/adb-devices.txt"
-rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "debug"|DEBUG = Boolean\.parseBoolean\("true"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
+{
+  echo '$ adb shell pm path app.fieldwork.android'
+  adb shell pm path app.fieldwork.android
+  echo '$ adb shell dumpsys package app.fieldwork.android'
+  adb shell dumpsys package app.fieldwork.android
+} | tee "$FW_LIVE_DIR/package-info.txt"
+rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "debug"|DEBUG = Boolean\.parseBoolean\("true"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""|FIELDWORK_RELAY_CONTROL_URL = ""' \
   apps/android/app/build/generated/source/buildConfig/debug/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_LIVE_DIR/buildconfig.txt"
 ```
 
 The generated helper performs those same direct checks and fails early if the
 ADB target is unauthorized, offline, inaccessible, an emulator/AVD, or
-ambiguous because multiple authorized devices are attached:
+ambiguous because multiple authorized devices are attached. It also requires
+`fw` on `PATH`, so run the Desktop Setup shim above first when testing from a
+source checkout instead of an installed npm package:
 
 ```sh
 "$FW_LIVE_DIR/preflight.sh"
@@ -137,17 +214,6 @@ Use `pnpm scaffold:live-testing-evidence -- --dir "$FW_LIVE_DIR"` if you need
 to choose the directory yourself. Keep `capture-checklist.md` open while
 testing; it mirrors the verifier-required filenames and groups them by the
 same live-test stages below.
-
-Run `fw pair` inside a desktop transcript. Approve pairing only after the phone
-scans the QR payload and the CLI asks for explicit confirmation. Record
-`pair_flow_ms` in the same transcript; it must be at or below 15000:
-
-```sh
-pair_start_ms="$(node -e 'console.log(Date.now())')"
-script -q "$FW_LIVE_DIR/pairing.txt" fw pair
-pair_end_ms="$(node -e 'console.log(Date.now())')"
-printf 'pair_flow_ms=%s\n' "$((pair_end_ms - pair_start_ms))" | tee -a "$FW_LIVE_DIR/pairing.txt"
-```
 
 Capture the locked launch surface:
 
@@ -172,6 +238,19 @@ adb shell uiautomator dump /sdcard/window.xml
 adb pull /sdcard/window.xml "$FW_LIVE_DIR/biometric-ui.xml"
 adb logcat -d > "$FW_LIVE_DIR/biometric-logcat.log"
 adb logcat -d -b crash > "$FW_LIVE_DIR/biometric-crash.log"
+```
+
+After the locked and biometric pre-pair evidence is captured, start `fw pair`
+inside a desktop transcript when the phone is ready to scan the QR. Approve
+pairing only after the CLI asks for explicit confirmation. Record
+`pair_flow_ms` in the same transcript; it must measure the QR scan plus desktop
+approval flow and stay at or below 15000:
+
+```sh
+pair_start_ms="$(node -e 'console.log(Date.now())')"
+script -q "$FW_LIVE_DIR/pairing.txt" fw pair
+pair_end_ms="$(node -e 'console.log(Date.now())')"
+printf 'pair_flow_ms=%s\n' "$((pair_end_ms - pair_start_ms))" | tee -a "$FW_LIVE_DIR/pairing.txt"
 ```
 
 After pairing, capture the active sessions dashboard before tapping into a
@@ -360,6 +439,8 @@ that the direct `adb` evidence set is complete, screenshots are nontrivial
 full-size Android PNGs,
 `adb-devices.txt` shows exactly one authorized connected physical device and no
 unauthorized/offline/emulator/AVD/ambiguous multi-device state,
+`package-info.txt` shows `pm path` and `dumpsys package` output for installed
+`app.fieldwork.android` with `versionName=1.0` and `versionCode=1`,
 the locked UI and freshly cleared locked-launch logcat did not expose or fetch
 session, terminal, push-token, or input content before unlock, `biometric-ui.xml`
 shows an Android biometric prompt with no session or terminal content behind it,

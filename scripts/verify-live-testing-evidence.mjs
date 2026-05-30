@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import {
   verifyCleanAndroidLogs,
+  verifyInstalledAndroidPackageInfo,
   verifyNoAndroidSystemErrorOverlays,
   verifyPhysicalAndroidAdbDevices,
 } from "./android-evidence-common.mjs";
@@ -38,6 +39,7 @@ const requiredFiles = [
   "biometric-logcat.log",
   "biometric-crash.log",
   "adb-devices.txt",
+  "package-info.txt",
   "pairing.txt",
   "dashboard.png",
   "dashboard-ui.xml",
@@ -135,6 +137,7 @@ if (failures.length === 0) {
   verifyLockedLaunchLog(readText("locked-logcat.log"));
   verifyBiometricPrompt(readText("biometric-ui.xml"), readText("biometric-logcat.log"));
   verifyAdbDevices(readText("adb-devices.txt"));
+  verifyPackageInfo(readText("package-info.txt"));
   verifyPairingTranscript(readText("pairing.txt"));
   verifyDashboardEvidence(
     readText("dashboard-ui.xml"),
@@ -276,13 +279,18 @@ function readAutoSessionNames() {
 function verifyPairingTranscript(text) {
   requirePatternText(
     text,
-    /"pair_token"\s*:/,
-    "pairing.txt must include the JSON QR pairing payload from fw pair",
+    /Scan the QR with the Fieldwork app — or enter this code:/,
+    "pairing.txt must show the fw pair QR + code prompt",
   );
   requirePatternText(
     text,
-    /Waiting for a device to scan/i,
-    "pairing.txt must show fw pair waited for a device scan",
+    /^\s*[0-9A-HJKMNP-TV-Z]{2}\s+[0-9A-HJKMNP-TV-Z]{3}\s*$/m,
+    "pairing.txt must show the grouped 5-char Crockford pairing code",
+  );
+  requirePatternText(
+    text,
+    /Expires in 10 minutes\./,
+    "pairing.txt must show the 10-minute pairing code expiry",
   );
   requirePatternText(
     text,
@@ -302,8 +310,13 @@ function verifyPairingTranscript(text) {
   }
   rejectPatternText(
     text,
-    /Denied\. Pair token has been consumed\./,
+    /Denied\. Pairing code has been consumed\./,
     "pairing.txt must not be a denied pairing transcript",
+  );
+  rejectPatternText(
+    text,
+    /"pair_token"\s*:/,
+    "pairing.txt must not contain the legacy JSON pair_token payload",
   );
 }
 
@@ -330,8 +343,13 @@ function verifyBuildConfig(text) {
   );
   requirePatternText(
     text,
-    /\bFIELDWORK_DEBUG_PAIRING_PAYLOAD\s*=\s*""/,
-    "buildconfig.txt must prove the installed test build has no debug pairing payload",
+    /\bFIELDWORK_DEBUG_PAIRING_CODE\s*=\s*""/,
+    "buildconfig.txt must prove the installed test build has no debug pairing code",
+  );
+  requirePatternText(
+    text,
+    /\bFIELDWORK_RELAY_CONTROL_URL\s*=\s*""/,
+    "buildconfig.txt must prove the installed test build has no debug relay control URL",
   );
 }
 
@@ -660,6 +678,10 @@ function verifyNoSystemErrorOverlays(entries) {
 
 function verifyAdbDevices(text) {
   verifyPhysicalAndroidAdbDevices(text, failures);
+}
+
+function verifyPackageInfo(text) {
+  verifyInstalledAndroidPackageInfo(text, failures);
 }
 
 function verifyFieldworkDevices(text) {

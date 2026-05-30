@@ -1,8 +1,8 @@
 # Relay Honeycomb Evidence
 
 This runbook verifies the Section 13 hosted Honeycomb trace receipt gate for
-`fieldwork-relay`. It does not prove daemon or mobile telemetry; daemon OTLP is
-not part of v1 and mobile crash reporting remains opt-in Sentry only.
+`fieldwork-relay`. It does not prove daemon or mobile telemetry; daemon OTLP and
+mobile crash-reporting SDKs are not part of v1.
 
 The pass condition is a hosted Honeycomb query export containing a sampled
 `/v1/version` relay span with only aggregate/static fields: `fieldwork-relay`,
@@ -27,9 +27,22 @@ node IDs, push tokens, or raw Honeycomb API keys.
 ## Evidence Directory
 
 ```sh
-export FW_RELAY_HONEYCOMB_DIR="/tmp/fieldwork-relay-honeycomb-$(date +%Y%m%d%H%M%S)"
-mkdir -p "$FW_RELAY_HONEYCOMB_DIR"
+export FW_RELAY_HONEYCOMB_DIR="$(pnpm --silent scaffold:relay-honeycomb-evidence -- --print-dir --quiet)"
 ```
+
+To use an existing path instead:
+
+```sh
+export FW_RELAY_HONEYCOMB_DIR="/tmp/fieldwork-relay-honeycomb-$(date +%Y%m%d%H%M%S)"
+pnpm scaffold:relay-honeycomb-evidence -- --dir "$FW_RELAY_HONEYCOMB_DIR"
+```
+
+The scaffold writes only a README, manifest, missing-file checklist,
+stage-by-stage capture checklist, and non-secret `preflight.sh`. The preflight
+can capture redacted relay config, systemd credential wiring, relay version
+output, and `/v1/version` request proof from a production or release-candidate
+relay. It does not export Honeycomb query rows, create redacted relay logs, or
+create passing evidence.
 
 ## Relay Configuration
 
@@ -39,6 +52,19 @@ Capture the relay version endpoint:
 curl -fsS https://relay.fieldwork.dev:8443/v1/version \
   | tee "$FW_RELAY_HONEYCOMB_DIR/relay-version.txt"
 ```
+
+The generated preflight can capture the relay version endpoint, request proof,
+redacted config, and systemd credential wiring in one pass:
+
+```sh
+FIELDWORK_RELAY_VERSION_URL=https://relay.fieldwork.dev:8443/v1/version \
+FIELDWORK_RELAY_SYSTEMD_UNIT_FILE=/path/to/fieldwork-control-plane.service.txt \
+"$FW_RELAY_HONEYCOMB_DIR/preflight.sh"
+```
+
+When using a temporary receipt-test sample rate above `0.01`, the preflight
+requires both `FIELDWORK_RELAY_RECEIPT_TEST_WINDOW=true` and
+`FIELDWORK_RELAY_RESTORED_SAMPLE_RATE=0.01` before it writes `relay-config.txt`.
 
 Capture redacted relay OTLP configuration. Include the endpoint, dataset, default
 sample rate, actual test sample rate, and credential path or credential source.

@@ -59,6 +59,31 @@ try {
   fs.rmSync(path.join(missingAdbDevices, "adb-devices.txt"));
   expectStatus(missingAdbDevices, 1, "missing adb device capture should fail", "missing evidence file: adb-devices.txt");
 
+  const missingPackageInfo = path.join(temp, "missing-package-info");
+  writeFixture(missingPackageInfo);
+  fs.rmSync(path.join(missingPackageInfo, "package-info.txt"));
+  expectStatus(missingPackageInfo, 1, "missing installed package proof should fail", "missing evidence file: package-info.txt");
+
+  const wrongPackageVersion = path.join(temp, "wrong-package-version");
+  writeFixture(wrongPackageVersion);
+  fs.writeFileSync(
+    path.join(wrongPackageVersion, "package-info.txt"),
+    [
+      "$ adb shell pm path app.fieldwork.android",
+      "package:/data/app/~~abc/app.fieldwork.android-base.apk",
+      "$ adb shell dumpsys package app.fieldwork.android",
+      "Package [app.fieldwork.android] (abc):",
+      "  versionCode=2 minSdk=30 targetSdk=36",
+      "  versionName=1.1",
+    ].join("\n"),
+  );
+  expectStatus(
+    wrongPackageVersion,
+    1,
+    "wrong installed package version should fail",
+    "package-info.txt must prove installed versionName=1.0",
+  );
+
   const missingBiometric = path.join(temp, "missing-biometric");
   writeFixture(missingBiometric);
   fs.rmSync(path.join(missingBiometric, "biometric-ui.xml"));
@@ -104,10 +129,11 @@ try {
   fs.writeFileSync(
     path.join(deniedPairing, "pairing.txt"),
     [
-      '{"pair_token":"ABCDE","expires_at_ms":1700000000000}',
-      "Waiting for a device to scan. Pair token expires in 10 minutes.",
+      "Scan the QR with the Fieldwork app — or enter this code:",
+      "    K7 M2Q",
+      "Expires in 10 minutes.",
       'Pair request from device "Pixel" (nodeid) — approve? [y/N]',
-      "Denied. Pair token has been consumed.",
+      "Denied. Pairing code has been consumed.",
     ].join("\n"),
   );
   expectStatus(
@@ -122,8 +148,9 @@ try {
   fs.writeFileSync(
     path.join(missingPairTiming, "pairing.txt"),
     [
-      '{"pair_token":"ABCDE","expires_at_ms":1700000000000}',
-      "Waiting for a device to scan. Pair token expires in 10 minutes.",
+      "Scan the QR with the Fieldwork app — or enter this code:",
+      "    K7 M2Q",
+      "Expires in 10 minutes.",
       'Pair request from device "Pixel" (nodeid) — approve? [y/N]',
       "Approved. Device is paired.",
     ].join("\n"),
@@ -140,8 +167,9 @@ try {
   fs.writeFileSync(
     path.join(slowPairing, "pairing.txt"),
     [
-      '{"pair_token":"ABCDE","expires_at_ms":1700000000000}',
-      "Waiting for a device to scan. Pair token expires in 10 minutes.",
+      "Scan the QR with the Fieldwork app — or enter this code:",
+      "    K7 M2Q",
+      "Expires in 10 minutes.",
       'Pair request from device "Pixel" (nodeid) — approve? [y/N]',
       "Approved. Device is paired.",
       "pair_flow_ms=15001",
@@ -363,7 +391,8 @@ try {
       'public static final String APPLICATION_ID = "app.fieldwork.android";',
       'public static final String BUILD_TYPE = "debug";',
       "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = true;",
-      'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "{\\"pairing\\":true}";',
+      'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "K7M2Q";',
+      'public static final String FIELDWORK_RELAY_CONTROL_URL = "";',
     ].join("\n"),
   );
   expectStatus(
@@ -382,7 +411,8 @@ try {
       'public static final String APPLICATION_ID = "app.fieldwork.android";',
       'public static final String BUILD_TYPE = "release";',
       "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
-      'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "";',
+      'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "";',
+      'public static final String FIELDWORK_RELAY_CONTROL_URL = "";',
     ].join("\n"),
   );
   expectStatus(
@@ -390,6 +420,26 @@ try {
     1,
     "release BuildConfig should fail first live-test debug evidence",
     "buildconfig.txt must prove the installed test build is the debug variant",
+  );
+
+  const relayOverrideBuild = path.join(temp, "relay-override-build");
+  writeFixture(relayOverrideBuild);
+  fs.writeFileSync(
+    path.join(relayOverrideBuild, "buildconfig.txt"),
+    [
+      "public static final boolean DEBUG = Boolean.parseBoolean(\"true\");",
+      'public static final String APPLICATION_ID = "app.fieldwork.android";',
+      'public static final String BUILD_TYPE = "debug";',
+      "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
+      'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "";',
+      'public static final String FIELDWORK_RELAY_CONTROL_URL = "https://relay.example.test";',
+    ].join("\n"),
+  );
+  expectStatus(
+    relayOverrideBuild,
+    1,
+    "debug relay override BuildConfig should fail first live-test local handoff evidence",
+    "buildconfig.txt must prove the installed test build has no debug relay control URL",
   );
 
   const warmLaunch = path.join(temp, "warm-launch");
@@ -586,7 +636,8 @@ function writeFixture(dir) {
       'public static final String APPLICATION_ID = "app.fieldwork.android";',
       'public static final String BUILD_TYPE = "debug";',
       "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
-      'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "";',
+      'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "";',
+      'public static final String FIELDWORK_RELAY_CONTROL_URL = "";',
     ].join("\n"),
   );
   writePng(path.join(dir, "locked.png"));
@@ -638,10 +689,22 @@ function writeFixture(dir) {
     "List of devices attached\nR58M1234567 device product:panther model:Pixel_8_Pro device:panther transport_id:1\n",
   );
   fs.writeFileSync(
+    path.join(dir, "package-info.txt"),
+    [
+      "$ adb shell pm path app.fieldwork.android",
+      "package:/data/app/~~abc/app.fieldwork.android-base.apk",
+      "$ adb shell dumpsys package app.fieldwork.android",
+      "Package [app.fieldwork.android] (abc):",
+      "  versionCode=1 minSdk=30 targetSdk=36",
+      "  versionName=1.0",
+    ].join("\n"),
+  );
+  fs.writeFileSync(
     path.join(dir, "pairing.txt"),
     [
-      '{"pair_token":"ABCDE","expires_at_ms":1700000000000}',
-      "Waiting for a device to scan. Pair token expires in 10 minutes.",
+      "Scan the QR with the Fieldwork app — or enter this code:",
+      "    K7 M2Q",
+      "Expires in 10 minutes.",
       'Pair request from device "Pixel 8 Pro" (nodeid) — approve? [y/N]',
       "Approved. Device is paired.",
       "pair_flow_ms=1200",

@@ -18,12 +18,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -35,6 +39,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -45,11 +53,27 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 
+/** Crockford base32 alphabet shared with the daemon/protocol (no I/L/O/U confusables). */
+private const val CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+private const val CODE_LEN = 5
+
+private enum class PairMethod { SCAN, CODE }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PairingScreen(padding: PaddingValues, pairing: Boolean, onPair: (String) -> Unit) {
-    var payload by remember { mutableStateOf(debugPairingPayload()) }
+fun PairingScreen(
+    padding: PaddingValues,
+    pairing: Boolean,
+    onPair: (String) -> Unit,
+    onPairWithCode: (String) -> Unit,
+) {
     val context = LocalContext.current
+    // A debug code preselects the Enter-code tab so manual smoke runs skip the camera.
+    val debugCode = remember { debugPairingCode() }
+    var method by remember {
+        mutableStateOf(if (debugCode.isNotEmpty()) PairMethod.CODE else PairMethod.SCAN)
+    }
+    var code by remember { mutableStateOf(debugCode) }
     var cameraGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
@@ -60,8 +84,8 @@ fun PairingScreen(padding: PaddingValues, pairing: Boolean, onPair: (String) -> 
         cameraGranted = it
     }
 
-    LaunchedEffect(Unit) {
-        if (!cameraGranted) launcher.launch(Manifest.permission.CAMERA)
+    LaunchedEffect(method) {
+        if (method == PairMethod.SCAN && !cameraGranted) launcher.launch(Manifest.permission.CAMERA)
     }
 
     Scaffold(
@@ -74,38 +98,86 @@ fun PairingScreen(padding: PaddingValues, pairing: Boolean, onPair: (String) -> 
                 .padding(innerPadding)
                 .padding(16.dp),
         ) {
-            if (cameraGranted) {
-                QrCamera(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(320.dp),
-                    onPayload = { if (!pairing) onPair(it) },
-                )
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                SegmentedButton(
+                    selected = method == PairMethod.SCAN,
+                    onClick = { method = PairMethod.SCAN },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    icon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
+                ) {
+                    Text("Scan QR")
+                }
+                SegmentedButton(
+                    selected = method == PairMethod.CODE,
+                    onClick = { method = PairMethod.CODE },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    icon = { Icon(Icons.Default.Keyboard, contentDescription = null) },
+                ) {
+                    Text("Enter code")
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            OutlinedTextField(
-                value = payload,
-                onValueChange = { payload = it },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 4,
-                label = { Text("Pairing payload") },
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = { onPair(payload.trim()) },
-                enabled = payload.isNotBlank() && !pairing,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Default.QrCodeScanner, contentDescription = null)
-                Text("Pair")
+
+            when (method) {
+                PairMethod.SCAN -> {
+                    if (cameraGranted) {
+                        QrCamera(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(320.dp),
+                            onPayload = { if (!pairing) onPair(it.trim()) },
+                        )
+                    } else {
+                        Text("Camera permission is required to scan the pairing QR.")
+                    }
+                }
+                PairMethod.CODE -> {
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = normalizeCodeInput(it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Pairing code") },
+                        supportingText = { Text("$CODE_LEN characters from the desktop") },
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Characters,
+                            keyboardType = KeyboardType.Ascii,
+                            imeAction = ImeAction.Done,
+                        ),
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { onPairWithCode(code) },
+                        enabled = code.length == CODE_LEN && !pairing,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Default.Keyboard, contentDescription = null)
+                        Text("Pair")
+                    }
+                }
             }
         }
     }
 }
 
-private fun debugPairingPayload(): String =
-    if (BuildConfig.DEBUG) BuildConfig.FIELDWORK_DEBUG_PAIRING_PAYLOAD else ""
+/** Uppercases, applies Crockford aliases (I/L->1, O->0), drops non-alphabet chars, caps at CODE_LEN. */
+private fun normalizeCodeInput(input: String): String {
+    val builder = StringBuilder(CODE_LEN)
+    for (raw in input) {
+        if (builder.length >= CODE_LEN) break
+        val ch = when (raw.uppercaseChar()) {
+            'I', 'L' -> '1'
+            'O' -> '0'
+            else -> raw.uppercaseChar()
+        }
+        if (ch in CODE_ALPHABET) builder.append(ch)
+    }
+    return builder.toString()
+}
+
+private fun debugPairingCode(): String =
+    if (BuildConfig.DEBUG) normalizeCodeInput(BuildConfig.FIELDWORK_DEBUG_PAIRING_CODE) else ""
 
 @Composable
 private fun QrCamera(modifier: Modifier = Modifier, onPayload: (String) -> Unit) {

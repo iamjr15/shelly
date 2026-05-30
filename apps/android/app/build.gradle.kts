@@ -16,12 +16,11 @@ val keystorePropertiesFile = rootProject.file("keystore.properties")
 if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.inputStream().use(keystoreProperties::load)
 }
-val sentryDsn = System.getenv("FIELDWORK_SENTRY_DSN").orEmpty()
 fun escapedBuildConfigString(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"")
 
-val escapedSentryDsn = escapedBuildConfigString(sentryDsn)
 val debugBiometricBypass = System.getenv("FIELDWORK_ANDROID_BIOMETRIC_BYPASS") == "true"
-val debugPairingPayload = escapedBuildConfigString(System.getenv("FIELDWORK_ANDROID_PAIRING_PAYLOAD").orEmpty())
+val debugPairingCode = escapedBuildConfigString(System.getenv("FIELDWORK_ANDROID_PAIRING_CODE").orEmpty())
+val relayControlUrl = escapedBuildConfigString(System.getenv("FIELDWORK_RELAY_CONTROL_URL").orEmpty())
 
 android {
     namespace = "app.fieldwork.android"
@@ -33,9 +32,9 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-        buildConfigField("String", "FIELDWORK_SENTRY_DSN", "\"$escapedSentryDsn\"")
         buildConfigField("boolean", "FIELDWORK_BIOMETRIC_BYPASS", "false")
-        buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_PAYLOAD", "\"\"")
+        buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_CODE", "\"\"")
+        buildConfigField("String", "FIELDWORK_RELAY_CONTROL_URL", "\"$relayControlUrl\"")
     }
 
     sourceSets {
@@ -74,11 +73,11 @@ android {
     buildTypes {
         getByName("debug") {
             buildConfigField("boolean", "FIELDWORK_BIOMETRIC_BYPASS", debugBiometricBypass.toString())
-            buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_PAYLOAD", "\"$debugPairingPayload\"")
+            buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_CODE", "\"$debugPairingCode\"")
         }
         getByName("release") {
             buildConfigField("boolean", "FIELDWORK_BIOMETRIC_BYPASS", "false")
-            buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_PAYLOAD", "\"\"")
+            buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_CODE", "\"\"")
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -105,7 +104,6 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("androidx.biometric:biometric-ktx:1.4.0-alpha02")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    implementation("io.sentry:sentry-android:8.41.0")
     implementation(platform("com.google.firebase:firebase-bom:34.13.0"))
     implementation("com.google.firebase:firebase-messaging")
 

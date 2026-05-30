@@ -18,8 +18,8 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<key>FieldworkSentryDsn</key>
-	<string>$(FIELDWORK_SENTRY_DSN)</string>
+	<key>FieldworkRelayControlURL</key>
+	<string>$(FIELDWORK_RELAY_CONTROL_URL)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>

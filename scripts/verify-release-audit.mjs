@@ -20,9 +20,12 @@ const plan = read("PLAN.md");
 const install = read("docs/INSTALL.md");
 const development = read("docs/DEVELOPMENT.md");
 const liveTesting = read("docs/LIVE_TESTING.md");
+const liveTestingReadiness = read("scripts/check-live-testing-readiness.mjs");
+const androidReleaseReadiness = read("scripts/check-android-release-readiness.mjs");
 const ci = read(".github/workflows/ci.yml");
 const localRelease = read("scripts/check-local-release.mjs");
 const structuredAssets = read("scripts/verify-structured-assets.mjs");
+const cliDoctorSmoke = read("scripts/smoke-cli-doctor.sh");
 const cliNoArgsSmoke = read("scripts/smoke-cli-no-args.sh");
 const localHandoff = read("scripts/smoke-local-handoff.sh");
 const domainStatus = read("scripts/check-domain-status.mjs");
@@ -90,7 +93,7 @@ function verifyCurrentVerdict() {
   );
   requireText(
     audit,
-    "Current unchecked `PLAN.md` gate inventory: 38 total (`ios-xcode`: 1,\n  `signing`: 4, `publish`: 3, `provider`: 5, `physical-device`: 14,\n  `store-console`: 2, `operator`: 9)",
+    "Current unchecked `PLAN.md` gate inventory: 33 total (`ios-xcode`: 1,\n  `signing`: 4, `publish`: 3, `provider`: 4, `physical-device`: 14,\n  `store-console`: 2, `operator`: 5)",
     "release audit must record exact unchecked gate counts by blocker class",
   );
   requireText(
@@ -141,7 +144,7 @@ function verifyPromptToArtifactChecklist() {
     "`wezterm-term` in daemon for state and synthetic snapshots",
     "Length-prefixed framing everywhere",
     "Bincode for Unix IPC, MessagePack for mobile/iroh",
-    "`CONTRACT_VERSION = 1` and version rejection",
+    "`CONTRACT_VERSION = 2` and version rejection",
     "UUIDv7 IDs and UTC millisecond timestamps",
     "256 KB per-session ring, monotonic `seq`, warm replay",
     "Cold/stale attach synthetic ANSI snapshot",
@@ -151,13 +154,13 @@ function verifyPromptToArtifactChecklist() {
     "Subscriber overflow emits one terminal `Lag` and forces resync",
     "State inference dispatch for Claude, Codex, unknown commands",
     "Claude/Codex first-class push/state; unknown commands run with baseline state",
-    "QR pairing, 32-byte base32 tokens, 10 minute TTL, single use, desktop approval",
+    "QR pairing, 5-character Crockford codes, compact `fw1` tickets, 10 minute TTL, single active code, wrong-attempt lockout, desktop approval",
     "Long-lived Ed25519 device auth and revocation",
     "Unix socket hardening",
     "Non-`LocalCli` clients cannot create/kill sessions",
     "Scrollback/device registry encrypted at rest by default, opt-out explicit",
     "Push payload privacy",
-    "Mobile crash-reporting consent",
+    "Mobile diagnostics consent",
     "Relay verifies signatures, token ownership, replay, skew, validation",
     "Fieldwork-owned TLS clients use OS trust",
     "Security model doc",
@@ -192,6 +195,11 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "source-side verifiers, `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`, `cargo nextest run --workspace`, `cargo deny check`, `cargo audit`",
+    "release audit must record Rust code-quality and supply-chain checks in the local release aggregate",
+  );
+  requireText(
+    audit,
     "`check:local-release`",
     "release audit must record the local release aggregate package script",
   );
@@ -209,6 +217,11 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "workflow YAML syntax parsing",
     "release audit must record local workflow YAML syntax parsing",
+  );
+  requireText(
+    audit,
+    "release workflow `run: |` bash syntax self-test and current-workflow validation",
+    "release audit must record release workflow run-block bash syntax validation",
   );
   requireText(
     audit,
@@ -257,8 +270,28 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "live-testing fw shim scaffold self-test",
+    "release audit must record local release aggregate coverage for live-test fw shim self-test",
+  );
+  requireText(
+    audit,
+    "live-testing pack scaffold self-test",
+    "release audit must record local release aggregate coverage for live-test pack self-test",
+  );
+  requireText(
+    audit,
+    "Android release readiness self-test",
+    "release audit must record local release aggregate coverage for Android release readiness self-test",
+  );
+  requireText(
+    audit,
     "Android pair-flow evidence verifier fixture test",
     "release audit must record local release aggregate coverage for Android pair-flow evidence verifier self-test",
+  );
+  requireText(
+    audit,
+    "Android pair-flow evidence scaffold self-test",
+    "release audit must record local release aggregate coverage for Android pair-flow evidence scaffold self-test",
   );
   requireText(
     audit,
@@ -267,8 +300,18 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "Android session-subscription evidence scaffold self-test",
+    "release audit must record local release aggregate coverage for Android session-subscription evidence scaffold self-test",
+  );
+  requireText(
+    audit,
     "Android terminal attach evidence verifier fixture test",
     "release audit must record local release aggregate coverage for Android terminal attach evidence verifier self-test",
+  );
+  requireText(
+    audit,
+    "Android terminal attach evidence scaffold self-test",
+    "release audit must record local release aggregate coverage for Android terminal attach evidence scaffold self-test",
   );
   requireText(
     audit,
@@ -289,6 +332,26 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "Android cold-start evidence verifier fixture test",
     "release audit must record local release aggregate coverage for Android cold-start evidence verifier self-test",
+  );
+  requireText(
+    audit,
+    "Android cold-start evidence scaffold self-test",
+    "release audit must record local release aggregate coverage for Android cold-start evidence scaffold self-test",
+  );
+  requireText(
+    audit,
+    "Android release-install evidence scaffold self-test",
+    "release audit must record local release aggregate coverage for Android release-install evidence scaffold self-test",
+  );
+  requireText(
+    audit,
+    "Android release-signing evidence verifier fixture test",
+    "release audit must record local release aggregate coverage for Android release-signing evidence verifier self-test",
+  );
+  requireText(
+    audit,
+    "Android release-signing evidence scaffold self-test",
+    "release audit must record local release aggregate coverage for Android release-signing evidence scaffold self-test",
   );
   requireText(
     audit,
@@ -322,13 +385,18 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "Android FCM push evidence scaffold self-test",
+    "release audit must record local release aggregate coverage for Android FCM push evidence scaffold self-test",
+  );
+  requireText(
+    audit,
     "relay Honeycomb evidence verifier fixture test",
     "release audit must record local release aggregate coverage for relay Honeycomb evidence verifier self-test",
   );
   requireText(
     audit,
-    "Sentry receipt evidence verifier fixture test",
-    "release audit must record local release aggregate coverage for Sentry receipt evidence verifier self-test",
+    "relay Honeycomb evidence scaffold self-test",
+    "release audit must record local release aggregate coverage for relay Honeycomb evidence scaffold self-test",
   );
   requireText(
     audit,
@@ -337,18 +405,58 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "macOS signing verifier fixture test",
-    "release audit must record local release aggregate coverage for macOS signing verifier self-test",
+    "macOS daemon survival evidence scaffold self-test",
+    "release audit must record local release aggregate coverage for macOS daemon survival evidence scaffold self-test",
   );
   requireText(
     audit,
-    "macOS Developer ID/hardened-runtime/Gatekeeper-notarized verifier before Darwin archive staging",
-    "release audit must record release-rust macOS signing verifier coverage",
+    "macOS npm trust verifier fixture test",
+    "release audit must record local release aggregate coverage for macOS npm trust verifier self-test",
+  );
+  requireText(
+    audit,
+    "macOS npm trust evidence verifier fixture test",
+    "release audit must record local release aggregate coverage for macOS npm trust evidence verifier self-test",
+  );
+  requireText(
+    audit,
+    "macOS npm trust evidence scaffold self-test",
+    "release audit must record local release aggregate coverage for macOS npm trust evidence scaffold self-test",
+  );
+  requireText(
+    audit,
+    "Darwin ad-hoc codesign plus npm-trust verifier before archive staging",
+    "release audit must record release-rust macOS npm trust verifier coverage",
   );
   requireText(
     audit,
     "`docs/LIVE_TESTING.md` defines the first operator-assisted Android physical-device terminal handoff pass",
     "release audit must include the first Android live-test runbook row",
+  );
+  requireText(
+    liveTestingReadiness,
+    "evaluateReleaseFieldworkDoctorHelp",
+    "live-testing readiness must verify the release fieldwork doctor command surface",
+  );
+  requireText(
+    liveTestingReadiness,
+    "evaluateReleaseDaemonHelp",
+    "live-testing readiness must verify the release fieldworkd help surface",
+  );
+  requireText(
+    liveTestingReadiness,
+    "evaluateRepoLocalFwShim",
+    "live-testing readiness must verify the repo-local fw shim fallback in local mode",
+  );
+  requireText(
+    androidReleaseReadiness,
+    "evaluateRepoLocalCommandShim",
+    "Android release readiness must verify the repo-local fw command-shim fallback in local mode",
+  );
+  requireText(
+    liveTesting,
+    "`target/release/fieldwork doctor --help` and\n`target/release/fieldworkd --help`",
+    "live-testing runbook must document stale release binary command-surface checks",
   );
   requireText(
     audit,
@@ -392,7 +500,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "generated `preflight.sh` physical-device/BuildConfig helper without fake evidence",
+    "generated `preflight.sh` physical-device/BuildConfig/fw-alias helper without fake evidence",
     "release audit must record the first live-test direct adb preflight helper",
   );
   requireText(
@@ -412,7 +520,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "`buildconfig.txt` proof that `APPLICATION_ID = \"app.fieldwork.android\"`, `BUILD_TYPE = \"debug\"`, `DEBUG = Boolean.parseBoolean(\"true\")`, `FIELDWORK_BIOMETRIC_BYPASS = false`, and `FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`buildconfig.txt` proof that `APPLICATION_ID = \"app.fieldwork.android\"`, `BUILD_TYPE = \"debug\"`, `DEBUG = Boolean.parseBoolean(\"true\")`, `FIELDWORK_BIOMETRIC_BYPASS = false`, `FIELDWORK_DEBUG_PAIRING_CODE = \"\"`, and `FIELDWORK_RELAY_CONTROL_URL = \"\"`",
     "release audit must record live-test normal-build evidence",
   );
   requireText(
@@ -527,8 +635,8 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_PAIR_FLOW.md`, `docs/ANDROID_SESSION_SUBSCRIPTION.md`, `docs/ANDROID_TERMINAL_ATTACH.md`, `docs/ANDROID_RESIZE_DETACH.md`, `docs/ANDROID_BIOMETRIC.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_RENDERER_FLOOD.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_RESTART_RESTORE.md`, `docs/ANDROID_MULTISESSION.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/RELAY_HONEYCOMB.md`, `docs/SENTRY_RECEIPT.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
-    "release audit docs-sync row must include Android renderer, pair flow, dogfood, cold-start, renderer flood, background/foreground, network reconnect, FCM push, relay Honeycomb, Sentry receipt, macOS daemon survival, live-testing, and operations docs",
+    "docs/ANDROID_RENDERER.md`, `docs/ANDROID_PAIR_FLOW.md`, `docs/ANDROID_SESSION_SUBSCRIPTION.md`, `docs/ANDROID_TERMINAL_ATTACH.md`, `docs/ANDROID_RESIZE_DETACH.md`, `docs/ANDROID_BIOMETRIC.md`, `docs/ANDROID_DOGFOOD.md`, `docs/ANDROID_COLD_START.md`, `docs/ANDROID_RENDERER_FLOOD.md`, `docs/ANDROID_BACKGROUND_FOREGROUND.md`, `docs/ANDROID_NETWORK_RECONNECT.md`, `docs/ANDROID_RESTART_RESTORE.md`, `docs/ANDROID_MULTISESSION.md`, `docs/ANDROID_FCM_PUSH.md`, `docs/RELAY_HONEYCOMB.md`, `docs/MACOS_DAEMON_SURVIVAL.md`, `docs/LIVE_TESTING.md`, `docs/OPERATIONS.md`, and `docs/RELEASE_AUDIT.md`",
+    "release audit docs-sync row must include Android renderer, pair flow, dogfood, cold-start, renderer flood, background/foreground, network reconnect, FCM push, relay Honeycomb, macOS daemon survival, live-testing, and operations docs",
   );
   requireText(
     audit,
@@ -567,13 +675,13 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "CLI no-args raw-terminal smoke, local handoff smoke, demo-video, site typecheck/build",
-    "release audit must record CLI no-args and local handoff smokes in runtime aggregate mode",
+    "CLI doctor smoke, CLI no-args raw-terminal smoke, local handoff smoke, demo-video, site typecheck/build",
+    "release audit must record CLI doctor, no-args, and local handoff smokes in runtime aggregate mode",
   );
   requireText(
     audit,
-    "smokes default to `/tmp/fieldwork-target-checks` unless `CARGO_TARGET_DIR` is already set",
-    "release audit must record the aggregate CLI no-args/local handoff target-dir default",
+    "CLI doctor, CLI no-args, and local handoff smokes default to `/tmp/fieldwork-target-checks` unless `CARGO_TARGET_DIR` is already set",
+    "release audit must record the aggregate CLI doctor/no-args/local handoff target-dir default",
   );
   requireText(
     audit,
@@ -607,7 +715,17 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "signed/notarized launchd sleep/wake plus `pkill -KILL fieldworkd` restart evidence",
+    "`scripts/create-macos-daemon-survival-evidence-dir.mjs`",
+    "release audit must record macOS daemon survival evidence scaffold",
+  );
+  requireText(
+    audit,
+    "macOS daemon survival evidence scaffold self-test",
+    "release audit must record macOS daemon survival evidence scaffold coverage",
+  );
+  requireText(
+    audit,
+    "npm-trust-prepared launchd sleep/wake plus `pkill -KILL fieldworkd` restart evidence",
     "release audit must record macOS launchd survival evidence contract",
   );
   requireText(
@@ -720,7 +838,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "latest pass from `pnpm check:local-release -- --with-runtime` measured CLI max `6.65ms` and daemon max `101.34ms`",
+    "latest pass from `pnpm check:local-release:full` measured CLI max `3.47ms` and daemon max `41.51ms`",
     "release audit must record current desktop max performance evidence",
   );
   requireText(
@@ -735,7 +853,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "current v1 install, protocol, privacy, architecture, Android renderer, Android pair flow, Android session subscription, Android terminal attach, Android resize/detach, Android biometric, Android dogfood, Android cold-start, Android renderer flood, Android background/foreground, Android network reconnect, Android restart restore, Android multisession, Android FCM push, relay Honeycomb evidence, hosted Sentry receipt evidence, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
+    "current v1 install, protocol, privacy, architecture, Android renderer, Android pair flow, Android session subscription, Android terminal attach, Android resize/detach, Android biometric, Android dogfood, Android cold-start, Android renderer flood, Android background/foreground, Android network reconnect, Android restart restore, Android multisession, Android FCM push, relay Honeycomb evidence, macOS daemon survival, first live-test, operator npm/secret handoff, iOS blocker, mobile-boundary, npm-only distribution, and deferred-scope facts",
     "release audit must record concrete docs-sync coverage",
   );
   requireText(
@@ -755,7 +873,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "AAB ABI, packaged uses-permission allowlist and manifest privacy verifier",
+    "AAB ABI, packaged manifest identity/version, release `BuildConfig`, packaged uses-permission allowlist, and manifest privacy verifier",
     "release audit must record Android AAB packaged manifest verification",
   );
   requireText(audit, "full-width Pair button is textless", "release audit must record Android pair-button locator coverage");
@@ -763,8 +881,18 @@ function verifyPromptToArtifactChecklist() {
   requireText(audit, "forbidden location permission", "release audit must record Android AAB forbidden-permission self-test coverage");
   requireText(audit, "missing notification permission", "release audit must record Android AAB required-permission self-test coverage");
   requireText(audit, "terminal-content metadata such as `last_line`", "release audit must record Android AAB terminal-content metadata self-test coverage");
+  requireText(audit, "wrong release version", "release audit must record Android AAB release-version self-test coverage");
+  requireText(audit, "debug `BuildConfig`", "release audit must record Android AAB debug-BuildConfig self-test coverage");
+  requireText(audit, "debuggable manifest state", "release audit must record Android AAB debuggable-manifest self-test coverage");
+  requireText(audit, "signed-looking bundle rejection when `jarsigner` verification\nfails", "release audit must record Android AAB jarsigner-failure self-test coverage");
+  requireText(audit, "zero-exit `jarsigner` output without `jar verified`", "release audit must record Android AAB jarsigner verified-marker coverage");
+  requireText(audit, "Android Debug\ncertificate output", "release audit must record Android AAB debug-certificate rejection coverage");
+  requireText(audit, "`pnpm test:android-aab-signing-smoke` signs a temporary copy of the current\n  real AAB", "release audit must record real Android AAB local signing smoke coverage");
+  requireText(audit, "ephemeral non-debug certificate", "release audit must record Android AAB local signing certificate boundary");
+  requireText(audit, "removes the\n  temporary keystore plus signed bundle", "release audit must record Android AAB local signing cleanup");
   requireText(audit, "Android AAB signing-policy", "release audit must record Android AAB signing-policy test coverage");
   requireText(audit, "signed AAB signature-entry verifier plus `jarsigner -verify -certs` before Play upload", "release audit must record signed AAB release workflow verification");
+  requireText(audit, "GitHub workflow `run: |` block `bash -n` self-test and current-workflow validation", "release audit must record workflow run-block shell syntax coverage");
   requireText(
     audit,
     "focused TerminalController JVM tests for locked-input refusal",
@@ -812,33 +940,18 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "debug-without-DSN no-start behavior",
-    "release audit must record debug-without-DSN Sentry no-start coverage",
+    "local diagnostics preference without starting a crash-reporting SDK",
+    "release audit must record no crash-reporting SDK coverage",
   );
   requireText(
     audit,
-    "MobileTelemetry\ncoverage for default-off crash reporting, declined one-time consent resolution,\nand debug-without-DSN no-start behavior",
+    "no removed crash SDK markers in existing Android APK/AAB outputs",
+    "release audit must record packaged Android crash SDK marker scanning",
+  );
+  requireText(
+    audit,
+    "MobileTelemetry\ncoverage for default-off diagnostics sharing, declined one-time consent resolution,\nand local diagnostics preference behavior",
     "release audit latest refresh must record MobileTelemetry test coverage",
-  );
-  requireText(
-    audit,
-    "`docs/SENTRY_RECEIPT.md`",
-    "release audit must record the hosted Sentry receipt runbook",
-  );
-  requireText(
-    audit,
-    "`scripts/verify-sentry-receipt-evidence.mjs` fixture coverage",
-    "release audit must record hosted Sentry receipt evidence verifier fixture coverage",
-  );
-  requireText(
-    audit,
-    "one Sentry event each from `fieldworkd`, the signed Android release app, and the signed iOS release app",
-    "release audit must record the hosted Sentry event-source evidence contract",
-  );
-  requireText(
-    audit,
-    "rejection of raw DSNs, auth tokens, terminal/session fields, command/path/session-name values, user identity/IP fields, screenshots, and session replay data",
-    "release audit must record hosted Sentry privacy rejection coverage",
   );
   requireText(
     audit,
@@ -861,15 +974,30 @@ function verifyPromptToArtifactChecklist() {
     "release audit must record the current Android emulator debug-launch evidence",
   );
   for (const evidence of [
-    "default aggregate run on 2026-05-19 passed on `emulator-5554`",
-    "`TotalTime=7920ms`",
-    "`pair_flow_ms=2234`",
-    "`visible_ms=3318`",
-    "8440/14400 nonblack samples",
+    "hosted-relay aggregate run on 2026-05-29 passed on\n  `emulator-5554`",
+    "`TotalTime=6448ms`",
+    "`pair_flow_ms=1420`",
+    "`visible_ms=5493`",
+    "8437/14400 nonblack samples",
     "notification tap routing",
   ]) {
     requireText(audit, evidence, `release audit must record aggregate Android emulator evidence: ${evidence}`);
   }
+  requireText(
+    audit,
+    "`pnpm test:hosted-relay` started an isolated local\n  daemon",
+    "release audit must record the hosted relay rendezvous smoke command",
+  );
+  requireText(
+    audit,
+    "hosted control-plane bridge smoke verified",
+    "release audit must distinguish the hosted bridge smoke from final production relay sign-off",
+  );
+  requireText(
+    audit,
+    "production DNS/TLS, Oracle capacity, and hosted iroh fallback proof remain blocked",
+    "release audit must keep final relay blockers explicit after the hosted bridge smoke",
+  );
   requireText(
     audit,
     "Direct adb restart-restore evidence on 2026-05-19",
@@ -902,8 +1030,8 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    '`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`',
-    "release audit must record restored empty Android debug pairing payload",
+    '`FIELDWORK_DEBUG_PAIRING_CODE = ""`',
+    "release audit must record restored empty Android debug pairing code",
   );
   requireText(
     audit,
@@ -947,12 +1075,12 @@ function verifyPromptToArtifactChecklist() {
     "`/tmp/fieldwork-adb-direct-20260519225027/default-logcat.log`",
     "`/tmp/fieldwork-adb-direct-20260519225027/default-crash.log`",
     "`FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true`",
-    "`FIELDWORK_ANDROID_PAIRING_PAYLOAD`",
+    "`FIELDWORK_ANDROID_PAIRING_CODE`",
     "`TotalTime=4589ms`",
     "UI-tree-derived Pair tap center `540 1860`",
     "`pair_flow_ms=1043`",
     "paired through explicit desktop approval",
-    "`FIELDWORK_ANDROID_PAIRING_PAYLOAD` injection",
+    "`FIELDWORK_ANDROID_PAIRING_CODE` injection",
     "`ANDROID_ADB_DIRECT_READY`",
     "`fw_android_direct_ok`",
     "`/tmp/fieldwork-adb-direct-pair-20260519225208/before-pair.png`",
@@ -961,7 +1089,7 @@ function verifyPromptToArtifactChecklist() {
     "`/tmp/fieldwork-adb-direct-pair-20260519225208/terminal-after-input.png`",
     "`android-direct: fw_android_direct_ok`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    '`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`',
+    '`FIELDWORK_DEBUG_PAIRING_CODE = ""`',
     "`TotalTime=5105ms`",
     "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-locked.png`",
     "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-ui.xml`",
@@ -1010,6 +1138,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`scripts/create-android-pair-flow-evidence-dir.mjs`",
+    "release audit must record Android pair-flow evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android pair-flow evidence scaffold self-test",
+    "release audit must record Android pair-flow evidence scaffold coverage",
+  );
+  requireText(
+    audit,
     "`pair_flow_ms<=15000` real-QR release-device dashboard evidence",
     "release audit must record the Android pair-flow evidence contract",
   );
@@ -1022,6 +1160,16 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "`scripts/verify-android-session-subscription-evidence.mjs` fixture coverage",
     "release audit must record Android session-subscription evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "`scripts/create-android-session-subscription-evidence-dir.mjs`",
+    "release audit must record Android session-subscription evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android session-subscription evidence scaffold self-test",
+    "release audit must record Android session-subscription evidence scaffold coverage",
   );
   requireText(
     audit,
@@ -1040,6 +1188,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`scripts/create-android-terminal-attach-evidence-dir.mjs`",
+    "release audit must record Android terminal attach evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android terminal attach evidence scaffold self-test",
+    "release audit must record Android terminal attach evidence scaffold coverage",
+  );
+  requireText(
+    audit,
     "release-device shell input, Claude input, and TUI rendering evidence",
     "release audit must record the Android terminal attach evidence contract",
   );
@@ -1052,6 +1210,16 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "`scripts/verify-android-resize-detach-evidence.mjs` fixture coverage",
     "release audit must record Android resize/detach evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "`scripts/create-android-resize-detach-evidence-dir.mjs`",
+    "release audit must record Android resize/detach evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android resize/detach evidence scaffold self-test",
+    "release audit must record Android resize/detach evidence scaffold coverage",
   );
   requireText(
     audit,
@@ -1070,6 +1238,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`scripts/create-android-biometric-evidence-dir.mjs`",
+    "release audit must record Android biometric evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android biometric evidence scaffold self-test",
+    "release audit must record Android biometric evidence scaffold coverage",
+  );
+  requireText(
+    audit,
     "release-device BiometricPrompt and stale-input evidence",
     "release audit must record the Android biometric evidence contract",
   );
@@ -1082,6 +1260,16 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "`scripts/verify-android-restart-restore-evidence.mjs` fixture coverage",
     "release audit must record Android restart-restore evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "`scripts/create-android-restart-restore-evidence-dir.mjs`",
+    "release audit must record Android restart-restore evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android restart-restore evidence scaffold self-test",
+    "release audit must record Android restart-restore evidence scaffold coverage",
   );
   requireText(
     audit,
@@ -1100,6 +1288,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`scripts/create-android-multisession-evidence-dir.mjs`",
+    "release audit must record Android multisession evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android multisession evidence scaffold self-test",
+    "release audit must record Android multisession evidence scaffold coverage",
+  );
+  requireText(
+    audit,
     "three-session switching with no cross-session marker leakage",
     "release audit must record the Android multisession evidence contract",
   );
@@ -1112,6 +1310,16 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "`scripts/verify-android-dogfood-evidence.mjs` fixture coverage",
     "release audit must record Android dogfood evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "`scripts/create-android-dogfood-evidence-dir.mjs`",
+    "release audit must record Android dogfood evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android dogfood evidence scaffold self-test",
+    "release audit must record Android dogfood evidence scaffold coverage",
   );
   requireText(
     audit,
@@ -1130,6 +1338,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`scripts/create-android-cold-start-evidence-dir.mjs`",
+    "release audit must record Android cold-start evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android cold-start evidence scaffold self-test",
+    "release audit must record Android cold-start evidence scaffold coverage",
+  );
+  requireText(
+    audit,
     "five physical release-device cold launches with `TotalTime<=1200ms`",
     "release audit must record the Android cold-start evidence contract",
   );
@@ -1142,6 +1360,16 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "`scripts/verify-android-renderer-flood-evidence.mjs` fixture coverage",
     "release audit must record Android renderer flood evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "`scripts/create-android-renderer-flood-evidence-dir.mjs`",
+    "release audit must record Android renderer flood evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android renderer flood evidence scaffold self-test",
+    "release audit must record Android renderer flood evidence scaffold coverage",
   );
   requireText(
     audit,
@@ -1160,6 +1388,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`scripts/create-android-background-foreground-evidence-dir.mjs`",
+    "release audit must record Android background/foreground evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android background/foreground evidence scaffold self-test",
+    "release audit must record Android background/foreground evidence scaffold coverage",
+  );
+  requireText(
+    audit,
     "signed release-device replay after app backgrounding",
     "release audit must record the Android background/foreground evidence contract",
   );
@@ -1172,6 +1410,16 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "`scripts/verify-android-network-reconnect-evidence.mjs` fixture coverage",
     "release audit must record Android network reconnect evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "`scripts/create-android-network-reconnect-evidence-dir.mjs`",
+    "release audit must record Android network reconnect evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android network reconnect evidence scaffold self-test",
+    "release audit must record Android network reconnect evidence scaffold coverage",
   );
   requireText(
     audit,
@@ -1240,6 +1488,16 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
+    "`scripts/create-android-fcm-push-evidence-dir.mjs`",
+    "release audit must record Android FCM push evidence scaffold",
+  );
+  requireText(
+    audit,
+    "Android FCM push evidence scaffold self-test",
+    "release audit must record Android FCM push evidence scaffold coverage",
+  );
+  requireText(
+    audit,
     "10/10 physical Android FCM `AwaitingInput` deliveries",
     "release audit must record the Android FCM push delivery evidence contract",
   );
@@ -1257,6 +1515,16 @@ function verifyPromptToArtifactChecklist() {
     audit,
     "`scripts/verify-relay-honeycomb-evidence.mjs` fixture coverage",
     "release audit must record relay Honeycomb evidence verifier fixture coverage",
+  );
+  requireText(
+    audit,
+    "`scripts/create-relay-honeycomb-evidence-dir.mjs`",
+    "release audit must record relay Honeycomb evidence scaffold",
+  );
+  requireText(
+    audit,
+    "relay Honeycomb evidence scaffold self-test",
+    "release audit must record relay Honeycomb evidence scaffold coverage",
   );
   requireText(
     audit,
@@ -1408,8 +1676,17 @@ function verifyLiveTestingRunbook() {
     "direct `adb`: screenshots, UI dumps, app logcat,\n  crash buffers, and command output",
     "apps/android/gradlew --no-daemon :app:assembleDebug",
     "adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk",
+    'export FW_LIVE_PACK="$(pnpm --silent scaffold:live-testing-pack -- --print-dir --quiet)"',
+    'source "$FW_LIVE_PACK/setup.sh"',
+    '"$FW_LIVE_PACK/preflight.sh"',
+    "The pack sets `FW_LIVE_BIN`, `FW_LIVE_DIR`, and `PATH`",
+    "does not replace npm\npackage, provenance, platform package, release signing, or physical evidence\nverification",
+    'export FW_LIVE_BIN="$(pnpm --silent scaffold:live-testing-fw-shim -- --print-dir --quiet)"',
+    'source "$FW_LIVE_BIN/activate.sh"',
+    "eval \"$(pnpm --silent scaffold:live-testing-fw-shim -- --print-export --quiet)\"",
+    "`fw`, `fieldwork`, and `fieldworkd` symlinks",
+    "does not replace npm package, provenance, platform package, or\nrelease signing checks",
     'export FW_LIVE_BIN="$(mktemp -d /tmp/fieldwork-live-bin.XXXXXX)"',
-    "trap 'rm -rf \"$FW_LIVE_BIN\"' EXIT",
     'ln -sf "$PWD/target/release/fieldwork" "$FW_LIVE_BIN/fw"',
     "fw daemon start",
     "fw\nfw refactoringjob",
@@ -1424,7 +1701,7 @@ function verifyLiveTestingRunbook() {
     'BUILD_TYPE = "debug"',
     'DEBUG = Boolean\\.parseBoolean\\("true"\\)',
     "FIELDWORK_BIOMETRIC_BYPASS = false",
-    'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+    'FIELDWORK_DEBUG_PAIRING_CODE = ""',
     "adb devices -l | tee \"$FW_LIVE_DIR/adb-devices.txt\"",
     "\"$FW_LIVE_DIR/preflight.sh\"",
     "adb-devices.txt` shows exactly one authorized connected physical device and no\nunauthorized/offline/emulator/AVD/ambiguous multi-device state",
@@ -1471,8 +1748,9 @@ function verifyLiveTestingRunbook() {
 
 function verifyExternalBlockers() {
   for (const blocker of [
-    "npm platform child package publish rights and a release-scoped `NPM_TOKEN`",
-    "macOS signing and notarization credentials",
+    "The npm namespace bootstrap is complete",
+    "the real Changesets-managed `1.0.0` release publish",
+    "macOS desktop npm trust for release artifacts",
     "Full local Xcode installation",
     "Apple\n  Distribution",
     "provisioning",
@@ -1481,9 +1759,11 @@ function verifyExternalBlockers() {
     "Apple Developer authentication/access",
     "missing Apple ID/password",
     "Android release keystore",
-    "Firebase `google-services.json`",
-    "Play Console\n  account access",
-    "APNs `.p8`, FCM service-account JSON",
+    "Play Console account access",
+    "APNs `.p8` and physical iOS/Android devices",
+    "AWS live-test bridge has the relay-only FCM service\n  account installed",
+    "FIELDWORK_FCM_SERVICE_ACCOUNT_PATH",
+    "`0440 root:fieldwork-relay`",
     "physical iOS/Android devices",
     "Honeycomb account/API key",
     "Oracle ARM relay hosts",
@@ -1492,19 +1772,19 @@ function verifyExternalBlockers() {
     "routine agent gate",
     "SSH secrets",
     "Cloudflare\n  Pages credentials",
-    "GitHub org/repo creation",
-    "GitHub namespace checks are reserved",
+    "GitHub org/repo creation is complete",
+    "GitHub namespace availability refresh is no longer an agent-owned routine\nrelease activity",
     "`@fieldworkdev` social handle reservation",
-    "calendar/time block for the launch plan",
+    "calendar/time block",
     "Physical-device checks",
     "30-minute Android terminal dogfood",
     "A local API 36.1 Android emulator is only a debug substitute",
     "pnpm test:android-emulator",
     "aggregate direct-adb substitute suite",
     "Its `--list` mode",
-    "retry only a locked debug-launch timing outlier once with the same strict\n  limit",
-    "every other script failure fails closed and preserves the captured\n  wrapper output path",
-    "fails closed unless exactly one\n  boot-complete adb device is available",
+    "retry only locked debug-launch and session-subscription timing outliers once\n  with the same strict limits",
+    "every other script failure fails closed and\n  preserves the captured wrapper output path",
+    "fails closed unless\n  exactly one boot-complete adb device is available",
     "pnpm test:android-debug-smoke",
     "pnpm test:android-emulator-pair",
     "pnpm test:android-emulator-session-subscription",
@@ -1515,12 +1795,12 @@ function verifyExternalBlockers() {
     "pnpm test:android-emulator-reconnect",
     "pnpm test:android-emulator-notification-tap",
     "FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true",
-    "FIELDWORK_ANDROID_PAIRING_PAYLOAD",
+    "FIELDWORK_ANDROID_PAIRING_CODE",
     "debug-build-only",
     "BuildConfig.DEBUG",
     "measure the debug-app\n  Pair tap through explicit desktop approval completion",
     "local\n  15-second emulator bound",
-    "pair_flow_ms=2234",
+    "pair_flow_ms=2206",
     "Physical QR camera pair-flow timing remains a release-device gate",
     "open the\n  terminal",
     "background and foreground the app",
@@ -1569,7 +1849,7 @@ function verifyExternalBlockers() {
     "provider delivery blocked",
     "publish blocked",
     "external secrets blocked",
-    "macOS sleep/wake gates still need signed/notarized artifact",
+    "macOS sleep/wake gates still need an npm-trust-prepared artifact",
     "physical-device biometric prompt check blocked",
     "console submission blocked",
     "Cloudflare/domain ownership blocked",
@@ -1616,7 +1896,10 @@ function verifyLatestRefresh() {
     "pnpm test:secret-boundaries",
     "pnpm check:security-model",
     "pnpm check:android-aab",
+    "pnpm check:android-debug-apk",
     "node scripts/test-android-aab-verifier.mjs",
+    "node scripts/test-android-debug-apk-verifier.mjs",
+    "node scripts/test-android-aab-signing-smoke.mjs",
     "node scripts/test-android-pair-button-picker.mjs",
     "node scripts/test-external-status-refresh.mjs",
     "pnpm test:android-emulator",
@@ -1670,6 +1953,7 @@ function verifyLatestRefresh() {
     "pnpm test:release-artifacts",
     "pnpm test:npm-publish-plan",
     "pnpm test:npm-artifacts",
+    "pnpm test:npm-local-install",
     "pnpm test:bun-install",
     "pnpm test:relay-tls",
     "pnpm test:relay-otlp",
@@ -1682,9 +1966,12 @@ function verifyLatestRefresh() {
     "node scripts/verify-store-privacy.mjs",
     "node scripts/verify-telemetry-privacy.mjs",
     "node scripts/verify-v1-boundary.mjs",
+    "node scripts/verify-release-workflows.mjs --self-test",
     "node scripts/verify-release-workflows.mjs",
     "node scripts/verify-infra-scaffold.mjs",
     "node scripts/test-macos-signing-verifier.mjs",
+    "node scripts/test-macos-signing-evidence.mjs",
+    "node scripts/test-macos-signing-scaffold.mjs",
     "node scripts/smoke-relay-otlp-loopback.mjs",
   ]) {
     requireText(audit, command, `release audit latest refresh is missing command: ${command}`);
@@ -1692,9 +1979,14 @@ function verifyLatestRefresh() {
   requireText(audit, "Downloaded release-rust/GitHub Release archives, `.sha256` files, and\n  `.bundle` attestations are required for `pnpm check:release-artifacts`", "release audit must document real artifact requirement for release artifact checks");
   requireText(audit, "local run without `artifacts/` or `FIELDWORK_ARTIFACT_DIR` fails closed as\n  expected", "release audit must document fail-closed missing artifact directory behavior");
   requireText(audit, "`pnpm test:release-artifacts` remains the deterministic local\n  verifier substitute", "release audit must document local release artifact substitute");
-  requireText(audit, "decoded Apple signing/notarization assets outside the repository workspace with chmod/cleanup", "release audit must document release-rust decoded signing asset hygiene");
-  requireText(audit, "macOS Developer ID/hardened-runtime/Gatekeeper-notarized verifier before Darwin archive staging", "release audit must document macOS signing verifier before Darwin archive staging");
-  requireText(audit, "early Darwin signing/notarization preflight before toolchain setup/build", "release audit must document release-rust early Darwin credential preflight");
+  requireText(audit, "Darwin ad-hoc codesign plus npm-trust verifier before archive staging", "release audit must document macOS npm trust verifier before Darwin archive staging");
+  requireText(audit, "scripts/create-macos-signing-evidence-dir.mjs", "release audit must document macOS signing evidence scaffold");
+  requireText(audit, "scripts/verify-macos-signing-evidence.mjs", "release audit must document macOS signing evidence verifier");
+  requireText(audit, "scripts/smoke-npm-local-install.mjs", "release audit must document local npm install smoke coverage");
+  requireText(audit, "clean temp npm install", "release audit must document the clean temp npm install smoke");
+  requireText(audit, "ad-hoc or Developer ID signature", "release audit must document macOS npm trust signature evidence fields");
+  requireText(audit, "no `com.apple.quarantine` xattr", "release audit must document macOS npm trust quarantine evidence fields");
+  requireText(audit, "without signing anything\n  locally, running GitHub workflows, or fabricating passing evidence", "release audit must document macOS trust evidence does not fabricate signing or workflow evidence");
   requireText(audit, "early `NPM_TOKEN` preflight before npm artifact download", "release audit must document release-npm early token preflight");
   requireText(audit, "early relay SSH-key/inventory preflight before relay artifact download", "release audit must document deploy-relay early prerequisite preflight");
   requireText(audit, "early Cloudflare credential preflight before site install/build", "release audit must document deploy-site early credential preflight");
@@ -1713,12 +2005,12 @@ function verifyLatestRefresh() {
   requireText(audit, "adb -s emulator-5554 exec-out uiautomator dump /dev/tty", "release audit latest refresh must list direct adb UI dump");
   requireText(audit, "adb -s emulator-5554 logcat -b crash -d", "release audit latest refresh must list direct adb crash-buffer capture");
   requireText(audit, "The raw adb locked-launch refresh installed the default debug APK", "release audit must summarize the raw adb locked-launch result");
-  requireText(audit, "The default `pnpm test:android-emulator` aggregate passed on `emulator-5554`", "release audit must summarize the default Android emulator aggregate result");
+  requireText(audit, "The hosted-relay `pnpm test:android-emulator` aggregate passed on\n`emulator-5554`", "release audit must summarize the hosted-relay Android emulator aggregate result");
   requireText(audit, "The release-workflow secret hygiene refresh also passed", "release audit must summarize release workflow secret hygiene verification");
-  requireText(audit, "`release-rust.yml` preflights Apple signing/notarization secrets before Darwin\ntoolchain setup and release build", "release audit must record release-rust early Darwin secret preflight");
-  requireText(audit, "signing/notarization assets under `RUNNER_TEMP`", "release audit must record release-rust temp signing cleanup");
+  requireText(audit, "`release-rust.yml` builds Darwin desktop artifacts without Apple credentials", "release audit must record release-rust zero-dollar Darwin path");
+  requireText(audit, "ad-hoc signs `fieldwork` and `fieldworkd` with `codesign --force --sign -`", "release audit must record release-rust ad-hoc codesign path");
   requireText(audit, "node scripts/verify-macos-signing.mjs", "release audit must record the macOS signing verifier");
-  requireText(audit, "App Store\nConnect upload JSON outside the repository workspace", "release audit must record release-ios upload JSON hygiene");
+  requireText(audit, "App Store Connect upload JSON outside the repository workspace", "release audit must record release-ios upload JSON hygiene");
   requireText(audit, "generated Firebase/signing files in an `always()` cleanup step", "release audit must record release-android generated secret cleanup");
   requireText(audit, "decoded relay SSH key in an `always()` cleanup", "release audit must record deploy-relay SSH cleanup");
   requireText(audit, "LC_ALL=C LANG=C shasum -a 256", "release audit must record macOS-safe release-rust checksum locale");
@@ -1727,12 +2019,12 @@ function verifyLatestRefresh() {
   requireText(audit, "repo-owned Xcode download, install, `xcode-select`, first-launch, rerun", "release audit must record iOS prereq recovery output");
   requireText(audit, "Desktop performance passed after one explicit warm-up sample", "release audit must record latest desktop performance result");
   requireText(audit, "preserved AAB, staged npm binaries, npm publish readiness,\nmeta-package dry-run pack, local handoff smoke, demo video, site typecheck/build,\nTerraform fmt/init/validate, relay TLS/OTLP loopbacks, and desktop performance", "release audit must record latest aggregate local release gate coverage");
-  requireText(audit, "`pnpm check:local-release -- --with-runtime`", "release audit must record the latest runtime aggregate command");
+  requireText(audit, "`pnpm check:local-release:full`", "release audit must record the latest runtime aggregate command");
   requireText(audit, "temp-volume exhaustion while unpacking Cargo registry\nfiles", "release audit must record the local temp-space retry reason");
   requireText(audit, "local handoff smoke preserved host\n`CARGO_HOME`/`RUSTUP_HOME`", "release audit must record local handoff cache preservation");
   requireText(audit, "named its subscription/reconnect sessions\nexplicitly under the daemon duplicate-name rule", "release audit must record duplicate-name-safe handoff smoke sessions");
-  requireText(audit, "`4.98ms`, p95 `6.18ms`, max `6.65ms`", "release audit must record latest CLI desktop performance values");
-  requireText(audit, "`60.50ms`, p95 `93.35ms`, max `101.34ms`", "release audit must record latest daemon desktop performance values");
+  requireText(audit, "`2.71ms`, p95 `3.08ms`, max `3.47ms`", "release audit must record latest CLI desktop performance values");
+  requireText(audit, "`39.18ms`, p95 `40.77ms`, max `41.51ms`", "release audit must record latest daemon desktop performance values");
   requireText(audit, "npm binary readiness passed\nwith staged artifacts", "release audit must record staged npm binary readiness");
   requireText(audit, "Cross-target desktop release builds passed on 2026-05-20", "release audit must record the latest cross-target desktop release build date");
   requireText(audit, "Mach-O arm64/x86_64 and ELF x86-64/aarch64 binaries", "release audit must record cross-target binary format verification");
@@ -1747,11 +2039,17 @@ function verifyLatestRefresh() {
   requireText(audit, "rejected repository npm token strings and\n`.npmrc` files", "release audit must record npm token and .npmrc secret-boundary coverage");
   requireText(audit, "npm auth-token patterns", "release audit must record artifact npm auth-token pattern scanning");
   requireText(audit, "scanned 32 non-relay artifacts", "release audit must record the staged npm platform and Android secret-boundary artifact scan");
-  requireText(audit, "latest\n`pnpm check:secret-boundaries` scan covered 40 retained non-relay artifacts and\nstill passed", "release audit must record the current post-cleanup secret-boundary scan");
+  requireText(audit, "latest\n`pnpm check:secret-boundaries` scan covered 42 retained non-relay artifacts and\nstill passed", "release audit must record the current post-cleanup secret-boundary scan");
   requireText(audit, "verifier now streams artifact scans instead of materializing\nlarge native binaries as one string", "release audit must record streaming artifact secret-boundary scans");
-  requireText(plan, "latest local `pnpm check:secret-boundaries` run scanned 40 retained non-relay artifacts and still passed", "PLAN.md must record the current post-cleanup secret-boundary scan");
+  requireText(plan, "latest local `pnpm check:secret-boundaries` run scanned 42 retained non-relay artifacts and still passed", "PLAN.md must record the current post-cleanup secret-boundary scan");
   requireText(plan, "verifier now streams artifact scans instead of materializing large native binaries as one string", "PLAN.md must record streaming artifact secret-boundary scans");
   requireText(plan, "missing-token publish rejection before `npm` is invoked", "PLAN.md must record the npm publish missing-token guard in implementation notes");
+  requireText(plan, "npm release evidence contract (2026-05-25)", "PLAN.md must record the npm release evidence contract");
+  requireText(plan, "scripts/create-npm-release-evidence-dir.mjs", "PLAN.md must record the npm evidence scaffold");
+  requireText(plan, "scripts/verify-npm-release-evidence.mjs", "PLAN.md must record the npm release evidence verifier");
+  requireText(plan, "exactly the five unscoped `1.0.0` packages", "PLAN.md must record exact unscoped npm release evidence");
+  requireText(plan, "rejects legacy scoped `@fieldwork/*` package names", "PLAN.md must record legacy scoped npm rejection");
+  requireText(plan, "extra unscoped Fieldwork package names", "PLAN.md must record extra npm package rejection");
   requireText(
     plan,
     "fallback preservation of the invoked `fieldwork`/`fw` alias through `FIELDWORK_CLI_BIN_NAME` plus `argv0`",
@@ -1799,6 +2097,12 @@ function verifyLatestRefresh() {
     "Sigstore media-type, transparency-log, DSSE\n  envelope/signature, in-toto payload, SLSA `predicateType`, subject-name,\n  subject-digest, official-repository `buildType`, package, target, requested\n  release-tag, and SHA-256 external-parameter validation",
     "release audit must record strict release artifact DSSE/SLSA field validation",
   );
+  requireText(plan, "Release-artifact evidence contract (2026-05-25)", "PLAN.md must record the release artifact evidence contract");
+  requireText(plan, "scripts/create-release-artifacts-evidence-dir.mjs", "PLAN.md must record the release artifact evidence scaffold");
+  requireText(plan, "scripts/verify-release-artifacts-evidence.mjs", "PLAN.md must record the release artifact evidence verifier");
+  requireText(audit, "scripts/create-release-artifacts-evidence-dir.mjs", "release audit must record the release artifact evidence scaffold");
+  requireText(audit, "scripts/verify-release-artifacts-evidence.mjs", "release audit must record the release artifact evidence verifier");
+  requireText(audit, "downloaded artifact digests, and cosign-backed verifier output", "release audit must record release artifact evidence contents");
   requireText(audit, "missing platform-root rejection", "release audit must record npm artifact missing platform-root rejection");
   requireText(
     audit,
@@ -1833,8 +2137,8 @@ function verifyLatestRefresh() {
     "release audit must distinguish staged package binaries from committed source",
   );
   requireText(audit, "real npm publish blocked by platform child publish rights plus a release-scoped npm token", "release audit must record the current npm publish blocker");
-  requireText(audit, "The unscoped `fieldwork` meta package is operator-owned", "release audit must record the owned unscoped npm package name");
-  requireText(audit, "no further npm\n  name-availability checks are needed for it", "release audit must avoid treating the owned npm name as an availability task");
+  requireText(audit, "the unscoped `fieldwork` meta package", "release audit must record the owned unscoped npm package name");
+  requireText(audit, "no `npm_...` auth-token strings", "release audit must avoid leaking npm tokens in repository files");
   requireText(audit, "Live `verify-npm-registry-state` use is reserved for post-placeholder and\npost-release registry-state/provenance verification", "release audit must reserve live npm registry checks for release-state verification");
   requireText(audit, "Bare registry-state invocations now fail closed unless an explicit\nrelease-state expectation flag is provided", "release audit must record bare npm registry-state fail-closed behavior");
   requireText(audit, "The npm meta-package README is now guarded as a package-page contract", "release audit must record npm README package-page contract");
@@ -1849,15 +2153,20 @@ function verifyLatestRefresh() {
   requireText(audit, "`--expect-platform-published`", "release audit must document the post-placeholder npm package-family check");
   requireText(audit, "`--expect-latest-version=1.0.0 --expect-provenance`", "release audit must document the post-release npm dist-tag and provenance check");
   requireText(audit, "post-publish registry-state and\n  provenance verification", "release audit must record latest post-publish registry/provenance verifier coverage");
+  requireText(audit, "npm release\n  evidence contract is now local", "release audit must record local npm release evidence contract");
+  requireText(audit, "scripts/create-npm-release-evidence-dir.mjs", "release audit must record the npm release evidence scaffold");
+  requireText(audit, "scripts/verify-npm-release-evidence.mjs", "release audit must record the npm release evidence verifier");
+  requireText(audit, "exactly the five unscoped v1 packages", "release audit must record exact unscoped npm package evidence");
+  requireText(audit, "rejects legacy scoped\n  `@fieldwork/*` package names and extra unscoped Fieldwork package names", "release audit must record legacy and extra npm evidence rejection");
+  requireText(audit, "children-first publish log, registry-state/provenance output, and package\n  metadata", "release audit must record npm evidence contents");
   requireText(audit, "This is not proof of platform child\npublish rights", "release audit must not treat npm registry state as platform-child publish proof");
   requireText(audit, "GitHub namespace availability refresh is no longer an agent-owned routine\nrelease activity", "release audit must keep GitHub namespace checks out of routine agent work");
   requireText(audit, "requires `--operator-refresh --expect-available`", "release audit must record GitHub namespace refresh opt-in flag");
   requireText(audit, "explicit operator-requested status refreshes", "release audit must reserve external status checks for operator requests");
   requireText(audit, "fails closed before network access\nwithout `--operator-refresh`", "release audit must record GitHub namespace fail-closed behavior");
   requireText(audit, "daemon service preflight refresh passed", "release audit must record the focused daemon service preflight refresh");
-  requireText(audit, "`fieldwork daemon install`/`restart` only", "release audit must record that macOS Gatekeeper preflight is scoped to service operations");
-  requireText(audit, "Direct daemon auto-spawn still uses\nthe colocated `fieldworkd` path without `spctl`", "release audit must record that direct daemon auto-spawn is not gated by spctl");
-  requireText(audit, "`target/release/fieldworkd: rejected`", "release audit must record current read-only spctl evidence");
+  requireText(audit, "replacing the previous Developer ID notarization\nrequirement with the npm trust path", "release audit must record the macOS daemon service trust-path refresh");
+  requireText(audit, "npm-installed/ad-hoc-signed artifact or an actual Linux user-service host", "release audit must record remaining service survival evidence boundary");
   requireText(audit, "current Codex CLI surface is preserved", "release audit must record the current Codex command-surface decision");
   requireText(audit, "unsupported `--remote-control` flag", "release audit must reject mutating the user's Codex PTY command into an unsupported flag");
   requireText(audit, "Rust workspace verifier passed", "release audit must record the focused Rust workspace verifier result");
@@ -1934,9 +2243,10 @@ function verifyLatestRefresh() {
   requireText(audit, "state-inference fixture tests passed", "release audit must record focused state-inference verification");
   requireText(audit, "local-agent-hook tests passed", "release audit must record focused local agent hook verification");
   requireText(audit, "matching_local_agent_hook_updates_session_state", "release audit must record matching local hook test name");
-  requireText(audit, "mismatched_local_agent_hook_is_ignored", "release audit must record mismatched local hook test name");
+  requireText(audit, "mismatched_local_agent_hook_is_rejected", "release audit must record mismatched local hook test name");
+  requireText(audit, "ipc_handler_acknowledges_local_agent_hook_and_reports_errors", "release audit must record local hook acknowledgement IPC test name");
   requireText(audit, "matching LocalCli Claude/Codex hook events update only matching PTY sessions", "release audit must record local hook matching semantics");
-  requireText(audit, "mismatched hook sources are ignored", "release audit must record local hook mismatch semantics");
+  requireText(audit, "mismatched hook sources or missing sessions are rejected and surfaced back to the CLI hook adapter", "release audit must record local hook mismatch semantics");
   requireText(audit, "service scaffold verifier passed", "release audit must record focused daemon-service verification");
   requireText(audit, "fake-command `service-manager` rendering tests", "release audit must record service-manager rendering tests");
   requireText(audit, "LaunchAgent `KeepAlive`/`SuccessfulExit=false`", "release audit must record launchd restart rendering verification");
@@ -1948,7 +2258,9 @@ function verifyLatestRefresh() {
   requireText(audit, "two attached", "release audit must record both attached clients in focused multi-attach verification");
   requireText(audit, "focused iroh peer-identity test", "release audit must record focused iroh peer-identity verification");
   requireText(audit, "authenticated iroh peer identity", "release audit must record authenticated iroh identity semantics");
-  requireText(audit, "local handoff smoke now also covers paired iroh mobile agent-state hook rejection", "release audit must record iroh mobile hook-event verification");
+  requireText(audit, "local handoff smoke now also covers acknowledged matching Claude hook delivery", "release audit must record local handoff matching hook verification");
+  requireText(audit, "mismatched Codex hook nonzero failure", "release audit must record local handoff mismatched hook verification");
+  requireText(audit, "paired iroh mobile agent-state hook rejection", "release audit must record iroh mobile hook-event verification");
   requireText(audit, "warm reconnect replay over iroh within 2 seconds from `last_seen_seq`", "release audit must record local iroh reconnect replay timing coverage");
   requireText(audit, "direct bincode IPC protocol-mismatch tests", "release audit must record direct IPC protocol-mismatch verification");
   requireText(audit, "local iroh handoff smoke protocol-mismatch rejection", "release audit must record iroh protocol-mismatch verification");
@@ -1956,21 +2268,26 @@ function verifyLatestRefresh() {
   requireText(audit, "clearing\n  reproducible debug/mobile Rust build output to recover disk space", "release audit must record local handoff disk-space recovery");
   requireText(audit, "removing the regenerated repo-local `target/debug` after the run", "release audit must record local handoff target/debug cleanup");
   requireText(audit, "`IosApp` and `AndroidApp`", "release audit must record both mobile client kinds in capability verification");
-  requirePattern(audit, /paired in\s+3 seconds/, "release audit must record the latest local handoff pair duration");
-  requireText(audit, "16ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
-  requireText(audit, "`cargo nextest run --workspace`: 171 tests passed.", "release audit must record the current workspace nextest count");
+  requirePattern(audit, /paired in\s+2 seconds/, "release audit must record the latest local handoff pair duration");
+  requireText(audit, "17ms in the latest local run", "release audit must record the latest local iroh reconnect timing");
+  requireText(audit, "`cargo nextest run --workspace`: 203 tests passed.", "release audit must record the current workspace nextest count");
   requireText(audit, "`cargo test --workspace --doc`: workspace doctest harnesses passed", "release audit must record the current workspace doctest result");
-  requireText(audit, "`cargo nextest run -p fieldwork-daemon`: 73 daemon tests passed", "release audit must record the current daemon test count");
+  requireText(audit, "`cargo nextest run -p fieldwork-daemon`: 75 daemon tests passed", "release audit must record the current daemon test count");
   requireText(audit, "`cargo deny check`: exited successfully with `advisories ok, bans ok,\n  licenses ok, sources ok`", "release audit must record the current cargo-deny category result");
   requireText(audit, "duplicate-crate findings were warnings only", "release audit must distinguish cargo-deny duplicate warnings from deny failures");
-  requireText(audit, "`cargo audit`: exited successfully with allowed warnings only (`adler`,\n  `bincode`, `paste`, `lru`)", "release audit must record the current cargo-audit warning set");
+  requireText(audit, "`cargo audit`: scanned 748 dependencies and exited successfully with allowed\n  warnings only: `adler` `RUSTSEC-2025-0056`, `atomic-polyfill`\n  `RUSTSEC-2023-0089`, `bincode` `RUSTSEC-2025-0141`, `paste`\n  `RUSTSEC-2024-0436`, and `lru` `RUSTSEC-2026-0002`", "release audit must record the current cargo-audit warning set");
   requireText(audit, "`cargo update -p lru@0.12.5 --dry-run` found no\n  compatible lockfile move", "release audit must record the lru advisory dry-run update check");
   requireText(audit, "Fieldwork does not call `lru::IterMut` directly", "release audit must record direct lru IterMut non-use");
   requireText(audit, "rejects direct `lru` dependencies plus\n  `lru::` source paths", "release audit must record direct lru source/dependency guard");
-  requireText(audit, "decode generated base32 tokens back to 32 bytes", "release audit must record 32-byte base32 pair-token coverage");
-  requireText(audit, "10-minute expiry window", "release audit must record pair-token TTL coverage");
-  requireText(audit, "pre-approval single-use consumption", "release audit must record pair-token single-use coverage");
-  requireText(audit, "success only after explicit approval", "release audit must record explicit desktop approval coverage");
+  requireText(audit, "`cargo update -p postcard --dry-run` found no compatible lockfile move", "release audit must record the postcard advisory dry-run update check");
+  requireText(audit, "Fieldwork does not call `atomic_polyfill::` directly", "release audit must record direct atomic-polyfill non-use");
+  requireText(audit, "rejects direct `atomic-polyfill`\n  dependencies plus `atomic_polyfill::` source paths", "release audit must record direct atomic-polyfill source/dependency guard");
+  requireText(audit, "Protocol code tests verify the confusable-free alphabet plus normalization/validation", "release audit must record pairing-code parser coverage");
+  requireText(audit, "`PairingTicket` tests round-trip the compact `fw1` ticket", "release audit must record compact pairing-ticket coverage");
+  requireText(audit, "invalidate after 5 wrong attempts", "release audit must record pairing-code wrong-attempt lockout coverage");
+  requireText(audit, "expire after 10 minutes", "release audit must record pairing-code TTL coverage");
+  requireText(audit, "single-use before approval", "release audit must record pairing-code single-use coverage");
+  requireText(audit, "succeed only after explicit desktop approval", "release audit must record explicit desktop approval coverage");
   requireText(audit, "Attached.seq", "release audit must record PTY reconnect seq semantics");
   requireText(audit, "Output.seq", "release audit must record PTY output seq semantics");
   requireText(audit, "byte offset immediately after the bytes", "release audit must record after-bytes seq meaning");
@@ -2030,15 +2347,68 @@ function verifyLatestRefresh() {
   requireText(audit, "rejects `last_line`, command, path, and session-name", "release audit must record free-text push-field rejection coverage");
   requireText(audit, "Mobile notification ingress now mirrors that contract", "release audit must record native notification hash-validation coverage");
   requireText(audit, "focused Android JVM unit coverage", "release audit must record Android notification hash unit-test coverage");
-  requireText(audit, "`7a7868df2b8abd8e128b5ba46a40aa58bfac72b482c67e8c83351c4fb60b6ed0`", "release audit must record the current Android release AAB SHA-256");
+  requireText(audit, "Android release bundle validation was refreshed locally on 2026-05-29", "release audit must record the latest Android release bundle refresh date");
+  requireText(audit, "`pnpm test:android-unit`", "release audit must record Android unit test refresh");
+  requireText(audit, "`apps/android/gradlew --no-daemon :app:bundleRelease`", "release audit must record Android release bundle refresh command");
+  requireText(audit, "`pnpm check:android-release-readiness:local`", "release audit must record Android release readiness refresh");
+  requireText(audit, "A 2026-05-25 direct-adb debug APK hygiene refresh found a retained", "release audit must record the Android debug APK hygiene refresh");
+  requireText(audit, "`pnpm check:android-debug-apk` now", "release audit must record the Android debug APK verifier command");
+  requireText(audit, "stale legacy JSON pairing payload in `classes*.dex`", "release audit must record stale debug pairing code rejection");
+  requireText(audit, "`node scripts/test-android-debug-apk-verifier.mjs`", "release audit must record Android debug APK verifier test coverage");
+  requireText(plan, "Android release validation refresh (2026-05-30)", "PLAN.md must record latest Android release validation refresh");
+  requireText(plan, "Android debug APK hygiene guard (2026-05-25)", "PLAN.md must record the Android debug APK hygiene guard");
+  requireText(plan, "`pnpm check:android-debug-apk` now rejects stale legacy JSON pairing payload", "PLAN.md must record stale debug pairing code rejection");
+  requireText(plan, "node scripts/test-android-debug-apk-verifier.mjs", "PLAN.md must record Android debug APK verifier coverage");
+  requireText(plan, "`pnpm test:android-unit`", "PLAN.md must record latest Android unit validation");
+  requireText(plan, "`apps/android/gradlew --no-daemon :app:bundleRelease`", "PLAN.md must record latest Android release bundle validation command");
+  requireText(audit, "`af38adfb7541caf31c45afa216c61c4fa2dbce9ab1168ce91181f91a1f0ccca8`", "release audit must record the current Android release AAB SHA-256");
   requireText(audit, "`--expect-unsigned`", "release audit must record local unsigned AAB verification");
   requireText(audit, "`--expect-signed`", "release audit must record signed AAB verification policy");
+  requireText(plan, "pnpm test:android-aab-signing-smoke", "PLAN.md must record the local Android AAB signing smoke");
+  requireText(plan, "scripts/check-android-release-readiness.mjs", "PLAN.md must record the Android release readiness command");
+  requireText(plan, "desktop command-surface checks used during capture", "PLAN.md must record Android release desktop command-surface readiness");
+  requireText(plan, "falls back to an internal temporary `fw`/`fieldwork`/`fieldworkd` shim backed by repo-local `target/release/fieldwork` plus `target/release/fieldworkd`", "PLAN.md must record Android release local command-shim fallback");
+  requireText(plan, "must prove alias-aware `Usage: fw`, `Usage: fw doctor`, and `Usage: fieldworkd`", "PLAN.md must record Android release alias-aware command-surface fallback");
+  requireText(plan, "scripts/create-android-release-evidence-pack.mjs", "PLAN.md must record the Android release evidence pack scaffold");
+  requireText(plan, "source-checkout `fw`/`fieldwork`/`fieldworkd` command shim", "PLAN.md must record Android release evidence pack command shim");
+  requireText(plan, "runs local Android release readiness, then runs `fw doctor`", "PLAN.md must record Android release evidence pack doctor preflight");
+  requireText(plan, "`verify.sh` runs every focused Android release evidence verifier in capture order", "PLAN.md must record Android release evidence pack verify-all helper");
+  requireText(plan, "strict release-install physical-device check", "PLAN.md must record Android release evidence pack strict install verification");
+  requireText(plan, "scripts/create-live-testing-pack.mjs", "PLAN.md must record the combined live-testing pack scaffold");
+  requireText(plan, "runs `fw doctor` to\nprove the desktop CLI can start and handshake with `fieldworkd`", "PLAN.md must record live-testing pack doctor preflight");
+  requireText(development, "pnpm check:android-release-readiness:local", "DEVELOPMENT.md must document the Android release readiness local preflight");
+  requireText(development, "pnpm scaffold:live-testing-pack -- --print-dir", "DEVELOPMENT.md must document the combined live-testing pack scaffold");
+  requireText(development, "`fw doctor` to prove the desktop CLI can start and handshake with `fieldworkd`", "DEVELOPMENT.md must document live-testing pack doctor preflight");
+  requireText(development, "pnpm scaffold:android-release-evidence-pack -- --print-dir", "DEVELOPMENT.md must document the Android release evidence pack scaffold");
+  requireText(development, "falling back to an internal temporary `fw`/`fieldwork`/`fieldworkd` shim backed by repo-local `target/release/fieldwork` and `target/release/fieldworkd`", "DEVELOPMENT.md must document Android release local command-shim fallback");
+  requireText(development, "that fallback must prove `Usage: fw`, `Usage: fw doctor`, and `Usage: fieldworkd`", "DEVELOPMENT.md must document Android release alias-aware command-surface fallback");
+  requireText(development, "`readiness.sh` prepends the generated command shim to `PATH`", "DEVELOPMENT.md must document Android release pack shim preflight");
+  requireText(development, "then runs `fw doctor` to prove the desktop CLI can auto-start and handshake with `fieldworkd`", "DEVELOPMENT.md must document Android release pack doctor preflight");
+  requireText(development, "`verify.sh` runs every focused Android release evidence verifier in capture order", "DEVELOPMENT.md must document Android release pack verify-all helper");
+  requireText(development, "strict release-install physical-device check", "DEVELOPMENT.md must document Android release pack strict install verification");
+  requireText(audit, "pnpm check:android-release-readiness:local", "release audit must record the Android release readiness local preflight");
+  requireText(audit, "Android release readiness also now checks the desktop `fw`, `fw doctor`, and\n  `fieldworkd` command surfaces", "release audit must record Android release desktop command readiness");
+  requireText(audit, "Local\n  mode falls back to an internal temporary `fw`/`fieldwork`/`fieldworkd` shim\n  backed by repo-local `target/release/fieldwork` and\n  `target/release/fieldworkd`", "release audit must record Android release local command-shim fallback");
+  requireText(audit, "fallback must prove `Usage: fw`, `Usage: fw doctor`, and `Usage: fieldworkd`", "release audit must record Android release alias-aware command-surface fallback");
+  requireText(audit, "Android release evidence pack scaffold self-test", "release audit must record the Android release evidence pack self-test");
+  requireText(audit, "pnpm scaffold:android-release-evidence-pack -- --print-dir", "release audit must record the Android release evidence pack command");
+  requireText(audit, "source-checkout `fw`/`fieldwork`/`fieldworkd` shim plus `setup.sh`", "release audit must record Android release evidence pack command shim");
+  requireText(audit, "local release\n  readiness, and `fw doctor`", "release audit must record Android release evidence pack doctor preflight");
+  requireText(audit, "`verify.sh` runs every focused Android release evidence verifier in capture\n  order", "release audit must record Android release evidence pack verify-all helper");
+  requireText(audit, "strict release-install physical-device check", "release audit must record Android release evidence pack strict install verification");
   requireText(audit, "`jar is unsigned`", "release audit must record local jarsigner unsigned result");
   requireText(audit, "release workflow verifier rejects using\n  `node scripts/verify-android-aab.mjs --expect-unsigned`", "release audit must record release workflow unsigned-mode rejection");
-  requireText(audit, "requires\n  `node scripts/verify-android-aab.mjs --expect-signed`", "release audit must record release workflow signed-mode requirement");
+  requireText(
+    audit,
+    "requires\n  `node scripts/verify-android-aab.mjs --expect-signed --expect-relay-control-url`",
+    "release audit must record release workflow signed-mode and relay URL requirement",
+  );
+  requireText(audit, "so signed mode also runs `jarsigner -verify -certs`", "release audit must record signed-mode jarsigner enforcement");
+  requireText(audit, "requires the\n  `jar verified` marker", "release audit must record signed-mode jarsigner verified-marker enforcement");
+  requireText(audit, "rejects Android Debug certificates", "release audit must record signed-mode Android debug-certificate rejection");
   requireText(audit, "`jarsigner -verify -certs` before Play upload", "release audit must record jarsigner release AAB verification");
   requireText(audit, "packaged manifest privacy surface", "release audit must record Android AAB packaged manifest privacy verification");
-  requireText(audit, "Firebase/Sentry opt-out metadata", "release audit must record packaged manifest opt-out metadata verification");
+  requireText(audit, "Firebase opt-out metadata", "release audit must record packaged manifest opt-out metadata verification");
   requireText(plan, "focused Android JVM tests now verify locked terminal input is refused before it reaches mobile-core plus latest-`lastSeenSeq` `Lag` and attached-stream-error reattach", "PLAN.md must record focused Android locked-input and lag/stream-error reattach coverage");
   requireText(plan, "A 2026-05-19 direct adb emulator QA refresh installed the default debug APK", "PLAN.md must record the 2026-05-19 direct adb emulator QA refresh");
   requireText(plan, "`Status: ok` and `TotalTime=5297ms`", "PLAN.md must record the 2026-05-19 raw adb launch status and timing");
@@ -2047,7 +2417,7 @@ function verifyLatestRefresh() {
     "`/tmp/fieldwork-adb-direct-20260519225027/default-ui.xml`",
     "`/tmp/fieldwork-adb-direct-20260519225027/default-logcat.log`",
     "`/tmp/fieldwork-adb-direct-20260519225027/default-crash.log`",
-    "debug-only `FIELDWORK_ANDROID_PAIRING_PAYLOAD`",
+    "debug-only `FIELDWORK_ANDROID_PAIRING_CODE`",
     "`TotalTime=4589ms`",
     "UI-tree-derived Pair center `540 1860`",
     "`pair_flow_ms=1043`",
@@ -2060,14 +2430,14 @@ function verifyLatestRefresh() {
     "`/tmp/fieldwork-adb-direct-pair-20260519225208/terminal-after-input.png`",
     "`android-direct: fw_android_direct_ok`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    '`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`',
+    '`FIELDWORK_DEBUG_PAIRING_CODE = ""`',
     "`TotalTime=5105ms`",
     "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-locked.png`",
     "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-ui.xml`",
   ]) {
     requireText(plan, evidence, `PLAN.md 2026-05-19 raw adb QA evidence must include ${evidence}`);
   }
-  requireText(plan, "empty `FIELDWORK_DEBUG_PAIRING_PAYLOAD`", "PLAN.md must record restored empty Android debug pairing payload");
+  requireText(plan, "empty `FIELDWORK_DEBUG_PAIRING_CODE`", "PLAN.md must record restored empty Android debug pairing code");
   for (const evidence of [
     "`/tmp/fieldwork-adb-direct-20260520001909/default-locked.png`",
     "`TotalTime=6766ms`",
@@ -2095,12 +2465,13 @@ function verifyLatestRefresh() {
     "`android-direct: android_adb_direct_ping`",
     "`sdk_gphone64_arm64`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    '`FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`',
     "`/tmp/fieldwork-adb-direct-pair-20260520100742/default-restored-locked.png`",
   ]) {
     requireText(plan, evidence, `PLAN.md current direct adb refresh evidence must include ${evidence}`);
     requireText(audit, evidence, `release audit current direct adb refresh evidence must include ${evidence}`);
   }
+  requireText(plan, '`FIELDWORK_DEBUG_PAIRING_CODE = ""`', "PLAN.md current direct adb refresh evidence must record the restored empty debug pairing code");
+  requireText(audit, '`FIELDWORK_DEBUG_PAIRING_CODE = ""`', "release audit current direct adb refresh evidence must record the restored empty debug pairing code");
   for (const evidence of [
     "`/tmp/fieldwork-fw-direct-pair-20260520152507/dashboard.png`",
     "`/tmp/fieldwork-fw-direct-pair-20260520152507/after-pair.xml`",
@@ -2136,7 +2507,6 @@ function verifyLatestRefresh() {
     "later 2026-05-21 direct adb locked-launch refresh",
     "`/tmp/fieldwork-adb-direct-20260521-locked-refresh`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
     "`TotalTime=976ms`",
     "`locked.png`, `locked-ui.xml`, `logcat.log`, and an empty `crash.log`",
     "debug-emulator evidence only",
@@ -2144,6 +2514,8 @@ function verifyLatestRefresh() {
     requireText(plan, evidence, `PLAN.md latest 2026-05-21 direct adb locked-launch evidence must include ${evidence}`);
     requireText(audit, evidence, `release audit latest 2026-05-21 direct adb locked-launch evidence must include ${evidence}`);
   }
+  requireText(plan, "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`", "PLAN.md latest 2026-05-21 direct adb locked-launch evidence must record the restored empty debug pairing code");
+  requireText(audit, "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`", "release audit latest 2026-05-21 direct adb locked-launch evidence must record the restored empty debug pairing code");
   for (const evidence of [
     "Direct Android adb locked-launch refresh (2026-05-22)",
     "`/tmp/fieldwork-adb-refresh-20260522`",
@@ -2179,7 +2551,7 @@ function verifyLatestRefresh() {
     "`TotalTime=1847ms`",
     "`locked.png`,\n`locked-ui.xml`, `locked-logcat.log`, empty `locked-crash.log`, `focus.txt`, and\n`buildconfig.txt`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
     "app process remained focused",
     "targeted logcat scanning found no Fieldwork `FATAL EXCEPTION` or ANR\nentries",
   ]) {
@@ -2192,7 +2564,7 @@ function verifyLatestRefresh() {
     "`TotalTime=1847ms`",
     "`locked.png`,\n  `locked-ui.xml`, `locked-logcat.log`, empty `locked-crash.log`, `focus.txt`,",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
     "app process remained focused",
     "targeted logcat scanning found no Fieldwork `FATAL EXCEPTION` or ANR\n  entries",
   ]) {
@@ -2206,7 +2578,7 @@ function verifyLatestRefresh() {
     "`locked.png`, `locked-ui.xml`, `locked-logcat.log`, and `locked-crash.log`",
     "`APPLICATION_ID = \"app.fieldwork.android\"`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
     "`22d6a9638bcc5fc0edc0d771d9b4434844b2d372e0799c4630d828cd376f3e84`",
     "emulator system `com.google.android.bluetooth` crash",
     "no Fieldwork `FATAL EXCEPTION`,\nANR, session sync, push-token registration, terminal attach, or input before\nunlock",
@@ -2220,7 +2592,7 @@ function verifyLatestRefresh() {
     "`WaitTime=4395ms`",
     "`APPLICATION_ID = \"app.fieldwork.android\"`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
     "`22d6a9638bcc5fc0edc0d771d9b4434844b2d372e0799c4630d828cd376f3e84`",
     "emulator system `com.google.android.bluetooth` crash",
     "no Fieldwork `FATAL EXCEPTION`, ANR, session sync, push-token\nregistration, terminal attach, or input before unlock",
@@ -2235,7 +2607,7 @@ function verifyLatestRefresh() {
     "`locked.png`, `locked-ui.xml`, `locked-logcat.log`, and `locked-crash.log`",
     "`APPLICATION_ID = \"app.fieldwork.android\"`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
     "`22d6a9638bcc5fc0edc0d771d9b4434844b2d372e0799c4630d828cd376f3e84`",
     "emulator system `com.google.android.bluetooth` crash",
     "no Fieldwork `FATAL EXCEPTION`, ANR, session sync, push-token\n  registration, terminal attach, or input before unlock",
@@ -2243,12 +2615,283 @@ function verifyLatestRefresh() {
     requireText(audit, evidence, `release audit 2026-05-23 direct adb locked-launch follow-up evidence must include ${evidence}`);
   }
   for (const evidence of [
+    "Direct Android adb locked-launch refresh (2026-05-24)",
+    "`/tmp/fieldwork-adb-direct-20260524172604`",
+    "`TotalTime=1852ms`",
+    "`WaitTime=1854ms`",
+    "`wall_launch_ms=1905`",
+    "`resolve-activity.txt`, `package-info.txt`",
+    "`versionCode=1`, `versionName=1.0`",
+    "debug-only\n`DEBUGGABLE` flag",
+    "`APPLICATION_ID = \"app.fieldwork.android\"`",
+    "`BUILD_TYPE = \"debug\"`",
+    "`DEBUG = Boolean.parseBoolean(\"true\")`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
+    "`nonblack=14379/14400`",
+    "targeted logcat/crash-buffer scanning found no Fieldwork\n`FATAL EXCEPTION` or ANR entries",
+  ]) {
+    requireText(plan, evidence, `PLAN.md 2026-05-24 direct adb locked-launch evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-24 direct adb locked-launch refresh",
+    "`/tmp/fieldwork-adb-direct-20260524172604`",
+    "`TotalTime=1852ms`",
+    "`WaitTime=1854ms`",
+    "`wall_launch_ms=1905`",
+    "`package-info.txt`, `buildconfig.txt`",
+    "`versionCode=1`,\n`versionName=1.0`",
+    "expected debug-only `DEBUGGABLE` flag",
+    "`APPLICATION_ID = \"app.fieldwork.android\"`",
+    "`BUILD_TYPE = \"debug\"`",
+    "`DEBUG = Boolean.parseBoolean(\"true\")`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
+    "`nonblack=14379/14400`",
+    "targeted logcat/crash-buffer scanning found no Fieldwork `FATAL EXCEPTION`\nor ANR entries",
+  ]) {
+    requireText(development, evidence, `DEVELOPMENT.md 2026-05-24 direct adb locked-launch evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-24 direct adb locked-launch refresh",
+    "`/tmp/fieldwork-adb-direct-20260524172604`",
+    "`TotalTime=1852ms`",
+    "`WaitTime=1854ms`",
+    "`wall_launch_ms=1905`",
+    "`package-info.txt`,\n  `buildconfig.txt`",
+    "`versionCode=1`, `versionName=1.0`",
+    "expected debug-only\n  `DEBUGGABLE` flag",
+    "`APPLICATION_ID = \"app.fieldwork.android\"`",
+    "`BUILD_TYPE = \"debug\"`",
+    "`DEBUG = Boolean.parseBoolean(\"true\")`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
+    "`nonblack=14379/14400`",
+    "targeted logcat/crash-buffer scanning found no\n  Fieldwork `FATAL EXCEPTION` or ANR entries",
+  ]) {
+    requireText(audit, evidence, `release audit 2026-05-24 direct adb locked-launch evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "`/tmp/fieldwork-direct-adb-20260524220022`",
+    "`TotalTime=2571ms`",
+    "`WaitTime=2606ms`",
+    "`after-unlock-tap.png`",
+    "`after-unlock-ui.xml`",
+    "`after-unlock-logcat.log`",
+    "`after-unlock-crash.log`",
+    "`text=\"Unlock\"`",
+    "`BiometricService`",
+    "`Status: 7`",
+    "`hasEnrollments: false`",
+    "`FieldworkRepository: listSessions`",
+    "`registerPushToken`",
+    "`Attached`",
+    "terminal-content exposure before unlock",
+  ]) {
+    requireText(plan, evidence, `PLAN.md 2026-05-24 direct adb locked biometric fallback evidence must include ${evidence}`);
+    requireText(development, evidence, `DEVELOPMENT.md 2026-05-24 direct adb locked biometric fallback evidence must include ${evidence}`);
+    requireText(audit, evidence, `release audit 2026-05-24 direct adb locked biometric fallback evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "Direct Android adb pair/input refresh (2026-05-24)",
+    "`/tmp/fieldwork-adb-pair-20260524205522`",
+    "`bash · fieldwork` PTY session",
+    "`ANDROID_DIRECT_PAIR_READY`",
+    "`TotalTime=1554ms`",
+    "`pair_flow_ms=525`",
+    "`before-pair.png`, `before-pair-ui.xml`, `dashboard.png`, `dashboard-ui.xml`",
+    "`terminal-before-input.png`, `terminal-before-input-ui.xml`",
+    "`terminal-after-input.png`, `terminal-after-input-ui.xml`",
+    "`fw_android_direct_pair_ok`",
+    "`android-direct: fw_android_direct_pair_ok`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = true`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
+    "`adb devices -l` showed no",
+    "Play-signed release build",
+  ]) {
+    requireText(plan, evidence, `PLAN.md 2026-05-24 direct adb pair/input evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-24 direct adb pair/input refresh",
+    "`/tmp/fieldwork-adb-pair-20260524205522`",
+    "raw `adb` plus desktop CLI",
+    "`bash · fieldwork` session",
+    "`ANDROID_DIRECT_PAIR_READY`",
+    "`Status: ok` and `TotalTime=1554ms`",
+    "`pair_flow_ms=525`",
+    "`fw_android_direct_pair_ok`",
+    "`android-direct: fw_android_direct_pair_ok`",
+    "`dashboard.png`, `dashboard-ui.xml`",
+    "`terminal-before-input.png`, `terminal-after-input.png`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
+    "physical QR-camera, biometric, Play-signed release build",
+  ]) {
+    requireText(development, evidence, `DEVELOPMENT.md 2026-05-24 direct adb pair/input evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-24 direct adb pair/input refresh",
+    "`/tmp/fieldwork-adb-pair-20260524205522`",
+    "`bash · fieldwork` PTY",
+    "`ANDROID_DIRECT_PAIR_READY`",
+    "`TotalTime=1554ms`",
+    "`pair_flow_ms=525`",
+    "`terminal-after-input.png`, `terminal-after-input-ui.xml`",
+    "`fw_android_direct_pair_ok`",
+    "`android-direct: fw_android_direct_pair_ok`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = true`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
+    "`adb devices -l` showed no",
+    "release-device runtime gates remain unchecked",
+  ]) {
+    requireText(audit, evidence, `release audit 2026-05-24 direct adb pair/input evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-25 direct adb emulator refresh",
+    "`/tmp/fieldwork-adb-direct-20260525105201`",
+    "`/tmp/fieldwork-adb-direct-pair-20260525105508`",
+    "`TotalTime=3117ms`",
+    "`pair_flow_ms=549`",
+    "`directbash`",
+    "`echo fw_android_direct_interactive_ok`",
+    "`fieldwork pair-test --attach directbash`",
+    "`fw_android_direct_interactive_ok`",
+    "`FieldworkRepository: listSessions returned 2 sessions`",
+    "`FIELDWORK_ANDROID_UI_DUMP_TIMEOUT_SECONDS`",
+    "physical signed-release phone gates remain unchecked",
+  ]) {
+    requireText(plan, evidence, `PLAN.md 2026-05-25 direct adb interactive-shell evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-25 direct adb interactive-shell refresh",
+    "`/tmp/fieldwork-adb-direct-20260525105201`",
+    "`/tmp/fieldwork-adb-direct-pair-20260525105508`",
+    "`TotalTime=3117ms`",
+    "`pair_flow_ms=549`",
+    "`directbash`",
+    "`echo fw_android_direct_interactive_ok`",
+    "`fieldwork pair-test --attach directbash`",
+    "`fw_android_direct_interactive_ok`",
+    "`FieldworkRepository: listSessions returned 2 sessions`",
+    "`FIELDWORK_ANDROID_UI_DUMP_TIMEOUT_SECONDS`",
+    "physical\nsigned-release phone gates remain unchecked",
+  ]) {
+    requireText(development, evidence, `DEVELOPMENT.md 2026-05-25 direct adb interactive-shell evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-25 direct adb interactive-shell refresh",
+    "`/tmp/fieldwork-adb-direct-20260525105201`",
+    "`/tmp/fieldwork-adb-direct-pair-20260525105508`",
+    "`TotalTime=3117ms`",
+    "`pair_flow_ms=549`",
+    "`directbash`",
+    "`echo fw_android_direct_interactive_ok`",
+    "`fieldwork pair-test --attach\n  directbash`",
+    "`fw_android_direct_interactive_ok`",
+    "`FieldworkRepository: listSessions returned 2\n  sessions`",
+    "`FIELDWORK_ANDROID_UI_DUMP_TIMEOUT_SECONDS`",
+    "physical signed-release phone gates\n  remain unchecked",
+  ]) {
+    requireText(audit, evidence, `release audit 2026-05-25 direct adb interactive-shell evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "local release APK install smoke",
+    "`bundletool-all-1.18.3`",
+    "`/tmp/fieldwork-android-release-install-20260530045350/apks/fieldwork-release-universal.apks`",
+    "`universal.apk`",
+    "APK Signature Scheme v3",
+    "`CN=Fieldwork Release Smoke`",
+    "`package: name='app.fieldwork.android' versionCode='1' versionName='1.0'`",
+    "no `debuggable` marker",
+    "`/tmp/fieldwork-android-release-install-20260530045350`",
+    "`Status: ok`, `LaunchState: COLD`",
+    "retained passing launch attempt `TotalTime=1169ms`",
+    "`launch-attempts.txt`",
+    "`run-as` reported `package not debuggable`",
+    "`package-info.txt` omitted `DEBUGGABLE`",
+    "`scripts/verify-android-release-install-evidence.mjs`",
+    "`--strict-release-device`",
+    "local `Fieldwork Release Smoke` certificate",
+    "`scripts/test-android-release-install-evidence.mjs`",
+    "`scripts/create-android-release-install-evidence-dir.mjs`",
+    "`scripts/test-android-release-install-scaffold.mjs`",
+    "without fabricating evidence",
+    "requires five launches on a real phone",
+  ]) {
+    requireText(plan, evidence, `PLAN.md 2026-05-30 local release APK install evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-30 local release APK install smoke",
+    "`bundletool-all-1.18.3`",
+    "`/tmp/fieldwork-android-release-install-20260530045350/apks/fieldwork-release-universal.apks`",
+    "`CN=Fieldwork Release Smoke`",
+    "`apksigner`",
+    "`apksigner-universal.txt`",
+    "`aapt-badging.txt`, `aapt-permissions.txt`, `aapt-manifest-tree.txt`",
+    "`versionCode='1'`",
+    "`versionName='1.0'`",
+    "no `debuggable` marker",
+    "`/tmp/fieldwork-android-release-install-20260530045350`",
+    "`Status: ok`, `LaunchState: COLD`",
+    "`TotalTime=1169ms`",
+    "`launch-attempts.txt`",
+    "`run-as: package not debuggable: app.fieldwork.android`",
+    "no\ninstalled-package `DEBUGGABLE` flag",
+    "`scripts/verify-android-release-install-evidence.mjs`",
+    "`--strict-release-device`",
+    "local `Fieldwork Release Smoke` certificate",
+    "`scripts/test-android-release-install-evidence.mjs`",
+    "not Play signing",
+  ]) {
+    requireText(development, evidence, `DEVELOPMENT.md 2026-05-30 local release APK install evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "2026-05-30 local release APK install smoke",
+    "`bundletool-all-1.18.3`",
+    "`/tmp/fieldwork-android-release-install-20260530045350/apks/fieldwork-release-universal.apks`",
+    "`CN=Fieldwork Release Smoke`",
+    "APK Signature Scheme v3",
+    "`apksigner-universal.txt`, `aapt-badging.txt`, `aapt-permissions.txt`",
+    "`versionCode='1'`, `versionName='1.0'`",
+    "no\n  `debuggable` marker",
+    "`/tmp/fieldwork-android-release-install-20260530045350`",
+    "`LaunchState: COLD`",
+    "retained passing launch attempt `TotalTime=1169ms`",
+    "`launch-attempts.txt`",
+    "`run-as: package not debuggable: app.fieldwork.android`",
+    "no\n  installed-package `DEBUGGABLE` flag",
+    "`scripts/verify-android-release-install-evidence.mjs`",
+    "`--strict-release-device`",
+    "local `Fieldwork Release Smoke` certificate",
+    "`scripts/test-android-release-install-evidence.mjs`",
+    "Play-signed release build",
+    "runtime gates remain",
+  ]) {
+    requireText(audit, evidence, `release audit 2026-05-30 local release APK install evidence must include ${evidence}`);
+  }
+  for (const evidence of [
+    "`scripts/verify-android-release-signing-evidence.mjs`",
+    "`scripts/test-android-release-signing-evidence.mjs`",
+    "`scripts/create-android-release-signing-evidence-dir.mjs`",
+    "`scripts/test-android-release-signing-scaffold.mjs`",
+    "`artifact-signing.txt`",
+    "`jarsigner.txt`",
+    "`workflow-run.txt`",
+    "operator-owned release keystore",
+  ]) {
+    requireText(plan, evidence, `PLAN.md Android release-signing evidence contract must include ${evidence}`);
+    requireText(development, evidence, `DEVELOPMENT.md Android release-signing evidence contract must include ${evidence}`);
+    requireText(audit, evidence, `release audit Android release-signing evidence contract must include ${evidence}`);
+  }
+  for (const evidence of [
     "Direct Android adb pre-unlock biometric refresh (2026-05-23)",
     "`/tmp/fieldwork-adb-direct-20260523120245`",
     "`TotalTime=5888ms`",
     "`after-unlock-tap-logcat.log`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
     "BiometricService`\nrejecting authentication because the emulator has no enrolled biometric",
     "no Fieldwork `listSessions`, `registerPushToken`, terminal attach, input,\n`FATAL EXCEPTION`, or ANR entries",
   ]) {
@@ -2259,7 +2902,7 @@ function verifyLatestRefresh() {
     "`/tmp/fieldwork-adb-direct-20260523120245`",
     "`TotalTime=5888ms`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
     "BiometricService` refusing authentication\nbecause the emulator has no enrolled biometric",
     "did not show Fieldwork\n`listSessions`, `registerPushToken`, terminal attach, input, `FATAL EXCEPTION`,\nor ANR entries",
   ]) {
@@ -2270,7 +2913,7 @@ function verifyLatestRefresh() {
     "`/tmp/fieldwork-adb-direct-20260523120245`",
     "`TotalTime=5888ms`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
     "BiometricService` rejected\n  authentication for no enrolled biometric",
     "did not show\n  Fieldwork `listSessions`, `registerPushToken`, terminal attach, input,\n  `FATAL EXCEPTION`, or ANR entries",
   ]) {
@@ -2279,21 +2922,19 @@ function verifyLatestRefresh() {
   for (const evidence of [
     "Android aggregate emulator QA note",
     "`pnpm test:android-emulator` aggregates the direct-adb emulator substitutes",
-    "retries only a locked debug-launch timing outlier once with the same strict limit",
-    "`TotalTime=7920ms`",
-    "`pair_flow_ms=2234`",
-    "`visible_ms=3318`",
-    "8440/14400 nonblack samples",
+    "retries only locked debug-launch and session-subscription timing outliers once with the same strict limits",
+    "`TotalTime=6448ms`",
+    "`pair_flow_ms=1420`",
+    "`visible_ms=5493`",
+    "8437/14400 nonblack samples",
     "successful background replay, restart restore, multisession, reconnect, and notification tap routing",
   ]) {
     requireText(plan, evidence, `PLAN.md aggregate Android emulator evidence must include ${evidence}`);
   }
   for (const evidence of [
-    "Hosted Sentry receipt remains unchecked until a real Sentry project/DSN and signed daemon/mobile builds are available",
-    "docs/SENTRY_RECEIPT.md` and `scripts/verify-sentry-receipt-evidence.mjs` now define the hosted evidence contract",
     "live Honeycomb receipt gate remains unchecked until a Honeycomb account/API key and hosted relay test traces are available",
-    "docs/RELAY_HONEYCOMB.md` and `scripts/verify-relay-honeycomb-evidence.mjs` now define the hosted evidence contract",
-    "Real macOS sleep/wake survival remains unchecked until it can be run against the signed/notarized daemon artifact",
+    "docs/RELAY_HONEYCOMB.md`, `scripts/verify-relay-honeycomb-evidence.mjs`, and `scripts/create-relay-honeycomb-evidence-dir.mjs` now define the hosted evidence contract and scaffold",
+    "Real macOS sleep/wake survival remains unchecked until it can be run against the verified npm-installed daemon",
     "real APNs/FCM provider delivery is exercised 10/10 on physical devices",
     "relay validators and provider-client tests assert fixed alert copy, lowercase hash-only data fields",
     "actual APNs/FCM payload is inspected in transit with a test device",
@@ -2325,10 +2966,10 @@ function verifyPlanUncheckedGatesAreReflected() {
     "ios-xcode": 1,
     signing: 4,
     publish: 3,
-    provider: 5,
+    provider: 4,
     "physical-device": 14,
     "store-console": 2,
-    operator: 9,
+    operator: 5,
   };
   const expectedUncheckedTotal = Object.values(expectedUncheckedCounts).reduce(
     (sum, count) => sum + count,
@@ -2337,13 +2978,12 @@ function verifyPlanUncheckedGatesAreReflected() {
 
   const expectedUncheckedGates = [
     ["iOS xcframework", "ios-xcode"],
-    ["Daemon signed and notarized", "signing"],
+    ["macOS npm CLI/daemon trust handling", "signing"],
     ["iOS app signed", "signing"],
     ["Android AAB signed", "signing"],
     ["All 5 npm packages publish", "publish"],
     ["`npm publish --provenance` enabled", "publish"],
     ["`cosign attest`", "publish"],
-    ["Sentry receives test crashes", "provider"],
     ["Honeycomb receives test traces", "provider"],
     ["Daemon survives `pkill -KILL fieldworkd`", "signing"],
     ["Daemon survives `sleep 30 && wake`", "physical-device"],
@@ -2365,13 +3005,9 @@ function verifyPlanUncheckedGatesAreReflected() {
     ["Tap notification", "provider"],
     ["Kill daemon, restart, sessions list shows last-known sessions", "physical-device"],
     ["Run 3 sessions in parallel", "physical-device"],
-    ["Operator: confirm npm publish rights for the platform child package family", "operator"],
     ["Operator: reserve/verify control of domain `fieldwork.dev`", "operator"],
-    ["Operator: create GitHub org `fieldwork-app`", "operator"],
     ["Operator: reserve `@fieldworkdev`", "operator"],
     ["Open an Oracle Cloud account", "operator"],
-    ["Apply for Apple Developer Program", "operator"],
-    ["Set up Sentry account", "operator"],
     ["Set up Honeycomb account", "operator"],
     ["Block out the next 10 weeks", "operator"],
   ];
@@ -2564,14 +3200,32 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:release-audit-list"] !== "node scripts/test-release-audit-list.mjs") {
     failures.push("package.json must expose test:release-audit-list");
   }
+  if (packageJson.scripts?.["test:cli-doctor"] !== "scripts/smoke-cli-doctor.sh") {
+    failures.push("package.json must expose test:cli-doctor");
+  }
   if (packageJson.scripts?.["test:cli-no-args"] !== "scripts/smoke-cli-no-args.sh") {
     failures.push("package.json must expose test:cli-no-args");
+  }
+  if (packageJson.scripts?.["test:npm-local-install"] !== "node scripts/smoke-npm-local-install.mjs") {
+    failures.push("package.json must expose test:npm-local-install");
   }
   if (packageJson.scripts?.["check:release-workflows"] !== "node scripts/verify-release-workflows.mjs") {
     failures.push("package.json must expose check:release-workflows");
   }
   if (packageJson.scripts?.["check:release-artifacts"] !== "node scripts/verify-release-artifacts.mjs") {
     failures.push("package.json must expose check:release-artifacts");
+  }
+  if (packageJson.scripts?.["check:release-artifacts-evidence"] !== "node scripts/verify-release-artifacts-evidence.mjs") {
+    failures.push("package.json must expose check:release-artifacts-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:release-artifacts-evidence"] !== "node scripts/create-release-artifacts-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:release-artifacts-evidence");
+  }
+  if (packageJson.scripts?.["check:macos-signing-evidence"] !== "node scripts/verify-macos-signing-evidence.mjs") {
+    failures.push("package.json must expose check:macos-signing-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:macos-signing-evidence"] !== "node scripts/create-macos-signing-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:macos-signing-evidence");
   }
   if (packageJson.scripts?.["check:local-release"] !== "node scripts/check-local-release.mjs") {
     failures.push("package.json must expose check:local-release");
@@ -2581,6 +3235,21 @@ function verifyVerifierIsWired() {
   }
   if (packageJson.scripts?.["scaffold:live-testing-evidence"] !== "node scripts/create-live-testing-evidence-dir.mjs") {
     failures.push("package.json must expose scaffold:live-testing-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:live-testing-fw-shim"] !== "node scripts/create-live-testing-fw-shim.mjs") {
+    failures.push("package.json must expose scaffold:live-testing-fw-shim");
+  }
+  if (packageJson.scripts?.["test:live-testing-fw-shim"] !== "node scripts/test-live-testing-fw-shim.mjs") {
+    failures.push("package.json must expose test:live-testing-fw-shim");
+  }
+  if (packageJson.scripts?.["scaffold:live-testing-pack"] !== "node scripts/create-live-testing-pack.mjs") {
+    failures.push("package.json must expose scaffold:live-testing-pack");
+  }
+  if (packageJson.scripts?.["test:live-testing-pack"] !== "node scripts/test-live-testing-pack.mjs") {
+    failures.push("package.json must expose test:live-testing-pack");
+  }
+  if (packageJson.scripts?.["scaffold:macos-daemon-survival-evidence"] !== "node scripts/create-macos-daemon-survival-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:macos-daemon-survival-evidence");
   }
   if (packageJson.scripts?.["test:live-testing-scaffold"] !== "node scripts/test-live-testing-scaffold.mjs") {
     failures.push("package.json must expose test:live-testing-scaffold");
@@ -2618,11 +3287,35 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["check:android-aab"] !== "node scripts/verify-android-aab.mjs --expect-unsigned") {
     failures.push("package.json must expose check:android-aab");
   }
+  if (packageJson.scripts?.["check:android-debug-apk"] !== "node scripts/verify-android-debug-apk.mjs") {
+    failures.push("package.json must expose check:android-debug-apk");
+  }
+  if (packageJson.scripts?.["check:android-release-readiness"] !== "node scripts/check-android-release-readiness.mjs") {
+    failures.push("package.json must expose check:android-release-readiness");
+  }
+  if (packageJson.scripts?.["check:android-release-readiness:local"] !== "node scripts/check-android-release-readiness.mjs --local-only") {
+    failures.push("package.json must expose check:android-release-readiness:local");
+  }
+  if (packageJson.scripts?.["test:android-release-readiness"] !== "node scripts/check-android-release-readiness.mjs --self-test") {
+    failures.push("package.json must expose test:android-release-readiness");
+  }
+  if (packageJson.scripts?.["scaffold:android-release-evidence-pack"] !== "node scripts/create-android-release-evidence-pack.mjs") {
+    failures.push("package.json must expose scaffold:android-release-evidence-pack");
+  }
+  if (packageJson.scripts?.["test:android-release-evidence-pack"] !== "node scripts/test-android-release-evidence-pack.mjs") {
+    failures.push("package.json must expose test:android-release-evidence-pack");
+  }
   if (packageJson.scripts?.["check:android-pair-flow-evidence"] !== "node scripts/verify-android-pair-flow-evidence.mjs") {
     failures.push("package.json must expose check:android-pair-flow-evidence");
   }
   if (packageJson.scripts?.["test:android-pair-flow-evidence"] !== "node scripts/test-android-pair-flow-evidence.mjs") {
     failures.push("package.json must expose test:android-pair-flow-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:android-pair-flow-evidence"] !== "node scripts/create-android-pair-flow-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-pair-flow-evidence");
+  }
+  if (packageJson.scripts?.["test:android-pair-flow-scaffold"] !== "node scripts/test-android-pair-flow-scaffold.mjs") {
+    failures.push("package.json must expose test:android-pair-flow-scaffold");
   }
   if (packageJson.scripts?.["check:android-session-subscription-evidence"] !== "node scripts/verify-android-session-subscription-evidence.mjs") {
     failures.push("package.json must expose check:android-session-subscription-evidence");
@@ -2630,11 +3323,23 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-session-subscription-evidence"] !== "node scripts/test-android-session-subscription-evidence.mjs") {
     failures.push("package.json must expose test:android-session-subscription-evidence");
   }
+  if (packageJson.scripts?.["scaffold:android-session-subscription-evidence"] !== "node scripts/create-android-session-subscription-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-session-subscription-evidence");
+  }
+  if (packageJson.scripts?.["test:android-session-subscription-scaffold"] !== "node scripts/test-android-session-subscription-scaffold.mjs") {
+    failures.push("package.json must expose test:android-session-subscription-scaffold");
+  }
   if (packageJson.scripts?.["check:android-terminal-attach-evidence"] !== "node scripts/verify-android-terminal-attach-evidence.mjs") {
     failures.push("package.json must expose check:android-terminal-attach-evidence");
   }
   if (packageJson.scripts?.["test:android-terminal-attach-evidence"] !== "node scripts/test-android-terminal-attach-evidence.mjs") {
     failures.push("package.json must expose test:android-terminal-attach-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:android-terminal-attach-evidence"] !== "node scripts/create-android-terminal-attach-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-terminal-attach-evidence");
+  }
+  if (packageJson.scripts?.["test:android-terminal-attach-scaffold"] !== "node scripts/test-android-terminal-attach-scaffold.mjs") {
+    failures.push("package.json must expose test:android-terminal-attach-scaffold");
   }
   if (packageJson.scripts?.["check:android-resize-detach-evidence"] !== "node scripts/verify-android-resize-detach-evidence.mjs") {
     failures.push("package.json must expose check:android-resize-detach-evidence");
@@ -2642,11 +3347,23 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-resize-detach-evidence"] !== "node scripts/test-android-resize-detach-evidence.mjs") {
     failures.push("package.json must expose test:android-resize-detach-evidence");
   }
+  if (packageJson.scripts?.["scaffold:android-resize-detach-evidence"] !== "node scripts/create-android-resize-detach-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-resize-detach-evidence");
+  }
+  if (packageJson.scripts?.["test:android-resize-detach-scaffold"] !== "node scripts/test-android-resize-detach-scaffold.mjs") {
+    failures.push("package.json must expose test:android-resize-detach-scaffold");
+  }
   if (packageJson.scripts?.["check:android-biometric-evidence"] !== "node scripts/verify-android-biometric-evidence.mjs") {
     failures.push("package.json must expose check:android-biometric-evidence");
   }
   if (packageJson.scripts?.["test:android-biometric-evidence"] !== "node scripts/test-android-biometric-evidence.mjs") {
     failures.push("package.json must expose test:android-biometric-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:android-biometric-evidence"] !== "node scripts/create-android-biometric-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-biometric-evidence");
+  }
+  if (packageJson.scripts?.["test:android-biometric-scaffold"] !== "node scripts/test-android-biometric-scaffold.mjs") {
+    failures.push("package.json must expose test:android-biometric-scaffold");
   }
   if (packageJson.scripts?.["check:android-dogfood-evidence"] !== "node scripts/verify-android-dogfood-evidence.mjs") {
     failures.push("package.json must expose check:android-dogfood-evidence");
@@ -2654,11 +3371,47 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-dogfood-evidence"] !== "node scripts/test-android-dogfood-evidence.mjs") {
     failures.push("package.json must expose test:android-dogfood-evidence");
   }
+  if (packageJson.scripts?.["scaffold:android-dogfood-evidence"] !== "node scripts/create-android-dogfood-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-dogfood-evidence");
+  }
+  if (packageJson.scripts?.["test:android-dogfood-scaffold"] !== "node scripts/test-android-dogfood-scaffold.mjs") {
+    failures.push("package.json must expose test:android-dogfood-scaffold");
+  }
   if (packageJson.scripts?.["check:android-cold-start-evidence"] !== "node scripts/verify-android-cold-start-evidence.mjs") {
     failures.push("package.json must expose check:android-cold-start-evidence");
   }
   if (packageJson.scripts?.["test:android-cold-start-evidence"] !== "node scripts/test-android-cold-start-evidence.mjs") {
     failures.push("package.json must expose test:android-cold-start-evidence");
+  }
+  if (packageJson.scripts?.["check:android-release-install-evidence"] !== "node scripts/verify-android-release-install-evidence.mjs") {
+    failures.push("package.json must expose check:android-release-install-evidence");
+  }
+  if (packageJson.scripts?.["test:android-release-install-evidence"] !== "node scripts/test-android-release-install-evidence.mjs") {
+    failures.push("package.json must expose test:android-release-install-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:android-release-install-evidence"] !== "node scripts/create-android-release-install-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-release-install-evidence");
+  }
+  if (packageJson.scripts?.["test:android-release-install-scaffold"] !== "node scripts/test-android-release-install-scaffold.mjs") {
+    failures.push("package.json must expose test:android-release-install-scaffold");
+  }
+  if (packageJson.scripts?.["check:android-release-signing-evidence"] !== "node scripts/verify-android-release-signing-evidence.mjs") {
+    failures.push("package.json must expose check:android-release-signing-evidence");
+  }
+  if (packageJson.scripts?.["test:android-release-signing-evidence"] !== "node scripts/test-android-release-signing-evidence.mjs") {
+    failures.push("package.json must expose test:android-release-signing-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:android-release-signing-evidence"] !== "node scripts/create-android-release-signing-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-release-signing-evidence");
+  }
+  if (packageJson.scripts?.["test:android-release-signing-scaffold"] !== "node scripts/test-android-release-signing-scaffold.mjs") {
+    failures.push("package.json must expose test:android-release-signing-scaffold");
+  }
+  if (packageJson.scripts?.["scaffold:android-cold-start-evidence"] !== "node scripts/create-android-cold-start-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-cold-start-evidence");
+  }
+  if (packageJson.scripts?.["test:android-cold-start-scaffold"] !== "node scripts/test-android-cold-start-scaffold.mjs") {
+    failures.push("package.json must expose test:android-cold-start-scaffold");
   }
   if (packageJson.scripts?.["check:android-renderer-flood-evidence"] !== "node scripts/verify-android-renderer-flood-evidence.mjs") {
     failures.push("package.json must expose check:android-renderer-flood-evidence");
@@ -2666,11 +3419,23 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-renderer-flood-evidence"] !== "node scripts/test-android-renderer-flood-evidence.mjs") {
     failures.push("package.json must expose test:android-renderer-flood-evidence");
   }
+  if (packageJson.scripts?.["scaffold:android-renderer-flood-evidence"] !== "node scripts/create-android-renderer-flood-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-renderer-flood-evidence");
+  }
+  if (packageJson.scripts?.["test:android-renderer-flood-scaffold"] !== "node scripts/test-android-renderer-flood-scaffold.mjs") {
+    failures.push("package.json must expose test:android-renderer-flood-scaffold");
+  }
   if (packageJson.scripts?.["check:android-background-foreground-evidence"] !== "node scripts/verify-android-background-foreground-evidence.mjs") {
     failures.push("package.json must expose check:android-background-foreground-evidence");
   }
   if (packageJson.scripts?.["test:android-background-foreground-evidence"] !== "node scripts/test-android-background-foreground-evidence.mjs") {
     failures.push("package.json must expose test:android-background-foreground-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:android-background-foreground-evidence"] !== "node scripts/create-android-background-foreground-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-background-foreground-evidence");
+  }
+  if (packageJson.scripts?.["test:android-background-foreground-scaffold"] !== "node scripts/test-android-background-foreground-scaffold.mjs") {
+    failures.push("package.json must expose test:android-background-foreground-scaffold");
   }
   if (packageJson.scripts?.["check:android-network-reconnect-evidence"] !== "node scripts/verify-android-network-reconnect-evidence.mjs") {
     failures.push("package.json must expose check:android-network-reconnect-evidence");
@@ -2678,11 +3443,23 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-network-reconnect-evidence"] !== "node scripts/test-android-network-reconnect-evidence.mjs") {
     failures.push("package.json must expose test:android-network-reconnect-evidence");
   }
+  if (packageJson.scripts?.["scaffold:android-network-reconnect-evidence"] !== "node scripts/create-android-network-reconnect-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-network-reconnect-evidence");
+  }
+  if (packageJson.scripts?.["test:android-network-reconnect-scaffold"] !== "node scripts/test-android-network-reconnect-scaffold.mjs") {
+    failures.push("package.json must expose test:android-network-reconnect-scaffold");
+  }
   if (packageJson.scripts?.["check:android-restart-restore-evidence"] !== "node scripts/verify-android-restart-restore-evidence.mjs") {
     failures.push("package.json must expose check:android-restart-restore-evidence");
   }
   if (packageJson.scripts?.["test:android-restart-restore-evidence"] !== "node scripts/test-android-restart-restore-evidence.mjs") {
     failures.push("package.json must expose test:android-restart-restore-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:android-restart-restore-evidence"] !== "node scripts/create-android-restart-restore-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-restart-restore-evidence");
+  }
+  if (packageJson.scripts?.["test:android-restart-restore-scaffold"] !== "node scripts/test-android-restart-restore-scaffold.mjs") {
+    failures.push("package.json must expose test:android-restart-restore-scaffold");
   }
   if (packageJson.scripts?.["check:android-multisession-evidence"] !== "node scripts/verify-android-multisession-evidence.mjs") {
     failures.push("package.json must expose check:android-multisession-evidence");
@@ -2690,11 +3467,23 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:android-multisession-evidence"] !== "node scripts/test-android-multisession-evidence.mjs") {
     failures.push("package.json must expose test:android-multisession-evidence");
   }
+  if (packageJson.scripts?.["scaffold:android-multisession-evidence"] !== "node scripts/create-android-multisession-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-multisession-evidence");
+  }
+  if (packageJson.scripts?.["test:android-multisession-scaffold"] !== "node scripts/test-android-multisession-scaffold.mjs") {
+    failures.push("package.json must expose test:android-multisession-scaffold");
+  }
   if (packageJson.scripts?.["check:android-fcm-push-evidence"] !== "node scripts/verify-android-fcm-push-evidence.mjs") {
     failures.push("package.json must expose check:android-fcm-push-evidence");
   }
   if (packageJson.scripts?.["test:android-fcm-push-evidence"] !== "node scripts/test-android-fcm-push-evidence.mjs") {
     failures.push("package.json must expose test:android-fcm-push-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:android-fcm-push-evidence"] !== "node scripts/create-android-fcm-push-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:android-fcm-push-evidence");
+  }
+  if (packageJson.scripts?.["test:android-fcm-push-scaffold"] !== "node scripts/test-android-fcm-push-scaffold.mjs") {
+    failures.push("package.json must expose test:android-fcm-push-scaffold");
   }
   if (packageJson.scripts?.["check:relay-honeycomb-evidence"] !== "node scripts/verify-relay-honeycomb-evidence.mjs") {
     failures.push("package.json must expose check:relay-honeycomb-evidence");
@@ -2702,17 +3491,23 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:relay-honeycomb-evidence"] !== "node scripts/test-relay-honeycomb-evidence.mjs") {
     failures.push("package.json must expose test:relay-honeycomb-evidence");
   }
-  if (packageJson.scripts?.["check:sentry-receipt-evidence"] !== "node scripts/verify-sentry-receipt-evidence.mjs") {
-    failures.push("package.json must expose check:sentry-receipt-evidence");
+  if (packageJson.scripts?.["scaffold:relay-honeycomb-evidence"] !== "node scripts/create-relay-honeycomb-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:relay-honeycomb-evidence");
   }
-  if (packageJson.scripts?.["test:sentry-receipt-evidence"] !== "node scripts/test-sentry-receipt-evidence.mjs") {
-    failures.push("package.json must expose test:sentry-receipt-evidence");
+  if (packageJson.scripts?.["test:relay-honeycomb-scaffold"] !== "node scripts/test-relay-honeycomb-scaffold.mjs") {
+    failures.push("package.json must expose test:relay-honeycomb-scaffold");
+  }
+  if (packageJson.scripts?.["test:hosted-relay"] !== "scripts/smoke-hosted-relay-rendezvous.sh") {
+    failures.push("package.json must expose test:hosted-relay");
   }
   if (packageJson.scripts?.["check:macos-daemon-survival-evidence"] !== "node scripts/verify-macos-daemon-survival-evidence.mjs") {
     failures.push("package.json must expose check:macos-daemon-survival-evidence");
   }
   if (packageJson.scripts?.["test:macos-daemon-survival-evidence"] !== "node scripts/test-macos-daemon-survival-evidence.mjs") {
     failures.push("package.json must expose test:macos-daemon-survival-evidence");
+  }
+  if (packageJson.scripts?.["test:macos-daemon-survival-scaffold"] !== "node scripts/test-macos-daemon-survival-scaffold.mjs") {
+    failures.push("package.json must expose test:macos-daemon-survival-scaffold");
   }
   if (packageJson.scripts?.["check:daemon-service"] !== "node scripts/verify-daemon-service.mjs") {
     failures.push("package.json must expose check:daemon-service");
@@ -2722,6 +3517,12 @@ function verifyVerifierIsWired() {
   }
   if (packageJson.scripts?.["check:npm-packages"] !== "node scripts/verify-npm-packages.mjs") {
     failures.push("package.json must expose check:npm-packages");
+  }
+  if (packageJson.scripts?.["check:npm-release-evidence"] !== "node scripts/verify-npm-release-evidence.mjs") {
+    failures.push("package.json must expose check:npm-release-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:npm-release-evidence"] !== "node scripts/create-npm-release-evidence-dir.mjs") {
+    failures.push("package.json must expose scaffold:npm-release-evidence");
   }
   if (packageJson.scripts?.["check:changesets"] !== "node scripts/verify-changesets-config.mjs") {
     failures.push("package.json must expose check:changesets");
@@ -2747,11 +3548,29 @@ function verifyVerifierIsWired() {
   if (packageJson.scripts?.["test:npm-publish-plan"] !== "node scripts/test-npm-publish-plan.mjs") {
     failures.push("package.json must expose test:npm-publish-plan");
   }
+  if (packageJson.scripts?.["test:npm-release-evidence"] !== "node scripts/test-npm-release-evidence.mjs") {
+    failures.push("package.json must expose test:npm-release-evidence");
+  }
+  if (packageJson.scripts?.["test:npm-release-scaffold"] !== "node scripts/test-npm-release-scaffold.mjs") {
+    failures.push("package.json must expose test:npm-release-scaffold");
+  }
+  if (packageJson.scripts?.["test:macos-signing-evidence"] !== "node scripts/test-macos-signing-evidence.mjs") {
+    failures.push("package.json must expose test:macos-signing-evidence");
+  }
+  if (packageJson.scripts?.["test:macos-signing-scaffold"] !== "node scripts/test-macos-signing-scaffold.mjs") {
+    failures.push("package.json must expose test:macos-signing-scaffold");
+  }
   if (packageJson.scripts?.["test:bun-install"] !== "node scripts/test-bun-install.mjs") {
     failures.push("package.json must expose test:bun-install");
   }
   if (packageJson.scripts?.["test:release-artifacts"] !== "node scripts/test-release-artifacts.mjs") {
     failures.push("package.json must expose test:release-artifacts");
+  }
+  if (packageJson.scripts?.["test:release-artifacts-evidence"] !== "node scripts/test-release-artifacts-evidence.mjs") {
+    failures.push("package.json must expose test:release-artifacts-evidence");
+  }
+  if (packageJson.scripts?.["test:release-artifacts-scaffold"] !== "node scripts/test-release-artifacts-scaffold.mjs") {
+    failures.push("package.json must expose test:release-artifacts-scaffold");
   }
   if (packageJson.scripts?.["publish:npm"] !== "node scripts/publish-npm-packages.mjs") {
     failures.push("package.json must expose publish:npm");
@@ -2773,6 +3592,12 @@ function verifyVerifierIsWired() {
   }
   if (packageJson.scripts?.["test:android-aab-verifier"] !== "node scripts/test-android-aab-verifier.mjs") {
     failures.push("package.json must expose test:android-aab-verifier");
+  }
+  if (packageJson.scripts?.["test:android-debug-apk-verifier"] !== "node scripts/test-android-debug-apk-verifier.mjs") {
+    failures.push("package.json must expose test:android-debug-apk-verifier");
+  }
+  if (packageJson.scripts?.["test:android-aab-signing-smoke"] !== "node scripts/test-android-aab-signing-smoke.mjs") {
+    failures.push("package.json must expose test:android-aab-signing-smoke");
   }
   if (packageJson.scripts?.["test:android-pair-button-picker"] !== "node scripts/test-android-pair-button-picker.mjs") {
     failures.push("package.json must expose test:android-pair-button-picker");
@@ -2822,11 +3647,24 @@ function verifyVerifierIsWired() {
     "scripts/smoke-android-emulator-notification-tap.sh",
   ]) {
     requireText(androidEmulatorAll, script, `Android emulator aggregate must run ${script}`);
+    const scriptText = read(script);
     requireText(
-      read(script),
+      scriptText,
       'adb -s "$serial" logcat -b crash -c',
       `${script} must clear the Android crash log before collecting smoke evidence`,
     );
+    if (script !== "scripts/smoke-android-debug.sh") {
+      requireText(
+        scriptText,
+        'FIELDWORK_RELAY_SIGNING_KEY_B64="$relay_signing_key"',
+        `${script} must set a deterministic test relay signing key for isolated typed-code pairing`,
+      );
+      rejectText(
+        scriptText,
+        "aps1-1.relay.n0.iroh-canary.iroh.link",
+        `${script} must not hardcode a public iroh relay for local emulator smokes`,
+      );
+    }
   }
   requireText(androidEmulatorAll, "--list", "Android emulator aggregate must expose a list mode");
   requireText(androidEmulatorAll, "boot-complete", "Android emulator aggregate must require a boot-complete device");
@@ -2834,28 +3672,60 @@ function verifyVerifierIsWired() {
   requireText(androidEmulatorAll, "retrying once with the same strict limit", "Android emulator aggregate must document strict retry behavior");
   requireText(androidEmulatorAll, "captured output", "Android emulator aggregate must preserve failing smoke output");
   requireText(localRelease, "scripts/verify-rust-workspace.mjs", "local release gate must include Rust workspace verification");
+  requireText(localRelease, "\"cargo fmt\", \"cargo\", [\"fmt\", \"--check\"]", "local release gate must run cargo fmt --check");
+  requireText(localRelease, "\"cargo clippy\", \"cargo\", [\"clippy\", \"--workspace\", \"--\", \"-D\", \"warnings\"]", "local release gate must run workspace clippy with warnings denied");
+  requireText(localRelease, "\"cargo nextest\", \"cargo\", [\"nextest\", \"run\", \"--workspace\"]", "local release gate must run workspace nextest");
+  requireText(localRelease, "\"cargo deny\", \"cargo\", [\"deny\", \"check\"]", "local release gate must run cargo deny check");
+  requireText(localRelease, "\"cargo audit\", \"cargo\", [\"audit\"]", "local release gate must run cargo audit");
   requireText(localRelease, "scripts/verify-release-audit.mjs", "local release gate must include release audit verification");
   requireText(localRelease, "scripts/test-release-audit-list.mjs", "local release gate must include release audit list-mode test");
   requireText(localRelease, "scripts/test-live-testing-evidence.mjs", "local release gate must include live-test evidence verifier self-test");
   requireText(localRelease, "scripts/test-live-testing-scaffold.mjs", "local release gate must include live-test evidence scaffold self-test");
+  requireText(localRelease, "scripts/test-live-testing-fw-shim.mjs", "local release gate must include live-test fw shim self-test");
+  requireText(localRelease, "scripts/test-live-testing-pack.mjs", "local release gate must include live-test pack self-test");
   requireText(localRelease, "scripts/test-android-pair-flow-evidence.mjs", "local release gate must include Android pair-flow evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-pair-flow-scaffold.mjs", "local release gate must include Android pair-flow evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-session-subscription-evidence.mjs", "local release gate must include Android session-subscription evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-session-subscription-scaffold.mjs", "local release gate must include Android session-subscription evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-terminal-attach-evidence.mjs", "local release gate must include Android terminal attach evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-terminal-attach-scaffold.mjs", "local release gate must include Android terminal attach evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-resize-detach-evidence.mjs", "local release gate must include Android resize/detach evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-resize-detach-scaffold.mjs", "local release gate must include Android resize/detach evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-biometric-evidence.mjs", "local release gate must include Android biometric evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-biometric-scaffold.mjs", "local release gate must include Android biometric evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-dogfood-evidence.mjs", "local release gate must include Android dogfood evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-dogfood-scaffold.mjs", "local release gate must include Android dogfood evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-cold-start-evidence.mjs", "local release gate must include Android cold-start evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-cold-start-scaffold.mjs", "local release gate must include Android cold-start evidence scaffold self-test");
+  requireText(localRelease, "scripts/check-android-release-readiness.mjs", "local release gate must include Android release readiness self-test");
+  requireText(localRelease, "scripts/test-android-release-evidence-pack.mjs", "local release gate must include Android release evidence pack scaffold self-test");
+  requireText(localRelease, "scripts/test-android-release-install-evidence.mjs", "local release gate must include Android release-install evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-release-install-scaffold.mjs", "local release gate must include Android release-install evidence scaffold self-test");
+  requireText(localRelease, "scripts/test-android-release-signing-evidence.mjs", "local release gate must include Android release-signing evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-release-signing-scaffold.mjs", "local release gate must include Android release-signing evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-renderer-flood-evidence.mjs", "local release gate must include Android renderer flood evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-renderer-flood-scaffold.mjs", "local release gate must include Android renderer flood evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-background-foreground-evidence.mjs", "local release gate must include Android background/foreground evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-background-foreground-scaffold.mjs", "local release gate must include Android background/foreground evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-network-reconnect-evidence.mjs", "local release gate must include Android network reconnect evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-network-reconnect-scaffold.mjs", "local release gate must include Android network reconnect evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-restart-restore-evidence.mjs", "local release gate must include Android restart-restore evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-restart-restore-scaffold.mjs", "local release gate must include Android restart-restore evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-multisession-evidence.mjs", "local release gate must include Android multisession evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-multisession-scaffold.mjs", "local release gate must include Android multisession evidence scaffold self-test");
   requireText(localRelease, "scripts/test-android-fcm-push-evidence.mjs", "local release gate must include Android FCM push evidence verifier self-test");
+  requireText(localRelease, "scripts/test-android-fcm-push-scaffold.mjs", "local release gate must include Android FCM push evidence scaffold self-test");
   requireText(localRelease, "scripts/test-relay-honeycomb-evidence.mjs", "local release gate must include relay Honeycomb evidence verifier self-test");
-  requireText(localRelease, "scripts/test-sentry-receipt-evidence.mjs", "local release gate must include Sentry receipt evidence verifier self-test");
+  requireText(localRelease, "scripts/test-relay-honeycomb-scaffold.mjs", "local release gate must include relay Honeycomb evidence scaffold self-test");
   requireText(localRelease, "scripts/test-macos-daemon-survival-evidence.mjs", "local release gate must include macOS daemon survival evidence verifier self-test");
+  requireText(localRelease, "scripts/test-macos-daemon-survival-scaffold.mjs", "local release gate must include macOS daemon survival evidence scaffold self-test");
+  requireText(localRelease, "scripts/test-macos-signing-evidence.mjs", "local release gate must include macOS signing evidence verifier self-test");
+  requireText(localRelease, "scripts/test-macos-signing-scaffold.mjs", "local release gate must include macOS signing evidence scaffold self-test");
+  requireText(localRelease, "scripts/smoke-npm-local-install.mjs", "local release artifact gate must include npm local install smoke");
   requireText(localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");
   requireText(localRelease, "Dir[\".github/workflows/*.yml\"].sort.each", "local release gate must parse all workflow YAML files");
+  requireText(localRelease, "\"release workflow run-block syntax self-test\"", "local release gate must include release workflow run-block syntax self-test");
+  requireText(localRelease, "scripts/verify-release-workflows.mjs\", \"--self-test\"", "local release gate must run the release workflow self-test");
   requireText(localRelease, "\"Node script syntax\"", "local release gate must include Node script syntax checks");
   requireText(localRelease, "for script in scripts/*.mjs", "local release gate must syntax-check every checked-in Node script");
   requireText(localRelease, "node --check \"$script\"", "local release gate must use node --check for Node script syntax checks");
@@ -2876,8 +3746,12 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/verify-release-workflows.mjs", "local release gate must include release workflow verification");
   requireText(localRelease, "scripts/verify-secret-boundaries.mjs\", \"--self-test", "local release gate must include secret-boundary self-test coverage");
   requireText(localRelease, "scripts/test-npm-publish-plan.mjs", "local release gate must include npm publish-plan coverage");
+  requireText(localRelease, "scripts/test-npm-release-evidence.mjs", "local release gate must include npm release evidence verifier self-test");
+  requireText(localRelease, "scripts/test-npm-release-scaffold.mjs", "local release gate must include npm release evidence scaffold self-test");
   requireText(localRelease, "scripts/test-bun-install.mjs", "local release gate must include Bun optional-dependency coverage");
   requireText(localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include release-artifact verifier coverage");
+  requireText(localRelease, "scripts/test-release-artifacts-evidence.mjs", "local release gate must include release-artifact evidence verifier coverage");
+  requireText(localRelease, "scripts/test-release-artifacts-scaffold.mjs", "local release gate must include release-artifact evidence scaffold coverage");
   requireText(localRelease, "scripts/test-npm-artifact-pack.mjs", "local release gate must include npm artifact-pack coverage");
   requireText(localRelease, "scripts/test-android-pair-button-picker.mjs", "local release gate must include Android pair-button picker coverage");
   requireText(
@@ -2957,10 +3831,23 @@ function verifyVerifierIsWired() {
   requireText(localRelease, "scripts/publish-npm-packages.mjs\", \"--check-ready", "artifact-aware local release gate must include publish-readiness verification");
   requireText(localRelease, "cleanNpmEnv()", "local release gate must clean noisy inherited npm config before dry-run pack");
   requireText(localRelease, "\"Android AAB artifact\", node, [\"scripts/verify-android-aab.mjs\", \"--expect-unsigned\"]", "artifact-aware local release gate must call the Android AAB verifier directly");
+  requireText(localRelease, "scripts/test-android-debug-apk-verifier.mjs", "local release gate must include Android debug APK verifier self-test");
+  requireText(localRelease, "\"Android debug APK artifact\", node, [\"scripts/verify-android-debug-apk.mjs\"]", "artifact-aware local release gate must include Android debug APK artifact verification");
+  requireText(localRelease, "\"Android AAB local signing smoke\", node, [\"scripts/test-android-aab-signing-smoke.mjs\"]", "artifact-aware local release gate must sign a temporary copy of the current Android AAB");
+  requireText(localRelease, "\"CLI doctor smoke\", bash, [\"scripts/smoke-cli-doctor.sh\"]", "runtime local release gate must include CLI doctor smoke");
   requireText(localRelease, "\"CLI no-args smoke\", bash, [\"scripts/smoke-cli-no-args.sh\"]", "runtime local release gate must include CLI no-args smoke");
   requireText(localRelease, "\"local handoff smoke\", bash, [\"scripts/smoke-local-handoff.sh\"]", "runtime local release gate must include local handoff smoke");
   requireText(localRelease, "localHandoffEnv()", "runtime local release gate must run local handoff with an explicit target-dir env");
   requireText(localRelease, "env.CARGO_TARGET_DIR ??= \"/tmp/fieldwork-target-checks\"", "runtime local release gate must default handoff target-dir outside repo target");
+  requireText(cliDoctorSmoke, '"$fieldwork" doctor --no-start >"$tmp/doctor-before.log"', "CLI doctor smoke must prove --no-start fails before daemon startup");
+  requireText(cliDoctorSmoke, '"$fieldworkd" >"$tmp/daemon.log" 2>&1 &', "CLI doctor smoke must start an isolated daemon");
+  requireText(cliDoctorSmoke, '"$fieldwork" new --name doctor_shell bash -lc', "CLI doctor smoke must create a desktop session for session-list verification");
+  requireText(cliDoctorSmoke, '"$fw" doctor --no-start >"$tmp/doctor.log"', "CLI doctor smoke must run doctor through the fw alias");
+  requireText(cliDoctorSmoke, 'grep -Fq "socket parent: ok', "CLI doctor smoke must verify socket parent hardening display");
+  requireText(cliDoctorSmoke, 'grep -Fq "socket file: ok', "CLI doctor smoke must verify socket file hardening display");
+  requireText(cliDoctorSmoke, 'grep -Fq "protocol: ok (contract v2)"', "CLI doctor smoke must verify the protocol contract display");
+  requireText(cliDoctorSmoke, 'grep -Fq "session list: ok (1 session(s))"', "CLI doctor smoke must verify daemon-backed session count");
+  requireText(cliDoctorSmoke, '"$fw" doctor --help >"$tmp/doctor-help.log"', "CLI doctor smoke must verify fw doctor help");
   requireText(cliNoArgsSmoke, "command -v expect", "CLI no-args smoke must require expect for the raw-terminal attach path");
   requireText(cliNoArgsSmoke, "stty rows 24 columns 80", "CLI no-args smoke must set a deterministic expect PTY size");
   requireText(cliNoArgsSmoke, 'ln -sf "$fieldwork" "$fw"', "CLI no-args smoke must create a real fw alias to the debug CLI");
@@ -3020,6 +3907,7 @@ function verifyVerifierIsWired() {
     "node scripts/check-local-release.mjs --list --with-artifacts --with-runtime",
     "CI must list-check all local release aggregate modes",
   );
+  requireText(ci, "node scripts/verify-release-workflows.mjs --self-test", "CI must run the release workflow verifier self-test");
   requireText(ci, "node scripts/verify-release-workflows.mjs", "CI must run the release workflow verifier");
   requireText(ci, "node scripts/verify-relay-provider-clients.mjs", "CI must run the relay provider-client verifier");
   requireText(ci, "node scripts/verify-daemon-service.mjs", "CI must run the daemon service verifier");
@@ -3036,11 +3924,18 @@ function verifyVerifierIsWired() {
   requireText(ci, "node scripts/test-npm-dispatcher.mjs", "CI must run the npm dispatcher test");
   requireText(ci, "node scripts/test-npm-registry-state.mjs", "CI must run the npm registry-state test");
   requireText(ci, "node scripts/test-npm-publish-plan.mjs", "CI must run the npm publish-plan test");
+  requireText(ci, "node scripts/test-npm-release-evidence.mjs", "CI must run the npm release evidence verifier self-test");
+  requireText(ci, "node scripts/test-npm-release-scaffold.mjs", "CI must run the npm release evidence scaffold self-test");
   requireText(ci, "node scripts/test-bun-install.mjs", "CI must run the Bun optional-dependency smoke");
   requireText(ci, "node scripts/test-android-aab-verifier.mjs", "CI must run the deterministic Android AAB verifier tests");
+  requireText(ci, "node scripts/test-android-debug-apk-verifier.mjs", "CI must run the deterministic Android debug APK verifier tests");
   requireText(ci, "node scripts/test-android-pair-button-picker.mjs", "CI must run the deterministic Android pair-button picker test");
   requireText(ci, "node scripts/test-release-artifacts.mjs", "CI must run the release artifact verifier tests");
+  requireText(ci, "node scripts/test-release-artifacts-evidence.mjs", "CI must run the release artifact evidence verifier self-test");
+  requireText(ci, "node scripts/test-release-artifacts-scaffold.mjs", "CI must run the release artifact evidence scaffold self-test");
   requireText(ci, "node scripts/test-macos-signing-verifier.mjs", "CI must run the macOS signing verifier self-test");
+  requireText(ci, "node scripts/test-macos-signing-evidence.mjs", "CI must run the macOS signing evidence verifier self-test");
+  requireText(ci, "node scripts/test-macos-signing-scaffold.mjs", "CI must run the macOS signing evidence scaffold self-test");
   requireText(ci, "node scripts/test-npm-artifact-pack.mjs", "CI must run the npm artifact/package dry-run tests");
   requireText(ci, "node scripts/test-external-status-refresh.mjs", "CI must run the deterministic external status refresh guard test");
   requireText(ci, "pnpm --dir site install --ignore-workspace --frozen-lockfile", "CI must install the isolated site lockfile");

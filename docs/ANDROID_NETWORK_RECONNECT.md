@@ -11,11 +11,32 @@ network cut, the PTY emits output while Android is offline, Android reconnects
 after network restore, and Android-originated input after reconnect is visible
 when the desktop reattaches.
 
+## Latest Local Substitute
+
+On 2026-05-29, a direct `adb` emulator pass captured local substitute evidence
+under `/tmp/fieldwork-direct-adb-reconnect-20260529.hkFQik/evidence`. The pass
+used the AWS live-test relay control plane, an isolated release `fieldworkd`,
+typed code `T9K4B`, explicit desktop approval, and the desktop-created
+`fw_reconnect_session`. Android sent `before_reconnect_ok`, then
+`trigger_offline_output`; airplane mode was enabled while the PTY emitted
+`ANDROID_RECONNECT_OFFLINE_OUTPUT`; after airplane mode was disabled, Android
+remained `Attached` and sent `after_reconnect_ok`. A separately approved
+desktop verifier replayed `android-reconnect: before_reconnect_ok`,
+`ANDROID_RECONNECT_OFFLINE_OUTPUT`, and
+`android-reconnect: after_reconnect_ok`. Evidence includes screenshots, UI
+dumps, ping transcripts, `network-timing.txt`, `session-input.log`,
+`verifier.log`, app logcat, empty crash buffer, and `SUMMARY.txt`. The default
+debug APK was rebuilt/reinstalled afterward, app data was cleared, and
+`BuildConfig` was restored to no biometric bypass, no debug pairing code, and
+no relay-control URL. This is debug-emulator substitute evidence only:
+`network_restore_ms=10340`, so the physical release-device
+`reconnect_ms<=2000` gate remains unchecked.
+
 ## Scope
 
 - Use exactly one physical Android phone, not an emulator or AVD.
 - Install the signed release App Bundle output or APKs produced from it.
-- Do not use a debug build, biometric bypass, or debug pairing payload.
+- Do not use a debug build, biometric bypass, or debug pairing code.
 - Pair through the real QR scanner and explicit desktop approval.
 - Capture evidence with direct `adb`: device listing, screenshots, UI dumps,
   network cut/restore state, app logcat, crash buffer, and desktop PTY replay.
@@ -26,7 +47,57 @@ when the desktop reattaches.
 
 ```sh
 export FW_ANDROID_RECONNECT_DIR="/tmp/fieldwork-android-reconnect-$(date +%Y%m%d%H%M%S)"
-mkdir -p "$FW_ANDROID_RECONNECT_DIR"
+pnpm scaffold:android-network-reconnect-evidence -- --dir "$FW_ANDROID_RECONNECT_DIR"
+```
+
+The scaffold writes `README.md`, `manifest.json`, `missing-files.txt`,
+`capture-checklist.md`, and a direct-adb `preflight.sh`. It captures signed
+release/device/package proof plus before-cut, network-cut, network-restore,
+after-restore, logcat, and crash-buffer evidence; it does not create desktop
+sessions, type terminal commands, append reconnect timing, or create
+`offline-output-replay.txt` / `reconnect-replay.txt`.
+
+Before pairing, capture signed release/device/package proof and clear Android
+logs:
+
+```sh
+FIELDWORK_ANDROID_AAB=apps/android/app/build/outputs/bundle/release/app-release.aab \
+"$FW_ANDROID_RECONNECT_DIR/preflight.sh"
+```
+
+After Android is attached to `fw_reconnect_session`, capture the attached
+terminal before the network cut:
+
+```sh
+FIELDWORK_ANDROID_RECONNECT_CAPTURE_BEFORE=true "$FW_ANDROID_RECONNECT_DIR/preflight.sh"
+```
+
+After typing `trigger_offline_output` from Android, cut Android networking
+with direct adb and capture the disconnected state:
+
+```sh
+FIELDWORK_ANDROID_RECONNECT_CUT_NETWORK=true "$FW_ANDROID_RECONNECT_DIR/preflight.sh"
+```
+
+After `offline-output-replay.txt` exists from a real desktop `fw attach`
+transcript, restore Android networking:
+
+```sh
+FIELDWORK_ANDROID_RECONNECT_RESTORE_NETWORK=true "$FW_ANDROID_RECONNECT_DIR/preflight.sh"
+```
+
+After the terminal visibly reattaches and Android sends `after_reconnect_ok`,
+capture the post-reconnect terminal plus logs:
+
+```sh
+FIELDWORK_ANDROID_RECONNECT_CAPTURE_AFTER=true "$FW_ANDROID_RECONNECT_DIR/preflight.sh"
+```
+
+After `reconnect-replay.txt` exists with `reconnect_ms=<elapsed-ms>` appended
+from the real run, run the helper verifier:
+
+```sh
+FIELDWORK_ANDROID_RECONNECT_VERIFY=true "$FW_ANDROID_RECONNECT_DIR/preflight.sh"
 ```
 
 ## Release Build
@@ -44,7 +115,7 @@ The transcript must include `Android AAB ok:` and `signed release bundle ok`.
 Capture the release `BuildConfig` values:
 
 ```sh
-rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
+rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""' \
   apps/android/app/build/generated/source/buildConfig/release/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_ANDROID_RECONNECT_DIR/buildconfig.txt"
 ```
@@ -54,9 +125,18 @@ Capture the physical device list and install the release artifact:
 ```sh
 adb devices -l | tee "$FW_ANDROID_RECONNECT_DIR/adb-devices.txt"
 bundletool install-apks --apks /path/to/fieldwork-release.apks
+{
+  echo '$ adb shell pm path app.fieldwork.android'
+  adb shell pm path app.fieldwork.android
+  echo '$ adb shell dumpsys package app.fieldwork.android'
+  adb shell dumpsys package app.fieldwork.android
+} | tee "$FW_ANDROID_RECONNECT_DIR/package-info.txt"
 adb logcat -c
 adb logcat -b crash -c
 ```
+`package-info.txt` must prove the installed app is `app.fieldwork.android` with
+`versionName=1.0`, `versionCode=1`, and no `DEBUGGABLE` or `debuggable=true` markers.
+
 
 ## Pair And Attach
 

@@ -26,7 +26,6 @@
 		01000000000000000000010E /* fieldwork_mobile_core.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000000000000000000020E /* fieldwork_mobile_core.swift */; };
 		01000000000000000000010F /* FieldworkCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 01000000000000000000020F /* FieldworkCore.xcframework */; };
 		010000000000000000000110 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 010000000000000000000701 /* SwiftTerm */; };
-		010000000000000000000114 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 010000000000000000000703 /* Sentry */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -60,7 +59,6 @@
 			files = (
 				01000000000000000000010F /* FieldworkCore.xcframework in Frameworks */,
 				010000000000000000000110 /* SwiftTerm in Frameworks */,
-				010000000000000000000114 /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -201,7 +199,6 @@
 			name = Fieldwork;
 			packageProductDependencies = (
 				010000000000000000000701 /* SwiftTerm */,
-				010000000000000000000703 /* Sentry */,
 			);
 			productName = Fieldwork;
 			productReference = 010000000000000000000200 /* Fieldwork.app */;
@@ -233,7 +230,6 @@
 			mainGroup = 010000000000000000000400;
 			packageReferences = (
 				010000000000000000000700 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
-				010000000000000000000702 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 			);
 			productRefGroup = 010000000000000000000402 /* Products */;
 			projectDirPath = "";
@@ -426,6 +422,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = "";
+				FIELDWORK_RELAY_CONTROL_URL = "";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/GeneratedRust",
@@ -457,6 +454,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				FIELDWORK_RELAY_CONTROL_URL = "";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/GeneratedRust",
@@ -512,14 +510,6 @@
 				version = 1.13.0;
 			};
 		};
-		010000000000000000000702 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
-			requirement = {
-				kind = exactVersion;
-				version = 9.13.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -527,11 +517,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 010000000000000000000700 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
 			productName = SwiftTerm;
-		};
-		010000000000000000000703 /* Sentry */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 010000000000000000000702 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
-			productName = Sentry;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

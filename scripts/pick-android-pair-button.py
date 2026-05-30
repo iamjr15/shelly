@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Return the center of the Android Pair button from a uiautomator XML dump."""
+"""Return the center of the Android Pair button on the Enter-code tab from a uiautomator XML dump."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def main() -> int:
 
     payload_bottom = find_payload_bottom(root)
     if payload_bottom is None:
-        print("pairing payload field not found", file=sys.stderr)
+        print("pairing code field not found", file=sys.stderr)
         return 1
 
     candidates = []
@@ -54,13 +54,13 @@ def find_payload_bottom(root: ET.Element) -> int | None:
     for node in root.iter("node"):
         if node.attrib.get("class") != "android.widget.EditText":
             continue
-        if any(child.attrib.get("text") == "Pairing payload" for child in node.iter()):
+        if any(child.attrib.get("text") == "Pairing code" for child in node.iter()):
             bounds = parse_bounds(node.attrib.get("bounds", ""))
             if bounds is not None:
                 return bounds[3]
 
     for node in root.iter("node"):
-        if node.attrib.get("text") == "Pairing payload":
+        if node.attrib.get("text") == "Pairing code":
             bounds = parse_bounds(node.attrib.get("bounds", ""))
             if bounds is not None:
                 return bounds[3]

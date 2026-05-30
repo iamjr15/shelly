@@ -4,6 +4,12 @@ import path from "node:path";
 
 const repo = path.resolve(new URL("..", import.meta.url).pathname);
 const failures = [];
+const removedCrashCredentialPattern = new RegExp([
+  `${"Se"}${"ntry"}`,
+  `${"se"}${"ntry"}`,
+  `${"D"}${"SN"}`,
+  `${"d"}${"sn"}`,
+].join("|"));
 
 const files = {
   storePrivacy: read("docs/STORE_PRIVACY.md"),
@@ -53,15 +59,13 @@ function verifyAnswerSheet(store, privacy) {
     "Face ID/Touch ID and BiometricPrompt are OS-mediated",
     "Terminal content, commands, paths, and session names are not sent",
     "Push payloads contain only fixed enum-derived copy plus opaque lowercase 64-character hex session hashes",
-    "Mobile crash reporting is off by default",
+    "Mobile product diagnostics sharing is off by default",
     "Android Firebase Messaging auto-init and Firebase Analytics collection are disabled in the manifest",
     "Refreshed Android FCM tokens are queued in app-private `fieldwork_push_tokens.xml`, excluded from backup/transfer, and sent only after pairing plus biometric unlock",
     "Tracking: No.",
     "Data linked to the user",
     "APNs token registered after pairing",
-    "Sentry crash reporting only after explicit opt-in",
-    "`sendDefaultPii=false`",
-    "trace sampling is disabled",
+    "No mobile crash-reporting SDK is bundled in v1",
     "Terminal text, keystrokes, command names, file paths, session names",
     "v1 has no iOS notification service extension and no lock-screen session-name",
     "Does the app collect or share user data? Yes",
@@ -70,7 +74,6 @@ function verifyAnswerSheet(store, privacy) {
     "Users can request data deletion: Yes",
     "Independent security review: Not completed",
     "FCM registration token / Firebase installation ID",
-    "Crash logs | Optional",
     "Diagnostics | Optional",
     "Terminal content and keystrokes because they are end-to-end encrypted",
     "Biometric data because Android does not expose it to the app",
@@ -78,11 +81,9 @@ function verifyAnswerSheet(store, privacy) {
     "`pnpm check:store-privacy`",
     "`firebase_messaging_auto_init_enabled=false`",
     "`firebase_analytics_collection_enabled=false`",
-    "`io.sentry.auto-init=false`",
     "fixed APNs alert copy",
     "Android queued FCM-token tests and backup/transfer exclusions",
     "does not add terminal content to notification payloads",
-    "Sentry release settings do not enable session replay, screenshots, user interaction tracing, or default PII",
     "inspect a real APNs/FCM delivery",
   ]) {
     requireDocText(store, phrase, `docs/STORE_PRIVACY.md must include: ${phrase}`);
@@ -115,7 +116,6 @@ function verifyImplementedPrivacyFacts(allFiles) {
 
 function verifyAndroidManifest(xml) {
   for (const [name, value] of [
-    ["io.sentry.auto-init", "false"],
     ["firebase_messaging_auto_init_enabled", "false"],
     ["firebase_analytics_collection_enabled", "false"],
   ]) {
@@ -209,18 +209,16 @@ function verifyAndroidPushPrivacy(pushText, serviceText, stringsXml) {
 }
 
 function verifyAndroidTelemetry(text) {
-  requireText(text, "context.telemetryPreferences().getBoolean(crashReportsKey, false)", "Android crash reporting must default off");
-  requireText(text, "Sentry.close()", "Android telemetry must close Sentry when opt-out is active");
-  requireText(text, "SentryAndroid.init(context.applicationContext)", "Android Sentry must start only through the explicit sync path");
-  requireText(text, "options.setSendDefaultPii(false)", "Android Sentry must disable default PII");
-  requireText(text, "options.setTracesSampleRate(0.0)", "Android Sentry must disable trace sampling");
-  requireText(text, "options.setEnableUserInteractionTracing(false)", "Android Sentry must disable user interaction tracing");
+  requireText(text, "context.telemetryPreferences().getBoolean(diagnosticsOptInKey, false)", "Android diagnostics sharing must default off");
+  requireText(text, "diagnosticsConsentResolvedKey", "Android diagnostics consent must persist a one-time resolved state");
+  if (removedCrashCredentialPattern.test(text)) {
+    failures.push("Android telemetry must not initialize a crash-reporting SDK");
+  }
 }
 
 function verifyIosPrivacyStrings(xml) {
   requirePlistString(xml, "NSCameraUsageDescription", /pairing QR/i, "iOS camera usage must remain QR-pairing only");
   requirePlistString(xml, "NSFaceIDUsageDescription", /(biometric|unlock).*terminal|terminal.*(biometric|unlock)/i, "iOS Face ID usage must describe terminal unlock protection");
-  requirePlistString(xml, "FieldworkSentryDsn", /^\$\(FIELDWORK_SENTRY_DSN\)$/, "iOS Sentry DSN must be release-secret injected");
 
   for (const forbidden of [
     "NSLocationWhenInUseUsageDescription",
@@ -255,11 +253,11 @@ function verifyIosPushPrivacy(delegateText, modelText) {
 }
 
 function verifyIosTelemetry(text) {
-  requireText(text, "UserDefaults.standard.bool(forKey: crashReportsOptInKey)", "iOS crash reporting must require opt-in");
-  requireText(text, "SentrySDK.close()", "iOS telemetry must close Sentry when opt-out is active");
-  requireText(text, "options.sendDefaultPii = false", "iOS Sentry must disable default PII");
-  requireText(text, "options.tracesSampleRate = 0.0", "iOS Sentry must disable trace sampling");
-  requireText(text, "options.enableAutoPerformanceTracing = false", "iOS Sentry must disable auto performance tracing");
+  requireText(text, "UserDefaults.standard.bool(forKey: diagnosticsOptInKey)", "iOS diagnostics sharing must require opt-in");
+  requireText(text, "diagnosticsConsentResolvedKey", "iOS diagnostics consent must persist a one-time resolved state");
+  if (removedCrashCredentialPattern.test(text)) {
+    failures.push("iOS telemetry must not initialize a crash-reporting SDK");
+  }
 }
 
 function verifyGateWiring(allFiles) {

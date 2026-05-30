@@ -16,7 +16,7 @@ last-known session metadata and restored scrollback for this path.
 
 - Use exactly one physical Android phone, not an emulator or AVD.
 - Install the signed release App Bundle output or APKs produced from it.
-- Do not use a debug build, biometric bypass, or debug pairing payload.
+- Do not use a debug build, biometric bypass, or debug pairing code.
 - Pair through the real QR scanner and explicit desktop approval before this
   gate, using the same constraints as `docs/ANDROID_PAIR_FLOW.md`.
 - Capture evidence with direct `adb`: device listing, restored dashboard and
@@ -32,7 +32,50 @@ enabled.
 
 ```sh
 export FW_ANDROID_RESTART_DIR="/tmp/fieldwork-android-restart-$(date +%Y%m%d%H%M%S)"
-mkdir -p "$FW_ANDROID_RESTART_DIR"
+pnpm scaffold:android-restart-restore-evidence -- --dir "$FW_ANDROID_RESTART_DIR"
+```
+
+The scaffold writes `README.md`, `manifest.json`, `missing-files.txt`,
+`capture-checklist.md`, and a direct-adb `preflight.sh`. It captures signed
+release/device/package proof, desktop seed state, daemon restart timing,
+restored Android UI, logcat, and crash-buffer evidence; it does not create
+desktop sessions, emit scrollback, open the restored session, or create
+`restart-replay.txt`.
+
+Before pairing, capture signed release/device/package proof and clear Android
+logs:
+
+```sh
+FIELDWORK_ANDROID_AAB=apps/android/app/build/outputs/bundle/release/app-release.aab \
+"$FW_ANDROID_RESTART_DIR/preflight.sh"
+```
+
+After Android is paired and `fw_restart_session` exists with restorable
+scrollback, capture the seed state:
+
+```sh
+FIELDWORK_ANDROID_RESTART_CAPTURE_SEED=true "$FW_ANDROID_RESTART_DIR/preflight.sh"
+```
+
+Restart the daemon and record `restart_ms=<elapsed-ms>` plus
+`processes_died_documented`:
+
+```sh
+FIELDWORK_ANDROID_RESTART_DAEMON=true "$FW_ANDROID_RESTART_DIR/preflight.sh"
+```
+
+Relaunch Android from saved pairing and capture the restored dashboard or
+attached terminal plus logs:
+
+```sh
+FIELDWORK_ANDROID_RESTART_CAPTURE_APP=true "$FW_ANDROID_RESTART_DIR/preflight.sh"
+```
+
+After `restart-replay.txt` exists from a real desktop `fw attach
+fw_restart_session` transcript, run the helper verifier:
+
+```sh
+FIELDWORK_ANDROID_RESTART_VERIFY=true "$FW_ANDROID_RESTART_DIR/preflight.sh"
 ```
 
 ## Release Build
@@ -50,7 +93,7 @@ The transcript must include `Android AAB ok:` and `signed release bundle ok`.
 Capture the release `BuildConfig` values:
 
 ```sh
-rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
+rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""' \
   apps/android/app/build/generated/source/buildConfig/release/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_ANDROID_RESTART_DIR/buildconfig.txt"
 ```
@@ -60,9 +103,18 @@ Capture the physical device list and install the release artifact:
 ```sh
 adb devices -l | tee "$FW_ANDROID_RESTART_DIR/adb-devices.txt"
 bundletool install-apks --apks /path/to/fieldwork-release.apks
+{
+  echo '$ adb shell pm path app.fieldwork.android'
+  adb shell pm path app.fieldwork.android
+  echo '$ adb shell dumpsys package app.fieldwork.android'
+  adb shell dumpsys package app.fieldwork.android
+} | tee "$FW_ANDROID_RESTART_DIR/package-info.txt"
 adb logcat -c
 adb logcat -b crash -c
 ```
+`package-info.txt` must prove the installed app is `app.fieldwork.android` with
+`versionName=1.0`, `versionCode=1`, and no `DEBUGGABLE` or `debuggable=true` markers.
+
 
 ## Seed Restorable Session
 

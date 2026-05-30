@@ -7,54 +7,69 @@ import process from "node:process";
 
 const root = path.resolve(new URL("..", import.meta.url).pathname);
 const verifier = path.join(root, "scripts/verify-macos-signing.mjs");
-const temp = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-macos-signing-test-"));
+const temp = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-macos-npm-trust-test-"));
 
 try {
   const binDir = path.join(temp, "bin");
   const artifactDir = path.join(temp, "artifact");
-  const fakeFieldworkd = path.join(artifactDir, "fieldworkd");
   fs.mkdirSync(binDir);
   fs.mkdirSync(artifactDir);
-  fs.writeFileSync(fakeFieldworkd, "fake daemon\n", { mode: 0o755 });
   fs.writeFileSync(path.join(binDir, "tar"), script("exec /usr/bin/tar \"$@\"\n"), { mode: 0o755 });
+  writeArtifact(artifactDir, 0o755);
 
-  writeTools(binDir, { signed: true, runtime: true, notarized: true });
-  expectStatus(fakeFieldworkd, 0, "valid signing fixture should pass", "macOS signing ok");
+  writeTools(binDir, { signature: "adhoc", quarantined: false });
+  expectStatus(artifactDir, 0, "valid ad-hoc npm trust fixture should pass", "macOS npm trust ok");
 
-  writeTools(binDir, { signed: false, runtime: true, notarized: true });
-  expectStatus(fakeFieldworkd, 1, "unsigned fixture should fail", "Developer ID Application");
+  writeTools(binDir, { signature: "developer-id", quarantined: false });
+  expectStatus(artifactDir, 0, "valid Developer ID fixture should also pass", "macOS npm trust ok");
 
-  writeTools(binDir, { signed: true, runtime: false, notarized: true });
-  expectStatus(fakeFieldworkd, 1, "missing hardened runtime should fail", "hardened runtime");
+  writeTools(binDir, { signature: "unsigned", quarantined: false });
+  expectStatus(artifactDir, 1, "unsigned fixture should fail", "must have an ad-hoc or Developer ID code signature");
 
-  writeTools(binDir, { signed: true, runtime: true, notarized: false });
-  expectStatus(fakeFieldworkd, 1, "non-notarized fixture should fail", "notarized Developer ID");
+  writeTools(binDir, { signature: "adhoc", quarantined: true });
+  expectStatus(artifactDir, 1, "quarantined fixture should fail", "must not carry com.apple.quarantine");
 
-  writeTools(binDir, { signed: true, runtime: true, notarized: true });
-  fs.renameSync(fakeFieldworkd, path.join(artifactDir, "fieldworkd.real"));
-  expectStatus(path.join(artifactDir, "fieldworkd.real"), 1, "non-daemon binary name should fail", "only accepts the daemon binary");
+  writeTools(binDir, { signature: "adhoc", quarantined: false });
+  fs.chmodSync(path.join(artifactDir, "fieldworkd"), 0o644);
+  expectStatus(artifactDir, 1, "non-executable daemon should fail", "fieldworkd must be executable");
+  fs.chmodSync(path.join(artifactDir, "fieldworkd"), 0o755);
+
+  const missingCli = path.join(temp, "missing-cli");
+  fs.mkdirSync(missingCli);
+  fs.writeFileSync(path.join(missingCli, "fieldworkd"), "fake daemon\n", { mode: 0o755 });
+  expectStatus(missingCli, 1, "archive/directory missing CLI should fail", "exactly one fieldwork binary");
+
+  const singleDaemon = path.join(artifactDir, "fieldworkd");
+  expectStatus(singleDaemon, 0, "single fieldworkd binary should be accepted", "macOS npm trust ok");
 } finally {
   fs.rmSync(temp, { force: true, recursive: true });
 }
 
-console.log("macOS signing verifier ok");
+console.log("macOS npm trust verifier ok");
+
+function writeArtifact(dir, mode) {
+  fs.writeFileSync(path.join(dir, "fieldwork"), "fake cli\n", { mode });
+  fs.writeFileSync(path.join(dir, "fieldworkd"), "fake daemon\n", { mode });
+}
 
 function writeTools(binDir, options) {
-  const authority = options.signed ? "Authority=Developer ID Application: Fieldwork Test (ABCDE12345)" : "Authority=Ad Hoc";
-  const runtime = options.runtime ? "Runtime Version=15.0.0\nflags=0x10000(runtime)" : "flags=0x0";
+  const signature =
+    options.signature === "adhoc"
+      ? "Signature=adhoc\nTeamIdentifier=not set"
+      : options.signature === "developer-id"
+        ? "Authority=Developer ID Application: Fieldwork Test (ABCDE12345)\nTeamIdentifier=ABCDE12345"
+        : "Signature=unsigned\nTeamIdentifier=not set";
   fs.writeFileSync(
     path.join(binDir, "codesign"),
     script(`case "$1" in
   --verify)
-    exit 0
+    ${options.signature === "unsigned" ? "exit 1" : "exit 0"}
     ;;
   --display)
     cat >&2 <<'OUT'
-Executable=/tmp/fieldworkd
-Identifier=fieldworkd
-${authority}
-TeamIdentifier=ABCDE12345
-${runtime}
+Executable=/tmp/fieldwork
+Identifier=fieldwork
+${signature}
 OUT
     exit 0
     ;;
@@ -64,12 +79,9 @@ exit 2
     { mode: 0o755 },
   );
 
-  const source = options.notarized ? "source=Notarized Developer ID" : "source=Developer ID";
   fs.writeFileSync(
-    path.join(binDir, "spctl"),
-    script(`printf '%s: accepted\\n' "$4"
-printf '${source}\\n'
-`),
+    path.join(binDir, "xattr"),
+    script(`${options.quarantined ? "printf '0081;fieldwork quarantine\\n'; exit 0" : "exit 1"}\n`),
     { mode: 0o755 },
   );
 }

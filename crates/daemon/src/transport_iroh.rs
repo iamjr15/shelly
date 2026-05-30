@@ -5,7 +5,7 @@ use anyhow::{Context, Result, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
 use fieldwork_protocol::{
     CONTRACT_VERSION, ClientId, ClientKind, ClientToServerMsg, ErrorCode, ServerToClientMsg,
-    max_frame_len,
+    max_frame_len, normalize_code,
 };
 use iroh::endpoint::{Connection, RecvStream, SendStream, presets};
 use iroh::{Endpoint, RelayMode, RelayUrl, SecretKey};
@@ -152,8 +152,8 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
     while let Ok(message) = read_msg::<_>(&mut recv).await {
         match message {
             ClientToServerMsg::Hello { .. } => {}
-            ClientToServerMsg::PairWithToken {
-                pair_token,
+            ClientToServerMsg::PairWithCode {
+                code,
                 device_name,
                 device_node_id,
             } => {
@@ -162,9 +162,10 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                     continue;
                 }
 
+                let code = normalize_code(&code);
                 match state
                     .pairing
-                    .request_approval(&pair_token, device_name.clone(), remote_node_id.clone())
+                    .request_approval(&code, device_name.clone(), remote_node_id.clone())
                     .await
                 {
                     Ok(true) => {

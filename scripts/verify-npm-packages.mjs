@@ -13,6 +13,7 @@ const rootLicense = fs.readFileSync(path.join(root, "LICENSE"), "utf8");
 const rootNotice = fs.readFileSync(path.join(root, "NOTICE"), "utf8");
 const metaReadme = fs.readFileSync(path.join(root, "packages/cli/README.md"), "utf8");
 const metaDispatcher = fs.readFileSync(path.join(root, "packages/cli/bin/fieldwork"), "utf8");
+const metaInstall = fs.readFileSync(path.join(root, "packages/cli/install.js"), "utf8");
 const repositoryUrl = "git+https://github.com/fieldwork-app/fieldwork.git";
 const platforms = [
   { key: "darwin-arm64", os: "darwin", cpu: "arm64" },
@@ -108,6 +109,18 @@ assert(
   "CLI dispatcher must pass the invoked fieldwork/fw alias as argv0 to the native binary",
 );
 assert(fs.existsSync(path.join(root, "packages/cli/install.js")), "install.js is missing");
+assert(
+  metaInstall.includes('platform !== "darwin"'),
+  "install.js must guard macOS npm trust prep to Darwin hosts only",
+);
+assert(
+  metaInstall.includes('"codesign", ["--force", "--sign", "-", file]'),
+  "install.js must ad-hoc codesign copied Darwin binaries after postinstall swap",
+);
+assert(
+  metaInstall.includes('"xattr", ["-d", "com.apple.quarantine", file]'),
+  "install.js must remove quarantine only from copied Darwin binaries",
+);
 if (requireBinaries) {
   assertMatchesRoot("packages/cli/LICENSE", "LICENSE");
   assertMatchesRoot("packages/cli/NOTICE", "NOTICE");

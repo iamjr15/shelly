@@ -1,14 +1,14 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chacha20poly1305::aead::{OsRng, rand_core::RngCore};
-use data_encoding::BASE32_NOPAD;
-use fieldwork_protocol::{ClientId, now_ms};
+use fieldwork_protocol::{CODE_ALPHABET, CODE_LEN, ClientId, now_ms};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Duration, timeout};
 
-const PAIR_TOKEN_BYTES: usize = 32;
 const PAIR_TOKEN_TTL_MS: u64 = 10 * 60 * 1000;
+/// Wrong in-band code attempts tolerated before an active code is invalidated.
+const MAX_CODE_ATTEMPTS: u8 = 5;
 
 #[derive(Debug)]
 pub struct PairingApprovalEvent {
@@ -17,20 +17,22 @@ pub struct PairingApprovalEvent {
     pub device_node_id: String,
 }
 
-struct PendingPairToken {
+struct PendingPairCode {
     expires_at: u64,
+    /// Wrong in-band code attempts observed while this code was active.
+    attempts: u8,
     request_tx: mpsc::UnboundedSender<PairingApprovalEvent>,
 }
 
 pub struct PairingManager {
-    tokens: Mutex<HashMap<String, PendingPairToken>>,
+    codes: Mutex<HashMap<String, PendingPairCode>>,
     approvals: Mutex<HashMap<ClientId, oneshot::Sender<bool>>>,
 }
 
 impl PairingManager {
     pub fn new() -> Self {
         Self {
-            tokens: Mutex::new(HashMap::new()),
+            codes: Mutex::new(HashMap::new()),
             approvals: Mutex::new(HashMap::new()),
         }
     }
@@ -39,43 +41,58 @@ impl PairingManager {
         &self,
     ) -> Result<(String, u64, mpsc::UnboundedReceiver<PairingApprovalEvent>)> {
         self.prune_expired()?;
-        let mut random = [0_u8; PAIR_TOKEN_BYTES];
-        OsRng.fill_bytes(&mut random);
-        let token = BASE32_NOPAD.encode(&random);
+        let code = generate_code();
         let expires_at = now_ms().saturating_add(PAIR_TOKEN_TTL_MS);
         let (request_tx, request_rx) = mpsc::unbounded_channel();
 
-        self.tokens
+        self.codes
             .lock()
-            .map_err(|_| anyhow!("pair token lock poisoned"))?
+            .map_err(|_| anyhow!("pair code lock poisoned"))?
             .insert(
-                token.clone(),
-                PendingPairToken {
+                code.clone(),
+                PendingPairCode {
                     expires_at,
+                    attempts: 0,
                     request_tx,
                 },
             );
 
-        Ok((token, expires_at, request_rx))
+        Ok((code, expires_at, request_rx))
     }
 
     pub async fn request_approval(
         &self,
-        pair_token: &str,
+        code: &str,
         device_name: String,
         device_node_id: String,
     ) -> Result<bool> {
         let pending = {
-            let mut tokens = self
-                .tokens
+            let mut codes = self
+                .codes
                 .lock()
-                .map_err(|_| anyhow!("pair token lock poisoned"))?;
-            tokens.remove(pair_token)
-        }
-        .context("pair token is invalid or already used")?;
+                .map_err(|_| anyhow!("pair code lock poisoned"))?;
+            match codes.remove(code) {
+                // Hit: consume the code and proceed to desktop approval.
+                Some(pending) => pending,
+                // Miss: charge a failed attempt against every active code and
+                // invalidate any that exhaust the budget, leaving the QR path
+                // intact until the desktop operator restarts pairing.
+                None => {
+                    let now = now_ms();
+                    codes.retain(|_, pending| {
+                        if pending.expires_at <= now {
+                            return false;
+                        }
+                        pending.attempts = pending.attempts.saturating_add(1);
+                        pending.attempts < MAX_CODE_ATTEMPTS
+                    });
+                    bail!("pair code is invalid or already used");
+                }
+            }
+        };
 
         if now_ms() > pending.expires_at {
-            bail!("pair token expired");
+            bail!("pair code expired");
         }
 
         let request_id = ClientId::new();
@@ -127,39 +144,50 @@ impl PairingManager {
 
     fn prune_expired(&self) -> Result<()> {
         let now = now_ms();
-        self.tokens
+        self.codes
             .lock()
-            .map_err(|_| anyhow!("pair token lock poisoned"))?
+            .map_err(|_| anyhow!("pair code lock poisoned"))?
             .retain(|_, pending| pending.expires_at > now);
         Ok(())
     }
 }
 
+/// Picks a [`CODE_LEN`]-character pairing code uniformly from [`CODE_ALPHABET`].
+///
+/// Rejection sampling against a power-of-two mask avoids the modulo bias a
+/// naive `byte % 32` would introduce; the alphabet is exactly 32 characters so
+/// every accepted 5-bit value maps to one character.
+fn generate_code() -> String {
+    let alphabet = CODE_ALPHABET.as_bytes();
+    debug_assert_eq!(alphabet.len(), 32);
+    let mut code = String::with_capacity(CODE_LEN);
+    while code.len() < CODE_LEN {
+        let mut byte = [0_u8; 1];
+        OsRng.fill_bytes(&mut byte);
+        let index = (byte[0] & 0x1f) as usize;
+        code.push(alphabet[index] as char);
+    }
+    code
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{BASE32_NOPAD, PAIR_TOKEN_BYTES, PAIR_TOKEN_TTL_MS, PairingManager};
-    use fieldwork_protocol::now_ms;
+    use super::{MAX_CODE_ATTEMPTS, PAIR_TOKEN_TTL_MS, PairingManager};
+    use fieldwork_protocol::{CODE_ALPHABET, CODE_LEN, is_valid_code, now_ms};
     use std::sync::Arc;
 
     #[test]
-    fn generated_pair_tokens_are_base32_encoded_32_bytes() {
+    fn generated_codes_are_crockford_charset_and_fixed_length() {
         let manager = PairingManager::new();
-        let (token, _, _rx) = manager.begin_pairing().unwrap();
+        let (code, _, _rx) = manager.begin_pairing().unwrap();
 
-        assert_eq!(token.len(), 52);
-        assert!(
-            token
-                .chars()
-                .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit())
-        );
-        assert_eq!(
-            BASE32_NOPAD.decode(token.as_bytes()).unwrap().len(),
-            PAIR_TOKEN_BYTES
-        );
+        assert_eq!(code.chars().count(), CODE_LEN);
+        assert!(code.chars().all(|ch| CODE_ALPHABET.contains(ch)));
+        assert!(is_valid_code(&code));
     }
 
     #[test]
-    fn pair_tokens_expire_after_ten_minutes() {
+    fn pair_codes_expire_after_ten_minutes() {
         let manager = PairingManager::new();
         let before = now_ms();
         let (_, expires_at, _rx) = manager.begin_pairing().unwrap();
@@ -170,20 +198,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pair_tokens_are_single_use_even_before_approval() {
+    async fn pair_codes_are_single_use_even_before_approval() {
         let manager = Arc::new(PairingManager::new());
-        let (token, _, mut rx) = manager.begin_pairing().unwrap();
+        let (code, _, mut rx) = manager.begin_pairing().unwrap();
 
         let first_manager = Arc::clone(&manager);
-        let first_token = token.clone();
+        let first_code = code.clone();
         let first = tokio::spawn(async move {
             first_manager
-                .request_approval(&first_token, "phone".to_string(), "node-a".to_string())
+                .request_approval(&first_code, "phone".to_string(), "node-a".to_string())
                 .await
         });
         let event = rx.recv().await.expect("pair approval request");
         let second = manager
-            .request_approval(&token, "phone".to_string(), "node-a".to_string())
+            .request_approval(&code, "phone".to_string(), "node-a".to_string())
             .await;
 
         assert!(second.is_err());
@@ -194,17 +222,66 @@ mod tests {
     #[tokio::test]
     async fn pairing_succeeds_only_after_explicit_approval() {
         let manager = Arc::new(PairingManager::new());
-        let (token, _, mut rx) = manager.begin_pairing().unwrap();
+        let (code, _, mut rx) = manager.begin_pairing().unwrap();
 
         let approval_manager = Arc::clone(&manager);
         let request = tokio::spawn(async move {
             approval_manager
-                .request_approval(&token, "phone".to_string(), "node-a".to_string())
+                .request_approval(&code, "phone".to_string(), "node-a".to_string())
                 .await
         });
         let event = rx.recv().await.expect("pair approval request");
 
         assert!(!request.is_finished());
+        manager.approve(event.request_id, true).unwrap();
+        assert!(request.await.unwrap().unwrap());
+    }
+
+    #[tokio::test]
+    async fn active_code_is_invalidated_after_five_wrong_attempts() {
+        let manager = PairingManager::new();
+        let (code, _, _rx) = manager.begin_pairing().unwrap();
+
+        // Each miss charges the active code; the fifth exhausts its budget.
+        for _ in 0..MAX_CODE_ATTEMPTS {
+            assert!(
+                manager
+                    .request_approval("ZZZZZ", "phone".to_string(), "node-a".to_string())
+                    .await
+                    .is_err()
+            );
+        }
+
+        // The correct code is now invalid because the window was burned down.
+        assert!(
+            manager
+                .request_approval(&code, "phone".to_string(), "node-a".to_string())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn wrong_attempts_below_cap_leave_the_code_usable() {
+        let manager = Arc::new(PairingManager::new());
+        let (code, _, mut rx) = manager.begin_pairing().unwrap();
+
+        for _ in 0..(MAX_CODE_ATTEMPTS - 1) {
+            assert!(
+                manager
+                    .request_approval("ZZZZZ", "phone".to_string(), "node-a".to_string())
+                    .await
+                    .is_err()
+            );
+        }
+
+        let approval_manager = Arc::clone(&manager);
+        let request = tokio::spawn(async move {
+            approval_manager
+                .request_approval(&code, "phone".to_string(), "node-a".to_string())
+                .await
+        });
+        let event = rx.recv().await.expect("pair approval request");
         manager.approve(event.request_id, true).unwrap();
         assert!(request.await.unwrap().unwrap());
     }

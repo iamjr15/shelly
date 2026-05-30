@@ -257,14 +257,14 @@ impl Session {
         source: AgentSource,
         state: AgentState,
         last_line: Option<String>,
-    ) {
+    ) -> Result<Option<String>> {
         if self.exit_code().is_some() {
             tracing::warn!(
                 session_id = %self.id,
                 ?source,
                 "ignoring agent state event for exited session"
             );
-            return;
+            bail!("session has exited: {}", self.id);
         }
 
         let source_matches_command = matches!(
@@ -278,7 +278,10 @@ impl Session {
                 ?self.command_kind,
                 "ignoring mismatched agent state event"
             );
-            return;
+            bail!(
+                "agent hook source {source:?} does not match session command {:?}",
+                self.command_kind
+            );
         }
 
         let last_line = last_line.map(|line| line.chars().take(80).collect::<String>());
@@ -287,6 +290,11 @@ impl Session {
         }
         self.set_state(state, last_line);
         self.persist_dirty.store(true, Ordering::Release);
+        Ok(self
+            .last_line
+            .lock()
+            .expect("last_line lock poisoned")
+            .clone())
     }
 
     fn start_reader(session: Arc<Self>, mut reader: Box<dyn Read + Send>) -> Result<()> {
@@ -616,11 +624,13 @@ mod handoff_tests {
         let mut rx = session.subscribe();
 
         let long_line = "x".repeat(120);
-        session.apply_agent_state_event(
-            AgentSource::Claude,
-            AgentState::AwaitingInput,
-            Some(long_line),
-        );
+        session
+            .apply_agent_state_event(
+                AgentSource::Claude,
+                AgentState::AwaitingInput,
+                Some(long_line),
+            )
+            .expect("matching local agent hook applies");
 
         let summary = session.summary();
         assert_eq!(summary.state, AgentState::AwaitingInput);
@@ -636,7 +646,7 @@ mod handoff_tests {
     }
 
     #[tokio::test]
-    async fn mismatched_local_agent_hook_is_ignored() {
+    async fn mismatched_local_agent_hook_is_rejected() {
         let cwd = tempfile::tempdir().expect("tempdir");
         let command = write_sleeping_stub(cwd.path(), "codex");
         let size = ClientSize { cols: 80, rows: 24 };
@@ -652,11 +662,14 @@ mod handoff_tests {
         .expect("spawn codex stub session");
         let _kill_on_drop = KillOnDrop(Arc::clone(&session));
 
-        session.apply_agent_state_event(
-            AgentSource::Claude,
-            AgentState::AwaitingInput,
-            Some("wrong agent".to_string()),
-        );
+        let error = session
+            .apply_agent_state_event(
+                AgentSource::Claude,
+                AgentState::AwaitingInput,
+                Some("wrong agent".to_string()),
+            )
+            .expect_err("mismatched local agent hook is rejected");
+        assert!(error.to_string().contains("does not match"));
 
         let summary = session.summary();
         assert_eq!(summary.state, AgentState::Idle);

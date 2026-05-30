@@ -6,7 +6,12 @@ package="app.fieldwork.android"
 activity="$package/.MainActivity"
 fieldwork="${FIELDWORK_CLI_BINARY:-$root/target/release/fieldwork}"
 fieldworkd="${FIELDWORK_DAEMON_BINARY:-$root/target/release/fieldworkd}"
-iroh_relay_url="${FIELDWORK_ANDROID_IROH_RELAY_URL:-https://aps1-1.relay.n0.iroh-canary.iroh.link./}"
+iroh_relay_url="${FIELDWORK_ANDROID_IROH_RELAY_URL:-}"
+relay_signing_key="${FIELDWORK_RELAY_SIGNING_KEY_B64:-BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc}"
+# Typed-code pairing resolves the 5-char code at the relay rendezvous endpoint.
+# The daemon publishes (POST /v1/pair/publish) and the app resolves
+# (GET /v1/pair/resolve/{code}) against this control URL.
+relay_control_url="${FIELDWORK_ANDROID_RELAY_CONTROL_URL:?Set FIELDWORK_ANDROID_RELAY_CONTROL_URL to a reachable relay control endpoint for typed-code pairing}"
 pair_flow_max_seconds="${FIELDWORK_ANDROID_PAIR_FLOW_MAX_SECONDS:-15}"
 
 if [[ ! -x "$fieldwork" || ! -x "$fieldworkd" ]]; then
@@ -38,6 +43,7 @@ fi
 dump_ui() {
   local out="$1"
   local tmp="$out.tmp"
+  local remote="/sdcard/fieldwork-window.xml"
   rm -f "$tmp"
   if python3 - "$serial" "$tmp" <<'PY'
 import subprocess
@@ -60,6 +66,18 @@ PY
     return 0
   fi
   rm -f "$tmp"
+
+  # Android 16 emulator images can hang or return no stream when dumping the
+  # hierarchy directly to /dev/tty. The file-backed path is slower but stable.
+  if adb -s "$serial" shell uiautomator dump "$remote" >/dev/null 2>&1 \
+    && adb -s "$serial" exec-out cat "$remote" >"$tmp" \
+    && [[ -s "$tmp" ]]; then
+    adb -s "$serial" shell rm -f "$remote" >/dev/null 2>&1 || true
+    mv "$tmp" "$out"
+    return 0
+  fi
+  adb -s "$serial" shell rm -f "$remote" >/dev/null 2>&1 || true
+  rm -f "$tmp"
   return 1
 }
 
@@ -68,6 +86,87 @@ now_ms() {
 import time
 print(int(time.time() * 1000))
 PY
+}
+
+# Capture the 5-char Crockford pairing code from a `fw pair` log. The CLI prints
+#   Scan the QR with the Fieldwork app — or enter this code:
+#       AB 4C7
+#       Expires in 10 minutes.
+# so we take the line after the prompt and squeeze out whitespace (the grouped
+# code separator) to recover the raw 5-character code.
+extract_pair_code() {
+  local log="$1"
+  python3 - "$log" <<'PY'
+import re
+import sys
+
+text = open(sys.argv[1], encoding="utf-8").read()
+lines = text.splitlines()
+for index, line in enumerate(lines):
+    if "enter this code:" in line:
+        for candidate in lines[index + 1:]:
+            squeezed = re.sub(r"\s+", "", candidate)
+            if re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{5}", squeezed):
+                print(squeezed)
+                raise SystemExit(0)
+        break
+raise SystemExit(1)
+PY
+}
+
+dismiss_blocking_emulator_anr() {
+  local ui_xml="$1"
+  local coords
+
+  coords="$(
+    python3 - "$ui_xml" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+text = open(sys.argv[1], encoding="utf-8").read()
+end = text.find("</hierarchy>")
+if end >= 0:
+    text = text[:end + len("</hierarchy>")]
+try:
+    root = ET.fromstring(text)
+except ET.ParseError:
+    raise SystemExit(1)
+
+title = next(
+    (
+        node.attrib.get("text", "")
+        for node in root.iter("node")
+        if node.attrib.get("resource-id") == "android:id/alertTitle"
+    ),
+    "",
+)
+if "isn't responding" not in title:
+    raise SystemExit(1)
+
+if "fieldwork" in title.lower():
+    raise SystemExit(1)
+
+button_text = "Wait" if title == "Process system isn't responding" else "Close app"
+for node in root.iter("node"):
+    if (
+        node.attrib.get("text") == button_text
+        and node.attrib.get("clickable") == "true"
+        and node.attrib.get("enabled") == "true"
+    ):
+        left, top, right, bottom = map(int, re.findall(r"\d+", node.attrib["bounds"]))
+        print(button_text, (left + right) // 2, (top + bottom) // 2)
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+  )" || return 1
+
+  read -r button_text button_x button_y <<<"$coords"
+  echo "Dismissing blocking emulator ANR dialog with $button_text." >&2
+  adb -s "$serial" shell input tap "$button_x" "$button_y"
+  sleep 1
+  return 0
 }
 
 tmp_parent="${FIELDWORK_ANDROID_PAIR_TMPDIR:-/tmp}"
@@ -118,14 +217,19 @@ EOF
 chmod +x "$bin/claude"
 
 desktop_env() {
-  env \
-    HOME="$home" \
-    XDG_RUNTIME_DIR="$run" \
-    PATH="$bin:$PATH" \
-    FIELDWORK_IROH_SECRET_KEY_B64=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI \
-    FIELDWORK_IROH_RELAY_URL="$iroh_relay_url" \
-    FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED=false \
-    "$@"
+  local -a env_vars=(
+    HOME="$home"
+    XDG_RUNTIME_DIR="$run"
+    PATH="$bin:$PATH"
+    FIELDWORK_IROH_SECRET_KEY_B64=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI
+    FIELDWORK_RELAY_CONTROL_URL="$relay_control_url"
+    FIELDWORK_RELAY_SIGNING_KEY_B64="$relay_signing_key"
+    FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED=false
+  )
+  if [[ -n "$iroh_relay_url" ]]; then
+    env_vars+=(FIELDWORK_IROH_RELAY_URL="$iroh_relay_url")
+  fi
+  env "${env_vars[@]}" "$@"
 }
 
 desktop_env "$fieldworkd" >"$tmp_dir/daemon.log" 2>&1 &
@@ -158,22 +262,23 @@ exec 3<>"$tmp_dir/pair.in"
 desktop_env "$fieldwork" pair <"$tmp_dir/pair.in" >"$tmp_dir/pair.log" 2>&1 &
 pair_pid=$!
 
-payload=""
+pair_code=""
 for _ in {1..100}; do
-  payload="$(grep -m1 '^{' "$tmp_dir/pair.log" || true)"
-  if [[ -n "$payload" ]]; then
+  pair_code="$(extract_pair_code "$tmp_dir/pair.log" || true)"
+  if [[ -n "$pair_code" ]]; then
     break
   fi
   sleep 0.1
 done
-if [[ -z "$payload" ]]; then
-  echo "fieldwork pair did not print a JSON payload" >&2
+if [[ -z "$pair_code" ]]; then
+  echo "fieldwork pair did not print a 5-character pairing code" >&2
   cat "$tmp_dir/pair.log" >&2 || true
   exit 1
 fi
 
 FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true \
-FIELDWORK_ANDROID_PAIRING_PAYLOAD="$payload" \
+FIELDWORK_ANDROID_PAIRING_CODE="$pair_code" \
+FIELDWORK_RELAY_CONTROL_URL="$relay_control_url" \
   "$root/apps/android/gradlew" --no-daemon :app:installDebug >"$tmp_dir/install-debug.log"
 
 adb -s "$serial" shell pm clear "$package" >/dev/null
@@ -190,14 +295,25 @@ if ! grep -q '^Status: ok$' "$tmp_dir/launch.log"; then
   exit 1
 fi
 
-sleep 2
 ui_xml="$tmp_dir/ui-before-pair.xml"
-if ! dump_ui "$ui_xml"; then
+for _ in {1..30}; do
+  if dump_ui "$ui_xml"; then
+    if grep -q 'text="Pairing code"' "$ui_xml"; then
+      break
+    fi
+    if dismiss_blocking_emulator_anr "$ui_xml"; then
+      continue
+    fi
+  fi
+  sleep 1
+done
+if [[ ! -s "$ui_xml" ]]; then
   echo "Android emulator pair smoke could not dump the pairing screen UI." >&2
   exit 1
 fi
-if ! grep -q 'text="Pairing payload"' "$ui_xml"; then
-  echo "Android emulator pair smoke did not reach the pairing screen." >&2
+if ! grep -q 'text="Pairing code"' "$ui_xml"; then
+  echo "Android emulator pair smoke did not reach the Enter-code pairing screen." >&2
+  sed -n '1,120p' "$ui_xml" >&2 || true
   exit 1
 fi
 
@@ -247,6 +363,9 @@ paired_ui="$tmp_dir/ui-after-pair.xml"
 for _ in {1..60}; do
   if ! dump_ui "$paired_ui"; then
     sleep 1
+    continue
+  fi
+  if dismiss_blocking_emulator_anr "$paired_ui"; then
     continue
   fi
   if grep -q 'text="OK"' "$paired_ui"; then
@@ -361,6 +480,9 @@ for _ in {1..60}; do
     sleep 1
     continue
   fi
+  if dismiss_blocking_emulator_anr "$terminal_ui"; then
+    continue
+  fi
   if grep -q 'text="Attached"' "$terminal_ui" && grep -q 'bash' "$terminal_ui"; then
     break
   fi
@@ -401,22 +523,23 @@ exec 4<>"$tmp_dir/verifier-pair.in"
 desktop_env "$fieldwork" pair <"$tmp_dir/verifier-pair.in" >"$tmp_dir/verifier-pair.log" 2>&1 &
 pair_pid=$!
 
-verifier_payload=""
+verifier_code=""
 for _ in {1..100}; do
-  verifier_payload="$(grep -m1 '^{' "$tmp_dir/verifier-pair.log" || true)"
-  if [[ -n "$verifier_payload" ]]; then
+  verifier_code="$(extract_pair_code "$tmp_dir/verifier-pair.log" || true)"
+  if [[ -n "$verifier_code" ]]; then
     break
   fi
   sleep 0.1
 done
-if [[ -z "$verifier_payload" ]]; then
-  echo "Android emulator pair smoke could not create verifier pairing payload." >&2
+if [[ -z "$verifier_code" ]]; then
+  echo "Android emulator pair smoke could not create verifier pairing code." >&2
   cat "$tmp_dir/verifier-pair.log" >&2 || true
   exit 1
 fi
 
 desktop_env "$fieldwork" pair-test \
-  --payload "$verifier_payload" \
+  --code "$verifier_code" \
+  --relay-control-url "$relay_control_url" \
   --name android-smoke-verifier \
   --attach first \
   --expect-output "android-mobile: fw_android_foreground_ok" \

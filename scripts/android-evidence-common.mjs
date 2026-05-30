@@ -26,6 +26,56 @@ export function verifyPhysicalAndroidAdbDevices(text, failures, { file = "adb-de
   );
 }
 
+export function verifyInstalledAndroidPackageInfo(
+  text,
+  failures,
+  {
+    file = "package-info.txt",
+    packageName = "app.fieldwork.android",
+    versionName = "1.0",
+    versionCode = "1",
+    forbidDebuggable = false,
+  } = {},
+) {
+  if (!Array.isArray(failures)) {
+    throw new TypeError("verifyInstalledAndroidPackageInfo requires a failures array");
+  }
+
+  const packagePattern = escapeRegExp(packageName);
+  requirePatternText(
+    text,
+    new RegExp(`\\bpackage:\\S*${packagePattern}\\S*`, "i"),
+    `${file} must include adb shell pm path output for ${packageName}`,
+    failures,
+  );
+  requirePatternText(
+    text,
+    new RegExp(`\\bPackage\\s*\\[${packagePattern}\\]|\\bname=${packagePattern}\\b|\\b${packagePattern}\\b`, "i"),
+    `${file} must include dumpsys package details for ${packageName}`,
+    failures,
+  );
+  requirePatternText(
+    text,
+    new RegExp(`\\bversionName=${escapeRegExp(versionName)}\\b`),
+    `${file} must prove installed versionName=${versionName}`,
+    failures,
+  );
+  requirePatternText(
+    text,
+    new RegExp(`\\bversionCode=${escapeRegExp(versionCode)}\\b`),
+    `${file} must prove installed versionCode=${versionCode}`,
+    failures,
+  );
+  if (forbidDebuggable) {
+    rejectPatternText(
+      text,
+      /\b(?:DEBUGGABLE|debuggable\s*=\s*true|android:debuggable\s*=\s*["']?true["']?)\b/i,
+      `${file} must prove the installed package is not a debug/debuggable build`,
+      failures,
+    );
+  }
+}
+
 export function verifyNoAndroidSystemErrorOverlays(entries, failures) {
   if (!Array.isArray(failures)) {
     throw new TypeError("verifyNoAndroidSystemErrorOverlays requires a failures array");
@@ -63,6 +113,10 @@ export function verifyCleanAndroidLogs(entries, failures) {
 
 function isCrashBufferFile(file) {
   return file === "crash.log" || file.endsWith("-crash.log");
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function requirePatternText(text, pattern, message, failures) {

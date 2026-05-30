@@ -72,6 +72,12 @@ variable "availability_domain_index" {
   default     = 0
 }
 
+variable "fault_domain" {
+  description = "Optional explicit fault domain, for example FAULT-DOMAIN-1. Leave empty to let OCI choose placement."
+  type        = string
+  default     = ""
+}
+
 variable "image_ocid" {
   description = "Optional platform image OCID override. Leave empty to select the latest Oracle Linux image for the shape."
   type        = string

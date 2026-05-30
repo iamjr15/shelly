@@ -26,7 +26,7 @@ import app.fieldwork.android.core.MobileTelemetry
 fun SettingsScreen(padding: PaddingValues, viewModel: FieldworkViewModel) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
-    var telemetry by remember { mutableStateOf(MobileTelemetry.isCrashReportingEnabled(context)) }
+    var telemetry by remember { mutableStateOf(MobileTelemetry.isDiagnosticsEnabled(context)) }
     var showLicenses by remember { mutableStateOf(false) }
 
     if (showLicenses) {
@@ -49,13 +49,13 @@ fun SettingsScreen(padding: PaddingValues, viewModel: FieldworkViewModel) {
             }
             item {
                 ListItem(
-                    headlineContent = { Text("Share crash reports") },
+                    headlineContent = { Text("Share diagnostics") },
                     trailingContent = {
                         Switch(
                             checked = telemetry,
                             onCheckedChange = {
                                 telemetry = it
-                                MobileTelemetry.setCrashReportingEnabled(context, it)
+                                MobileTelemetry.setDiagnosticsEnabled(context, it)
                             },
                         )
                     },

@@ -1,11 +1,12 @@
 use anyhow::{Context, Result, bail};
 use fieldwork_protocol::{
     AgentSource, AgentState, CONTRACT_VERSION, ClientKind, ClientSize, ClientToServerMsg,
-    ErrorCode, PairingPayload, ServerToClientMsg, SessionId, SessionSummary, max_frame_len,
+    ErrorCode, PairingTicket, ServerToClientMsg, SessionId, SessionSummary, max_frame_len,
+    normalize_code,
 };
 use iroh::endpoint::{RecvStream, SendStream, presets};
 use iroh::{Endpoint, EndpointAddr, RelayUrl, SecretKey, TransportAddr};
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
@@ -17,6 +18,8 @@ const FIELDWORK_ALPN: &[u8] = b"fieldwork/1";
 
 pub(crate) struct PairTestOptions {
     pub(crate) payload: Option<String>,
+    pub(crate) code: Option<String>,
+    pub(crate) relay_control_url: Option<String>,
     pub(crate) name: String,
     pub(crate) attach: Option<String>,
     pub(crate) input: Vec<String>,
@@ -60,18 +63,30 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
         bail!("--reconnect-expect-output cannot be combined with forbidden-operation probes");
     }
 
-    let payload = match options.payload {
-        Some(payload) => payload,
+    if options.payload.is_some() && options.code.is_some() {
+        bail!("--payload and --code are mutually exclusive");
+    }
+
+    // Resolve the pairing inputs into a PairingTicket: --payload (or stdin)
+    // carries the compact ticket string directly (the QR path), while --code
+    // resolves the daemon's reachability through the relay rendezvous endpoint
+    // (the typed-code path), mirroring mobile-core's pair_with_code.
+    let ticket = match options.code {
+        Some(code) => resolve_code_ticket(&code, options.relay_control_url.as_deref()).await?,
         None => {
-            let mut buffer = String::new();
-            std::io::stdin()
-                .read_to_string(&mut buffer)
-                .context("read pairing payload from stdin")?;
-            extract_json_payload(&buffer)?.to_string()
+            let ticket_string = match options.payload {
+                Some(payload) => payload,
+                None => {
+                    let mut buffer = String::new();
+                    std::io::stdin()
+                        .read_to_string(&mut buffer)
+                        .context("read pairing ticket from stdin")?;
+                    buffer
+                }
+            };
+            PairingTicket::decode(ticket_string.trim()).context("decode pairing ticket")?
         }
     };
-    let payload: PairingPayload =
-        serde_json::from_str(&payload).context("decode pairing payload JSON")?;
 
     let secret_key = load_or_create_secret_key(options.secret_key_path.as_deref())?;
     let endpoint = Endpoint::builder(presets::N0)
@@ -80,7 +95,7 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
         .await
         .context("bind test iroh endpoint")?;
 
-    let (mut send, mut recv) = open_stream(&endpoint, &payload).await?;
+    let (mut send, mut recv) = open_stream(&endpoint, &ticket).await?;
 
     if options.expect_protocol_mismatch {
         write_msg(
@@ -111,8 +126,8 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
     if !options.connect_only {
         write_msg(
             &mut send,
-            &ClientToServerMsg::PairWithToken {
-                pair_token: payload.pair_token.clone(),
+            &ClientToServerMsg::PairWithCode {
+                code: normalize_code(&ticket.code),
                 device_name: options.name,
                 device_node_id: endpoint.id().to_string(),
             },
@@ -197,7 +212,7 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
             }
             reconnect_and_expect_replay(
                 &endpoint,
-                &payload,
+                &ticket,
                 attached_session_id,
                 last_seen_seq,
                 &options.reconnect_expect_output,
@@ -258,9 +273,9 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
 
 async fn open_stream(
     endpoint: &Endpoint,
-    payload: &PairingPayload,
+    ticket: &PairingTicket,
 ) -> Result<(SendStream, RecvStream)> {
-    let addr = endpoint_addr(payload)?;
+    let addr = endpoint_addr(ticket)?;
     let conn = endpoint
         .connect(addr, FIELDWORK_ALPN)
         .await
@@ -270,9 +285,9 @@ async fn open_stream(
 
 async fn open_authenticated_stream(
     endpoint: &Endpoint,
-    payload: &PairingPayload,
+    ticket: &PairingTicket,
 ) -> Result<(SendStream, RecvStream)> {
-    let (mut send, mut recv) = open_stream(endpoint, payload).await?;
+    let (mut send, mut recv) = open_stream(endpoint, ticket).await?;
     write_msg(
         &mut send,
         &ClientToServerMsg::Hello {
@@ -288,7 +303,7 @@ async fn open_authenticated_stream(
 
 async fn reconnect_and_expect_replay(
     endpoint: &Endpoint,
-    payload: &PairingPayload,
+    ticket: &PairingTicket,
     session_id: SessionId,
     last_seen_seq: u64,
     expected: &[String],
@@ -296,7 +311,7 @@ async fn reconnect_and_expect_replay(
 ) -> Result<()> {
     let start = Instant::now();
     let (mut send, mut recv) =
-        tokio::time::timeout(timeout, open_authenticated_stream(endpoint, payload))
+        tokio::time::timeout(timeout, open_authenticated_stream(endpoint, ticket))
             .await
             .context("timed out reconnecting to daemon iroh endpoint")??;
     write_msg(
@@ -463,17 +478,17 @@ fn resolve_session<'a>(sessions: &'a [SessionSummary], target: &str) -> Result<&
         .with_context(|| format!("session not found: {target}"))
 }
 
-fn endpoint_addr(payload: &PairingPayload) -> Result<EndpointAddr> {
-    let endpoint_id = payload
+fn endpoint_addr(ticket: &PairingTicket) -> Result<EndpointAddr> {
+    let endpoint_id = ticket
         .node_id
         .parse()
         .context("parse daemon iroh node id")?;
     let mut addrs = Vec::new();
-    if let Some(relay_url) = &payload.relay_url {
+    if let Some(relay_url) = &ticket.relay_url {
         let relay_url: RelayUrl = relay_url.parse().context("parse daemon relay URL")?;
         addrs.push(TransportAddr::Relay(relay_url));
     }
-    for addr in &payload.addrs {
+    for addr in &ticket.addrs {
         let addr: SocketAddr = addr.parse().context("parse daemon direct address")?;
         addrs.push(TransportAddr::Ip(addr));
     }
@@ -699,30 +714,64 @@ where
     Ok(())
 }
 
-fn extract_json_payload(input: &str) -> Result<&str> {
-    let start = input
-        .find('{')
-        .context("stdin did not contain JSON payload")?;
-    let end = input
-        .rfind('}')
-        .context("stdin did not contain JSON payload")?;
-    if end < start {
-        bail!("stdin did not contain JSON payload");
+/// Relay rendezvous response carrying the opaque encoded [`PairingTicket`].
+#[derive(Deserialize)]
+struct ResolvePairingResponse {
+    /// `fw1`-prefixed ticket string published by the daemon under the code.
+    ticket_blob: String,
+}
+
+/// Resolves a typed pairing code into a [`PairingTicket`] via the relay.
+///
+/// Mirrors mobile-core's `pair_with_code`: normalize the code, then exchange it
+/// for the daemon's ticket through the relay rendezvous endpoint. Requires a
+/// relay control URL from `--relay-control-url` or `FIELDWORK_RELAY_CONTROL_URL`.
+async fn resolve_code_ticket(code: &str, relay_control_url: Option<&str>) -> Result<PairingTicket> {
+    let code = normalize_code(code);
+    let relay_control_url = relay_control_url
+        .map(str::to_string)
+        .or_else(|| std::env::var("FIELDWORK_RELAY_CONTROL_URL").ok())
+        .context(
+            "--code requires a relay control URL via --relay-control-url or FIELDWORK_RELAY_CONTROL_URL",
+        )?;
+    let relay_control_url = relay_control_url.trim_end_matches('/');
+    let url = format!("{relay_control_url}/v1/pair/resolve/{code}");
+
+    let response = reqwest::Client::new()
+        .get(&url)
+        .send()
+        .await
+        .context("resolve pairing code via relay")?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        bail!("pairing code not found or expired");
     }
-    Ok(&input[start..=end])
+    if !response.status().is_success() {
+        bail!("relay resolve returned {}", response.status());
+    }
+    let resolved: ResolvePairingResponse = response
+        .json()
+        .await
+        .context("decode relay resolve response")?;
+    PairingTicket::decode(resolved.ticket_blob.trim()).context("decode resolved pairing ticket")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_json_payload, load_or_create_secret_key_at};
+    use super::load_or_create_secret_key_at;
+    use fieldwork_protocol::PairingTicket;
 
     #[test]
-    fn extracts_pair_payload_from_qr_output() {
-        let input = "qr\n{\"node_id\":\"n\",\"addrs\":[],\"pair_token\":\"t\",\"expires_at\":1}\n";
-        assert_eq!(
-            extract_json_payload(input).unwrap(),
-            "{\"node_id\":\"n\",\"addrs\":[],\"pair_token\":\"t\",\"expires_at\":1}"
-        );
+    fn decodes_pair_ticket_string_with_surrounding_whitespace() {
+        let ticket = PairingTicket {
+            code: "ABC12".to_string(),
+            node_id: "n".to_string(),
+            relay_url: None,
+            addrs: vec![],
+            expires_at: 1,
+        };
+        let encoded = ticket.encode().unwrap();
+        let padded = format!("\n  {encoded}\t\n");
+        assert_eq!(PairingTicket::decode(padded.trim()).unwrap(), ticket);
     }
 
     #[test]

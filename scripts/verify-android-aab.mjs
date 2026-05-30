@@ -9,11 +9,21 @@ const root = process.cwd();
 const args = process.argv.slice(2);
 const expectUnsigned = args.includes("--expect-unsigned");
 const expectSigned = args.includes("--expect-signed");
+const expectRelayControlUrl = args.includes("--expect-relay-control-url");
 const aabArg = args.find((arg) => !arg.startsWith("--"));
 const aab = path.resolve(
   root,
   aabArg || "apps/android/app/build/outputs/bundle/release/app-release.aab",
 );
+const expectedApplicationId = "app.fieldwork.android";
+const expectedVersionName = "1.0";
+const expectedVersionCode = "1";
+const releaseBuildConfig = path.resolve(
+  root,
+  process.env.FIELDWORK_ANDROID_RELEASE_BUILDCONFIG ||
+    "apps/android/app/build/generated/source/buildConfig/release/app/fieldwork/android/BuildConfig.java",
+);
+const jarsigner = process.env.FIELDWORK_JARSIGNER || "jarsigner";
 const requiredEntries = [
   "base/manifest/AndroidManifest.xml",
   "base/lib/arm64-v8a/libfieldwork_mobile_core.so",
@@ -21,12 +31,14 @@ const requiredEntries = [
   "base/lib/x86_64/libfieldwork_mobile_core.so",
 ];
 const requiredManifestStrings = [
-  "app.fieldwork.android",
+  expectedApplicationId,
+  "versionCode",
+  "versionName",
+  expectedVersionName,
   "android.permission.INTERNET",
   "android.permission.CAMERA",
   "android.permission.POST_NOTIFICATIONS",
   "android.permission.USE_BIOMETRIC",
-  "io.sentry.auto-init",
   "firebase_messaging_auto_init_enabled",
   "firebase_analytics_collection_enabled",
   "allowBackup",
@@ -43,6 +55,8 @@ const forbiddenManifestStrings = [
   "android.permission.READ_CONTACTS",
   "android.permission.READ_MEDIA_IMAGES",
   "android.permission.READ_EXTERNAL_STORAGE",
+  "debuggable",
+  "DEBUGGABLE",
   "last_line",
   "session_name",
   "session_name_hash",
@@ -95,6 +109,9 @@ if (expectUnsigned) {
 if (expectSigned && signatureEntries.length === 0) {
   failures.push("release AAB should be signed but contains no META-INF signature entries");
 }
+if (expectSigned && signatureEntries.length > 0) {
+  verifySignedBundleWithJarsigner(failures);
+}
 
 const manifest = readBundleEntry("base/manifest/AndroidManifest.xml");
 const usesPermissions = extractUsesPermissions(manifest);
@@ -118,13 +135,15 @@ for (const permission of allowedUsesPermissions) {
     failures.push(`AAB manifest is missing expected uses-permission ${permission}`);
   }
 }
+verifyReleaseBuildConfig(failures);
+verifyNoCrashReportingSdk(failures, manifest);
 
 if (failures.length > 0) {
   fail(failures.join("\n"));
 }
 
 console.log(
-  `Android AAB ok: ${requiredEntries.slice(1).join(", ")}; packaged manifest uses-permission allowlist and privacy surface ok${expectUnsigned ? "; unsigned local bundle ok" : ""}${expectSigned ? "; signed release bundle ok" : ""}`,
+  `Android AAB ok: ${requiredEntries.slice(1).join(", ")}; packaged manifest identity, version, uses-permission allowlist, and privacy surface ok${expectUnsigned ? "; unsigned local bundle ok" : ""}${expectSigned ? "; signed release bundle ok" : ""}${expectRelayControlUrl ? "; release relay control URL ok" : ""}`,
 );
 
 function isJarSignatureEntry(entry) {
@@ -135,6 +154,7 @@ function readBundleEntry(entry) {
   const entryResult = spawnSync("unzip", ["-p", aab, entry], {
     cwd: root,
     encoding: "latin1",
+    maxBuffer: 512 * 1024 * 1024,
   });
   if (entryResult.status !== 0) {
     process.stdout.write(entryResult.stdout);
@@ -152,6 +172,101 @@ function extractUsesPermissions(manifest) {
     permissions.add(match[1]);
   }
   return permissions;
+}
+
+function verifyReleaseBuildConfig(failures) {
+  if (!fs.existsSync(releaseBuildConfig)) {
+    failures.push(
+      `missing release BuildConfig: ${path.relative(root, releaseBuildConfig)}; run apps/android/gradlew --no-daemon :app:bundleRelease`,
+    );
+    return;
+  }
+  const text = fs.readFileSync(releaseBuildConfig, "utf8");
+  const checks = [
+    [
+      new RegExp(`\\bAPPLICATION_ID\\s*=\\s*"${escapeRegExp(expectedApplicationId)}"`),
+      `release BuildConfig must target ${expectedApplicationId}`,
+    ],
+    [/\bBUILD_TYPE\s*=\s*"release"/, "release BuildConfig must be the release variant"],
+    [/\bDEBUG\s*=\s*false\b/, "release BuildConfig must set DEBUG=false"],
+    [
+      new RegExp(`\\bVERSION_CODE\\s*=\\s*${escapeRegExp(expectedVersionCode)}\\b`),
+      `release BuildConfig must set VERSION_CODE=${expectedVersionCode}`,
+    ],
+    [
+      new RegExp(`\\bVERSION_NAME\\s*=\\s*"${escapeRegExp(expectedVersionName)}"`),
+      `release BuildConfig must set VERSION_NAME=${expectedVersionName}`,
+    ],
+    [/\bFIELDWORK_BIOMETRIC_BYPASS\s*=\s*false\b/, "release BuildConfig must disable biometric bypass"],
+    [/\bFIELDWORK_DEBUG_PAIRING_CODE\s*=\s*""/, "release BuildConfig must not embed a debug pairing code"],
+  ];
+  if (expectRelayControlUrl) {
+    checks.push([
+      /\bFIELDWORK_RELAY_CONTROL_URL\s*=\s*"https:\/\/[^"]+"/,
+      "release BuildConfig must set FIELDWORK_RELAY_CONTROL_URL to an https:// relay control endpoint",
+    ]);
+  }
+  for (const [pattern, message] of checks) {
+    if (!pattern.test(text)) {
+      failures.push(message);
+    }
+  }
+}
+
+function verifyNoCrashReportingSdk(failures, manifest) {
+  const forbiddenMarkers = ["io/sentry", "io.sentry", "SentryAndroid", "sentry-android"];
+  for (const entry of entries) {
+    if (forbiddenMarkers.some((marker) => entry.toLowerCase().includes(marker.toLowerCase()))) {
+      failures.push(`AAB contains forbidden Sentry SDK entry ${entry}`);
+    }
+  }
+
+  for (const marker of forbiddenMarkers) {
+    if (manifest.includes(marker)) {
+      failures.push(`AAB manifest contains forbidden Sentry SDK marker ${marker}`);
+    }
+  }
+
+  const dexEntries = [...entries].filter((entry) => /^base\/dex\/classes(?:\d*)\.dex$/.test(entry));
+  for (const entry of dexEntries) {
+    const contents = readBundleEntry(entry);
+    for (const marker of forbiddenMarkers) {
+      if (contents.includes(marker)) {
+        failures.push(`AAB contains forbidden Sentry SDK marker ${marker} in ${entry}`);
+      }
+    }
+  }
+}
+
+function verifySignedBundleWithJarsigner(failures) {
+  const result = spawnSync(jarsigner, ["-verify", "-certs", aab], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (result.error) {
+    failures.push(`release AAB jarsigner verification failed to start: ${result.error.message}`);
+    return;
+  }
+  if (result.status !== 0) {
+    failures.push(`release AAB jarsigner verification failed:\n${trimCommandOutput(result.stdout)}${trimCommandOutput(result.stderr)}`);
+    return;
+  }
+  const output = `${result.stdout}\n${result.stderr}`;
+  if (!/\bjar verified\b/i.test(output)) {
+    failures.push("release AAB jarsigner verification did not report jar verified");
+  }
+  if (/\bAndroid Debug\b/i.test(output) || /\bCN\s*=\s*Android Debug\b/i.test(output)) {
+    failures.push("release AAB appears to be signed with the Android debug certificate");
+  }
+}
+
+function trimCommandOutput(text) {
+  const trimmed = String(text || "").trim();
+  return trimmed.length > 0 ? `${trimmed}\n` : "";
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function fail(message) {

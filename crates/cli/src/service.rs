@@ -75,21 +75,115 @@ fn install_ctx() -> Result<ServiceInstallCtx> {
 }
 
 fn install_ctx_for(program: PathBuf) -> Result<ServiceInstallCtx> {
+    let restart_policy = RestartPolicy::OnFailure {
+        delay_secs: Some(5),
+        max_retries: None,
+        reset_after_secs: None,
+    };
+    let environment = service_environment();
+    #[cfg(target_os = "macos")]
+    let contents = Some(launchd_plist(&program, environment.as_deref()));
+    #[cfg(not(target_os = "macos"))]
+    let contents = None;
+
     Ok(ServiceInstallCtx {
         label: label()?,
         program,
         args: Vec::<OsString>::new(),
-        contents: None,
+        contents,
         username: None,
         working_directory: None,
-        environment: None,
+        environment,
         autostart: true,
-        restart_policy: RestartPolicy::OnFailure {
-            delay_secs: Some(5),
-            max_retries: None,
-            reset_after_secs: None,
-        },
+        restart_policy,
     })
+}
+
+fn service_environment() -> Option<Vec<(String, String)>> {
+    const PASSTHROUGH: &[&str] = &[
+        "HOME",
+        "PATH",
+        "SHELL",
+        "XDG_RUNTIME_DIR",
+        "XDG_CONFIG_HOME",
+        "XDG_STATE_HOME",
+        "FIELDWORK_LOG_DIR",
+        "FIELDWORK_RELAY_CONTROL_URL",
+        "FIELDWORK_IROH_RELAY_URL",
+        "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED",
+        "FIELDWORK_TELEMETRY_OPT_IN",
+    ];
+
+    let values = PASSTHROUGH
+        .iter()
+        .filter_map(|key| {
+            std::env::var(key)
+                .ok()
+                .filter(|value| !value.is_empty())
+                .map(|value| ((*key).to_string(), value))
+        })
+        .collect::<Vec<_>>();
+
+    if values.is_empty() {
+        None
+    } else {
+        Some(values)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn launchd_plist(program: &Path, environment: Option<&[(String, String)]>) -> String {
+    let mut plist = String::from(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>app.fieldwork.daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>"#,
+    );
+    plist.push_str(&xml_escape(&program.display().to_string()));
+    plist.push_str(
+        r#"</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>Disabled</key>
+  <true/>
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+"#,
+    );
+    if let Some(environment) = environment {
+        plist.push_str("  <key>EnvironmentVariables</key>\n  <dict>\n");
+        for (key, value) in environment {
+            plist.push_str("    <key>");
+            plist.push_str(&xml_escape(key));
+            plist.push_str("</key>\n    <string>");
+            plist.push_str(&xml_escape(value));
+            plist.push_str("</string>\n");
+        }
+        plist.push_str("  </dict>\n");
+    }
+    plist.push_str("</dict>\n</plist>\n");
+    plist
+}
+
+#[cfg(target_os = "macos")]
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 fn uninstall_ctx() -> ServiceUninstallCtx {
@@ -172,32 +266,59 @@ fn ensure_executable(_path: &Path) -> Result<()> {
 fn ensure_service_launch_allowed(path: &Path) -> Result<()> {
     use std::process::Command;
 
-    let output = Command::new("spctl")
-        .args(["--assess", "--type", "execute"])
+    let signature = Command::new("codesign")
+        .args(["--verify", "--verbose=2"])
         .arg(path)
         .output()
-        .with_context(|| format!("run macOS Gatekeeper assessment for {}", path.display()))?;
+        .with_context(|| format!("verify macOS code signature for {}", path.display()))?;
 
-    if output.status.success() {
-        return Ok(());
+    if !signature.status.success() {
+        let detail = command_output_detail(&signature, "codesign");
+        bail!(
+            "macOS launchd preflight rejected fieldworkd: code signature verification failed for {}\n\
+             Install the npm Fieldwork package or repair the local binary with `codesign --force --sign - {}` \
+             after verifying its origin, then rerun `fieldwork daemon install`.\n\
+             codesign output: {detail}",
+            path.display(),
+            path.display(),
+        );
     }
 
+    let quarantine = Command::new("xattr")
+        .args(["-p", "com.apple.quarantine"])
+        .arg(path)
+        .output()
+        .with_context(|| format!("read macOS quarantine xattr for {}", path.display()))?;
+
+    if quarantine.status.success() {
+        let value = String::from_utf8_lossy(&quarantine.stdout)
+            .trim()
+            .to_string();
+        if !value.is_empty() {
+            bail!(
+                "macOS launchd preflight rejected fieldworkd: {} has com.apple.quarantine set.\n\
+                 Install through npm or remove quarantine only from this verified Fieldwork binary with \
+                 `xattr -d com.apple.quarantine {}`.\n\
+                 quarantine xattr: {value}",
+                path.display(),
+                path.display(),
+            );
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn command_output_detail(output: &std::process::Output, command: &str) -> String {
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let detail = match (stdout.is_empty(), stderr.is_empty()) {
-        (true, true) => format!("spctl exited with {}", output.status),
+    match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => format!("{command} exited with {}", output.status),
         (false, true) => stdout,
         (true, false) => stderr,
         (false, false) => format!("{stdout}\n{stderr}"),
-    };
-
-    bail!(
-        "macOS Gatekeeper rejected fieldworkd for launchd execution: {}\n\
-         Install the signed/notarized Fieldwork npm package or use a notarized release artifact, \
-         then rerun `fieldwork daemon install`.\n\
-         spctl output: {detail}",
-        path.display()
-    );
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -259,10 +380,13 @@ mod tests {
         assert_eq!(ctx.label.to_string(), SERVICE_LABEL);
         assert_eq!(ctx.program, daemon);
         assert!(ctx.args.is_empty());
+        #[cfg(target_os = "macos")]
+        assert!(ctx.contents.is_some());
+        #[cfg(not(target_os = "macos"))]
         assert!(ctx.contents.is_none());
         assert!(ctx.username.is_none());
         assert!(ctx.working_directory.is_none());
-        assert!(ctx.environment.is_none());
+        assert!(ctx.environment.is_some());
         assert!(ctx.autostart);
         match ctx.restart_policy {
             RestartPolicy::OnFailure {
@@ -276,6 +400,65 @@ mod tests {
             }
             other => panic!("unexpected restart policy: {other:?}"),
         }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    fn service_install_environment_persists_non_secret_runtime_context() {
+        let _guard = env_lock();
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join("home");
+        let runtime = temp.path().join("runtime");
+        let config = temp.path().join("config");
+        let state = temp.path().join("state");
+        fs::create_dir(&home).unwrap();
+        fs::create_dir(&runtime).unwrap();
+        fs::create_dir(&config).unwrap();
+        fs::create_dir(&state).unwrap();
+        let _env = EnvOverride::new(&[
+            ("HOME", home.as_os_str().to_os_string()),
+            ("PATH", OsString::from("/opt/fieldwork-test/bin:/usr/bin")),
+            ("XDG_RUNTIME_DIR", runtime.as_os_str().to_os_string()),
+            ("XDG_CONFIG_HOME", config.as_os_str().to_os_string()),
+            ("XDG_STATE_HOME", state.as_os_str().to_os_string()),
+            (
+                "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED",
+                OsString::from("false"),
+            ),
+            (
+                "FIELDWORK_IROH_SECRET_KEY_B64",
+                OsString::from("secret-must-not-be-persisted"),
+            ),
+            (
+                "FIELDWORK_RELAY_SIGNING_KEY_B64",
+                OsString::from("secret-must-not-be-persisted"),
+            ),
+        ]);
+
+        let ctx = install_ctx_for(temp.path().join("fieldworkd")).unwrap();
+        let environment = ctx.environment.expect("service env should be captured");
+
+        assert!(environment.contains(&("HOME".to_string(), home.display().to_string())));
+        assert!(environment.contains(&(
+            "PATH".to_string(),
+            "/opt/fieldwork-test/bin:/usr/bin".to_string()
+        )));
+        assert!(
+            environment.contains(&("XDG_RUNTIME_DIR".to_string(), runtime.display().to_string()))
+        );
+        assert!(
+            environment.contains(&("XDG_CONFIG_HOME".to_string(), config.display().to_string()))
+        );
+        assert!(environment.contains(&("XDG_STATE_HOME".to_string(), state.display().to_string())));
+        assert!(environment.contains(&(
+            "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED".to_string(),
+            "false".to_string()
+        )));
+        assert!(
+            environment
+                .iter()
+                .all(|(key, _)| !key.contains("SECRET") && !key.contains("SIGNING_KEY"))
+        );
     }
 
     #[test]
@@ -324,8 +507,8 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn rejects_service_install_when_colocated_daemon_fails_macos_assessment() {
-        let _spctl = FakeSpctl::new(1);
+    fn rejects_service_install_when_colocated_daemon_fails_macos_signature_check() {
+        let _tools = FakeMacTrustTools::new(false, false);
         let temp = tempfile::tempdir().unwrap();
         let daemon = temp.path().join("fieldworkd");
         fs::write(&daemon, b"daemon").unwrap();
@@ -334,9 +517,25 @@ mod tests {
         let error = ensure_service_launch_allowed(&daemon).unwrap_err();
 
         let message = error.to_string();
-        assert!(message.contains("macOS Gatekeeper rejected fieldworkd for launchd execution"));
-        assert!(message.contains("signed/notarized Fieldwork npm package"));
-        assert!(message.contains("spctl output: fieldworkd: rejected"));
+        assert!(message.contains("macOS launchd preflight rejected fieldworkd"));
+        assert!(message.contains("codesign --force --sign -"));
+        assert!(message.contains("codesign output: fieldworkd: code object is not signed"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn rejects_service_install_when_colocated_daemon_is_quarantined() {
+        let _tools = FakeMacTrustTools::new(true, true);
+        let temp = tempfile::tempdir().unwrap();
+        let daemon = temp.path().join("fieldworkd");
+        fs::write(&daemon, b"daemon").unwrap();
+        make_executable(&daemon);
+
+        let error = ensure_service_launch_allowed(&daemon).unwrap_err();
+
+        let message = error.to_string();
+        assert!(message.contains("has com.apple.quarantine set"));
+        assert!(message.contains("xattr -d com.apple.quarantine"));
     }
 
     #[test]
@@ -395,12 +594,15 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let fake_bin = temp.path().join("bin");
         let home = temp.path().join("home");
+        let runtime = temp.path().join("runtime");
         fs::create_dir(&fake_bin).unwrap();
         fs::create_dir(&home).unwrap();
+        fs::create_dir(&runtime).unwrap();
         write_fake_command(&fake_bin.join("launchctl"));
         let _env = EnvOverride::new(&[
             ("HOME", home.as_os_str().to_os_string()),
             ("PATH", path_with_prefix(&fake_bin)),
+            ("XDG_RUNTIME_DIR", runtime.as_os_str().to_os_string()),
         ]);
         let daemon = temp.path().join("fieldworkd");
         fs::write(&daemon, b"daemon").unwrap();
@@ -424,6 +626,14 @@ mod tests {
         assert!(plist.contains("<key>SuccessfulExit</key>"));
         assert!(plist.contains("<false/>"));
         assert!(plist.contains("<key>Disabled</key>"));
+        assert!(plist.contains("<key>LimitLoadToSessionType</key>"));
+        assert!(plist.contains("<string>Aqua</string>"));
+        assert!(plist.contains("<key>EnvironmentVariables</key>"));
+        assert!(plist.contains("<key>HOME</key>"));
+        assert!(plist.contains(&format!("<string>{}</string>", home.display())));
+        assert!(plist.contains("<key>PATH</key>"));
+        assert!(plist.contains("<key>XDG_RUNTIME_DIR</key>"));
+        assert!(plist.contains(&format!("<string>{}</string>", runtime.display())));
 
         let calls = fs::read_to_string(fake_bin.join("calls.log")).unwrap();
         assert!(calls.contains(&format!("load {}", plist_path.display())));
@@ -437,12 +647,15 @@ mod tests {
         let fake_bin = temp.path().join("bin");
         let config = temp.path().join("config");
         let home = temp.path().join("home");
+        let runtime = temp.path().join("runtime");
         fs::create_dir(&fake_bin).unwrap();
         fs::create_dir(&config).unwrap();
         fs::create_dir(&home).unwrap();
+        fs::create_dir(&runtime).unwrap();
         write_fake_command(&fake_bin.join("systemctl"));
         let _env = EnvOverride::new(&[
             ("HOME", home.as_os_str().to_os_string()),
+            ("XDG_RUNTIME_DIR", runtime.as_os_str().to_os_string()),
             ("XDG_CONFIG_HOME", config.as_os_str().to_os_string()),
             ("PATH", path_with_prefix(&fake_bin)),
         ]);
@@ -466,6 +679,16 @@ mod tests {
         assert!(unit.contains("[Install]"));
         assert!(unit.contains("WantedBy=default.target"));
         assert!(!unit.contains("\nUser="));
+        assert!(unit.contains(&format!("Environment=\"HOME={}\"", home.display())));
+        assert!(unit.contains("Environment=\"PATH="));
+        assert!(unit.contains(&format!(
+            "Environment=\"XDG_RUNTIME_DIR={}\"",
+            runtime.display()
+        )));
+        assert!(unit.contains(&format!(
+            "Environment=\"XDG_CONFIG_HOME={}\"",
+            config.display()
+        )));
 
         let calls = fs::read_to_string(fake_bin.join("calls.log")).unwrap();
         assert!(calls.contains(&format!("--user enable {}", unit_path.display())));
@@ -560,16 +783,37 @@ mod tests {
     }
 
     #[cfg(target_os = "macos")]
-    fn write_fake_spctl(path: &Path, exit_code: i32) {
+    fn write_fake_codesign(path: &Path, signed: bool) {
+        let exit_code = if signed { 0 } else { 1 };
         fs::write(
             path,
             format!(
                 "#!/bin/sh\n\
-                 printf '%s\\n' \"$*\" >> \"$(dirname \"$0\")/calls.log\"\n\
+                 printf 'codesign %s\\n' \"$*\" >> \"$(dirname \"$0\")/calls.log\"\n\
                  if [ {exit_code} -ne 0 ]; then\n\
-                 printf 'fieldworkd: rejected\\n' >&2\n\
+                 printf 'fieldworkd: code object is not signed\\n' >&2\n\
                  fi\n\
-                 exit {exit_code}\n"
+                 exit {exit_code}\n",
+                exit_code = exit_code
+            ),
+        )
+        .unwrap();
+        make_executable(path);
+    }
+
+    #[cfg(target_os = "macos")]
+    fn write_fake_xattr(path: &Path, quarantined: bool) {
+        let exit_code = if quarantined { 0 } else { 1 };
+        fs::write(
+            path,
+            format!(
+                "#!/bin/sh\n\
+                 printf 'xattr %s\\n' \"$*\" >> \"$(dirname \"$0\")/calls.log\"\n\
+                 if [ {exit_code} -eq 0 ]; then\n\
+                 printf '0081;fieldwork quarantine\\n'\n\
+                 fi\n\
+                 exit {exit_code}\n",
+                exit_code = exit_code
             ),
         )
         .unwrap();
@@ -624,20 +868,21 @@ mod tests {
     }
 
     #[cfg(target_os = "macos")]
-    struct FakeSpctl {
+    struct FakeMacTrustTools {
         _guard: std::sync::MutexGuard<'static, ()>,
         _env: EnvOverride,
         _temp: tempfile::TempDir,
     }
 
     #[cfg(target_os = "macos")]
-    impl FakeSpctl {
-        fn new(exit_code: i32) -> Self {
+    impl FakeMacTrustTools {
+        fn new(signed: bool, quarantined: bool) -> Self {
             let guard = env_lock();
             let temp = tempfile::tempdir().unwrap();
             let fake_bin = temp.path().join("bin");
             fs::create_dir(&fake_bin).unwrap();
-            write_fake_spctl(&fake_bin.join("spctl"), exit_code);
+            write_fake_codesign(&fake_bin.join("codesign"), signed);
+            write_fake_xattr(&fake_bin.join("xattr"), quarantined);
             let env = EnvOverride::new(&[("PATH", path_with_prefix(&fake_bin))]);
             Self {
                 _guard: guard,

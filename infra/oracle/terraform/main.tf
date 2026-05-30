@@ -146,6 +146,7 @@ resource "oci_core_instance" "relay" {
   availability_domain = local.availability_domain
   compartment_id      = var.compartment_ocid
   display_name        = var.name
+  fault_domain        = var.fault_domain != "" ? var.fault_domain : null
   shape               = var.shape
   freeform_tags       = local.common_tags
 

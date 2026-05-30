@@ -111,7 +111,6 @@ function verifyAndroidSourceManifest(xml) {
     "apps/android/app/src/main/AndroidManifest.xml source permissions",
   );
 
-  requireAndroidMetaFalse(xml, "io.sentry.auto-init");
   requireAndroidMetaFalse(xml, "firebase_messaging_auto_init_enabled");
   requireAndroidMetaFalse(xml, "firebase_analytics_collection_enabled");
   requireAndroidApplicationAttr(xml, "android:allowBackup", "false");
@@ -176,13 +175,13 @@ function verifyAndroidBiometricGate(text, testText, gradleText) {
   );
   requireText(
     gradleText,
-    "FIELDWORK_ANDROID_PAIRING_PAYLOAD",
+    "FIELDWORK_ANDROID_PAIRING_CODE",
     "Android debug pairing prefill must require an explicit emulator-smoke environment variable",
   );
   requireText(
     gradleText,
-    'buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_PAYLOAD", "\\"\\"")',
-    "Android default config must keep debug pairing payload empty",
+    'buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_CODE", "\\"\\"")',
+    "Android default config must keep debug pairing code empty",
   );
   const releaseBuildType = sliceBetween(gradleText, 'getByName("release") {', "if (keystorePropertiesFile.exists())");
   requireText(
@@ -192,8 +191,8 @@ function verifyAndroidBiometricGate(text, testText, gradleText) {
   );
   requireText(
     releaseBuildType,
-    'buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_PAYLOAD", "\\"\\"")',
-    "Android release builds must force the debug pairing payload empty",
+    'buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_CODE", "\\"\\"")',
+    "Android release builds must force the debug pairing code empty",
   );
   if (/BiometricManager\.Authenticators\.DEVICE_CREDENTIAL/.test(text)) {
     failures.push("Android biometric gate must not allow device credential fallback");
@@ -607,7 +606,6 @@ function verifyAndroidMergedManifest(xml, rel) {
     }
   }
 
-  requireAndroidMetaFalse(xml, "io.sentry.auto-init", rel);
   requireAndroidMetaFalse(xml, "firebase_messaging_auto_init_enabled", rel);
   requireAndroidMetaFalse(xml, "firebase_analytics_collection_enabled", rel);
   requireAndroidServiceExportedFalse(xml, ".push.FieldworkFirebaseMessagingService", rel);
@@ -626,13 +624,6 @@ function verifyIosInfoPlist(xml) {
     /(biometric|unlock).*terminal|terminal.*(biometric|unlock)/i,
     "iOS Face ID usage string must describe terminal unlock protection",
   );
-  requirePlistString(
-    xml,
-    "FieldworkSentryDsn",
-    /^\$\(FIELDWORK_SENTRY_DSN\)$/,
-    "iOS Sentry DSN must be injected from release build settings",
-  );
-
   for (const key of [
     "NSLocationWhenInUseUsageDescription",
     "NSMicrophoneUsageDescription",
@@ -725,13 +716,6 @@ function verifyIosPackageResolution(projectText, resolvedText) {
       version: "1.13.0",
       revision: "8e7a1e154f470e19c709a00a8768df348ba5fc43",
     },
-    {
-      label: "sentry-cocoa",
-      identity: "sentry-cocoa",
-      url: "https://github.com/getsentry/sentry-cocoa",
-      version: "9.13.0",
-      revision: "64c9c5cc401aefde0eda46a9192b36082533a79d",
-    },
   ];
 
   for (const dependency of expectedDirectPackages) {
@@ -763,7 +747,6 @@ function verifyIosPackageResolution(projectText, resolvedText) {
     "hdrhistogram-swift",
     "package-benchmark",
     "package-jemalloc",
-    "sentry-cocoa",
     "swift-argument-parser",
     "swift-atomics",
     "swift-docc-plugin",

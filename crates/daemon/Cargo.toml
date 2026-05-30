@@ -28,7 +28,6 @@ portable-pty.workspace = true
 redb.workspace = true
 reqwest.workspace = true
 rmp-serde.workspace = true
-sentry.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -42,5 +41,4 @@ wezterm-term.workspace = true
 [dev-dependencies]
 axum.workspace = true
 proptest.workspace = true
-sentry = { workspace = true, features = ["test"] }
 tempfile.workspace = true

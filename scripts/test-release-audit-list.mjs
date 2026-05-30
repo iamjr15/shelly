@@ -49,16 +49,15 @@ if (!packageScriptResult.stdout.includes(result.stdout)) {
 }
 
 for (const expected of [
-  "Unchecked PLAN.md gates: 38",
+  "Unchecked PLAN.md gates: 33",
   "ios-xcode (1)",
   "signing (4)",
   "publish (3)",
-  "provider (5)",
+  "provider (4)",
   "physical-device (14)",
   "30-minute physical Android terminal renderer dogfood",
   "store-console (2)",
-  "operator (9)",
-  "Operator: confirm npm publish rights for the platform child package family",
+  "operator (5)",
   "Block out the next 10 weeks",
 ]) {
   if (!result.stdout.includes(expected)) {

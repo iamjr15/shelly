@@ -14,7 +14,7 @@ when the desktop reattaches to the same daemon-owned PTY.
 
 - Use exactly one physical Android phone, not an emulator or AVD.
 - Install the signed release App Bundle output or APKs produced from it.
-- Do not use a debug build, biometric bypass, or debug pairing payload.
+- Do not use a debug build, biometric bypass, or debug pairing code.
 - Pair through the real QR scanner and explicit desktop approval before this
   gate, using the same constraints as `docs/ANDROID_PAIR_FLOW.md`.
 - Capture evidence with direct `adb`: device listing, dashboard screenshot, UI
@@ -30,7 +30,39 @@ enabled.
 
 ```sh
 export FW_ANDROID_SUBSCRIPTION_DIR="/tmp/fieldwork-android-subscription-$(date +%Y%m%d%H%M%S)"
-mkdir -p "$FW_ANDROID_SUBSCRIPTION_DIR"
+pnpm scaffold:android-session-subscription-evidence -- --dir "$FW_ANDROID_SUBSCRIPTION_DIR"
+```
+
+The scaffold writes `README.md`, `manifest.json`, `missing-files.txt`,
+`capture-checklist.md`, and a direct-adb `preflight.sh`. The helper captures
+release/device/package proof and Android UI/log evidence, but it does not create
+`desktop-create.txt`, `subscription-visible.txt`, or `subscription-replay.txt`;
+those must come from the real desktop-created session and Android-originated
+input flow.
+
+Before the desktop creates `fw_live_sub`, capture release/device/package proof
+and clear Android logs:
+
+```sh
+FIELDWORK_ANDROID_AAB=apps/android/app/build/outputs/bundle/release/app-release.aab \
+"$FW_ANDROID_SUBSCRIPTION_DIR/preflight.sh"
+```
+
+After the phone is paired and sitting on the dashboard, prove the subscribed
+session is not already visible:
+
+```sh
+FIELDWORK_ANDROID_SUBSCRIPTION_CAPTURE_BEFORE=true \
+"$FW_ANDROID_SUBSCRIPTION_DIR/preflight.sh"
+```
+
+After `desktop-create.txt`, `subscription-visible.txt`, and
+`subscription-replay.txt` are captured, collect the post-create Android evidence
+and run the verifier:
+
+```sh
+FIELDWORK_ANDROID_SUBSCRIPTION_CAPTURE_AFTER=true \
+"$FW_ANDROID_SUBSCRIPTION_DIR/preflight.sh"
 ```
 
 ## Release Build
@@ -48,7 +80,7 @@ The transcript must include `Android AAB ok:` and `signed release bundle ok`.
 Capture the release `BuildConfig` values:
 
 ```sh
-rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
+rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""' \
   apps/android/app/build/generated/source/buildConfig/release/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_ANDROID_SUBSCRIPTION_DIR/buildconfig.txt"
 ```
@@ -58,9 +90,18 @@ Capture the physical device list and install the release artifact:
 ```sh
 adb devices -l | tee "$FW_ANDROID_SUBSCRIPTION_DIR/adb-devices.txt"
 bundletool install-apks --apks /path/to/fieldwork-release.apks
+{
+  echo '$ adb shell pm path app.fieldwork.android'
+  adb shell pm path app.fieldwork.android
+  echo '$ adb shell dumpsys package app.fieldwork.android'
+  adb shell dumpsys package app.fieldwork.android
+} | tee "$FW_ANDROID_SUBSCRIPTION_DIR/package-info.txt"
 adb logcat -c
 adb logcat -b crash -c
 ```
+`package-info.txt` must prove the installed app is `app.fieldwork.android` with
+`versionName=1.0`, `versionCode=1`, and no `DEBUGGABLE` or `debuggable=true` markers.
+
 
 ## Pair And Prime Dashboard
 

@@ -49,7 +49,7 @@ try {
       'BUILD_TYPE = "debug"',
       'DEBUG = Boolean.parseBoolean("true")',
       "FIELDWORK_BIOMETRIC_BYPASS = false",
-      'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+      'FIELDWORK_DEBUG_PAIRING_CODE = ""',
     ].join("\n"),
   );
   expectStatus(debugBuild, 1, "debug BuildConfig should fail", "buildconfig.txt must prove the tested build is the release variant");
@@ -59,6 +59,30 @@ try {
   fs.writeFileSync(path.join(unsigned, "artifact-signing.txt"), "Android AAB ok: unsigned local bundle ok\n");
   expectStatus(unsigned, 1, "unsigned AAB evidence should fail", "artifact-signing.txt must prove the release App Bundle was signed");
 
+  const missingPackageInfo = path.join(temp, "missing-package-info");
+  writeFixture(missingPackageInfo);
+  fs.rmSync(path.join(missingPackageInfo, "package-info.txt"));
+  expectStatus(missingPackageInfo, 1, "missing installed package proof should fail", "missing evidence file: package-info.txt");
+
+  const wrongPackageVersion = path.join(temp, "wrong-package-version");
+  writeFixture(wrongPackageVersion);
+  fs.writeFileSync(
+    path.join(wrongPackageVersion, "package-info.txt"),
+    [
+      "package:/data/app/~~hash/app.fieldwork.android-base.apk",
+      "Packages:",
+      "  Package [app.fieldwork.android] (abc):",
+      "    versionCode=2 minSdk=30 targetSdk=36",
+      "    versionName=1.1",
+    ].join("\n"),
+  );
+  expectStatus(
+    wrongPackageVersion,
+    1,
+    "wrong installed package version should fail",
+    "package-info.txt must prove installed versionName=1.0",
+  );
+
   const slowPair = path.join(temp, "slow-pair");
   writeFixture(slowPair);
   fs.writeFileSync(path.join(slowPair, "pairing.txt"), writePairing({ pairFlowMs: 15001 }));
@@ -66,21 +90,29 @@ try {
 
   const deniedPair = path.join(temp, "denied-pair");
   writeFixture(deniedPair);
-  fs.writeFileSync(path.join(deniedPair, "pairing.txt"), `${writePairing()}Denied. Pair token has been consumed.\n`);
+  fs.writeFileSync(path.join(deniedPair, "pairing.txt"), `${writePairing()}Denied. Pairing code has been consumed.\n`);
   expectStatus(deniedPair, 1, "denied pair should fail", "pairing.txt must not be a denied pairing transcript");
 
   const missingApproval = path.join(temp, "missing-approval");
   writeFixture(missingApproval);
   fs.writeFileSync(
     path.join(missingApproval, "pairing.txt"),
-    '{"pair_token":"abc","contract_version":1}\nWaiting for a device to scan...\npair_flow_ms=481\n',
+    "Scan the QR with the Fieldwork app — or enter this code:\n    AB 4C7\nExpires in 10 minutes.\npair_flow_ms=481\n",
   );
   expectStatus(missingApproval, 1, "missing explicit approval should fail", "explicit desktop approval prompt");
 
-  const debugPayload = path.join(temp, "debug-payload");
+  const legacyJsonPayload = path.join(temp, "legacy-json-payload");
+  writeFixture(legacyJsonPayload);
+  fs.writeFileSync(
+    path.join(legacyJsonPayload, "pairing.txt"),
+    `${writePairing()}{"pair_token":"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567","contract_version":1}\n`,
+  );
+  expectStatus(legacyJsonPayload, 1, "legacy JSON pair_token payload should fail", "pairing.txt must not embed a legacy JSON pair_token payload");
+
+  const debugPayload = path.join(temp, "debug-code");
   writeFixture(debugPayload);
-  fs.writeFileSync(path.join(debugPayload, "pairing.txt"), `${writePairing()}FIELDWORK_DEBUG_PAIRING_PAYLOAD=true\n`);
-  expectStatus(debugPayload, 1, "debug pairing payload should fail", "pairing.txt must not use debug pairing payload injection");
+  fs.writeFileSync(path.join(debugPayload, "pairing.txt"), `${writePairing()}FIELDWORK_DEBUG_PAIRING_CODE=AB4C7\n`);
+  expectStatus(debugPayload, 1, "debug pairing code should fail", "pairing.txt must not use debug pairing code injection");
 
   const emptyDashboard = path.join(temp, "empty-dashboard");
   writeFixture(emptyDashboard);
@@ -115,7 +147,17 @@ function writeFixture(dir) {
   );
   fs.writeFileSync(
     path.join(dir, "artifact-signing.txt"),
-    "Android AAB ok: base/lib/arm64-v8a/libfieldwork_mobile_core.so; packaged manifest uses-permission allowlist and privacy surface ok; signed release bundle ok\n",
+    "Android AAB ok: base/lib/arm64-v8a/libfieldwork_mobile_core.so; packaged manifest identity, version, uses-permission allowlist, and privacy surface ok; signed release bundle ok\n",
+  );
+  fs.writeFileSync(
+    path.join(dir, "package-info.txt"),
+    [
+      "package:/data/app/~~hash/app.fieldwork.android-base.apk",
+      "Packages:",
+      "  Package [app.fieldwork.android] (abc):",
+      "    versionCode=1 minSdk=30 targetSdk=36",
+      "    versionName=1.0",
+    ].join("\n"),
   );
   fs.writeFileSync(
     path.join(dir, "buildconfig.txt"),
@@ -124,7 +166,7 @@ function writeFixture(dir) {
       'BUILD_TYPE = "release"',
       "DEBUG = false",
       "FIELDWORK_BIOMETRIC_BYPASS = false",
-      'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+      'FIELDWORK_DEBUG_PAIRING_CODE = ""',
     ].join("\n"),
   );
   fs.writeFileSync(path.join(dir, "pairing.txt"), writePairing());
@@ -145,10 +187,10 @@ function writeFixture(dir) {
 function writePairing(options = {}) {
   const pairFlowMs = options.pairFlowMs ?? 481;
   return [
-    '{"pair_token":"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567","contract_version":1}',
-    "Waiting for a device to scan...",
-    "Pair request from device Android Pixel_6",
-    "approve? [y/N]",
+    "Scan the QR with the Fieldwork app — or enter this code:",
+    "    AB 4C7",
+    "Expires in 10 minutes.",
+    'Pair request from device "Android Pixel_6" (a1b2c3d4e5f6) — approve? [y/N]',
     "Approved. Device is paired.",
     `pair_flow_ms=${pairFlowMs}`,
   ].join("\n") + "\n";

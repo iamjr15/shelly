@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import {
   verifyCleanAndroidLogs,
+  verifyInstalledAndroidPackageInfo,
   verifyNoAndroidSystemErrorOverlays,
   verifyPhysicalAndroidAdbDevices,
 } from "./android-evidence-common.mjs";
@@ -14,6 +15,7 @@ const hashPattern = /^[0-9a-f]{64}$/;
 const requiredFiles = [
   "adb-devices.txt",
   "artifact-signing.txt",
+  "package-info.txt",
   "buildconfig.txt",
   "relay-version.txt",
   "token-registration.txt",
@@ -41,6 +43,7 @@ for (const file of requiredFiles) {
 if (failures.length === 0) {
   verifyAdbDevices(readText("adb-devices.txt"));
   verifyArtifactSigning(readText("artifact-signing.txt"));
+  verifyPackageInfo(readText("package-info.txt"));
   verifyBuildConfig(readText("buildconfig.txt"));
   verifyRelayVersion(readText("relay-version.txt"));
   verifyTokenRegistration(readText("token-registration.txt"));
@@ -75,12 +78,16 @@ function verifyArtifactSigning(text) {
   requirePatternText(text, /\bsigned release bundle ok\b/, "artifact-signing.txt must prove the release App Bundle was signed");
 }
 
+function verifyPackageInfo(text) {
+  verifyInstalledAndroidPackageInfo(text, failures, { forbidDebuggable: true });
+}
+
 function verifyBuildConfig(text) {
   requirePatternText(text, /\bAPPLICATION_ID\s*=\s*"app\.fieldwork\.android"/, "buildconfig.txt must prove the tested release build targets app.fieldwork.android");
   requirePatternText(text, /\bBUILD_TYPE\s*=\s*"release"/, "buildconfig.txt must prove the tested build is the release variant");
   requirePatternText(text, /\bDEBUG\s*=\s*(?:false|Boolean\.parseBoolean\("false"\))/, "buildconfig.txt must prove BuildConfig.DEBUG is disabled");
   requirePatternText(text, /\bFIELDWORK_BIOMETRIC_BYPASS\s*=\s*false\b/, "buildconfig.txt must prove biometric bypass is disabled");
-  requirePatternText(text, /\bFIELDWORK_DEBUG_PAIRING_PAYLOAD\s*=\s*""/, "buildconfig.txt must prove no debug pairing payload is compiled into the release build");
+  requirePatternText(text, /\bFIELDWORK_DEBUG_PAIRING_CODE\s*=\s*""/, "buildconfig.txt must prove no debug pairing code is compiled into the release build");
 }
 
 function verifyRelayVersion(text) {

@@ -114,6 +114,17 @@ run_check() {
       continue
     fi
 
+    if [[ "$script" == "scripts/smoke-android-emulator-session-subscription.sh" &&
+      "$attempt" -eq 1 &&
+      -z "${FIELDWORK_ANDROID_AGGREGATE_NO_RETRY:-}" ]] &&
+      grep -q "session-subscription smoke was too slow" "$log_file"; then
+      echo "session-subscription hit a transient emulator timing outlier; retrying once with the same strict limit." >&2
+      rm -f "$log_file"
+      attempt=2
+      sleep "${FIELDWORK_ANDROID_AGGREGATE_RETRY_DELAY_SECONDS:-5}"
+      continue
+    fi
+
     echo "Android emulator smoke '$label' failed; captured output: $log_file" >&2
     return "$status"
   done

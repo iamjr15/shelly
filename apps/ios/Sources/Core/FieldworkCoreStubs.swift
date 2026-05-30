@@ -29,6 +29,7 @@ struct ClientConfig: Hashable {
     let platform: MobilePlatform
     let deviceSecretKey: Data?
     let pairedDaemon: DaemonConfig?
+    let relayControlUrl: String?
 }
 
 struct DaemonInfo {
@@ -73,7 +74,13 @@ final class FieldworkClient: @unchecked Sendable {
     }
 
     private init(error: Error) {
-        self.config = ClientConfig(deviceName: "Stub", platform: .ios, deviceSecretKey: nil, pairedDaemon: nil)
+        self.config = ClientConfig(
+            deviceName: "Stub",
+            platform: .ios,
+            deviceSecretKey: nil,
+            pairedDaemon: nil,
+            relayControlUrl: nil
+        )
         self.initError = error
     }
 
@@ -82,6 +89,14 @@ final class FieldworkClient: @unchecked Sendable {
     }
 
     func pairWithQr(qrPayload: String) async throws -> DaemonInfo {
+        try stubDaemonInfo()
+    }
+
+    func pairWithCode(code: String) async throws -> DaemonInfo {
+        try stubDaemonInfo()
+    }
+
+    private func stubDaemonInfo() throws -> DaemonInfo {
         if let initError {
             throw initError
         }

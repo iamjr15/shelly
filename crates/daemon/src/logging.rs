@@ -9,14 +9,12 @@ const LOG_RETENTION: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 pub struct LoggingGuard {
     _guard: WorkerGuard,
-    _sentry: Option<sentry::ClientInitGuard>,
 }
 
 pub fn init(config: &Config) -> Result<LoggingGuard> {
     let log_dir = config.log_dir.clone().unwrap_or_else(default_log_dir);
     std::fs::create_dir_all(&log_dir).context("create daemon log directory")?;
     prune_old_log_files(&log_dir, SystemTime::now()).context("prune old daemon logs")?;
-    let sentry = init_sentry(config)?;
 
     let file_appender = tracing_appender::rolling::daily(log_dir, "daemon.log");
     let (writer, guard) = tracing_appender::non_blocking(file_appender);
@@ -30,33 +28,7 @@ pub fn init(config: &Config) -> Result<LoggingGuard> {
         .with(PrivacySanitizerLayer)
         .init();
 
-    Ok(LoggingGuard {
-        _guard: guard,
-        _sentry: sentry,
-    })
-}
-
-fn init_sentry(config: &Config) -> Result<Option<sentry::ClientInitGuard>> {
-    let Some(options) = sentry_options(config)? else {
-        return Ok(None);
-    };
-    Ok(Some(sentry::init(options)))
-}
-
-fn sentry_options(config: &Config) -> Result<Option<sentry::ClientOptions>> {
-    if !config.telemetry.sentry_enabled() {
-        return Ok(None);
-    }
-
-    let dsn = config.telemetry.sentry_dsn.as_deref().unwrap_or("").trim();
-    let dsn = dsn.parse().context("parse configured daemon Sentry DSN")?;
-    Ok(Some(sentry::ClientOptions {
-        dsn: Some(dsn),
-        release: sentry::release_name!(),
-        send_default_pii: false,
-        traces_sample_rate: 0.0,
-        ..Default::default()
-    }))
+    Ok(LoggingGuard { _guard: guard })
 }
 
 fn default_log_dir() -> PathBuf {
@@ -104,65 +76,10 @@ fn prune_old_log_files(log_dir: &Path, now: SystemTime) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Config, TelemetryConfig};
     use std::ffi::CString;
     use std::fs;
     use std::os::unix::ffi::OsStrExt;
-    use std::panic;
     use std::time::{Duration, SystemTime};
-
-    fn sentry_config() -> Config {
-        Config {
-            telemetry: TelemetryConfig {
-                opt_in: true,
-                sentry_dsn: Some("https://public@example.invalid/1".to_string()),
-            },
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn sentry_options_require_explicit_opt_in() {
-        let mut config = sentry_config();
-        config.telemetry.opt_in = false;
-        assert!(sentry_options(&config).unwrap().is_none());
-
-        config.telemetry.opt_in = true;
-        config.telemetry.sentry_dsn = None;
-        assert!(sentry_options(&config).unwrap().is_none());
-    }
-
-    #[test]
-    fn sentry_options_disable_pii_and_tracing() {
-        let options = sentry_options(&sentry_config()).unwrap().unwrap();
-
-        assert!(options.dsn.is_some());
-        assert!(!options.send_default_pii);
-        assert_eq!(options.traces_sample_rate, 0.0);
-    }
-
-    #[test]
-    fn sentry_options_capture_panic_with_test_transport() {
-        let options = sentry::apply_defaults(sentry_options(&sentry_config()).unwrap().unwrap());
-        let events = sentry::test::with_captured_events_options(
-            || {
-                let _ = panic::catch_unwind(|| {
-                    panic!("fieldwork daemon sentry smoke");
-                });
-            },
-            options,
-        );
-
-        assert_eq!(events.len(), 1);
-        let event = &events[0];
-        assert_eq!(event.level, sentry::Level::Fatal);
-        let exception = event.exception.values.first().expect("panic exception");
-        assert_eq!(exception.ty, "panic");
-        assert_eq!(
-            exception.value.as_deref(),
-            Some("fieldwork daemon sentry smoke")
-        );
-    }
 
     #[test]
     fn prune_old_log_files_removes_only_expired_daemon_logs() {

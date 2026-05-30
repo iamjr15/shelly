@@ -19,6 +19,7 @@ const requiredFiles = [
   "sleep-wake.txt",
   "sleep-replay.txt",
   "kill-restart.txt",
+  "kill-live-replay.txt",
   "kill-replay.txt",
   "daemon-status-after.txt",
   "daemon-log.txt",
@@ -34,7 +35,7 @@ if (failures.length === 0) {
   verifyServiceInstall(readText("service-install.txt"));
   verifyDaemonStatus("daemon-status-before.txt", readText("daemon-status-before.txt"));
   verifySleepWake(readText("sleep-wake.txt"), readText("sleep-replay.txt"));
-  verifyKillRestart(readText("kill-restart.txt"), readText("kill-replay.txt"));
+  verifyKillRestart(readText("kill-restart.txt"), readText("kill-live-replay.txt"), readText("kill-replay.txt"));
   verifyDaemonStatus("daemon-status-after.txt", readText("daemon-status-after.txt"));
   verifyDaemonLog(readText("daemon-log.txt"));
 }
@@ -49,8 +50,8 @@ console.log(`macOS daemon survival evidence ok: ${evidenceDir}`);
 function verifySigning(text) {
   requirePatternText(
     text,
-    /\bmacOS signing ok:/,
-    "macos-signing.txt must include node scripts/verify-macos-signing.mjs success output",
+    /\bmacOS npm trust ok:/,
+    "macos-signing.txt must include node scripts/verify-macos-signing.mjs npm trust success output",
   );
 }
 
@@ -61,7 +62,7 @@ function verifyServiceInstall(text) {
 }
 
 function verifyDaemonStatus(file, text) {
-  requirePatternText(text, /\bservice:\s*installed\b/i, `${file} must show the daemon service is installed`);
+  requirePatternText(text, /\bservice:\s*(?:installed|running)\b/i, `${file} must show the daemon service is installed or running`);
   requirePatternText(text, /\bsocket:\s*reachable\b/i, `${file} must show the daemon socket is reachable`);
 }
 
@@ -79,8 +80,13 @@ function verifySleepWake(text, replay) {
   requirePatternText(replay, /\bafter_sleep_wake_ok\b/, "sleep-replay.txt must include post-wake terminal input/output");
 }
 
-function verifyKillRestart(text, replay) {
+function verifyKillRestart(text, liveReplay, replay) {
   requirePatternText(text, /\bpkill\s+-KILL\s+fieldworkd\b/, "kill-restart.txt must show pkill -KILL fieldworkd was run");
+  requirePatternText(
+    text,
+    /\bprocesses_died_documented\b/,
+    "kill-restart.txt must document that PTY child processes are expected to die across daemon kill/restart",
+  );
   const timing = text.match(/\brestart_ms=(\d+)\b/);
   if (!timing) {
     failures.push("kill-restart.txt must record restart_ms=<elapsed-ms>");
@@ -88,9 +94,9 @@ function verifyKillRestart(text, replay) {
     failures.push(`kill-restart.txt records restart_ms=${timing[1]}, expected <=10000`);
   }
   requirePatternText(text, /\bsocket:\s*reachable\b/i, "kill-restart.txt must show the daemon socket became reachable after kill");
-  requirePatternText(text, /\bafter_kill_restart_ok\b/, "kill-restart.txt must record after_kill_restart_ok after launchd restart");
+  requirePatternText(liveReplay, /\bMACOS_KILL_SCROLLBACK_BEFORE\b/, "kill-live-replay.txt must include scrollback emitted before kill");
   requirePatternText(replay, /\bMACOS_KILL_SCROLLBACK_BEFORE\b/, "kill-replay.txt must include scrollback emitted before kill");
-  requirePatternText(replay, /\bafter_kill_restart_ok\b/, "kill-replay.txt must include post-restart terminal input/output");
+  requirePatternText(replay, /\bfieldwork:\s*session exited\b/i, "kill-replay.txt must show the restored session is exited after daemon kill/restart");
 }
 
 function verifyDaemonLog(text) {

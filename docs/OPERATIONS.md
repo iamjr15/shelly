@@ -12,11 +12,14 @@ Before tagging v1.0.0, the operator must have:
 
 - Operator-controlled npm `fieldwork` meta package, publish rights for the four
   platform child packages, and an `NPM_TOKEN` that can publish all five packages.
-- GitHub repository secrets for macOS signing/notarization, npm provenance,
-  iOS TestFlight upload, Android release signing, Play upload, relay deploy,
-  Cloudflare Pages, and Sentry.
+- GitHub repository secrets for npm provenance, iOS TestFlight upload, Android
+  release signing, Play upload, relay deploy, and Cloudflare Pages. macOS
+  desktop npm artifacts use ad-hoc signing and do not require Apple credentials.
 - Two Oracle ARM A1 relay hosts in different regions, DNS records for
   `relay.fieldwork.dev`, and SSH host keys pinned by the GitHub Actions runner.
+  While Oracle A1 capacity is blocked, the operator may use the budgeted AWS
+  Lightsail host named `relay` as a live-test bridge only; final production
+  relay sign-off still requires DNS/TLS and the provider credentials below.
 - Relay-only APNs `.p8`, FCM service-account JSON, and Honeycomb API key
   installed on the relay hosts under `/etc/fieldwork/secrets/`.
 - Physical iOS and Android devices for the Section 13 smoke tests.
@@ -33,22 +36,31 @@ by GitHub Actions and does not need to be created manually.
 | Secret | Workflow | Purpose |
 |---|---|---|
 | `NPM_TOKEN` | `release-npm.yml` | Publish the four platform children and the `fieldwork` meta package with npm provenance. |
-| `APPLE_P12_BASE64` | `release-rust.yml` | macOS daemon signing certificate for Darwin desktop artifacts. |
-| `APPLE_P12_PASSWORD` | `release-rust.yml` | Password for the macOS signing `.p12`. |
-| `APP_STORE_KEY_JSON` | `release-rust.yml`, `release-ios.yml` | Apple notarization and TestFlight upload API key JSON. |
-| `SENTRY_DSN` | `release-ios.yml`, `release-android.yml` | Release-build mobile crash-reporting DSN; telemetry still stays opt-in. |
+| `APP_STORE_KEY_JSON` | `release-ios.yml` | Apple TestFlight upload API key JSON when iOS resumes. |
 | `IOS_DISTRIBUTION_CERTIFICATE_BASE64` | `release-ios.yml` | iOS Apple Distribution certificate. |
 | `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD` | `release-ios.yml` | Password for the iOS distribution certificate. |
 | `IOS_PROVISIONING_PROFILE_BASE64` | `release-ios.yml` | App Store provisioning profile for `app.fieldwork.ios` with production APNs entitlement. |
 | `IOS_DEVELOPMENT_TEAM` | `release-ios.yml` | Apple Team ID used to validate the provisioning profile. |
 | `IOS_EXPORT_OPTIONS_PLIST` | `release-ios.yml` | Xcode export options for the signed IPA. |
-| `ANDROID_GOOGLE_SERVICES_JSON` | `release-android.yml` | Firebase app config so Android release builds can obtain FCM registration tokens. |
+| `ANDROID_GOOGLE_SERVICES_JSON` | `release-android.yml` | Firebase app config from Firebase project `fieldwork-oss` / Android package `app.fieldwork.android`, so Android release builds can obtain FCM registration tokens. |
 | `ANDROID_KEYSTORE_BASE64` | `release-android.yml` | Base64-encoded Android release keystore. |
 | `ANDROID_KEYSTORE_PROPERTIES` | `release-android.yml` | Gradle signing properties for the Android release keystore. |
 | `PLAY_SERVICE_ACCOUNT_JSON` | `release-android.yml` | Google Play upload service account JSON. |
 | `RELAY_SSH_KEY` | `deploy-relay.yml` | Private SSH key for the relay deploy user. |
 | `CLOUDFLARE_API_TOKEN` | `deploy-site.yml` | Cloudflare Pages deploy token for `fieldwork.dev`. |
 | `CLOUDFLARE_ACCOUNT_ID` | `deploy-site.yml` | Cloudflare account id for the Pages project. |
+
+Firebase project state: the project display name is `Fieldwork`, project id is
+`fieldwork-oss`, project number is `368996637975`, and the Android app id is
+`1:368996637975:android:851c0de94f997e6d4bab52` for package
+`app.fieldwork.android`. The local `apps/android/app/google-services.json` file
+is ignored by git; use that file's contents for the
+`ANDROID_GOOGLE_SERVICES_JSON` release secret and do not commit it.
+
+Relay FCM sender state: the dedicated Google service account is
+`fieldwork-relay-fcm@fieldwork-oss.iam.gserviceaccount.com` with
+`roles/firebasecloudmessaging.admin`. Its user-managed JSON key is relay-only;
+do not place it in GitHub Secrets or the repository.
 
 Relay provider credentials are not GitHub repository secrets in the current v1
 scaffold. Keep the APNs `.p8`, FCM service-account JSON, Honeycomb API key, and
@@ -68,19 +80,37 @@ operator explicitly asks for that exact refresh.
   publishes last with provenance.
 - **Operator reservations**: Appendix B account and reservation work remains
   outside agent ownership: domain `fieldwork.dev`, GitHub org `fieldwork-app`,
-  GitHub repo `fieldwork`, `@fieldworkdev`, Oracle Cloud capacity, Apple
-  Developer, Sentry, Honeycomb, and launch-calendar commitments.
+  GitHub repo `fieldwork`, `@fieldworkdev`, Oracle Cloud capacity, optional
+  Apple Developer work for iOS/notarized Mac artifacts, Honeycomb, and
+  launch-calendar commitments.
 - **GitHub Release artifacts**: tag from a clean verified commit, let
-  `release-rust.yml` produce signed/notarized Darwin artifacts, Linux archives,
+  `release-rust.yml` produce ad-hoc-signed Darwin artifacts, Linux archives,
   SHA-256 files, and Sigstore attestations, then verify those artifacts before
   npm publish or relay deploy. The Darwin release job runs
-  `node scripts/verify-macos-signing.mjs target/${{ matrix.target }}/release/fieldworkd`
-  after `rcodesign notary-submit` so the daemon must verify as Developer ID,
-  hardened-runtime, and Gatekeeper-notarized before it is archived.
+  `node scripts/verify-macos-signing.mjs target/${{ matrix.target }}/release`
+  after `codesign --force --sign -` so both `fieldwork` and `fieldworkd`
+  verify with an ad-hoc or Developer ID signature and no quarantine xattr before
+  archive staging.
+  `pnpm scaffold:release-artifacts-evidence -- --print-dir` creates the
+  sanitized capture directory for the real `release-rust.yml` run and
+  `pnpm check:release-artifacts-evidence -- "$FW_RELEASE_ARTIFACT_EVIDENCE_DIR"`
+  verifies the workflow, GitHub Release assets, local artifact digests, and
+  cosign-backed `pnpm check:release-artifacts` output.
+  `pnpm scaffold:macos-signing-evidence -- --print-dir` creates the
+  Darwin-specific npm-trust capture directory, and
+  `pnpm check:macos-signing-evidence -- "$FW_MACOS_SIGNING_DIR"` verifies
+  installed unscoped npm package identity, per-Darwin-package checksum or npm
+  integrity verification plus npm/Sigstore provenance verification for
+  `fieldwork-darwin-arm64` and `fieldwork-darwin-x64`,
+  `verify-macos-signing`, `codesign`, and `xattr` output for both Darwin CLI
+  and daemon artifacts.
 - **Relay and provider credentials**: provision the Oracle relay hosts, point DNS
   at them, install relay-only APNs `.p8`, FCM service-account JSON, and Honeycomb
   credentials, deploy both regions, and verify HTTPS `/v1/version`, iroh relay
-  fallback, sampled Honeycomb traces, and 10/10 generic push delivery.
+  fallback, sampled Honeycomb traces, and 10/10 generic push delivery. The
+  temporary AWS Lightsail `relay` host is acceptable for first live typed-code
+  control-plane testing, but it does not close the production relay/provider
+  credential gate.
 - **Mobile stores**: submit the prepared App Store privacy nutrition labels and
   Play Data safety answers, then run signed release-device validation before any
   TestFlight, App Store, or Play production rollout. iOS implementation work is
@@ -167,6 +197,24 @@ node scripts/verify-npm-registry-state.mjs \
   --expect-provenance
 ```
 
+Capture the operator-owned publish evidence in a local evidence directory. This
+scaffold does not publish packages, query package-name availability, or create
+passing registry evidence:
+
+```sh
+export FW_NPM_RELEASE_DIR="$(pnpm scaffold:npm-release-evidence -- --print-dir)"
+"$FW_NPM_RELEASE_DIR/preflight.sh"
+```
+
+After the successful `release-npm.yml` run, add sanitized `workflow-run.txt`,
+`npm-publish-log.txt`, `registry-state.txt`, and `package-metadata.json` to that
+directory. Do not include raw tokens, OTPs, usernames, emails, `.npmrc` auth, or
+terminal/session content. Final verification:
+
+```sh
+pnpm check:npm-release-evidence -- "$FW_NPM_RELEASE_DIR"
+```
+
 ## Relay Deploy
 
 Provision each Oracle region with the credential-free Terraform scaffold first:
@@ -180,6 +228,48 @@ Keep tfvars and state local or in the operator's secured state backend; they are
 ignored by git. Paste the real output hosts into
 `infra/relay/ansible/inventory.ini` before running the deploy workflow.
 
+### AWS Lightsail Live-Test Bridge
+
+Oracle Mumbai capacity is currently unavailable, so the operator-created AWS
+Lightsail instance `relay` is used only as a live-test bridge:
+
+- Instance: `relay`, AWS region `ap-south-1`, AZ `ap-south-1a`, bundle
+  `nano_3_1`, Ubuntu 24.04.
+- Static IP: `3.7.208.153`.
+- Firewall: `22/tcp` restricted to the current operator IP,
+  `80/tcp`, `443/tcp`, `8443/tcp`, and `7842/udp` open.
+- Budget: AWS Budgets entry `fieldwork-relay-lightsail`, filtered to
+  `Amazon Lightsail`, `$10/month`, with actual 80%, actual 100%, and forecasted
+  100% email alerts.
+- Current live-test service: `fieldwork-control-plane.service` runs the
+  cross-built `fieldwork-relay` binary as user `fieldwork-relay`, stores SQLite
+  state in `/var/lib/fieldwork/relay.db`, and serves HTTP on
+  `http://3.7.208.153:8443`.
+- FCM live-test credential: `/etc/fieldwork/secrets/fcm-service-account.json`,
+  owned `root:fieldwork-relay`, mode `0440`, with
+  `FIELDWORK_FCM_SERVICE_ACCOUNT_PATH` set through a systemd drop-in. This is
+  for Android/FCM live testing only; production relay sign-off still needs
+  operator-owned DNS/TLS, Honeycomb, APNs, and physical-device evidence.
+
+Verify the bridge with:
+
+```sh
+curl -fsS http://3.7.208.153:8443/healthz
+curl -fsS http://3.7.208.153:8443/v1/version
+FIELDWORK_HOSTED_RELAY_CONTROL_URL=http://3.7.208.153:8443 pnpm test:hosted-relay
+ssh ubuntu@3.7.208.153 'systemctl status fieldwork-control-plane.service'
+```
+
+The current bridge was smoke-tested on 2026-05-29 by running a local daemon with
+`FIELDWORK_RELAY_CONTROL_URL=http://3.7.208.153:8443`, publishing a pairing code,
+resolving that code through `fieldwork pair-test --code`, approving on desktop,
+attaching to a daemon-owned PTY, and observing `HOSTED_RELAY_RESULT_OK` from
+mobile-originated input.
+
+This bridge intentionally does not satisfy the final production HTTPS, iroh
+relay fallback, APNs/FCM, or Honeycomb gates. Do not put provider secrets on it
+until DNS/TLS and the final production deploy path are chosen.
+
 `deploy-relay.yml` downloads `fieldwork-linux-arm64.tar.gz` plus its SHA-256 and
 cosign bundle, then verifies the archive checksum, DSSE/SLSA bundle digest, and
 cosign signature with:
@@ -189,6 +279,26 @@ FIELDWORK_RELEASE_PLATFORMS=linux-arm64 \
 FIELDWORK_VERIFY_COSIGN_SIGNATURE=1 \
 FIELDWORK_COSIGN_IDENTITY_REGEXP='^https://github.com/fieldwork-app/fieldwork/\.github/workflows/release-rust\.yml@refs/tags/v.*$' \
 pnpm check:release-artifacts
+```
+
+For the release-artifact evidence bundle, scaffold the capture directory and
+run its preflight against the downloaded GitHub Release assets:
+
+```sh
+export FW_RELEASE_ARTIFACT_EVIDENCE_DIR="$(pnpm scaffold:release-artifacts-evidence -- --print-dir)"
+FIELDWORK_ARTIFACT_SOURCE_DIR=/path/to/downloaded/assets \
+  "$FW_RELEASE_ARTIFACT_EVIDENCE_DIR/preflight.sh"
+pnpm check:release-artifacts-evidence -- "$FW_RELEASE_ARTIFACT_EVIDENCE_DIR"
+```
+
+For the macOS npm-trust evidence bundle, run the Darwin-specific preflight on a
+macOS host after downloading the Darwin archives:
+
+```sh
+export FW_MACOS_SIGNING_DIR="$(pnpm scaffold:macos-signing-evidence -- --print-dir)"
+FIELDWORK_DARWIN_ARTIFACT_DIR=/path/to/downloaded/assets \
+  "$FW_MACOS_SIGNING_DIR/preflight.sh"
+pnpm check:macos-signing-evidence -- "$FW_MACOS_SIGNING_DIR"
 ```
 
 It then extracts `fieldwork-relay`, checks that the binary is executable, writes
@@ -324,6 +434,8 @@ pnpm check:infra-terraform
 scripts/smoke-relay-tls-loopback.sh
 node scripts/test-release-artifacts.mjs
 node scripts/test-macos-signing-verifier.mjs
+node scripts/test-macos-signing-evidence.mjs
+node scripts/test-macos-signing-scaffold.mjs
 node scripts/test-npm-publish-plan.mjs
 node scripts/test-bun-install.mjs
 pnpm check:local-release

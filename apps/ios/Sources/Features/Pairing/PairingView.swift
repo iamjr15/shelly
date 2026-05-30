@@ -2,52 +2,35 @@ import AVFoundation
 import SwiftUI
 
 struct PairingView: View {
+    private enum PairMethod: Hashable {
+        case scan
+        case code
+    }
+
     @EnvironmentObject private var model: AppModel
-    @State private var manualPayload = ""
+    @State private var method: PairMethod = .scan
+    @State private var manualCode = ""
     @State private var isPairing = false
+
+    /// Crockford base32 alphabet (no `I`/`L`/`O`/`U`); matches the protocol code helper.
+    private static let codeAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+    private static let codeLength = 5
 
     var body: some View {
         VStack(spacing: 18) {
-            QRScannerView { payload in
-                Task {
-                    await pair(payload)
-                }
+            Picker("Pairing method", selection: $method) {
+                Text("Scan QR").tag(PairMethod.scan)
+                Text("Enter code").tag(PairMethod.code)
             }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(alignment: .bottom) {
-                Text("Scan Fieldwork QR")
-                    .font(.headline)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
-                    .background(.thinMaterial)
-            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Pairing method")
 
-            TextEditor(text: $manualPayload)
-                .font(.system(.footnote, design: .monospaced))
-                .frame(minHeight: 110)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(.quaternary)
-                }
-
-            Button {
-                Task {
-                    await pair(manualPayload)
-                }
-            } label: {
-                if isPairing {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Label("Pair", systemImage: "qrcode.viewfinder")
-                        .frame(maxWidth: .infinity)
-                }
+            switch method {
+            case .scan:
+                scannerSection
+            case .code:
+                codeSection
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(isPairing || manualPayload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             Spacer()
         }
@@ -55,13 +38,110 @@ struct PairingView: View {
         .navigationTitle("Pair")
     }
 
-    private func pair(_ payload: String) async {
+    private var scannerSection: some View {
+        QRScannerView { payload in
+            Task {
+                await pairWithQr(payload)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(1, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(alignment: .bottom) {
+            Text("Scan Fieldwork QR")
+                .font(.headline)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(.thinMaterial)
+        }
+        .accessibilityLabel("Scan Fieldwork QR")
+    }
+
+    private var codeSection: some View {
+        VStack(spacing: 18) {
+            Text("Enter the 5-character code shown on your desktop.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            TextField("ABC12", text: $manualCode)
+                .font(.system(.largeTitle, design: .monospaced))
+                .multilineTextAlignment(.center)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .keyboardType(.asciiCapable)
+                .textContentType(.oneTimeCode)
+                .padding()
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.quaternary)
+                }
+                .onChange(of: manualCode) { _, newValue in
+                    manualCode = Self.sanitize(newValue)
+                }
+                .accessibilityLabel("Pairing code")
+
+            Button {
+                Task {
+                    await pairWithCode()
+                }
+            } label: {
+                if isPairing {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Label("Pair", systemImage: "keyboard")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(isPairing || manualCode.count != Self.codeLength)
+        }
+    }
+
+    /// Canonicalizes typed input to the Crockford alphabet, applying the same
+    /// `I`/`L` -> `1` and `O` -> `0` aliases as `normalize_code`, and caps the
+    /// length so the field can only ever hold a valid 5-character code.
+    private static func sanitize(_ input: String) -> String {
+        var result = ""
+        for character in input.uppercased() {
+            let mapped: Character
+            switch character {
+            case "I", "L":
+                mapped = "1"
+            case "O":
+                mapped = "0"
+            default:
+                mapped = character
+            }
+            guard codeAlphabet.contains(mapped) else {
+                continue
+            }
+            result.append(mapped)
+            if result.count == codeLength {
+                break
+            }
+        }
+        return result
+    }
+
+    private func pairWithQr(_ payload: String) async {
         let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isPairing else {
             return
         }
         isPairing = true
         await model.pair(qrPayload: trimmed)
+        isPairing = false
+    }
+
+    private func pairWithCode() async {
+        guard manualCode.count == Self.codeLength, !isPairing else {
+            return
+        }
+        isPairing = true
+        await model.pair(code: manualCode)
         isPairing = false
     }
 }

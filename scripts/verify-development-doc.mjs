@@ -11,6 +11,7 @@ const files = {
   packageJson: read("package.json"),
   ci: read(".github/workflows/ci.yml"),
   localRelease: read("scripts/check-local-release.mjs"),
+  doctorSmoke: read("scripts/smoke-cli-doctor.sh"),
   noArgsSmoke: read("scripts/smoke-cli-no-args.sh"),
   localNpmArtifacts: read("scripts/build-local-npm-artifacts.sh"),
   structuredAssets: read("scripts/verify-structured-assets.mjs"),
@@ -70,9 +71,17 @@ function verifyDevelopmentDoc(text) {
   requireText(text, "pnpm build:local-npm-artifacts", "docs/DEVELOPMENT.md must document local npm artifact staging");
   requireText(text, "release CI still publishes from\ndownloaded GitHub Release archives and attestations", "docs/DEVELOPMENT.md must keep local npm artifact staging separate from release CI artifacts");
   requireText(text, "RUSTSEC-2026-0002", "docs/DEVELOPMENT.md must document the current lru RustSec advisory");
+  requireText(text, "RUSTSEC-2025-0056", "docs/DEVELOPMENT.md must document the current adler RustSec advisory");
+  requireText(text, "RUSTSEC-2023-0089", "docs/DEVELOPMENT.md must document the current atomic-polyfill RustSec advisory");
+  requireText(text, "RUSTSEC-2025-0141", "docs/DEVELOPMENT.md must document the current bincode RustSec advisory");
+  requireText(text, "RUSTSEC-2024-0436", "docs/DEVELOPMENT.md must document the current paste RustSec advisory");
+  requireText(text, "scanned 748 dependencies", "docs/DEVELOPMENT.md must document the latest cargo-audit dependency count");
   requireText(text, "cargo update -p lru@0.12.5 --dry-run", "docs/DEVELOPMENT.md must document the lru dry-run update check");
+  requireText(text, "cargo update -p postcard --dry-run", "docs/DEVELOPMENT.md must document the postcard dry-run update check");
   requireText(text, "does not use `lru::IterMut` directly", "docs/DEVELOPMENT.md must document direct lru IterMut non-use");
   requireText(text, "rejects direct `lru` dependencies plus `lru::` source paths", "docs/DEVELOPMENT.md must document direct lru source/dependency guard");
+  requireText(text, "does not use `atomic_polyfill::` directly", "docs/DEVELOPMENT.md must document direct atomic-polyfill non-use");
+  requireText(text, "rejects direct `atomic-polyfill` dependencies plus `atomic_polyfill::` source paths", "docs/DEVELOPMENT.md must document direct atomic-polyfill source/dependency guard");
 
   for (const command of [
     "pnpm check:local-release",
@@ -90,15 +99,23 @@ function verifyDevelopmentDoc(text) {
     "pnpm check:release-artifacts",
     "pnpm check:uniffi-bindings",
     "node scripts/test-release-artifacts.mjs",
+    "node scripts/test-release-artifacts-evidence.mjs",
+    "node scripts/test-release-artifacts-scaffold.mjs",
+    "pnpm test:macos-signing-evidence",
+    "pnpm test:macos-signing-scaffold",
     "node scripts/test-npm-registry-state.mjs",
     "node scripts/test-external-status-refresh.mjs",
     "node scripts/test-ios-prereqs.mjs",
+    "pnpm test:npm-release-evidence",
+    "pnpm test:npm-release-scaffold",
     "pnpm test:cli-no-args",
     "pnpm test:live-testing-readiness",
     "pnpm check:live-testing-readiness:local",
     "pnpm test:android-unit",
     "pnpm test:android-emulator",
+    "pnpm check:android-debug-apk",
     "node scripts/test-android-aab-verifier.mjs",
+    "node scripts/test-android-debug-apk-verifier.mjs",
     "node scripts/test-android-pair-button-picker.mjs",
     "pnpm check:site",
     "pnpm render:demo-video",
@@ -113,7 +130,27 @@ function verifyDevelopmentDoc(text) {
   );
   requireText(
     text,
-    "v1/FUTURE boundary plus no-ship marker scans/self-tests",
+    "workspace/package metadata, `cargo fmt --check`,",
+    "docs/DEVELOPMENT.md must document cargo fmt in the local release aggregate",
+  );
+  requireText(
+    text,
+    "`cargo clippy --workspace -- -D warnings`, `cargo nextest run --workspace`,",
+    "docs/DEVELOPMENT.md must document clippy and nextest in the local release aggregate",
+  );
+  requireText(
+    text,
+    "`cargo deny check`, `cargo audit`, docs",
+    "docs/DEVELOPMENT.md must document supply-chain checks in the local release aggregate",
+  );
+  requireText(
+    text,
+    "release workflow `run: |` bash syntax self-test and contracts",
+    "docs/DEVELOPMENT.md must document release workflow run-block bash syntax coverage in the local release aggregate",
+  );
+  requireText(
+    text,
+    "v1/FUTURE boundary\nplus no-ship marker scans/self-tests",
     "docs/DEVELOPMENT.md must document the local no-ship marker scan and self-test",
   );
   requireText(
@@ -128,13 +165,23 @@ function verifyDevelopmentDoc(text) {
   );
   requireText(
     text,
-    "normal debug `BuildConfig`, live-test scaffold/verifier, and\n`docs/LIVE_TESTING.md`, while treating a missing physical phone as pending only\nin local mode",
+    "their command surfaces with\n`target/release/fieldwork doctor --help` and\n`target/release/fieldworkd --help`, Android debug APK, unsigned local AAB,\nnormal debug `BuildConfig`, live-test scaffold/verifier, and\n`docs/LIVE_TESTING.md`, while treating a missing physical phone,\nunauthorized/offline adb target, extra attached target, or emulator/AVD as\npending guidance only in local mode",
     "docs/DEVELOPMENT.md must document local-only live-testing readiness semantics",
   );
   requireText(
     text,
-    "With exactly one authorized physical Android phone connected and\n`app.fieldwork.android` installed, `pnpm check:live-testing-readiness` is the\nstrict direct-`adb` preflight before capture",
+    "In local mode, the readiness command also\ncreates an internal temporary `fw` shim against `target/release/fieldwork` when\nno global `fw` is on `PATH`, proving the release binary still renders\n`Usage: fw` and `Usage: fw doctor`; strict mode still requires the Desktop Setup\nshim or installed npm package before capture. Source-checkout tests should use\nthe temporary shim from\n`pnpm scaffold:live-testing-fw-shim`, which creates `fw`, `fieldwork`, and\n`fieldworkd` symlinks plus an `activate.sh` pointing at the repo-local release\nbinaries without replacing the npm package/provenance gates",
     "docs/DEVELOPMENT.md must document strict live-testing readiness semantics",
+  );
+  requireText(
+    text,
+    "`pnpm scaffold:live-testing-pack -- --print-dir`: it creates the same shim under\n`bin/`, creates the live-test evidence scaffold under `evidence/`, writes\n`setup.sh` exporting `FW_LIVE_PACK`, `FW_LIVE_BIN`, `FW_LIVE_DIR`, and `PATH`,\nand writes a top-level `preflight.sh` that runs local readiness, runs\n`fw doctor` to prove the desktop CLI can start and handshake with `fieldworkd`,\nthen delegates to the direct-`adb` evidence preflight",
+    "docs/DEVELOPMENT.md must document the combined live-testing pack scaffold",
+  );
+  requireText(
+    text,
+    "`pnpm test:live-testing-pack` and\n`pnpm check:local-release` keep it wired. With exactly one authorized physical Android phone connected,\n`pnpm check:live-testing-readiness` is the strict direct-`adb` preflight before\ncapture: it proves `app.fieldwork.android` is installed on the connected device\nand that `adb shell dumpsys package app.fieldwork.android` reports\n`versionName=1.0` and `versionCode=1`",
+    "docs/DEVELOPMENT.md must document live-testing pack verification and strict readiness",
   );
   requireText(
     text,
@@ -148,13 +195,13 @@ function verifyDevelopmentDoc(text) {
   );
   requireText(
     text,
-    "CLI no-args\nraw-terminal smoke, local handoff smoke, demo video, site typecheck/build,\nTerraform fmt/init/validate, relay TLS/OTLP loopbacks, and desktop cold-start\nthresholds",
+    "CLI doctor\nsmoke, CLI no-args raw-terminal smoke, local handoff smoke, demo video, site\ntypecheck/build, Terraform fmt/init/validate, relay TLS/OTLP loopbacks, and\ndesktop cold-start thresholds",
     "docs/DEVELOPMENT.md must document what the runtime local release aggregate mode covers",
   );
   requireText(
     text,
-    "runs the CLI no-args and local handoff smokes with\n`/tmp/fieldwork-target-checks`",
-    "docs/DEVELOPMENT.md must document the aggregate CLI no-args/local handoff target-dir default",
+    "runs the CLI doctor, CLI no-args, and local handoff\nsmokes with `/tmp/fieldwork-target-checks`",
+    "docs/DEVELOPMENT.md must document the aggregate CLI doctor/no-args/local handoff target-dir default",
   );
   requireText(
     text,
@@ -212,6 +259,7 @@ function verifyDevelopmentDoc(text) {
     "iOS app v0:",
     "Android app v0:",
     "Android release artifact smoke:",
+    "pnpm check:android-release-readiness:local",
     "It exposes `fieldwork`, the short `fw` alias that points at the same CLI dispatcher, and `fieldworkd`",
     "`fw` with no subcommand uses the same no-args fast path as `fieldwork`",
     "always creates an auto-named default `claude` session before attaching",
@@ -253,6 +301,8 @@ function verifyDevelopmentDoc(text) {
     "verifies the iroh transport rejects a mismatched protocol version before pairing",
     "pairs the hidden iroh phone simulator through explicit desktop approval",
     "verifies the simulated pair flow completes within 15 seconds",
+    "acknowledged Claude hook path updates\nthe matching session",
+    "mismatched Codex hook exits nonzero with the\ndaemon error",
     "verifies reconnect-with-replay over iroh within 2 seconds from `last_seen_seq`",
     "creating an explicitly named desktop session",
     "a separate explicitly named session emits missed output",
@@ -291,7 +341,7 @@ function verifyDevelopmentDoc(text) {
     "aarch64-apple-ios",
     "aarch64-apple-ios-sim",
     "x86_64-apple-ios",
-    "SwiftTerm exactly to 1.13.0 and sentry-cocoa exactly to 9.13.0",
+    "SwiftTerm exactly to 1.13.0",
     "deterministic iOS prereq test covers missing `.xcode-version`, exact selected-Xcode comparison, and floored 70 GiB download headroom",
   ]) {
     requireText(text, phrase, `docs/DEVELOPMENT.md iOS blocker/build facts must include ${phrase}`);
@@ -329,7 +379,7 @@ function verifyDevelopmentDoc(text) {
     "Focused Android JVM tests verify that the terminal controller refuses locked input before it reaches mobile-core",
     "reattaches from the latest `lastSeenSeq` after a daemon `Lag`",
     "reattaches from the latest `lastSeenSeq` after an attached-stream error",
-    "records the delayed crash-reporting consent experience only after `AwaitingInput`, user input, and at least 10 output lines",
+    "records the delayed diagnostics consent experience only after `AwaitingInput`, user input, and at least 10 output lines",
     "view model uses the same strict lowercase hash parser",
     "tap parser trims whitespace but never lowercases uppercase hashes",
     "foreground notifications use fixed generic copy and private lock-screen visibility even if extra terminal or command fields are present",
@@ -356,10 +406,14 @@ function verifyDevelopmentDoc(text) {
     "`FieldworkViewModel` from the lifecycle ViewModel store",
     "application-context factory",
     "Debug/source builds compile without `apps/android/app/google-services.json`",
-    "app-release.aab` (`54M`, SHA-256 `7a7868df2b8abd8e128b5ba46a40aa58bfac72b482c67e8c83351c4fb60b6ed0`)",
-    "packaged protobuf manifest uses-permission allowlist",
+    "A 2026-05-30 local Android release refresh reran",
+    "`apps/android/gradlew --no-daemon :app:bundleRelease`",
+    "`apps/android/app/build/outputs/bundle/release/app-release.aab` is `57M`",
+    "`af38adfb7541caf31c45afa216c61c4fa2dbce9ab1168ce91181f91a1f0ccca8`",
+    "packaged protobuf manifest identity, version, uses-permission allowlist",
     "packaged protobuf manifest privacy surface",
-    "required Firebase/Sentry opt-out metadata",
+    "required Firebase opt-out metadata",
+    "release `BuildConfig` values for `app.fieldwork.android`, `versionCode=1`, `versionName=1.0`, `BUILD_TYPE=release`, `DEBUG=false`, biometric bypass off, and empty debug pairing code",
     "local unsigned AAB state with `--expect-unsigned`",
     "synthetic unsigned and signed AABs",
     "failure when signature entries are present under `--expect-unsigned`",
@@ -367,8 +421,24 @@ function verifyDevelopmentDoc(text) {
     "forbidden location permission",
     "missing notification permission",
     "terminal-content metadata such as `last_line`",
+    "debug `BuildConfig`",
+    "debuggable manifest",
+    "Signed mode requires `META-INF` signature entries, successful `jarsigner -verify -certs`, a `jar verified` marker, and no Android Debug certificate subject",
+    "signed-looking bundle whose `jarsigner` verification fails",
+    "zero-exit `jarsigner` output without `jar verified`",
+    "Android Debug certificate output",
+    "`pnpm test:android-aab-signing-smoke` signs a temporary copy of the current real AAB",
+    "deletes the temporary keystore and signed bundle afterward",
     "Android Studio's bundled `jarsigner` also reports `jar is unsigned`",
-    "node scripts/verify-android-aab.mjs` without the local-only `--expect-unsigned` flag",
+    "A 2026-05-25 direct-adb debug APK hygiene refresh found a retained",
+    "`pnpm check:android-debug-apk` now\nrejects stale legacy JSON pairing payload in `classes*.dex`",
+    "`node scripts/test-android-debug-apk-verifier.mjs`\ncovers stale legacy payload, explicit legacy-payload mode, missing-ABI",
+    "`pnpm check:local-release -- --with-artifacts` runs the current debug APK\nartifact check alongside the AAB checks",
+    "`pnpm check:android-release-readiness:local` is the consolidated local Android release preflight",
+    "falling back to an internal temporary `fw`/`fieldwork`/`fieldworkd` shim backed by repo-local `target/release/fieldwork` and `target/release/fieldworkd`",
+    "that fallback must prove `Usage: fw`, `Usage: fw doctor`, and `Usage: fieldworkd`",
+    "Strict `pnpm check:android-release-readiness` requires current `fw` and `fieldworkd` commands on `PATH`",
+    "node scripts/verify-android-aab.mjs --expect-signed",
     "pnpm test:android-debug-smoke",
     "pnpm test:android-emulator-pair",
     "pnpm test:android-emulator-session-subscription",
@@ -380,25 +450,25 @@ function verifyDevelopmentDoc(text) {
     "pnpm test:android-emulator-notification-tap",
     "`pnpm test:android-emulator` is the aggregate direct-adb substitute suite",
     "`pnpm test:android-emulator -- --list` prints the exact underlying adb scripts",
-    "retries only a locked debug-launch\ntiming outlier once with the same strict limit",
-    "every other script failure fails\nclosed and preserves the captured wrapper output path",
-    "fails\nclosed unless exactly one boot-complete adb device is available",
-    "latest default aggregate run on\n2026-05-19 passed on `emulator-5554`",
-    "`TotalTime=7920ms`",
-    "`pair_flow_ms=2234`",
-    "`visible_ms=3318`",
-    "8440/14400 nonblack samples",
+    "retries only locked debug-launch and\nsession-subscription timing outliers once with the same strict limits",
+    "every\nother script failure fails closed and preserves the captured wrapper output path",
+    "fails closed unless exactly one boot-complete adb device is\navailable",
+    "latest hosted-relay aggregate\nrun on 2026-05-29 passed on `emulator-5554`",
+    "`TotalTime=6448ms`",
+    "`pair_flow_ms=1420`",
+    "`visible_ms=5493`",
+    "8437/14400 nonblack samples",
     "checks that `TotalTime` stays below the debug-smoke limit",
     "rejects system ANR dialogs in the UI tree",
     "requires the locked `Unlock` surface",
     "FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true",
-    "FIELDWORK_ANDROID_PAIRING_PAYLOAD",
+    "FIELDWORK_ANDROID_PAIRING_CODE",
     "approves the Android pairing from the desktop CLI",
     "measures the debug-app Pair tap through explicit desktop approval completion",
     "first full-width enabled clickable control below it",
     "pins that accessibility-tree shape",
     "local 15-second emulator bound",
-    "Latest aggregate-invoked run passed on `emulator-5554` with `pair_flow_ms=2234`",
+    "Latest focused run passed on `emulator-5554` with `pair_flow_ms=2206`",
     "physical QR camera pair-flow timing",
     "opens the terminal",
     "backgrounds and foregrounds the app",
@@ -408,7 +478,8 @@ function verifyDevelopmentDoc(text) {
     "fw_subscribe_session",
     "local 8-second emulator bound",
     "subscription_attach_ok",
-    "Latest aggregate-invoked run passed on `emulator-5554` with `visible_ms=3318`",
+    "falls back to file-backed `uiautomator` dumps when direct streaming hangs",
+    "Latest focused run passed on `emulator-5554` with `visible_ms=2904`",
     "fw_restart_session",
     "ANDROID_RESTART_SCROLLBACK",
     "intentionally completed `fw_restart_session`",
@@ -425,7 +496,7 @@ function verifyDevelopmentDoc(text) {
     "`TotalTime=1082ms`",
     "`echo android_adb_direct_input` plus the matching PTY output",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    "empty `FIELDWORK_DEBUG_PAIRING_PAYLOAD`",
+    "empty `FIELDWORK_DEBUG_PAIRING_CODE`",
     "A follow-up raw adb locked-launch baseline on 2026-05-19",
     "`TotalTime=2078ms`",
     "`/tmp/fieldwork-adb-launch.png`",
@@ -438,7 +509,7 @@ function verifyDevelopmentDoc(text) {
     "`/tmp/fieldwork-adb-direct-20260519225027/default-logcat.log`",
     "`/tmp/fieldwork-adb-direct-20260519225027/default-crash.log`",
     "`FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true`",
-    "`FIELDWORK_ANDROID_PAIRING_PAYLOAD`",
+    "`FIELDWORK_ANDROID_PAIRING_CODE`",
     "`TotalTime=4589ms`",
     "UI-tree-derived Pair center `540 1860`",
     "`pair_flow_ms=1043`",
@@ -499,12 +570,96 @@ function verifyDevelopmentDoc(text) {
     "`Create one on your laptop with fw new.`",
     "returned 0 sessions",
     "`/tmp/fieldwork-empty-direct-20260520162209/default-locked.png`",
-    "The first-round live-test evidence verifier now requires `buildconfig.txt`",
+    "`/tmp/fieldwork-adb-pair-20260524205522`",
+    "raw `adb` plus desktop CLI",
+    "`bash · fieldwork` session",
+    "`ANDROID_DIRECT_PAIR_READY`",
+    "`Status: ok` and `TotalTime=1554ms`",
+    "`pair_flow_ms=525`",
+    "`fw_android_direct_pair_ok`",
+    "`android-direct: fw_android_direct_pair_ok`",
+    "`dashboard.png`, `dashboard-ui.xml`",
+    "`terminal-before-input.png`, `terminal-after-input.png`",
+    "`restored-buildconfig.txt`",
+    "`restored-locked.png`, and `restored-locked-ui.xml`",
+    "`FIELDWORK_BIOMETRIC_BYPASS = false`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
+    "physical QR-camera, biometric, Play-signed release build",
+    "`/tmp/fieldwork-adb-direct-20260525105201`",
+    "`/tmp/fieldwork-adb-direct-pair-20260525105508`",
+    "`TotalTime=3117ms`",
+    "`pair_flow_ms=549`",
+    "`directbash`",
+    "`echo fw_android_direct_interactive_ok`",
+    "`fieldwork pair-test --attach directbash`",
+    "`fw_android_direct_interactive_ok`",
+    "`FieldworkRepository: listSessions returned 2 sessions`",
+    "`FIELDWORK_ANDROID_UI_DUMP_TIMEOUT_SECONDS`",
+    "physical\nsigned-release phone gates remain unchecked",
+    "`/tmp/fieldwork-android-release-install-20260530045350/apks/fieldwork-release-universal.apks`",
+    "`universal.apk`",
+    "`CN=Fieldwork Release Smoke`",
+    "APK Signature Scheme v3",
+    "`apksigner-universal.txt`",
+    "`aapt-badging.txt`, `aapt-permissions.txt`, `aapt-manifest-tree.txt`",
+    "`versionCode='1'`",
+    "`versionName='1.0'`",
+    "no `debuggable` marker",
+    "`/tmp/fieldwork-android-release-install-20260530045350`",
+    "`Status: ok`, `LaunchState: COLD`",
+    "`TotalTime=1169ms`",
+    "`launch-attempts.txt`",
+    "`run-as: package not debuggable: app.fieldwork.android`",
+    "installed-package `DEBUGGABLE` flag",
+    "`scripts/verify-android-release-install-evidence.mjs`",
+    "`--strict-release-device`",
+    "rejects emulator\nevidence and the local `Fieldwork Release Smoke` certificate",
+    "`scripts/test-android-release-install-evidence.mjs`",
+    "`scripts/create-android-release-install-evidence-dir.mjs`",
+    "`scripts/test-android-release-install-scaffold.mjs`",
+    "`scripts/verify-android-release-signing-evidence.mjs`",
+    "`scripts/test-android-release-signing-evidence.mjs`",
+    "`scripts/create-android-release-signing-evidence-dir.mjs`",
+    "`scripts/test-android-release-signing-scaffold.mjs`",
+    "`pnpm scaffold:android-release-evidence-pack -- --print-dir`",
+    "source-checkout `fw`/`fieldwork`/`fieldworkd` command shim",
+    "`setup.sh`, `capture-order.md`, `manifest.json`, `readiness.sh`, and `verify.sh`",
+    "`readiness.sh` prepends the generated command shim to `PATH`",
+    "then runs `fw doctor` to prove the desktop CLI can auto-start and handshake with `fieldworkd`",
+    "`verify.sh` runs every focused Android release evidence verifier in capture order",
+    "strict release-install physical-device check",
+    "`pnpm test:android-release-evidence-pack`",
+    "`artifact-signing.txt`",
+    "`jarsigner.txt`",
+    "`workflow-run.txt`",
+    "operator-owned release keystore",
+    "`/tmp/fieldwork-direct-adb-20260524220022`",
+    "`TotalTime=2571ms`",
+    "`WaitTime=2606ms`",
+    "`after-unlock-tap.png`",
+    "`after-unlock-ui.xml`",
+    "`after-unlock-logcat.log`",
+    "`after-unlock-crash.log`",
+    "`text=\"Unlock\"`",
+    "`BiometricService`",
+    "`Status: 7`",
+    "`hasEnrollments: false`",
+    "`FieldworkRepository: listSessions`",
+    "`registerPushToken`",
+    "`Attached`",
+    "terminal-content exposure before unlock",
+    "without fabricating verifier evidence",
+    "not Play signing",
+    "The first-round live-test evidence verifier now requires `package-info.txt`",
+    "adb shell pm path app.fieldwork.android",
+    "adb shell dumpsys package app.fieldwork.android",
+    "`versionName=1.0` and `versionCode=1`",
+    "requires `buildconfig.txt`",
     "`APPLICATION_ID = \"app.fieldwork.android\"`",
     "`BUILD_TYPE = \"debug\"`",
     "`DEBUG = Boolean.parseBoolean(\"true\")`",
     "`FIELDWORK_BIOMETRIC_BYPASS = false`",
-    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
     "`capture-checklist.md`",
     "stage-by-stage direct `adb` capture checklist",
     "dedicated active-dashboard\ncapture (`dashboard.png`, `dashboard-ui.xml`, `dashboard-logcat.log`, and\n`dashboard-crash.log`)",
@@ -513,7 +668,7 @@ function verifyDevelopmentDoc(text) {
     "`TotalTime=5105ms`",
     "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-locked.png`",
     "`/tmp/fieldwork-adb-direct-restore-20260519225316/restored-ui.xml`",
-    "`FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"`",
+    "`FIELDWORK_DEBUG_PAIRING_CODE = \"\"`",
     "not release-device cold-start threshold evidence",
     "refreshSessionsRunsRepositoryWorkOffMainThread",
     "ANDROID_BACKGROUND_REPLAY_OUTPUT",
@@ -553,14 +708,12 @@ function verifyDevelopmentDoc(text) {
   }
 
   for (const phrase of [
-    "Local debug builds can omit `FIELDWORK_SENTRY_DSN`",
-    "Focused Android MobileTelemetry JVM tests verify crash reporting defaults off",
-    "declined consent resolves the one-time prompt without enabling crash reporting",
-    "accepted consent persists while a debug build without a DSN still does not start Sentry",
+    "Focused Android MobileTelemetry JVM tests verify diagnostics sharing defaults off",
+    "declined consent resolves the one-time prompt without enabling diagnostics",
+    "accepted consent persists as a local diagnostics preference without starting a crash-reporting SDK",
     "shown only after an attached session has reached `AwaitingInput`, the user has responded, and at least 10 later output lines arrive",
-    "sendDefaultPii=false",
-    "tracesSampleRate=0.0",
     "`pnpm check:telemetry-privacy`",
+    "scans the packaged ZIP entries and inflated contents for removed crash SDK markers",
   ]) {
     requireText(text, phrase, `docs/DEVELOPMENT.md telemetry facts must include ${phrase}`);
   }
@@ -583,7 +736,9 @@ function verifyDevelopmentDoc(text) {
     "JSONL event streams",
     "matching LocalCli Claude/Codex hook events",
     "update only matching PTY",
-    "mismatched hook sources are ignored",
+    "mismatched hook sources are rejected with an IPC error",
+    "CLI hook adapter waits for the daemon acknowledgement",
+    "missing session or\nmismatched agent source exits nonzero",
   ]) {
     requireText(text, phrase, `docs/DEVELOPMENT.md local agent hook coverage must include ${phrase}`);
   }
@@ -594,7 +749,7 @@ function verifyDevelopmentDoc(text) {
     "KeepAlive` with `SuccessfulExit=false",
     "Restart=on-failure",
     "RestartSec=5",
-    "service-manager rendering tests for LaunchAgent `KeepAlive` and systemd `Restart=on-failure`",
+    "service-manager rendering tests for LaunchAgent `KeepAlive`/`EnvironmentVariables` and systemd `Restart=on-failure`/`Environment=\"PATH=...\"`",
   ]) {
     requireText(text, phrase, `docs/DEVELOPMENT.md daemon service coverage must include ${phrase}`);
   }
@@ -615,6 +770,10 @@ function verifyDevelopmentDoc(text) {
     "requires `artifacts/` or `FIELDWORK_ARTIFACT_DIR` to contain release-rust/GitHub Release archives",
     "intentionally fails closed when those real artifacts are absent",
     "`pnpm test:release-artifacts` is the deterministic local substitute for verifier coverage",
+    "offline release-rust evidence contract",
+    "GitHub Release asset metadata for all twelve archive/checksum/bundle files",
+    "without creating release artifacts or running GitHub workflows",
+    "`pnpm test:release-artifacts-evidence` and `pnpm test:release-artifacts-scaffold`",
     "platform/target-matching extracted artifact directory",
     "missing platform-root rejection",
     "deterministic local registry fixture for current, post-placeholder, post-release, version-drift, missing-provenance, and bare-invocation failure states",
@@ -626,15 +785,40 @@ function verifyDevelopmentDoc(text) {
     "both `--check-ready` and actual publish-path rejection when platform children contain non-native files instead of Mach-O or ELF binaries",
     "a missing token fails before npm is invoked",
     "four platform packages first, meta package last, `--provenance`, and public access",
+    "offline post-publish npm release evidence contract",
+    "exactly the five unscoped `1.0.0` packages",
+    "rejects legacy scoped `@fieldwork/*` package names",
+    "extra unscoped Fieldwork package names",
+    "sanitized `release-npm.yml` workflow evidence",
+    "public registry-state/provenance output",
+    "without publishing packages or querying package-name availability",
+    "`pnpm test:npm-release-evidence` and `pnpm test:npm-release-scaffold`",
     "`--expect-platform-published`",
     "`--expect-latest-version=1.0.0 --expect-provenance`",
     'retries the public registry with `node scripts/verify-npm-registry-state.mjs --expect-meta-published --expect-platform-published --expect-latest-version="$version" --expect-provenance`',
     "The relay TLS and OTLP smoke scripts honor `FIELDWORK_RELAY_BINARY`",
     "prefer the existing `target/release/fieldwork-relay`",
-    "macOS daemon signing and notarization fail closed before Darwin toolchain setup and release build",
-    "keep decoded Apple signing/notarization assets outside the repository workspace with `0600` permissions and cleanup",
+    "Darwin desktop artifacts build without Apple credentials",
+    "use `codesign --force --sign -` on `fieldwork` and `fieldworkd`",
+    "run the macOS npm trust verifier before archive staging",
+    "desktop npm path does not require Developer ID notarization",
+    "offline macOS npm trust\nevidence contract",
+    "installed unscoped npm package identity",
+    "per-Darwin-package checksum or npm integrity verification plus npm/Sigstore\nprovenance verification for `fieldwork-darwin-arm64` and\n`fieldwork-darwin-x64`",
+    "separate release-artifacts evidence gate",
+    "legacy scoped `@fieldwork/*` package names",
+    "FIELDWORK_PACKAGE_IDENTITY_FILE",
+    "FIELDWORK_RELEASE_INTEGRITY_FILE",
+    "FIELDWORK_VERIFY_COSIGN_SIGNATURE=1",
+    "FIELDWORK_RELEASE_PLATFORMS=darwin-arm64,darwin-x64",
+    "rejecting raw Apple\ncredentials, npm/GitHub tokens, legacy scoped `@fieldwork/*` package names, and\nterminal content",
+    "codesign --display --verbose=4",
+    "an ad-hoc or Developer ID\nsignature and absence of `com.apple.quarantine`",
+    "Gatekeeper notarization is optional/deferred",
+    "without signing binaries or running GitHub\nworkflows",
+    "`pnpm test:macos-signing-evidence` and\n`pnpm test:macos-signing-scaffold`",
     "keeps App Store Connect upload JSON outside the repository workspace and cleans signing/upload assets",
-    "Android release preflights Sentry/Firebase/signing/Play secrets before toolchain setup and mobile build",
+    "Android release preflights Firebase/signing/Play secrets before toolchain setup and mobile build",
     "removes generated Firebase/signing files in an `always()` cleanup step",
     "cleans the decoded relay SSH key",
     "the Xcode project honors `FIELDWORK_SKIP_RUST_BUILD` before running `apps/ios/scripts/build-rust.sh`",
@@ -645,7 +829,7 @@ function verifyDevelopmentDoc(text) {
   for (const phrase of [
     "domain ownership, DNS control, and social-handle reservation are operator-owned external gates",
     "reserved for explicit operator-requested status refreshes",
-    "node scripts/check-github-namespace.mjs --operator-refresh --expect-available",
+    "GitHub org/repo creation is complete",
     "node scripts/check-domain-status.mjs --operator-refresh --require-registered --require-dns",
   ]) {
     requireText(text, phrase, `docs/DEVELOPMENT.md external reservation facts must include ${phrase}`);
@@ -665,6 +849,12 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["check:release-artifacts"] !== "node scripts/verify-release-artifacts.mjs") {
     failures.push("package.json must expose pnpm check:release-artifacts");
   }
+  if (packageJson.scripts?.["check:release-artifacts-evidence"] !== "node scripts/verify-release-artifacts-evidence.mjs") {
+    failures.push("package.json must expose pnpm check:release-artifacts-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:release-artifacts-evidence"] !== "node scripts/create-release-artifacts-evidence-dir.mjs") {
+    failures.push("package.json must expose pnpm scaffold:release-artifacts-evidence");
+  }
   if (packageJson.scripts?.["check:local-release"] !== "node scripts/check-local-release.mjs") {
     failures.push("package.json must expose pnpm check:local-release");
   }
@@ -680,6 +870,33 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["test:live-testing-readiness"] !== "node scripts/check-live-testing-readiness.mjs --self-test") {
     failures.push("package.json must expose pnpm test:live-testing-readiness");
   }
+  if (packageJson.scripts?.["scaffold:live-testing-fw-shim"] !== "node scripts/create-live-testing-fw-shim.mjs") {
+    failures.push("package.json must expose pnpm scaffold:live-testing-fw-shim");
+  }
+  if (packageJson.scripts?.["test:live-testing-fw-shim"] !== "node scripts/test-live-testing-fw-shim.mjs") {
+    failures.push("package.json must expose pnpm test:live-testing-fw-shim");
+  }
+  if (packageJson.scripts?.["scaffold:live-testing-pack"] !== "node scripts/create-live-testing-pack.mjs") {
+    failures.push("package.json must expose pnpm scaffold:live-testing-pack");
+  }
+  if (packageJson.scripts?.["test:live-testing-pack"] !== "node scripts/test-live-testing-pack.mjs") {
+    failures.push("package.json must expose pnpm test:live-testing-pack");
+  }
+  if (packageJson.scripts?.["check:android-release-readiness"] !== "node scripts/check-android-release-readiness.mjs") {
+    failures.push("package.json must expose pnpm check:android-release-readiness");
+  }
+  if (packageJson.scripts?.["check:android-release-readiness:local"] !== "node scripts/check-android-release-readiness.mjs --local-only") {
+    failures.push("package.json must expose pnpm check:android-release-readiness:local");
+  }
+  if (packageJson.scripts?.["test:android-release-readiness"] !== "node scripts/check-android-release-readiness.mjs --self-test") {
+    failures.push("package.json must expose pnpm test:android-release-readiness");
+  }
+  if (packageJson.scripts?.["scaffold:android-release-evidence-pack"] !== "node scripts/create-android-release-evidence-pack.mjs") {
+    failures.push("package.json must expose pnpm scaffold:android-release-evidence-pack");
+  }
+  if (packageJson.scripts?.["test:android-release-evidence-pack"] !== "node scripts/test-android-release-evidence-pack.mjs") {
+    failures.push("package.json must expose pnpm test:android-release-evidence-pack");
+  }
   if (packageJson.scripts?.["check:no-ship"] !== "node scripts/verify-no-ship-markers.mjs") {
     failures.push("package.json must expose pnpm check:no-ship");
   }
@@ -689,8 +906,32 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["check:npm-registry"] !== "node scripts/verify-npm-registry-state.mjs") {
     failures.push("package.json must expose pnpm check:npm-registry");
   }
+  if (packageJson.scripts?.["check:npm-release-evidence"] !== "node scripts/verify-npm-release-evidence.mjs") {
+    failures.push("package.json must expose pnpm check:npm-release-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:npm-release-evidence"] !== "node scripts/create-npm-release-evidence-dir.mjs") {
+    failures.push("package.json must expose pnpm scaffold:npm-release-evidence");
+  }
   if (packageJson.scripts?.["test:npm-registry-state"] !== "node scripts/test-npm-registry-state.mjs") {
     failures.push("package.json must expose pnpm test:npm-registry-state");
+  }
+  if (packageJson.scripts?.["test:npm-release-evidence"] !== "node scripts/test-npm-release-evidence.mjs") {
+    failures.push("package.json must expose pnpm test:npm-release-evidence");
+  }
+  if (packageJson.scripts?.["test:npm-release-scaffold"] !== "node scripts/test-npm-release-scaffold.mjs") {
+    failures.push("package.json must expose pnpm test:npm-release-scaffold");
+  }
+  if (packageJson.scripts?.["check:macos-signing-evidence"] !== "node scripts/verify-macos-signing-evidence.mjs") {
+    failures.push("package.json must expose pnpm check:macos-signing-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:macos-signing-evidence"] !== "node scripts/create-macos-signing-evidence-dir.mjs") {
+    failures.push("package.json must expose pnpm scaffold:macos-signing-evidence");
+  }
+  if (packageJson.scripts?.["test:macos-signing-evidence"] !== "node scripts/test-macos-signing-evidence.mjs") {
+    failures.push("package.json must expose pnpm test:macos-signing-evidence");
+  }
+  if (packageJson.scripts?.["test:macos-signing-scaffold"] !== "node scripts/test-macos-signing-scaffold.mjs") {
+    failures.push("package.json must expose pnpm test:macos-signing-scaffold");
   }
   if (packageJson.scripts?.["refresh:domain-status"] !== "node scripts/check-domain-status.mjs --operator-refresh") {
     failures.push("package.json must expose pnpm refresh:domain-status");
@@ -704,14 +945,44 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["test:ios-prereqs"] !== "node scripts/test-ios-prereqs.mjs") {
     failures.push("package.json must expose pnpm test:ios-prereqs");
   }
+  if (packageJson.scripts?.["test:cli-doctor"] !== "scripts/smoke-cli-doctor.sh") {
+    failures.push("package.json must expose pnpm test:cli-doctor");
+  }
   if (packageJson.scripts?.["test:cli-no-args"] !== "scripts/smoke-cli-no-args.sh") {
     failures.push("package.json must expose pnpm test:cli-no-args");
   }
   if (packageJson.scripts?.["test:android-aab-verifier"] !== "node scripts/test-android-aab-verifier.mjs") {
     failures.push("package.json must expose pnpm test:android-aab-verifier");
   }
+  if (packageJson.scripts?.["check:android-debug-apk"] !== "node scripts/verify-android-debug-apk.mjs") {
+    failures.push("package.json must expose pnpm check:android-debug-apk");
+  }
+  if (packageJson.scripts?.["test:android-debug-apk-verifier"] !== "node scripts/test-android-debug-apk-verifier.mjs") {
+    failures.push("package.json must expose pnpm test:android-debug-apk-verifier");
+  }
+  if (packageJson.scripts?.["test:android-aab-signing-smoke"] !== "node scripts/test-android-aab-signing-smoke.mjs") {
+    failures.push("package.json must expose pnpm test:android-aab-signing-smoke");
+  }
+  if (packageJson.scripts?.["check:android-release-signing-evidence"] !== "node scripts/verify-android-release-signing-evidence.mjs") {
+    failures.push("package.json must expose pnpm check:android-release-signing-evidence");
+  }
+  if (packageJson.scripts?.["scaffold:android-release-signing-evidence"] !== "node scripts/create-android-release-signing-evidence-dir.mjs") {
+    failures.push("package.json must expose pnpm scaffold:android-release-signing-evidence");
+  }
+  if (packageJson.scripts?.["test:android-release-signing-evidence"] !== "node scripts/test-android-release-signing-evidence.mjs") {
+    failures.push("package.json must expose pnpm test:android-release-signing-evidence");
+  }
+  if (packageJson.scripts?.["test:android-release-signing-scaffold"] !== "node scripts/test-android-release-signing-scaffold.mjs") {
+    failures.push("package.json must expose pnpm test:android-release-signing-scaffold");
+  }
   if (packageJson.scripts?.["test:android-pair-button-picker"] !== "node scripts/test-android-pair-button-picker.mjs") {
     failures.push("package.json must expose pnpm test:android-pair-button-picker");
+  }
+  if (packageJson.scripts?.["test:release-artifacts-evidence"] !== "node scripts/test-release-artifacts-evidence.mjs") {
+    failures.push("package.json must expose pnpm test:release-artifacts-evidence");
+  }
+  if (packageJson.scripts?.["test:release-artifacts-scaffold"] !== "node scripts/test-release-artifacts-scaffold.mjs") {
+    failures.push("package.json must expose pnpm test:release-artifacts-scaffold");
   }
   if (packageJson.scripts?.["test:external-status-refresh"] !== "node scripts/test-external-status-refresh.mjs") {
     failures.push("package.json must expose pnpm test:external-status-refresh");
@@ -755,6 +1026,41 @@ function verifyWiring(allFiles) {
   if (packageJson.scripts?.["build:local-npm-artifacts"] !== "scripts/build-local-npm-artifacts.sh") {
     failures.push("package.json must expose pnpm build:local-npm-artifacts");
   }
+  requireText(
+    allFiles.localNpmArtifacts,
+    "prepare_darwin_trust darwin-arm64",
+    "local npm artifact staging must ad-hoc sign and verify darwin-arm64 package binaries",
+  );
+  requireText(
+    allFiles.localNpmArtifacts,
+    "prepare_darwin_trust darwin-x64",
+    "local npm artifact staging must ad-hoc sign and verify darwin-x64 package binaries",
+  );
+  requireText(
+    allFiles.localNpmArtifacts,
+    "node scripts/verify-macos-signing.mjs \"$out\"",
+    "local npm artifact staging must run the macOS npm trust verifier on staged Darwin package bins",
+  );
+  requireText(
+    allFiles.localNpmArtifacts,
+    "FIELDWORK_LOCAL_NPM_ARCHIVE_DIR",
+    "local npm artifact staging must allow overriding the local package archive output directory",
+  );
+  requireText(
+    allFiles.localNpmArtifacts,
+    "target_root_abs/local-npm-artifacts",
+    "local npm artifact staging must keep local tarballs under target/ by default",
+  );
+  requireText(
+    allFiles.localNpmArtifacts,
+    "archive_platform_package darwin-arm64",
+    "local npm artifact staging must archive the darwin-arm64 package candidate",
+  );
+  requireText(
+    allFiles.localNpmArtifacts,
+    "node scripts/verify-macos-signing.mjs \"$archive\"",
+    "local npm artifact staging must run the macOS npm trust verifier on local Darwin tarballs",
+  );
   requireText(allFiles.ci, "node scripts/verify-development-doc.mjs", "CI must run the development doc verifier");
   requireText(allFiles.ci, "node --check scripts/check-local-release.mjs", "CI must syntax-check the local release aggregate verifier");
   requireText(
@@ -769,6 +1075,8 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "scripts/verify-release-audit.mjs", "local release gate must include the release audit verifier");
   requireText(allFiles.localRelease, "\"workflow YAML syntax\"", "local release gate must include workflow YAML syntax parsing");
   requireText(allFiles.localRelease, "Dir[\".github/workflows/*.yml\"].sort.each", "local release gate must parse all workflow YAML files");
+  requireText(allFiles.localRelease, "\"release workflow run-block syntax self-test\"", "local release gate must include release workflow run-block syntax self-test");
+  requireText(allFiles.localRelease, "scripts/verify-release-workflows.mjs\", \"--self-test\"", "local release gate must run the release workflow self-test");
   requireText(allFiles.localRelease, "\"Node script syntax\"", "local release gate must include Node script syntax parsing");
   requireText(allFiles.localRelease, "for script in scripts/*.mjs", "local release gate must syntax-check every checked-in Node script");
   requireText(allFiles.localRelease, "node --check \"$script\"", "local release gate must use node --check for Node script syntax checks");
@@ -788,6 +1096,13 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "scripts/verify-no-ship-markers.mjs\", \"--self-test", "local release gate must include the no-ship marker self-test");
   requireText(allFiles.localRelease, "scripts/test-release-artifacts.mjs", "local release gate must include deterministic release-artifact verifier coverage");
   requireText(allFiles.localRelease, "scripts/check-live-testing-readiness.mjs\", \"--self-test", "local release gate must include deterministic live-testing readiness coverage");
+  requireText(allFiles.localRelease, "scripts/test-live-testing-fw-shim.mjs", "local release gate must include deterministic live-testing fw shim coverage");
+  requireText(allFiles.localRelease, "scripts/test-live-testing-pack.mjs", "local release gate must include deterministic live-testing pack scaffold coverage");
+  requireText(allFiles.localRelease, "scripts/check-android-release-readiness.mjs\", \"--self-test", "local release gate must include deterministic Android release readiness coverage");
+  requireText(allFiles.localRelease, "scripts/test-android-release-evidence-pack.mjs", "local release gate must include deterministic Android release evidence pack scaffold coverage");
+  requireText(allFiles.localRelease, "scripts/test-android-release-install-scaffold.mjs", "local release gate must include deterministic Android release-install scaffold coverage");
+  requireText(allFiles.localRelease, "scripts/test-android-release-signing-evidence.mjs", "local release gate must include deterministic Android release-signing verifier coverage");
+  requireText(allFiles.localRelease, "scripts/test-android-release-signing-scaffold.mjs", "local release gate must include deterministic Android release-signing scaffold coverage");
   requireText(allFiles.localRelease, "scripts/test-npm-artifact-pack.mjs", "local release gate must include deterministic npm artifact packaging coverage");
   requireText(allFiles.localRelease, "scripts/test-android-pair-button-picker.mjs", "local release gate must include deterministic Android pair-button picker coverage");
   requireText(allFiles.localRelease, "scripts/verify-uniffi-bindings.mjs", "local release gate must include UniFFI binding verification");
@@ -796,11 +1111,15 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "\"npm meta dry-run pack\", npm, [\"pack\", \"./packages/cli\", \"--dry-run\", \"--json\"]", "artifact-aware local release gate must include npm meta dry-run pack");
   requireText(allFiles.localRelease, "cleanNpmEnv()", "local release gate must sanitize inherited npm config for dry-run pack");
   requireText(allFiles.localRelease, "\"Android AAB artifact\", node, [\"scripts/verify-android-aab.mjs\", \"--expect-unsigned\"]", "artifact-aware local release gate must call the Android AAB verifier directly");
+  requireText(allFiles.localRelease, "scripts/test-android-debug-apk-verifier.mjs", "local release gate must include Android debug APK verifier coverage");
+  requireText(allFiles.localRelease, "\"Android debug APK artifact\", node, [\"scripts/verify-android-debug-apk.mjs\"]", "artifact-aware local release gate must call the Android debug APK verifier directly");
+  requireText(allFiles.localRelease, "\"Android AAB local signing smoke\", node, [\"scripts/test-android-aab-signing-smoke.mjs\"]", "artifact-aware local release gate must sign a temporary copy of the current Android AAB");
   requireText(allFiles.localNpmArtifacts, "cargo build --release -p fieldwork-cli -p fieldwork-daemon -p fieldwork-relay", "local npm artifact builder must build host release binaries");
   requireText(allFiles.localNpmArtifacts, "cargo zigbuild --release --target x86_64-unknown-linux-gnu -p fieldwork-cli -p fieldwork-daemon", "local npm artifact builder must build Linux x64 package binaries");
   requireText(allFiles.localNpmArtifacts, "cargo zigbuild --release --target aarch64-unknown-linux-gnu -p fieldwork-cli -p fieldwork-daemon", "local npm artifact builder must build Linux arm64 package binaries");
   requireText(allFiles.localNpmArtifacts, "node scripts/verify-npm-packages.mjs --require-binaries", "local npm artifact builder must verify staged package binaries");
   requireText(allFiles.localNpmArtifacts, "node scripts/publish-npm-packages.mjs --check-ready", "local npm artifact builder must verify publish readiness");
+  requireText(allFiles.localRelease, "\"CLI doctor smoke\", bash, [\"scripts/smoke-cli-doctor.sh\"]", "runtime local release gate must include CLI doctor smoke");
   requireText(allFiles.localRelease, "\"CLI no-args smoke\", bash, [\"scripts/smoke-cli-no-args.sh\"]", "runtime local release gate must include CLI no-args smoke");
   requireText(allFiles.localRelease, "\"local handoff smoke\", bash, [\"scripts/smoke-local-handoff.sh\"]", "runtime local release gate must include local handoff smoke");
   requireText(allFiles.localRelease, "localHandoffEnv()", "runtime local release gate must run local handoff with an explicit target-dir env");
@@ -812,6 +1131,20 @@ function verifyWiring(allFiles) {
   requireText(allFiles.localRelease, "\"relay TLS loopback\", bash, [\"scripts/smoke-relay-tls-loopback.sh\"]", "runtime local release gate must include relay TLS smoke");
   requireText(allFiles.localRelease, "\"relay OTLP loopback\", node, [\"scripts/smoke-relay-otlp-loopback.mjs\"]", "runtime local release gate must include relay OTLP smoke");
   requireText(allFiles.localRelease, "\"desktop performance thresholds\", node, [\"scripts/measure-desktop-performance.mjs\"]", "runtime local release gate must include desktop performance thresholds");
+  requireText(
+    allFiles.development,
+    "The doctor smoke builds the debug CLI/daemon in an isolated temp environment,\nverifies `fieldwork doctor --no-start` fails before a daemon is running",
+    "docs/DEVELOPMENT.md must document the CLI doctor smoke coverage",
+  );
+  requireText(allFiles.doctorSmoke, '"$fieldwork" doctor --no-start >"$tmp/doctor-before.log"', "CLI doctor smoke must prove --no-start fails before daemon startup");
+  requireText(allFiles.doctorSmoke, '"$fieldworkd" >"$tmp/daemon.log" 2>&1 &', "CLI doctor smoke must start an isolated daemon");
+  requireText(allFiles.doctorSmoke, '"$fieldwork" new --name doctor_shell bash -lc', "CLI doctor smoke must create a desktop session for session-list verification");
+  requireText(allFiles.doctorSmoke, '"$fw" doctor --no-start >"$tmp/doctor.log"', "CLI doctor smoke must run doctor through the fw alias");
+  requireText(allFiles.doctorSmoke, 'grep -Fq "socket parent: ok', "CLI doctor smoke must verify socket parent hardening display");
+  requireText(allFiles.doctorSmoke, 'grep -Fq "socket file: ok', "CLI doctor smoke must verify socket file hardening display");
+  requireText(allFiles.doctorSmoke, 'grep -Fq "protocol: ok (contract v2)"', "CLI doctor smoke must verify the protocol contract display");
+  requireText(allFiles.doctorSmoke, 'grep -Fq "session list: ok (1 session(s))"', "CLI doctor smoke must verify daemon-backed session count");
+  requireText(allFiles.doctorSmoke, '"$fw" doctor --help >"$tmp/doctor-help.log"', "CLI doctor smoke must verify fw doctor help");
   requireText(
     allFiles.development,
     "two bare invocations, one through `fieldwork` and one through a temp `fw` alias,\ncreate two distinct auto-named default `claude` sessions",
@@ -832,6 +1165,7 @@ function verifyWiring(allFiles) {
   );
   requireText(allFiles.ci, "node scripts/test-ios-prereqs.mjs", "CI must run the deterministic iOS prereq tests");
   requireText(allFiles.ci, "node scripts/test-android-aab-verifier.mjs", "CI must run the deterministic Android AAB verifier tests");
+  requireText(allFiles.ci, "node scripts/test-android-debug-apk-verifier.mjs", "CI must run the deterministic Android debug APK verifier tests");
   requireText(allFiles.ci, "node scripts/test-android-pair-button-picker.mjs", "CI must run the deterministic Android pair-button picker test");
   requireText(allFiles.ci, "node scripts/test-external-status-refresh.mjs", "CI must run the deterministic external status refresh guard test");
   requireText(
@@ -876,11 +1210,24 @@ function verifyWiring(allFiles) {
     "scripts/smoke-android-emulator-notification-tap.sh",
   ]) {
     requireText(allFiles.androidEmulatorAll, script, `Android emulator aggregate must run ${script}`);
+    const scriptText = read(script);
     requireText(
-      read(script),
+      scriptText,
       'adb -s "$serial" logcat -b crash -c',
       `${script} must clear the Android crash log before collecting smoke evidence`,
     );
+    if (script !== "scripts/smoke-android-debug.sh") {
+      requireText(
+        scriptText,
+        'FIELDWORK_RELAY_SIGNING_KEY_B64="$relay_signing_key"',
+        `${script} must set a deterministic test relay signing key for isolated typed-code pairing`,
+      );
+      rejectText(
+        scriptText,
+        "aps1-1.relay.n0.iroh-canary.iroh.link",
+        `${script} must not hardcode a public iroh relay for local emulator smokes`,
+      );
+    }
   }
   requireText(allFiles.androidEmulatorAll, "--list", "Android emulator aggregate must expose a list mode");
   requireText(allFiles.androidEmulatorAll, "boot-complete", "Android emulator aggregate must require a boot-complete device");

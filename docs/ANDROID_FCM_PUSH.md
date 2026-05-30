@@ -16,7 +16,7 @@ hashes, and notification tap-through into the correct daemon-owned session.
 - Use the production relay control plane with relay-held FCM service-account
   JSON. The daemon and Android app must not hold APNs or FCM provider
   credentials.
-- Do not use a debug build, biometric bypass, or debug pairing payload.
+- Do not use a debug build, biometric bypass, or debug pairing code.
 - Capture evidence with direct `adb`: device listing, notification screenshot,
   UI dumps, app logcat, crash buffer, and desktop PTY replay.
 - Evidence must contain no Android fatal/ANR logcat entries, no Android system
@@ -25,9 +25,23 @@ hashes, and notification tap-through into the correct daemon-owned session.
 ## Evidence Directory
 
 ```sh
-export FW_ANDROID_FCM_DIR="/tmp/fieldwork-android-fcm-push-$(date +%Y%m%d%H%M%S)"
-mkdir -p "$FW_ANDROID_FCM_DIR"
+export FW_ANDROID_FCM_DIR="$(pnpm --silent scaffold:android-fcm-push-evidence -- --print-dir --quiet)"
 ```
+
+To use an existing path instead:
+
+```sh
+export FW_ANDROID_FCM_DIR="/tmp/fieldwork-android-fcm-push-$(date +%Y%m%d%H%M%S)"
+pnpm scaffold:android-fcm-push-evidence -- --dir "$FW_ANDROID_FCM_DIR"
+```
+
+The scaffold writes only a README, manifest, missing-file checklist,
+stage-by-stage capture checklist, and direct-adb `preflight.sh`. The preflight
+can capture signed release artifact proof, release BuildConfig proof, relay
+version output, one physical Android device listing, and installed package
+identity/version. It does not create provider payload JSON, delivery-count
+evidence, notification screenshots, tap UI evidence, replay transcripts, or
+logs.
 
 ## Release Build And Relay
 
@@ -42,10 +56,32 @@ node scripts/verify-android-aab.mjs --expect-signed \
 Capture the release `BuildConfig` values:
 
 ```sh
-rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
+rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""' \
   apps/android/app/build/generated/source/buildConfig/release/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_ANDROID_FCM_DIR/buildconfig.txt"
 ```
+
+After installing the signed release artifact on one physical Android phone, the
+generated preflight can capture the signed artifact verifier output,
+BuildConfig, relay version, `adb devices -l`, and installed package proof:
+
+```sh
+FIELDWORK_ANDROID_AAB=apps/android/app/build/outputs/bundle/release/app-release.aab \
+FIELDWORK_RELAY_VERSION_URL=https://relay.fieldwork.dev:8443/v1/version \
+"$FW_ANDROID_FCM_DIR/preflight.sh"
+```
+
+If the signed-artifact verifier was run elsewhere, pass the captured output:
+
+```sh
+FIELDWORK_ANDROID_ARTIFACT_SIGNING_FILE=/path/to/artifact-signing.txt \
+"$FW_ANDROID_FCM_DIR/preflight.sh"
+```
+
+`preflight.sh` rejects emulators/AVDs, multiple attached devices, debug
+BuildConfig, biometric bypass, debug pairing codes, missing
+`versionName=1.0`/`versionCode=1`, and installed package evidence containing
+`DEBUGGABLE` or `debuggable=true`.
 
 Confirm the production relay control plane is reachable:
 
@@ -61,7 +97,16 @@ Capture the physical device list and install the release artifact:
 ```sh
 adb devices -l | tee "$FW_ANDROID_FCM_DIR/adb-devices.txt"
 bundletool install-apks --apks /path/to/fieldwork-release.apks
+{
+  echo '$ adb shell pm path app.fieldwork.android'
+  adb shell pm path app.fieldwork.android
+  echo '$ adb shell dumpsys package app.fieldwork.android'
+  adb shell dumpsys package app.fieldwork.android
+} | tee "$FW_ANDROID_FCM_DIR/package-info.txt"
 ```
+`package-info.txt` must prove the installed app is `app.fieldwork.android` with
+`versionName=1.0`, `versionCode=1`, and no `DEBUGGABLE` or `debuggable=true` markers.
+
 
 Pair the phone with the production-relay-configured daemon through the real QR
 scanner and explicit desktop approval. After biometric unlock, confirm the

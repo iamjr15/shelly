@@ -1,58 +1,29 @@
 package app.fieldwork.android.core
 
 import android.content.Context
-import app.fieldwork.android.BuildConfig
-import io.sentry.Sentry
-import io.sentry.android.core.SentryAndroid
 
 object MobileTelemetry {
     private const val preferencesName = "fieldwork_privacy"
-    private const val crashReportsKey = "crash_reports_opt_in"
-    private const val crashReportsConsentResolvedKey = "crash_reports_consent_resolved"
-    private var started = false
+    private const val diagnosticsOptInKey = "diagnostics_opt_in"
+    private const val diagnosticsConsentResolvedKey = "diagnostics_consent_resolved"
 
-    fun isCrashReportingEnabled(context: Context): Boolean =
-        context.telemetryPreferences().getBoolean(crashReportsKey, false)
+    fun isDiagnosticsEnabled(context: Context): Boolean =
+        context.telemetryPreferences().getBoolean(diagnosticsOptInKey, false)
 
     fun shouldShowConsentPrompt(context: Context): Boolean {
         val preferences = context.telemetryPreferences()
-        return !preferences.getBoolean(crashReportsKey, false) &&
-            !preferences.getBoolean(crashReportsConsentResolvedKey, false)
+        return !preferences.getBoolean(diagnosticsOptInKey, false) &&
+            !preferences.getBoolean(diagnosticsConsentResolvedKey, false)
     }
 
-    fun setCrashReportingEnabled(context: Context, enabled: Boolean) {
+    fun setDiagnosticsEnabled(context: Context, enabled: Boolean) {
         context.telemetryPreferences().edit()
-            .putBoolean(crashReportsKey, enabled)
-            .putBoolean(crashReportsConsentResolvedKey, true)
+            .putBoolean(diagnosticsOptInKey, enabled)
+            .putBoolean(diagnosticsConsentResolvedKey, true)
             .apply()
-        sync(context)
     }
 
-    fun sync(context: Context) {
-        val dsn = BuildConfig.FIELDWORK_SENTRY_DSN.trim()
-        if (!isCrashReportingEnabled(context) || dsn.isEmpty()) {
-            if (started || Sentry.isEnabled()) {
-                Sentry.close()
-                started = false
-            }
-            return
-        }
-        if (started || Sentry.isEnabled()) {
-            return
-        }
-
-        SentryAndroid.init(context.applicationContext) { options ->
-            options.setDsn(dsn)
-            options.setSendDefaultPii(false)
-            options.setTracesSampleRate(0.0)
-            options.setRelease("app.fieldwork.android@${BuildConfig.VERSION_NAME}+${BuildConfig.VERSION_CODE}")
-            options.setEnvironment(BuildConfig.BUILD_TYPE)
-            options.setEnableAutoActivityLifecycleTracing(false)
-            options.setEnableActivityLifecycleTracingAutoFinish(false)
-            options.setEnableUserInteractionTracing(false)
-        }
-        started = true
-    }
+    fun sync(context: Context) = Unit
 
     private fun Context.telemetryPreferences() =
         applicationContext.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)

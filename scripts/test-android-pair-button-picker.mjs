@@ -15,8 +15,8 @@ try {
 <hierarchy rotation="0">
   <node class="android.widget.FrameLayout" clickable="false" enabled="true" bounds="[0,0][1080,2400]">
     <node class="android.view.View" clickable="false" enabled="true" bounds="[0,63][1080,2127]">
-      <node text='{"pair_token":"TOKEN"}' class="android.widget.EditText" clickable="true" enabled="true" bounds="[42,1218][1038,1942]">
-        <node text="Pairing payload" class="android.widget.TextView" clickable="false" enabled="true" bounds="[84,1218][315,1260]" />
+      <node text='AB4C7' class="android.widget.EditText" clickable="true" enabled="true" bounds="[42,1218][1038,1942]">
+        <node text="Pairing code" class="android.widget.TextView" clickable="false" enabled="true" bounds="[84,1218][315,1260]" />
       </node>
       <node class="android.view.View" clickable="true" enabled="true" bounds="[42,1942][1038,2068]">
         <node class="android.widget.Button" clickable="false" enabled="true" bounds="[42,1986][1038,2023]" />

@@ -76,6 +76,17 @@ final class FieldworkCoreService {
         let freshClient = try makeClient(record: nil)
         client = freshClient
         let info = try await freshClient.pairWithQr(qrPayload: qrPayload)
+        try persistPairing(info)
+    }
+
+    func pair(code: String) async throws {
+        let freshClient = try makeClient(record: nil)
+        client = freshClient
+        let info = try await freshClient.pairWithCode(code: code)
+        try persistPairing(info)
+    }
+
+    private func persistPairing(_ info: DaemonInfo) throws {
         let record = PairedDaemonRecord(
             daemonNodeId: info.daemonNodeId,
             relayUrl: info.relayUrl,
@@ -169,9 +180,23 @@ final class FieldworkCoreService {
             deviceName: UIDevice.current.name,
             platform: .ios,
             deviceSecretKey: record?.deviceSecretKey,
-            pairedDaemon: daemon
+            pairedDaemon: daemon,
+            relayControlUrl: Self.relayControlUrl
         )
         return try FieldworkClient(config: config)
+    }
+
+    /// Relay control URL injected at build time via the `FieldworkRelayControlURL`
+    /// Info.plist key (sourced from `FIELDWORK_RELAY_CONTROL_URL`). Absent or empty
+    /// disables the typed-code path; QR pairing keeps working without a relay.
+    private static var relayControlUrl: String? {
+        guard
+            let value = Bundle.main.object(forInfoDictionaryKey: "FieldworkRelayControlURL") as? String
+        else {
+            return nil
+        }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

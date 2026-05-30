@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import {
   verifyCleanAndroidLogs,
+  verifyInstalledAndroidPackageInfo,
   verifyNoAndroidSystemErrorOverlays,
   verifyPhysicalAndroidAdbDevices,
 } from "./android-evidence-common.mjs";
@@ -20,6 +21,7 @@ const evidenceDir = path.resolve(rawArgs[0]);
 
 const requiredFiles = [
   "adb-devices.txt",
+  "package-info.txt",
   "buildconfig.txt",
   "dogfood-duration.txt",
   "claude.png",
@@ -53,6 +55,7 @@ for (const file of requiredFiles) {
 
 if (failures.length === 0) {
   verifyAdbDevices(readText("adb-devices.txt"));
+  verifyPackageInfo(readText("package-info.txt"));
   verifyBuildConfig(readText("buildconfig.txt"));
   verifyDuration(readText("dogfood-duration.txt"));
   for (const file of ["claude.png", "scroll.png", "resize.png", "paste.png"]) {
@@ -89,6 +92,10 @@ if (failures.length > 0) {
 
 console.log(`android dogfood evidence ok: ${evidenceDir}`);
 
+function verifyPackageInfo(text) {
+  verifyInstalledAndroidPackageInfo(text, failures, { forbidDebuggable: true });
+}
+
 function verifyBuildConfig(text) {
   requirePatternText(
     text,
@@ -97,8 +104,13 @@ function verifyBuildConfig(text) {
   );
   requirePatternText(
     text,
-    /\bBUILD_TYPE\s*=\s*"(?:debug|release)"/,
-    "buildconfig.txt must prove the installed test build is debug or release",
+    /\bBUILD_TYPE\s*=\s*"release"/,
+    "buildconfig.txt must prove the installed test build is the release variant",
+  );
+  requirePatternText(
+    text,
+    /\bDEBUG\s*=\s*(?:false|Boolean\.parseBoolean\("false"\))/,
+    "buildconfig.txt must prove BuildConfig.DEBUG is disabled",
   );
   requirePatternText(
     text,
@@ -107,8 +119,8 @@ function verifyBuildConfig(text) {
   );
   requirePatternText(
     text,
-    /\bFIELDWORK_DEBUG_PAIRING_PAYLOAD\s*=\s*""/,
-    "buildconfig.txt must prove no debug pairing payload is compiled in",
+    /\bFIELDWORK_DEBUG_PAIRING_CODE\s*=\s*""/,
+    "buildconfig.txt must prove no debug pairing code is compiled in",
   );
 }
 

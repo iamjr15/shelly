@@ -11,8 +11,8 @@ use anyhow::{Context, Result};
 use dashmap::DashMap;
 use fieldwork_protocol::{
     CONTRACT_VERSION, Capabilities, ClientId, ClientKind, ClientToServerMsg, ErrorCode,
-    PairingPayload, PushPlatform, ServerToClientMsg, SessionId, decode_bincode, encode_bincode,
-    max_frame_len,
+    PairingTicket, PushPlatform, ServerToClientMsg, SessionId, decode_bincode, encode_bincode,
+    max_frame_len, normalize_code,
 };
 use interprocess::local_socket::traits::tokio::Listener as _;
 use interprocess::local_socket::{
@@ -140,11 +140,7 @@ impl AppState {
             .expect("iroh endpoint lock poisoned") = Some(info);
     }
 
-    pub(crate) fn pairing_payload(
-        &self,
-        pair_token: String,
-        expires_at: u64,
-    ) -> Result<PairingPayload> {
+    pub(crate) fn pairing_ticket(&self, code: String, expires_at: u64) -> Result<PairingTicket> {
         let info = self
             .iroh_endpoint
             .lock()
@@ -152,27 +148,27 @@ impl AppState {
             .clone()
             .context("iroh endpoint is not ready yet")?;
 
-        Ok(PairingPayload {
-            relay_url: info.relay_url,
+        Ok(PairingTicket {
+            code,
             node_id: info.node_id,
+            relay_url: info.relay_url,
             addrs: info.addrs,
-            pair_token,
             expires_at,
         })
     }
 
-    pub(crate) async fn wait_pairing_payload(
+    pub(crate) async fn wait_pairing_ticket(
         &self,
-        pair_token: String,
+        code: String,
         expires_at: u64,
-    ) -> Result<PairingPayload> {
+    ) -> Result<PairingTicket> {
         for _ in 0..100 {
-            if let Ok(payload) = self.pairing_payload(pair_token.clone(), expires_at) {
-                return Ok(payload);
+            if let Ok(ticket) = self.pairing_ticket(code.clone(), expires_at) {
+                return Ok(ticket);
             }
             sleep(Duration::from_millis(100)).await;
         }
-        self.pairing_payload(pair_token, expires_at)
+        self.pairing_ticket(code, expires_at)
     }
 
     pub(crate) fn iroh_node_id(&self) -> Option<String> {
@@ -609,11 +605,11 @@ where
             }
             ClientToServerMsg::BeginPairing { .. } => {
                 if client_kind != ClientKind::LocalCli {
-                    write_forbidden(&writer, "mobile clients cannot create pair tokens").await?;
+                    write_forbidden(&writer, "mobile clients cannot create pairing codes").await?;
                     continue;
                 }
 
-                let (pair_token, expires_at, mut request_rx) = match state.pairing.begin_pairing() {
+                let (code, expires_at, mut request_rx) = match state.pairing.begin_pairing() {
                     Ok(pairing) => pairing,
                     Err(error) => {
                         write_msg(
@@ -627,8 +623,8 @@ where
                         continue;
                     }
                 };
-                let payload = match state.wait_pairing_payload(pair_token, expires_at).await {
-                    Ok(payload) => payload,
+                let ticket = match state.wait_pairing_ticket(code, expires_at).await {
+                    Ok(ticket) => ticket,
                     Err(error) => {
                         write_msg(
                             &writer,
@@ -641,7 +637,22 @@ where
                         continue;
                     }
                 };
-                write_msg(&writer, &ServerToClientMsg::PairingStarted { payload }).await?;
+
+                // Best-effort: publish the code -> reachability blob to the relay
+                // so the typed-code path can resolve it. Skipped silently when the
+                // relay is unset; failures never break the QR path below.
+                match ticket.encode() {
+                    Ok(ticket_blob) => state.push.publish_pairing_code(
+                        ticket.code.clone(),
+                        ticket_blob,
+                        ticket.expires_at,
+                    ),
+                    Err(error) => {
+                        warn!(%error, "failed to encode pairing ticket for relay publish")
+                    }
+                }
+
+                write_msg(&writer, &ServerToClientMsg::PairingStarted { ticket }).await?;
 
                 let writer = Arc::clone(&writer);
                 tokio::spawn(async move {
@@ -676,14 +687,15 @@ where
                     .await?;
                 }
             }
-            ClientToServerMsg::PairWithToken {
-                pair_token,
+            ClientToServerMsg::PairWithCode {
+                code,
                 device_name,
                 device_node_id,
             } => {
+                let code = normalize_code(&code);
                 match state
                     .pairing
-                    .request_approval(&pair_token, device_name.clone(), device_node_id.clone())
+                    .request_approval(&code, device_name.clone(), device_node_id.clone())
                     .await
                 {
                     Ok(true) => {
@@ -794,8 +806,30 @@ where
                     continue;
                 }
                 if let Some(session) = state.sessions.get(&session_id) {
-                    session.apply_agent_state_event(source, agent_state, last_line);
-                    state.publish_session_list();
+                    match session.apply_agent_state_event(source, agent_state, last_line) {
+                        Ok(last_line) => {
+                            state.publish_session_list();
+                            write_msg(
+                                &writer,
+                                &ServerToClientMsg::AgentStateChanged {
+                                    session_id,
+                                    state: agent_state,
+                                    last_line,
+                                },
+                            )
+                            .await?;
+                        }
+                        Err(error) => {
+                            write_msg(
+                                &writer,
+                                &ServerToClientMsg::Error {
+                                    code: ErrorCode::InvalidRequest,
+                                    message: error.to_string(),
+                                },
+                            )
+                            .await?;
+                        }
+                    }
                 } else {
                     write_msg(
                         &writer,
@@ -939,6 +973,24 @@ mod tests {
         )
         .expect("spawn stdin session")
     }
+
+    fn write_sleeping_agent_stub(dir: &Path, name: &str) -> std::path::PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, "#!/bin/sh\nsleep 30\n").expect("write agent stub");
+        make_executable(&path);
+        path
+    }
+
+    #[cfg(unix)]
+    fn make_executable(path: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+            .expect("mark agent stub executable");
+    }
+
+    #[cfg(not(unix))]
+    fn make_executable(_path: &Path) {}
 
     async fn assert_ipc_rejects_protocol_mismatch(client_kind: ClientKind) {
         let (client, server) = tokio::io::duplex(8192);
@@ -1182,6 +1234,114 @@ mod tests {
     async fn ipc_handler_rejects_mobile_agent_state_events() {
         assert_ipc_forbids_agent_state_events(ClientKind::IosApp).await;
         assert_ipc_forbids_agent_state_events(ClientKind::AndroidApp).await;
+    }
+
+    #[tokio::test]
+    async fn ipc_handler_acknowledges_local_agent_hook_and_reports_errors() {
+        let state = test_state();
+        let cwd = tempfile::tempdir().expect("tempdir");
+        let claude = write_sleeping_agent_stub(cwd.path(), "claude");
+        let session = Session::spawn(
+            "claude-hook".to_string(),
+            vec![claude.to_string_lossy().into_owned()],
+            cwd.path().to_path_buf(),
+            HashMap::new(),
+            ClientSize { rows: 24, cols: 80 },
+            None,
+            None,
+        )
+        .expect("spawn claude session");
+        let session_id = session.id();
+        state.sessions.insert(session_id, Arc::clone(&session));
+
+        let (client, server) = tokio::io::duplex(8192);
+        let (server_reader, server_writer) = tokio::io::split(server);
+        let server_task = tokio::spawn(handle_client_io(state, server_reader, server_writer));
+        let (mut client_reader, client_writer) = tokio::io::split(client);
+        let client_writer = Arc::new(Mutex::new(client_writer));
+
+        write_msg(
+            &client_writer,
+            &ClientToServerMsg::Hello {
+                client_kind: ClientKind::LocalCli,
+                client_version: "test".to_string(),
+                protocol_version: CONTRACT_VERSION,
+            },
+        )
+        .await
+        .unwrap();
+        let welcome: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
+        assert!(matches!(welcome, ServerToClientMsg::Welcome { .. }));
+
+        write_msg(
+            &client_writer,
+            &ClientToServerMsg::AgentStateEvent {
+                session_id,
+                source: AgentSource::Claude,
+                state: AgentState::AwaitingInput,
+                last_line: Some("approval requested".to_string()),
+            },
+        )
+        .await
+        .unwrap();
+        let ack: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
+        assert_eq!(
+            ack,
+            ServerToClientMsg::AgentStateChanged {
+                session_id,
+                state: AgentState::AwaitingInput,
+                last_line: Some("approval requested".to_string()),
+            }
+        );
+
+        write_msg(
+            &client_writer,
+            &ClientToServerMsg::AgentStateEvent {
+                session_id,
+                source: AgentSource::Codex,
+                state: AgentState::AwaitingInput,
+                last_line: Some("wrong source".to_string()),
+            },
+        )
+        .await
+        .unwrap();
+        let mismatch: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
+        let ServerToClientMsg::Error { code, message } = mismatch else {
+            panic!("expected mismatched hook error");
+        };
+        assert_eq!(code, ErrorCode::InvalidRequest);
+        assert!(message.contains("does not match"));
+
+        let missing_id = SessionId::new();
+        write_msg(
+            &client_writer,
+            &ClientToServerMsg::AgentStateEvent {
+                session_id: missing_id,
+                source: AgentSource::Claude,
+                state: AgentState::AwaitingInput,
+                last_line: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            read_msg::<_, ServerToClientMsg>(&mut client_reader)
+                .await
+                .unwrap(),
+            ServerToClientMsg::Error {
+                code: ErrorCode::NotFound,
+                message: format!("session not found: {missing_id}"),
+            }
+        );
+
+        drop(client_writer);
+        drop(client_reader);
+        let _ = session.kill();
+        timeout(Duration::from_secs(1), server_task)
+            .await
+            .expect("IPC handler did not exit")
+            .expect("IPC handler panicked")
+            .expect("IPC handler failed");
     }
 
     async fn wait_for_summary<F>(

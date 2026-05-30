@@ -177,6 +177,80 @@ class FieldworkViewModelTest {
     }
 
     @Test
+    fun activeTerminalSessionPersistsAcrossSessionUpdatesWithSameId() {
+        val first = testSession(id = "018f0000-0000-7000-8000-0000000000a1")
+        val updated = first.copy(lastLine = "still attached")
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            sessions = listOf(first),
+        )
+        val viewModel = testViewModel(repository)
+
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+        viewModel.openTerminalSession(first)
+        repository.emitSessions(listOf(updated))
+
+        assertEquals(first.id, viewModel.state.value.activeTerminalSessionId)
+        assertEquals(listOf(updated), viewModel.state.value.sessions)
+    }
+
+    @Test
+    fun activeTerminalSessionClearsWhenSessionDisappears() {
+        val session = testSession(id = "018f0000-0000-7000-8000-0000000000a2")
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            sessions = listOf(session),
+        )
+        val viewModel = testViewModel(repository)
+
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+        viewModel.openTerminalSession(session)
+        repository.emitSessions(emptyList())
+
+        assertNull(viewModel.state.value.activeTerminalSessionId)
+    }
+
+    @Test
+    fun setLockedClearsActiveTerminalSession() {
+        val session = testSession(id = "018f0000-0000-7000-8000-0000000000a3")
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            sessions = listOf(session),
+        )
+        val viewModel = testViewModel(repository)
+
+        viewModel.openTerminalSession(session)
+        viewModel.setUnlocked(false)
+
+        assertNull(viewModel.state.value.activeTerminalSessionId)
+    }
+
+    @Test
+    fun sessionSubscriptionDisconnectRetriesWithoutUserVisibleAlert() {
+        val session = testSession(id = "018f0000-0000-7000-8000-0000000000f0")
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            sessions = listOf(session),
+            subscriptionFailures = ArrayDeque<Throwable>().apply {
+                add(RuntimeException("transport error: connection lost"))
+            },
+        )
+        val viewModel = testViewModel(
+            repository = repository,
+            sessionSubscriptionRetryDelayMillis = 0L,
+        )
+
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        waitForState { repository.subscribeCalls >= 2 }
+        assertNull(viewModel.state.value.message)
+        assertEquals(listOf(session), viewModel.state.value.sessions)
+    }
+
+    @Test
     fun setLockedStopsSessionSubscriptionUpdates() {
         val first = testSession(id = "018f0000-0000-7000-8000-000000000009")
         val second = testSession(id = "018f0000-0000-7000-8000-00000000000a")
@@ -237,6 +311,30 @@ class FieldworkViewModelTest {
         assertEquals(listOf(session), viewModel.state.value.sessions)
         assertEquals(1, repository.subscribeCalls)
         assertEquals(listOf("queued-token", "current-token"), repository.registeredFcmTokens)
+    }
+
+    @Test
+    fun pairWithCodeWhileUnlockedPairsAndLoadsSessions() {
+        val session = testSession(id = "018f0000-0000-7000-8000-0000000000e0")
+        val pairing = testPairing()
+        val repository = FakeRepository(
+            restoredPairing = null,
+            pairResult = pairing,
+            sessions = listOf(session),
+        )
+        val viewModel = testViewModel(repository)
+
+        viewModel.setUnlocked(true)
+        viewModel.pairWithCode("AB12C")
+        drainMainLooper()
+
+        assertEquals("AB12C", repository.pairedCode)
+        assertEquals(emptyList<String>(), repository.pairedPayloads)
+        assertEquals(true, viewModel.state.value.paired)
+        assertFalse(viewModel.state.value.restoringPairing)
+        assertEquals(pairing, viewModel.state.value.pairedDaemon)
+        assertEquals(listOf(session), viewModel.state.value.sessions)
+        assertEquals(1, repository.subscribeCalls)
     }
 
     @Test
@@ -490,6 +588,7 @@ class FieldworkViewModelTest {
     private fun testViewModel(
         repository: FakeRepository,
         fcmTokens: FakeFcmTokenSource = FakeFcmTokenSource(pending = null, current = null),
+        sessionSubscriptionRetryDelayMillis: Long = 750L,
     ): FieldworkViewModel {
         return FieldworkViewModel(
             context,
@@ -497,6 +596,7 @@ class FieldworkViewModelTest {
             fcmTokens,
             restoreDispatcher = Dispatchers.Unconfined,
             repositoryDispatcher = Dispatchers.Unconfined,
+            sessionSubscriptionRetryDelayMillis = sessionSubscriptionRetryDelayMillis,
         ).also {
             drainMainLooper()
         }
@@ -560,6 +660,7 @@ class FieldworkViewModelTest {
         private val sessions: List<MobileSession> = emptyList(),
         private val initialSubscriptionSessions: List<MobileSession>? = sessions,
         private val attachedSessions: ArrayDeque<AttachedSession> = ArrayDeque(),
+        private val subscriptionFailures: ArrayDeque<Throwable> = ArrayDeque(),
         private val onRestore: (() -> Unit)? = null,
         private val onPair: ((String) -> Unit)? = null,
         private val onListSessions: (() -> Unit)? = null,
@@ -570,6 +671,9 @@ class FieldworkViewModelTest {
         val registeredFcmTokens = mutableListOf<String>()
         val pairedPayloads = mutableListOf<String>()
         var pairedPayload: String? = null
+            private set
+        val pairedCodes = mutableListOf<String>()
+        var pairedCode: String? = null
             private set
         var clearCalls = 0
             private set
@@ -590,6 +694,13 @@ class FieldworkViewModelTest {
             savedPairing = pairResult
         }
 
+        override suspend fun pairWithCode(code: String) {
+            pairedCodes += code
+            pairedCode = code
+            onPair?.invoke(code)
+            savedPairing = pairResult
+        }
+
         override suspend fun listSessions(): List<MobileSession> {
             onListSessions?.invoke()
             return sessions
@@ -597,6 +708,7 @@ class FieldworkViewModelTest {
 
         override suspend fun subscribeSessions(onUpdate: (List<MobileSession>) -> Unit) {
             subscribeCalls += 1
+            subscriptionFailures.removeFirstOrNull()?.let { throw it }
             subscriptionSink = onUpdate
             initialSubscriptionSessions?.let(onUpdate)
         }

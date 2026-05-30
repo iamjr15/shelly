@@ -78,6 +78,7 @@ function verifyMobileCoreRequiredSurface() {
   const text = read("crates/mobile-core/src/lib.rs");
   const required = [
     "pub async fn pair_with_qr",
+    "pub async fn pair_with_code",
     "pub async fn list_sessions",
     "pub async fn subscribe_sessions",
     "pub async fn attach_session(",
@@ -87,7 +88,7 @@ function verifyMobileCoreRequiredSurface() {
     "pub async fn resize",
     "pub async fn detach",
     "pub fn last_seen_seq",
-    "ClientToServerMsg::PairWithToken",
+    "ClientToServerMsg::PairWithCode",
     "ClientToServerMsg::ListSessions",
     "ClientToServerMsg::SubscribeSessions",
     "ClientToServerMsg::AttachSession",

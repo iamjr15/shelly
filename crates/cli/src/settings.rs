@@ -25,15 +25,12 @@ struct ScrollbackEncryptionConfig {
 struct TelemetryConfig {
     #[serde(default)]
     opt_in: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sentry_dsn: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TelemetryStatus {
     pub path: PathBuf,
     pub opt_in: bool,
-    pub sentry_dsn_configured: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,9 +50,9 @@ pub fn telemetry_status() -> Result<TelemetryStatus> {
     telemetry_status_at_path(&path)
 }
 
-pub fn set_telemetry(enabled: bool, sentry_dsn: Option<String>) -> Result<TelemetryStatus> {
+pub fn set_telemetry(enabled: bool) -> Result<TelemetryStatus> {
     let path = default_config_path();
-    set_telemetry_at_path(&path, enabled, sentry_dsn)
+    set_telemetry_at_path(&path, enabled)
 }
 
 pub fn scrollback_encryption_status() -> Result<ScrollbackEncryptionStatus> {
@@ -78,21 +75,9 @@ fn scrollback_encryption_status_at_path(path: &Path) -> Result<ScrollbackEncrypt
     Ok(scrollback_encryption_status_from_config(path, &config))
 }
 
-fn set_telemetry_at_path(
-    path: &Path,
-    enabled: bool,
-    sentry_dsn: Option<String>,
-) -> Result<TelemetryStatus> {
+fn set_telemetry_at_path(path: &Path, enabled: bool) -> Result<TelemetryStatus> {
     let mut config = read_config(path)?;
     config.telemetry.opt_in = enabled;
-
-    if let Some(sentry_dsn) = sentry_dsn {
-        let sentry_dsn = sentry_dsn.trim().to_string();
-        if sentry_dsn.is_empty() {
-            bail!("--sentry-dsn cannot be empty");
-        }
-        config.telemetry.sentry_dsn = Some(sentry_dsn);
-    }
 
     write_config(path, &config)?;
     Ok(status_from_config(path, &config))
@@ -112,11 +97,6 @@ fn status_from_config(path: &Path, config: &UserConfig) -> TelemetryStatus {
     TelemetryStatus {
         path: path.to_path_buf(),
         opt_in: config.telemetry.opt_in,
-        sentry_dsn_configured: config
-            .telemetry
-            .sentry_dsn
-            .as_deref()
-            .is_some_and(|value| !value.trim().is_empty()),
     }
 }
 
@@ -222,23 +202,16 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     #[test]
-    fn telemetry_on_writes_private_config_with_optional_sentry_dsn() {
+    fn telemetry_on_writes_private_config() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("fieldwork").join("config.toml");
 
-        let status = set_telemetry_at_path(
-            &path,
-            true,
-            Some("https://public@example.invalid/1".to_string()),
-        )
-        .unwrap();
+        let status = set_telemetry_at_path(&path, true).unwrap();
 
         assert!(status.opt_in);
-        assert!(status.sentry_dsn_configured);
         assert_eq!(status.path, path);
         let contents = std::fs::read_to_string(&path).unwrap();
         assert!(contents.contains("opt_in = true"));
-        assert!(contents.contains("sentry_dsn = \"https://public@example.invalid/1\""));
 
         #[cfg(unix)]
         {
@@ -254,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn telemetry_off_preserves_existing_sentry_dsn() {
+    fn telemetry_off_preserves_existing_config_sections() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("config.toml");
         std::fs::write(
@@ -262,17 +235,23 @@ mod tests {
             r#"
 [telemetry]
 opt_in = true
-sentry_dsn = "https://public@example.invalid/1"
+
+[scrollback_encryption]
+enabled = false
 "#,
         )
         .unwrap();
 
-        let status = set_telemetry_at_path(&path, false, None).unwrap();
+        let status = set_telemetry_at_path(&path, false).unwrap();
 
         assert!(!status.opt_in);
-        assert!(status.sentry_dsn_configured);
         let read_back = telemetry_status_at_path(&path).unwrap();
         assert_eq!(read_back, status);
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("enabled = false")
+        );
     }
 
     #[test]

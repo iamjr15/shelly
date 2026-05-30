@@ -1,6 +1,6 @@
-# Fieldwork Protocol v1
+# Fieldwork Protocol v2
 
-`CONTRACT_VERSION` is `1`.
+`CONTRACT_VERSION` is `2`. Version 2 replaces the verbose JSON pairing payload and the `PairWithToken`/`pair_token` flow with a short 5-character pairing code and the compact `PairingTicket`; the daemon rejects `Hello` with a mismatched version.
 
 The implemented local IPC path uses length-prefixed bincode frames over the daemon Unix socket. The protocol crate owns the bincode helpers and uses bincode 2 with its legacy configuration so v1 keeps the original fixed-int/little-endian bincode wire layout while rejecting trailing payload bytes. The implemented iroh path uses the same length prefix with MessagePack payloads. Each frame is:
 
@@ -9,9 +9,13 @@ The implemented local IPC path uses length-prefixed bincode frames over the daem
 
 Protocol enums are externally tagged because bincode does not support internally tagged Serde enums. The daemon-side MessagePack transport is active, and `mobile-core` now wraps it behind a UniFFI API for Swift/Kotlin.
 
-Implemented messages include `Hello`, `Welcome`, `CreateSession`, `ListSessions`, `SubscribeSessions`, `AttachSession`, `Input`, `Resize`, `DetachSession`, `KillSession`, `Output`, `Attached`, `SessionExited`, `Lag`, `BeginPairing`, `ApprovePairing`, `PairWithToken`, `PairingStarted`, `PairingApprovalRequested`, `PairingComplete`, `ListDevices`, `RemoveDevice`, `DeviceList`, `RegisterPushToken`, `Pong`, and `Error`.
+Implemented messages include `Hello`, `Welcome`, `CreateSession`, `ListSessions`, `SubscribeSessions`, `AttachSession`, `Input`, `Resize`, `DetachSession`, `KillSession`, `Output`, `Attached`, `SessionExited`, `Lag`, `BeginPairing`, `ApprovePairing`, `PairWithCode`, `PairingStarted`, `PairingApprovalRequested`, `PairingComplete`, `ListDevices`, `RemoveDevice`, `DeviceList`, `RegisterPushToken`, `Pong`, and `Error`. `PairWithCode { code, device_name, device_node_id }` replaces v1's `PairWithToken`, and `PairingStarted { ticket: PairingTicket }` replaces the v1 `PairingStarted { payload: PairingPayload }`.
 
-Local CLI hook adapters also use `AgentStateEvent` to report Claude/Codex state transitions to the daemon. This message is accepted from `LocalCli` only.
+Local CLI hook adapters also use `AgentStateEvent` to report Claude/Codex state
+transitions to the daemon. This message is accepted from `LocalCli` only. The
+daemon replies with `AgentStateChanged` after a matching hook is applied, or
+`Error` when the session is missing, exited, or the hook source does not match
+the session's command kind; the CLI hook exits nonzero on those errors.
 
 PTY output is streamed as raw bytes. Clients feed those bytes directly to a terminal renderer or, for the local CLI, write them directly to the user's terminal in raw mode.
 
@@ -21,7 +25,9 @@ For active sessions, `AttachSession.last_seen_seq` chooses the catch-up path. If
 
 Mobile bindings expose both one-shot list and long-lived dashboard subscription. `list_sessions()` sends `ListSessions` and returns one snapshot. `subscribe_sessions(sink)` sends `SubscribeSessions`; the daemon replies with one immediate `SessionList` and then sends replacement `SessionList` snapshots whenever a session is created, removed, exits, or changes dashboard state. Attach APIs expose both cold attach and warm attach. `attach_session(id)` sends no offset; `attach_session_from(id, last_seen_seq)` sends the saved raw PTY byte offset. Native apps cache `AttachedSession.last_seen_seq()` per session while attached and reattach with that value after backgrounding, reconnecting, or receiving `Lag`.
 
-`fieldwork pair` is local-CLI-only. It creates a single-use 10-minute pair token and prints a QR payload containing the daemon node id, relay URL, direct addresses, token, and expiry. A remote iroh client must connect with its own iroh node identity, send `PairWithToken`, and wait for the desktop CLI to approve through `ApprovePairing`. The daemon stores the remote iroh node id as the long-lived device identity.
+`fieldwork pair` is local-CLI-only. It generates a single active 5-character Crockford pairing code (10-minute TTL, `OsRng`) and builds a `PairingTicket { code, node_id, relay_url, addrs, expires_at }`. The ticket encodes to `fw1<base32>` (postcard bytes wrapped in unpadded, case-insensitive base32 behind the `fw1` prefix); the daemon sends it in `PairingStarted { ticket }`, and the CLI prints it as a QR plus the bare code for manual entry. A remote iroh client obtains the ticket — by scanning the QR (which carries reachability and the code directly) or by resolving the typed code to the same ticket through the relay rendezvous — then connects with its own iroh node identity, sends `PairWithCode { code, device_name, device_node_id }`, and waits for the desktop CLI to approve through `ApprovePairing`. The daemon normalizes the submitted code (uppercasing, Crockford `I`/`L`→`1` and `O`→`0`), verifies it against the active code attempt-capped, invalidates the active code after 5 wrong attempts, and stores the remote iroh node id as the long-lived device identity.
+
+The typed-code path uses an optional relay rendezvous, exercised only when `FIELDWORK_RELAY_CONTROL_URL` is configured. The daemon best-effort signs and posts `code → ticket_blob` (the opaque encoded `fw1…` ticket) to `POST /v1/pair/publish` with a 10-minute expiry; if the URL is unset it logs a warning and skips publish so the QR path is unaffected. A phone resolves a typed code with `GET /v1/pair/resolve/{code}`, which is unauthenticated (the code is the credential) but throttled at 20 attempts/min per client, returns a uniform `404` on any miss, consumes the code on a correct guess, and locks a code out after 5 wrong resolves. The publish request is daemon-signed with the same `x-fieldwork-signature` scheme as push; the resolve response carries only the opaque reachability blob.
 
 Remote iroh clients with `ClientKind::IosApp` or `ClientKind::AndroidApp` may list sessions, subscribe to session-list snapshots, attach, send input, resize, detach, ping, and register push tokens. They are rejected with `Error { Forbidden }` for `CreateSession`, `KillSession`, local pairing administration, device listing/removal, and agent hook events.
 

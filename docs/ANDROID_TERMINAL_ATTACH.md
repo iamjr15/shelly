@@ -16,7 +16,7 @@ right PTYs.
 
 - Use exactly one physical Android phone, not an emulator or AVD.
 - Install the signed release App Bundle output or APKs produced from it.
-- Do not use a debug build, biometric bypass, or debug pairing payload.
+- Do not use a debug build, biometric bypass, or debug pairing code.
 - Pair through the real QR scanner and explicit desktop approval before this
   gate, using the same constraints as `docs/ANDROID_PAIR_FLOW.md`.
 - Capture evidence with direct `adb`: device listing, terminal screenshots, UI
@@ -32,7 +32,41 @@ enabled.
 
 ```sh
 export FW_ANDROID_TERMINAL_DIR="/tmp/fieldwork-android-terminal-$(date +%Y%m%d%H%M%S)"
-mkdir -p "$FW_ANDROID_TERMINAL_DIR"
+pnpm scaffold:android-terminal-attach-evidence -- --dir "$FW_ANDROID_TERMINAL_DIR"
+```
+
+The scaffold writes `README.md`, `manifest.json`, `missing-files.txt`,
+`capture-checklist.md`, and a direct-adb `preflight.sh`. It captures
+release/device/package proof plus Android screenshots, UI dumps, logcat, and
+crash buffers; it does not create desktop sessions or PTY replay transcripts.
+
+Before pairing or attaching, capture release/device/package proof and clear
+Android logs:
+
+```sh
+FIELDWORK_ANDROID_AAB=apps/android/app/build/outputs/bundle/release/app-release.aab \
+"$FW_ANDROID_TERMINAL_DIR/preflight.sh"
+```
+
+After each Android attach stage, use the helper capture modes:
+
+```sh
+FIELDWORK_ANDROID_TERMINAL_CAPTURE_SHELL=true "$FW_ANDROID_TERMINAL_DIR/preflight.sh"
+FIELDWORK_ANDROID_TERMINAL_CAPTURE_CLAUDE=true "$FW_ANDROID_TERMINAL_DIR/preflight.sh"
+FIELDWORK_ANDROID_TERMINAL_CAPTURE_TUI=true "$FW_ANDROID_TERMINAL_DIR/preflight.sh"
+```
+
+The helper captures screenshots first and wraps `uiautomator dump` in a bounded
+direct-adb capture so a stuck UI dump cannot wedge the release evidence run.
+Override the default 12-second bound with
+`FIELDWORK_ANDROID_UI_DUMP_TIMEOUT_SECONDS=<seconds>` only when a physical phone
+needs more time.
+
+After `terminal-replay.txt` and `claude-replay.txt` are captured from real
+desktop `fw attach` transcripts, run the helper verifier:
+
+```sh
+FIELDWORK_ANDROID_TERMINAL_VERIFY=true "$FW_ANDROID_TERMINAL_DIR/preflight.sh"
 ```
 
 ## Release Build
@@ -50,7 +84,7 @@ The transcript must include `Android AAB ok:` and `signed release bundle ok`.
 Capture the release `BuildConfig` values:
 
 ```sh
-rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
+rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""' \
   apps/android/app/build/generated/source/buildConfig/release/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_ANDROID_TERMINAL_DIR/buildconfig.txt"
 ```
@@ -60,9 +94,18 @@ Capture the physical device list and install the release artifact:
 ```sh
 adb devices -l | tee "$FW_ANDROID_TERMINAL_DIR/adb-devices.txt"
 bundletool install-apks --apks /path/to/fieldwork-release.apks
+{
+  echo '$ adb shell pm path app.fieldwork.android'
+  adb shell pm path app.fieldwork.android
+  echo '$ adb shell dumpsys package app.fieldwork.android'
+  adb shell dumpsys package app.fieldwork.android
+} | tee "$FW_ANDROID_TERMINAL_DIR/package-info.txt"
 adb logcat -c
 adb logcat -b crash -c
 ```
+`package-info.txt` must prove the installed app is `app.fieldwork.android` with
+`versionName=1.0`, `versionCode=1`, and no `DEBUGGABLE` or `debuggable=true` markers.
+
 
 ## Create Desktop Sessions
 

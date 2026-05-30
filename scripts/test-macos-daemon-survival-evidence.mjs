@@ -50,6 +50,11 @@ try {
   );
   expectStatus(slowRestart, 1, "slow launchd restart should fail", "kill-restart.txt records restart_ms=10001");
 
+  const badKillLiveReplay = path.join(temp, "bad-kill-live-replay");
+  writeFixture(badKillLiveReplay);
+  fs.writeFileSync(path.join(badKillLiveReplay, "kill-live-replay.txt"), "attached macos_kill\n");
+  expectStatus(badKillLiveReplay, 1, "live kill replay without prior scrollback should fail", "kill-live-replay.txt must include scrollback emitted before kill");
+
   const badKillReplay = path.join(temp, "bad-kill-replay");
   writeFixture(badKillReplay);
   fs.writeFileSync(path.join(badKillReplay, "kill-replay.txt"), "after_kill_restart_ok\n");
@@ -67,9 +72,9 @@ console.log("macOS daemon survival evidence verifier ok");
 
 function writeFixture(dir) {
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "macos-signing.txt"), "macOS signing ok: /tmp/fieldworkd\n");
+  fs.writeFileSync(path.join(dir, "macos-signing.txt"), "macOS npm trust ok: /tmp/fieldworkd\n");
   fs.writeFileSync(path.join(dir, "service-install.txt"), "fieldwork daemon install\nLaunchAgent: ~/Library/LaunchAgents/app.fieldwork.daemon.plist\nsocket: reachable\n");
-  fs.writeFileSync(path.join(dir, "daemon-status-before.txt"), "service: installed\nsocket: reachable\n");
+  fs.writeFileSync(path.join(dir, "daemon-status-before.txt"), "service: running\nsocket: reachable\n");
   fs.writeFileSync(
     path.join(dir, "sleep-wake.txt"),
     "sleep_started_at=2026-05-22T10:00:00Z\nwake_finished_at=2026-05-22T10:00:31Z\nsleep_duration_ms=31000\nafter_sleep_wake_ok\n",
@@ -77,10 +82,11 @@ function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, "sleep-replay.txt"), "MACOS_SLEEP_SCROLLBACK_BEFORE\nafter_sleep_wake_ok\n");
   fs.writeFileSync(
     path.join(dir, "kill-restart.txt"),
-    "pkill -KILL fieldworkd\nrestart_ms=850\nsocket: reachable\nafter_kill_restart_ok\n",
+    "pkill -KILL fieldworkd\nrestart_ms=850\nsocket: reachable\nprocesses_died_documented=true\n",
   );
-  fs.writeFileSync(path.join(dir, "kill-replay.txt"), "MACOS_KILL_SCROLLBACK_BEFORE\nafter_kill_restart_ok\n");
-  fs.writeFileSync(path.join(dir, "daemon-status-after.txt"), "service: installed\nsocket: reachable\n");
+  fs.writeFileSync(path.join(dir, "kill-live-replay.txt"), "MACOS_KILL_SCROLLBACK_BEFORE\n");
+  fs.writeFileSync(path.join(dir, "kill-replay.txt"), "MACOS_KILL_SCROLLBACK_BEFORE\n[fieldwork: session exited 0]\n");
+  fs.writeFileSync(path.join(dir, "daemon-status-after.txt"), "service: running\nsocket: reachable\n");
   fs.writeFileSync(path.join(dir, "daemon-log.txt"), "I fieldworkd service survived restart and wake\n");
 }
 

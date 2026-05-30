@@ -9,14 +9,16 @@ use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use clap_complete::Shell;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use fieldwork_protocol::{
-    AgentSource, AgentState, ClientSize, ClientToServerMsg, ServerToClientMsg, SessionId,
-    SessionSummary,
+    AgentSource, AgentState, CONTRACT_VERSION, ClientSize, ClientToServerMsg, ServerToClientMsg,
+    SessionId, SessionSummary,
 };
 use qrcode::{QrCode, render::unicode};
 use std::collections::HashMap;
 use std::ffi::OsString;
+use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::os::unix::fs::{FileTypeExt, MetadataExt};
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -47,6 +49,7 @@ const AUTO_SESSION_NAMES: &[&str] = &[
 
 #[derive(Parser)]
 #[command(name = "fieldwork")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "Continue terminal sessions from anywhere")]
 struct Cli {
     #[command(subcommand)]
@@ -61,6 +64,10 @@ enum Command {
     PairTest {
         #[arg(long)]
         payload: Option<String>,
+        #[arg(long)]
+        code: Option<String>,
+        #[arg(long)]
+        relay_control_url: Option<String>,
         #[arg(long, default_value = "Fieldwork Test Client")]
         name: String,
         #[arg(long)]
@@ -121,6 +128,11 @@ enum Command {
         #[command(subcommand)]
         command: Option<DaemonCommand>,
     },
+    #[command(about = "Check local Fieldwork CLI and daemon health")]
+    Doctor {
+        #[arg(long, help = "Do not auto-start fieldworkd while checking the socket")]
+        no_start: bool,
+    },
     Hook {
         #[command(subcommand)]
         command: HookCommand,
@@ -152,10 +164,7 @@ enum SettingsCommand {
 
 #[derive(Subcommand)]
 enum TelemetryCommand {
-    On {
-        #[arg(long)]
-        sentry_dsn: Option<String>,
-    },
+    On,
     Off,
     Status,
 }
@@ -205,6 +214,8 @@ async fn main() -> Result<()> {
         Some(Command::Pair) => pair_device().await,
         Some(Command::PairTest {
             payload,
+            code,
+            relay_control_url,
             name,
             attach,
             input,
@@ -224,6 +235,8 @@ async fn main() -> Result<()> {
         }) => {
             iroh_client::pair_test(iroh_client::PairTestOptions {
                 payload,
+                code,
+                relay_control_url,
                 name,
                 attach,
                 input,
@@ -291,6 +304,7 @@ async fn main() -> Result<()> {
             }
             Ok(())
         }
+        Some(Command::Doctor { no_start }) => run_doctor(no_start).await,
         Some(Command::Hook { command }) => run_hook(command).await,
         Some(Command::Completion { shell }) => {
             print_completion(shell);
@@ -340,6 +354,7 @@ fn should_check_update_notice(command: Option<&Command>) -> bool {
             | Some(Command::Devices { .. })
             | Some(Command::Settings { .. })
             | Some(Command::Daemon { .. })
+            | Some(Command::Doctor { .. })
     )
 }
 
@@ -375,8 +390,8 @@ fn run_settings(command: SettingsCommand) -> Result<()> {
         SettingsCommand::Telemetry { command } => {
             let changed = !matches!(&command, TelemetryCommand::Status);
             let status = match command {
-                TelemetryCommand::On { sentry_dsn } => settings::set_telemetry(true, sentry_dsn)?,
-                TelemetryCommand::Off => settings::set_telemetry(false, None)?,
+                TelemetryCommand::On => settings::set_telemetry(true)?,
+                TelemetryCommand::Off => settings::set_telemetry(false)?,
                 TelemetryCommand::Status => settings::telemetry_status()?,
             };
             print_telemetry_status(&status);
@@ -407,14 +422,7 @@ fn run_settings(command: SettingsCommand) -> Result<()> {
 
 fn print_telemetry_status(status: &settings::TelemetryStatus) {
     println!("telemetry: {}", if status.opt_in { "on" } else { "off" });
-    println!(
-        "sentry dsn: {}",
-        if status.sentry_dsn_configured {
-            "configured"
-        } else {
-            "missing"
-        }
-    );
+    println!("export: relay Honeycomb only; daemon/mobile crash reporting is unavailable in v1");
     println!("config: {}", status.path.display());
 }
 
@@ -451,18 +459,19 @@ async fn pair_device() -> Result<()> {
     )
     .await?;
 
-    let payload = match ipc::read_msg::<_, ServerToClientMsg>(&mut conn).await? {
-        ServerToClientMsg::PairingStarted { payload } => payload,
+    let ticket = match ipc::read_msg::<_, ServerToClientMsg>(&mut conn).await? {
+        ServerToClientMsg::PairingStarted { ticket } => ticket,
         ServerToClientMsg::Error { message, .. } => bail!("{message}"),
         other => bail!("unexpected daemon response: {other:?}"),
     };
-    let encoded = serde_json::to_string(&payload).context("encode pairing payload")?;
+    let encoded = ticket.encode().context("encode pairing ticket")?;
     let qr = QrCode::new(encoded.as_bytes()).context("build pairing QR")?;
     let image = qr.render::<unicode::Dense1x2>().quiet_zone(true).build();
 
     println!("{image}");
-    println!("{encoded}");
-    println!("Waiting for a device to scan. Pair token expires in 10 minutes.");
+    println!("Scan the QR with the Fieldwork app — or enter this code:");
+    println!("    {}", group_code(&ticket.code));
+    println!("Expires in 10 minutes.");
 
     loop {
         match ipc::read_msg::<_, ServerToClientMsg>(&mut conn).await? {
@@ -491,7 +500,7 @@ async fn pair_device() -> Result<()> {
                 if approved {
                     println!("Approved. Device is paired.");
                 } else {
-                    println!("Denied. Pair token has been consumed.");
+                    println!("Denied. Pairing code has been consumed.");
                 }
                 return Ok(());
             }
@@ -528,6 +537,20 @@ async fn list_devices() -> Result<()> {
 fn short_node_id(node_id: &str) -> &str {
     let end = node_id.len().min(12);
     &node_id[..end]
+}
+
+/// Renders a short pairing code with a separating space for easier hand entry.
+fn group_code(code: &str) -> String {
+    let chars: Vec<char> = code.chars().collect();
+    if chars.len() <= 3 {
+        return code.to_string();
+    }
+    let (head, tail) = chars.split_at(chars.len() / 2);
+    format!(
+        "{} {}",
+        head.iter().collect::<String>(),
+        tail.iter().collect::<String>()
+    )
 }
 
 async fn run_hook(command: HookCommand) -> Result<()> {
@@ -575,7 +598,15 @@ async fn emit_agent_state_event(
         },
     )
     .await?;
-    Ok(())
+    match ipc::read_msg::<_, ServerToClientMsg>(&mut conn).await? {
+        ServerToClientMsg::AgentStateChanged {
+            session_id: applied_session,
+            state: applied_state,
+            ..
+        } if applied_session == session_id && applied_state == state => Ok(()),
+        ServerToClientMsg::Error { message, .. } => bail!("{message}"),
+        other => bail!("unexpected daemon response: {other:?}"),
+    }
 }
 
 fn hook_session_id(session: Option<String>) -> Result<SessionId> {
@@ -902,6 +933,383 @@ async fn kill_session(session_ref: String) -> Result<()> {
     Ok(())
 }
 
+async fn run_doctor(no_start: bool) -> Result<()> {
+    let mut ok = true;
+
+    println!("Fieldwork doctor");
+    println!("version: {}", env!("CARGO_PKG_VERSION"));
+
+    let cli_path = match std::env::current_exe() {
+        Ok(path) => {
+            print_doctor_check(&mut ok, "cli", true, path.display());
+            Some(path)
+        }
+        Err(error) => {
+            print_doctor_check(&mut ok, "cli", false, error);
+            None
+        }
+    };
+
+    let daemon_path = match service::daemon_path() {
+        Ok(path) => {
+            print_doctor_check(&mut ok, "daemon binary", true, path.display());
+            Some(path)
+        }
+        Err(error) => {
+            print_doctor_check(&mut ok, "daemon binary", false, error);
+            None
+        }
+    };
+
+    #[cfg(target_os = "macos")]
+    match (cli_path.as_deref(), daemon_path.as_deref()) {
+        (Some(cli_path), Some(daemon_path)) => {
+            match doctor_macos_trust_status(cli_path, daemon_path) {
+                Ok(detail) => print_doctor_check(&mut ok, "macOS trust", true, detail),
+                Err(error) => print_doctor_check(&mut ok, "macOS trust", false, error),
+            }
+        }
+        _ => print_doctor_check(
+            &mut ok,
+            "macOS trust",
+            false,
+            "requires colocated fieldwork and fieldworkd paths",
+        ),
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (cli_path.as_deref(), daemon_path.as_deref());
+        println!("macOS trust: n/a (macOS-only)");
+    }
+
+    match service::status() {
+        Ok(status) => println!("service: {}", service::format_status(&status)),
+        Err(error) => println!("service: unavailable ({error})"),
+    }
+
+    let socket_path = ipc::control_socket_path();
+    println!("socket path: {}", socket_path.display());
+
+    let connection = if no_start {
+        ipc::connect_existing()
+            .await
+            .map(|(conn, capabilities)| (conn, capabilities, "reachable".to_string()))
+    } else {
+        match ipc::connect_existing().await {
+            Ok((conn, capabilities)) => Ok((conn, capabilities, "reachable".to_string())),
+            Err(_) => ipc::connect_local()
+                .await
+                .map(|(conn, capabilities)| (conn, capabilities, "auto-started".to_string())),
+        }
+    };
+
+    match connection {
+        Ok((mut conn, capabilities, mode)) => {
+            print_doctor_check(
+                &mut ok,
+                "daemon connection",
+                true,
+                format!("{mode} ({})", socket_path.display()),
+            );
+            match doctor_socket_parent_status(&socket_path) {
+                Ok(detail) => print_doctor_check(&mut ok, "socket parent", true, detail),
+                Err(error) => print_doctor_check(&mut ok, "socket parent", false, error),
+            }
+            match doctor_socket_file_status(&socket_path) {
+                Ok(detail) => print_doctor_check(&mut ok, "socket file", true, detail),
+                Err(error) => print_doctor_check(&mut ok, "socket file", false, error),
+            }
+            print_doctor_check(
+                &mut ok,
+                "protocol",
+                true,
+                format!("contract v{CONTRACT_VERSION}"),
+            );
+            println!(
+                "push notifications: {}",
+                if capabilities.push_notifications {
+                    "configured"
+                } else {
+                    "off"
+                }
+            );
+
+            if let Err(error) = ipc::write_msg(&mut conn, &ClientToServerMsg::ListSessions).await {
+                print_doctor_check(&mut ok, "session list", false, error);
+            } else {
+                match ipc::read_msg::<_, ServerToClientMsg>(&mut conn).await {
+                    Ok(ServerToClientMsg::SessionList { sessions }) => {
+                        print_doctor_check(
+                            &mut ok,
+                            "session list",
+                            true,
+                            format!("{} session(s)", sessions.len()),
+                        );
+                    }
+                    Ok(ServerToClientMsg::Error { message, .. }) => {
+                        print_doctor_check(&mut ok, "session list", false, message);
+                    }
+                    Ok(other) => {
+                        print_doctor_check(
+                            &mut ok,
+                            "session list",
+                            false,
+                            format!("unexpected daemon response: {other:?}"),
+                        );
+                    }
+                    Err(error) => print_doctor_check(&mut ok, "session list", false, error),
+                }
+            }
+        }
+        Err(error) => print_doctor_check(
+            &mut ok,
+            "daemon connection",
+            false,
+            format!("{error} ({})", socket_path.display()),
+        ),
+    }
+
+    match settings::telemetry_status() {
+        Ok(status) => println!("telemetry: {}", if status.opt_in { "on" } else { "off" }),
+        Err(error) => println!("telemetry: unavailable ({error})"),
+    }
+
+    match settings::scrollback_encryption_status() {
+        Ok(status) => println!(
+            "scrollback encryption: {}",
+            if status.enabled { "on" } else { "off" }
+        ),
+        Err(error) => println!("scrollback encryption: unavailable ({error})"),
+    }
+
+    if ok {
+        println!("summary: ok");
+        Ok(())
+    } else {
+        bail!("fieldwork doctor found issues")
+    }
+}
+
+fn doctor_socket_parent_status(socket_path: &Path) -> Result<String> {
+    let parent = socket_path
+        .parent()
+        .context("control socket path has no parent directory")?;
+    let metadata = fs::symlink_metadata(parent)
+        .with_context(|| format!("stat control socket parent {}", parent.display()))?;
+    if metadata.file_type().is_symlink() {
+        bail!("parent is a symlink ({})", parent.display());
+    }
+    if !metadata.file_type().is_dir() {
+        bail!("parent is not a directory ({})", parent.display());
+    }
+
+    let uid = metadata.uid();
+    let euid = unsafe { libc::geteuid() };
+    if uid != euid {
+        bail!("owned by uid {uid}, expected current uid {euid}");
+    }
+
+    let mode = metadata.mode() & 0o777;
+    if mode != 0o700 {
+        bail!("mode is {mode:03o}, expected 0700 ({})", parent.display());
+    }
+
+    Ok(format!(
+        "owned by current user, mode 0700, not symlink ({})",
+        parent.display()
+    ))
+}
+
+fn doctor_socket_file_status(socket_path: &Path) -> Result<String> {
+    let metadata = fs::symlink_metadata(socket_path)
+        .with_context(|| format!("stat control socket {}", socket_path.display()))?;
+    if metadata.file_type().is_symlink() {
+        bail!("socket is a symlink ({})", socket_path.display());
+    }
+    if !metadata.file_type().is_socket() {
+        bail!("not a socket ({})", socket_path.display());
+    }
+
+    let mode = metadata.mode() & 0o777;
+    if mode != 0o600 {
+        bail!(
+            "mode is {mode:03o}, expected 0600 ({})",
+            socket_path.display()
+        );
+    }
+
+    Ok(format!(
+        "socket, mode 0600, not symlink ({})",
+        socket_path.display()
+    ))
+}
+
+#[cfg(any(target_os = "macos", test))]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum MacosSignatureKind {
+    AdHoc,
+    DeveloperId,
+}
+
+#[cfg(target_os = "macos")]
+fn doctor_macos_trust_status(cli_path: &Path, daemon_path: &Path) -> Result<String> {
+    let cli_signature = doctor_macos_binary_trust(cli_path, "fieldwork")?;
+    let daemon_signature = doctor_macos_binary_trust(daemon_path, "fieldworkd")?;
+    if cli_signature == MacosSignatureKind::DeveloperId {
+        doctor_macos_notarization_status(cli_path, "fieldwork")?;
+        doctor_macos_notarization_status(daemon_path, "fieldworkd")?;
+    }
+    let mode = macos_trust_mode_from_signature_kinds(cli_signature, daemon_signature)?;
+    Ok(format!(
+        "{mode} (fieldwork and fieldworkd signed, executable, no quarantine)"
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn doctor_macos_binary_trust(path: &Path, name: &str) -> Result<MacosSignatureKind> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mode = fs::metadata(path)
+        .with_context(|| format!("stat {name} at {}", path.display()))?
+        .permissions()
+        .mode();
+    if mode & 0o111 == 0 {
+        bail!("{name} is not executable ({})", path.display());
+    }
+
+    let verify = std::process::Command::new("codesign")
+        .args(["--verify", "--verbose=4"])
+        .arg(path)
+        .output()
+        .with_context(|| {
+            format!(
+                "verify macOS code signature for {name} at {}",
+                path.display()
+            )
+        })?;
+    if !verify.status.success() {
+        bail!(
+            "{name} code signature verification failed for {}: {}",
+            path.display(),
+            doctor_command_output_detail(&verify, "codesign")
+        );
+    }
+
+    let display = std::process::Command::new("codesign")
+        .args(["--display", "--verbose=4"])
+        .arg(path)
+        .output()
+        .with_context(|| format!("read macOS code signature for {name} at {}", path.display()))?;
+    if !display.status.success() {
+        bail!(
+            "{name} code signature display failed for {}: {}",
+            path.display(),
+            doctor_command_output_detail(&display, "codesign")
+        );
+    }
+    let signature = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&display.stdout),
+        String::from_utf8_lossy(&display.stderr)
+    );
+    let signature_kind = parse_macos_signature_kind(&signature).with_context(|| {
+        format!(
+            "{name} has unsupported macOS signature at {}",
+            path.display()
+        )
+    })?;
+
+    let quarantine = std::process::Command::new("xattr")
+        .args(["-p", "com.apple.quarantine"])
+        .arg(path)
+        .output()
+        .with_context(|| {
+            format!(
+                "read macOS quarantine xattr for {name} at {}",
+                path.display()
+            )
+        })?;
+    let quarantine_value = format!(
+        "{}{}",
+        String::from_utf8_lossy(&quarantine.stdout),
+        String::from_utf8_lossy(&quarantine.stderr)
+    )
+    .trim()
+    .to_string();
+    if quarantine.status.success() && !quarantine_value.is_empty() {
+        bail!(
+            "{name} has com.apple.quarantine set at {}: {quarantine_value}",
+            path.display()
+        );
+    }
+
+    Ok(signature_kind)
+}
+
+#[cfg(target_os = "macos")]
+fn doctor_macos_notarization_status(path: &Path, name: &str) -> Result<()> {
+    let assessment = std::process::Command::new("spctl")
+        .args(["-a", "-vvv", "-t", "exec"])
+        .arg(path)
+        .output()
+        .with_context(|| format!("assess macOS notarization for {name} at {}", path.display()))?;
+    let detail = doctor_command_output_detail(&assessment, "spctl");
+    if !assessment.status.success() || !detail.to_ascii_lowercase().contains("notarized") {
+        bail!(
+            "{name} has a Developer ID signature, but notarization was not confirmed for {}: {detail}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn parse_macos_signature_kind(signature: &str) -> Result<MacosSignatureKind> {
+    if signature.contains("Signature=adhoc") || signature.contains("Authority=Ad Hoc") {
+        return Ok(MacosSignatureKind::AdHoc);
+    }
+    if signature.contains("Authority=Developer ID Application:") {
+        return Ok(MacosSignatureKind::DeveloperId);
+    }
+    bail!("signature is neither ad-hoc nor Developer ID")
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_trust_mode_from_signature_kinds(
+    cli_signature: MacosSignatureKind,
+    daemon_signature: MacosSignatureKind,
+) -> Result<&'static str> {
+    match (cli_signature, daemon_signature) {
+        (MacosSignatureKind::AdHoc, MacosSignatureKind::AdHoc) => Ok("npm/ad-hoc/not-notarized"),
+        (MacosSignatureKind::DeveloperId, MacosSignatureKind::DeveloperId) => {
+            Ok("Developer ID/notarized")
+        }
+        (cli_signature, daemon_signature) => bail!(
+            "fieldwork and fieldworkd must use the same macOS trust mode, got {cli_signature:?} and {daemon_signature:?}"
+        ),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn doctor_command_output_detail(output: &std::process::Output, command: &str) -> String {
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => format!("{command} exited with {}", output.status),
+        (false, true) => stdout,
+        (true, false) => stderr,
+        (false, false) => format!("{stdout}\n{stderr}"),
+    }
+}
+
+fn print_doctor_check(ok: &mut bool, label: &str, passed: bool, detail: impl std::fmt::Display) {
+    if !passed {
+        *ok = false;
+    }
+    println!("{label}: {} ({detail})", if passed { "ok" } else { "fail" });
+}
+
 async fn daemon_status() -> Result<()> {
     match service::status() {
         Ok(status) => println!("service: {}", service::format_status(&status)),
@@ -1043,15 +1451,19 @@ impl Drop for RawMode {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUTO_SESSION_NAMES, Cli, Command, HookCommand, auto_session_name,
+        AUTO_SESSION_NAMES, Cli, Command, HookCommand, MacosSignatureKind, auto_session_name,
         cli_command_with_bin_name, codex_state_from_json, codex_states_from_payload,
-        completion_bin_name_with_override, normalize_session_name, parse_named_shortcut_args,
-        should_check_update_notice,
+        completion_bin_name_with_override, doctor_socket_file_status, doctor_socket_parent_status,
+        macos_trust_mode_from_signature_kinds, normalize_session_name, parse_macos_signature_kind,
+        parse_named_shortcut_args, should_check_update_notice,
     };
     use clap::Parser;
     use clap_complete::Shell;
     use fieldwork_protocol::{AgentState, SessionId};
     use std::ffi::OsString;
+    use std::fs;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::os::unix::net::UnixListener;
     use std::path::PathBuf;
 
     #[test]
@@ -1118,6 +1530,9 @@ mod tests {
             name: None,
             command: vec!["bash".to_string()],
         })));
+        assert!(should_check_update_notice(Some(&Command::Doctor {
+            no_start: true,
+        })));
 
         assert!(!should_check_update_notice(Some(&Command::Pair)));
         assert!(!should_check_update_notice(Some(&Command::Attach {
@@ -1178,6 +1593,21 @@ mod tests {
     }
 
     #[test]
+    fn version_flag_follows_invoked_alias() {
+        let fw_command = cli_command_with_bin_name("fw".to_string());
+        assert_eq!(
+            fw_command.render_version().to_string(),
+            format!("fw {}\n", env!("CARGO_PKG_VERSION"))
+        );
+
+        let fieldwork_command = cli_command_with_bin_name("fieldwork".to_string());
+        assert_eq!(
+            fieldwork_command.render_version().to_string(),
+            format!("fieldwork {}\n", env!("CARGO_PKG_VERSION"))
+        );
+    }
+
+    #[test]
     fn unknown_subcommand_parses_to_named_shortcut() {
         let cli =
             Cli::try_parse_from(["fieldwork", "refactoringjob"]).expect("named shortcut parses");
@@ -1185,6 +1615,130 @@ mod tests {
             panic!("expected named shortcut command");
         };
         assert_eq!(args, vec![OsString::from("refactoringjob")]);
+    }
+
+    #[test]
+    fn doctor_parses_with_no_start_flag() {
+        let cli = Cli::try_parse_from(["fw", "doctor", "--no-start"]).expect("doctor parses");
+        let Some(Command::Doctor { no_start }) = cli.command else {
+            panic!("expected doctor command");
+        };
+        assert!(no_start);
+    }
+
+    #[test]
+    fn doctor_parses_macos_trust_signature_modes() {
+        assert_eq!(
+            parse_macos_signature_kind(
+                "Executable=/tmp/fieldwork\nIdentifier=fieldwork\nSignature=adhoc"
+            )
+            .unwrap(),
+            MacosSignatureKind::AdHoc
+        );
+        assert_eq!(
+            parse_macos_signature_kind(
+                "Authority=Developer ID Application: Fieldwork Project (ABCDE12345)\nTeamIdentifier=ABCDE12345"
+            )
+            .unwrap(),
+            MacosSignatureKind::DeveloperId
+        );
+        assert!(parse_macos_signature_kind("Signature size=0").is_err());
+    }
+
+    #[test]
+    fn doctor_reports_only_consistent_macos_trust_modes() {
+        assert_eq!(
+            macos_trust_mode_from_signature_kinds(
+                MacosSignatureKind::AdHoc,
+                MacosSignatureKind::AdHoc
+            )
+            .unwrap(),
+            "npm/ad-hoc/not-notarized"
+        );
+        assert_eq!(
+            macos_trust_mode_from_signature_kinds(
+                MacosSignatureKind::DeveloperId,
+                MacosSignatureKind::DeveloperId
+            )
+            .unwrap(),
+            "Developer ID/notarized"
+        );
+        assert!(
+            macos_trust_mode_from_signature_kinds(
+                MacosSignatureKind::AdHoc,
+                MacosSignatureKind::DeveloperId
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn doctor_accepts_hardened_socket_parent_and_socket() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime = tmp.path().join("runtime");
+        let socket = runtime.join("control.sock");
+        fs::create_dir(&runtime).unwrap();
+        fs::set_permissions(&runtime, fs::Permissions::from_mode(0o700)).unwrap();
+        let _listener = UnixListener::bind(&socket).unwrap();
+        fs::set_permissions(&socket, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let parent_status = doctor_socket_parent_status(&socket).unwrap();
+        let socket_status = doctor_socket_file_status(&socket).unwrap();
+
+        assert!(parent_status.contains("mode 0700"));
+        assert!(parent_status.contains("not symlink"));
+        assert!(socket_status.contains("mode 0600"));
+        assert!(socket_status.contains("not symlink"));
+    }
+
+    #[test]
+    fn doctor_rejects_world_readable_socket_parent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime = tmp.path().join("runtime");
+        let socket = runtime.join("control.sock");
+        fs::create_dir(&runtime).unwrap();
+        fs::set_permissions(&runtime, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let error = doctor_socket_parent_status(&socket).unwrap_err();
+
+        assert!(error.to_string().contains("expected 0700"));
+    }
+
+    #[test]
+    fn doctor_rejects_symlinked_socket_parent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let real = tmp.path().join("real");
+        let linked = tmp.path().join("linked");
+        fs::create_dir(&real).unwrap();
+        symlink(&real, &linked).unwrap();
+
+        let error = doctor_socket_parent_status(&linked.join("control.sock")).unwrap_err();
+
+        assert!(error.to_string().contains("parent is a symlink"));
+    }
+
+    #[test]
+    fn doctor_rejects_socket_with_loose_permissions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let socket = tmp.path().join("control.sock");
+        let _listener = UnixListener::bind(&socket).unwrap();
+        fs::set_permissions(&socket, fs::Permissions::from_mode(0o666)).unwrap();
+
+        let error = doctor_socket_file_status(&socket).unwrap_err();
+
+        assert!(error.to_string().contains("expected 0600"));
+    }
+
+    #[test]
+    fn doctor_rejects_non_socket_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let socket = tmp.path().join("control.sock");
+        fs::write(&socket, b"not a socket").unwrap();
+        fs::set_permissions(&socket, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let error = doctor_socket_file_status(&socket).unwrap_err();
+
+        assert!(error.to_string().contains("not a socket"));
     }
 
     #[test]

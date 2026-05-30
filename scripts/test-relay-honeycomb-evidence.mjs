@@ -84,7 +84,7 @@ console.log("relay Honeycomb evidence verifier ok");
 
 function writeFixture(dir) {
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "relay-version.txt"), '{"relay_version":"1.0.0","contract_version":1}\n');
+  fs.writeFileSync(path.join(dir, "relay-version.txt"), '{"relay_version":"1.0.0","contract_version":2}\n');
   fs.writeFileSync(path.join(dir, "relay-config.txt"), writeRelayConfig());
   fs.writeFileSync(path.join(dir, "systemd-credentials.txt"), writeSystemdCredentials());
   fs.writeFileSync(path.join(dir, "request.txt"), "request=GET /v1/version\nstatus=200\n");

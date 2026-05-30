@@ -152,7 +152,8 @@ Use \`capture-checklist.md\` in this directory as the stage-by-stage capture ord
 while running the physical Android test.
 
 Run the generated preflight helper from the repository root after the debug APK
-is installed and a physical Android phone is connected:
+is installed, a physical Android phone is connected, and the short \`fw\`
+command is on \`PATH\` from either the npm package or the Desktop Setup shim:
 
 \`\`\`sh
 "$FW_LIVE_DIR/preflight.sh"
@@ -243,6 +244,7 @@ evidence_dir="\${FW_LIVE_DIR:-$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)}"
 repo_root="\${FIELDWORK_REPO_ROOT:-$PWD}"
 build_config="$repo_root/apps/android/app/build/generated/source/buildConfig/debug/app/fieldwork/android/BuildConfig.java"
 adb_devices="$evidence_dir/adb-devices.txt"
+package_info="$evidence_dir/package-info.txt"
 buildconfig_out="$evidence_dir/buildconfig.txt"
 
 require_command() {
@@ -252,8 +254,15 @@ require_command() {
   fi
 }
 
-require_command adb
 require_command rg
+require_command adb
+require_command fw
+
+if ! fw --help 2>/dev/null | grep -q 'Usage: fw'; then
+  echo "fw on PATH must resolve the Fieldwork short alias" >&2
+  echo "install the npm package or run the docs/LIVE_TESTING.md Desktop Setup shim first" >&2
+  exit 1
+fi
 
 mkdir -p "$evidence_dir"
 
@@ -281,14 +290,32 @@ if rg -q '^(?:emulator-[0-9]+|.*(?:\\bsdk_gphone\\b|\\bsdk_gphone64\\b|\\bgeneri
   exit 1
 fi
 
-rg 'APPLICATION_ID = "app\\.fieldwork\\.android"|BUILD_TYPE = "debug"|DEBUG = Boolean\\.parseBoolean\\("true"\\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' "$build_config" | tee "$buildconfig_out"
+{
+  echo '$ adb shell pm path app.fieldwork.android'
+  adb shell pm path app.fieldwork.android
+  echo '$ adb shell dumpsys package app.fieldwork.android'
+  adb shell dumpsys package app.fieldwork.android
+} | tee "$package_info"
+
+if ! rg -q '^package:.*app\\.fieldwork\\.android' "$package_info"; then
+  echo "app.fieldwork.android is not installed on the connected device" >&2
+  exit 1
+fi
+
+if ! rg -q '\\bversionName=1\\.0\\b' "$package_info" || ! rg -q '\\bversionCode=1\\b' "$package_info"; then
+  echo "installed app.fieldwork.android version does not match the expected first live-test debug build" >&2
+  exit 1
+fi
+
+rg 'APPLICATION_ID = "app\\.fieldwork\\.android"|BUILD_TYPE = "debug"|DEBUG = Boolean\\.parseBoolean\\("true"\\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""|FIELDWORK_RELAY_CONTROL_URL = ""' "$build_config" | tee "$buildconfig_out"
 
 for required in \\
   'APPLICATION_ID = "app.fieldwork.android"' \\
   'BUILD_TYPE = "debug"' \\
   'DEBUG = Boolean.parseBoolean("true")' \\
   'FIELDWORK_BIOMETRIC_BYPASS = false' \\
-  'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""'
+  'FIELDWORK_DEBUG_PAIRING_CODE = ""' \\
+  'FIELDWORK_RELAY_CONTROL_URL = ""'
 do
   if ! grep -Fq "$required" "$buildconfig_out"; then
     echo "BuildConfig preflight missing: $required" >&2
@@ -296,7 +323,7 @@ do
   fi
 done
 
-echo "live-test preflight ok: exactly one physical adb device and normal debug BuildConfig evidence captured"
+echo "live-test preflight ok: fw alias, exactly one physical adb device, installed app.fieldwork.android package proof, and normal debug BuildConfig evidence captured"
 `;
 }
 
@@ -312,15 +339,32 @@ ${stage.note}
 ${fileLines}${commandBlock}`;
 }
 
+function adbCaptureCommands(prefix) {
+  return [
+    `adb exec-out screencap -p > "$FW_LIVE_DIR/${prefix}.png"`,
+    "adb shell uiautomator dump /sdcard/window.xml",
+    `adb pull /sdcard/window.xml "$FW_LIVE_DIR/${prefix}-ui.xml"`,
+    `adb logcat -d > "$FW_LIVE_DIR/${prefix}-logcat.log"`,
+    `adb logcat -d -b crash > "$FW_LIVE_DIR/${prefix}-crash.log"`,
+  ];
+}
+
 function captureStages() {
   return [
     {
       title: "1. Build and device proof",
-      note: "Capture proof that the installed app is the normal debug build and that adb is connected to exactly one authorized physical phone.",
-      files: ["buildconfig.txt", "adb-devices.txt"],
+      note: "Capture proof that the fw short alias is available, the installed app package is present, the source build is the normal debug build, and adb is connected to exactly one authorized physical phone.",
+      files: ["buildconfig.txt", "adb-devices.txt", "package-info.txt"],
       commands: [
+        "command -v fw",
         "adb devices -l | tee \"$FW_LIVE_DIR/adb-devices.txt\"",
-        "rg 'APPLICATION_ID = \"app\\.fieldwork\\.android\"|BUILD_TYPE = \"debug\"|DEBUG = Boolean\\.parseBoolean\\(\"true\"\\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = \"\"' \\",
+        "{",
+        "  echo '$ adb shell pm path app.fieldwork.android'",
+        "  adb shell pm path app.fieldwork.android",
+        "  echo '$ adb shell dumpsys package app.fieldwork.android'",
+        "  adb shell dumpsys package app.fieldwork.android",
+        "} | tee \"$FW_LIVE_DIR/package-info.txt\"",
+        "rg 'APPLICATION_ID = \"app\\.fieldwork\\.android\"|BUILD_TYPE = \"debug\"|DEBUG = Boolean\\.parseBoolean\\(\"true\"\\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = \"\"|FIELDWORK_RELAY_CONTROL_URL = \"\"' \\",
         "  apps/android/app/build/generated/source/buildConfig/debug/app/fieldwork/android/BuildConfig.java \\",
         "  | tee \"$FW_LIVE_DIR/buildconfig.txt\"",
       ],
@@ -333,39 +377,25 @@ function captureStages() {
         "adb shell am force-stop app.fieldwork.android",
         "adb logcat -c",
         "adb shell am start -W -n app.fieldwork.android/.MainActivity | tee \"$FW_LIVE_DIR/launch.txt\"",
-        "adb exec-out screencap -p > \"$FW_LIVE_DIR/locked.png\"",
-        "adb shell uiautomator dump /sdcard/window.xml",
-        "adb pull /sdcard/window.xml \"$FW_LIVE_DIR/locked-ui.xml\"",
-        "adb logcat -d > \"$FW_LIVE_DIR/locked-logcat.log\"",
-        "adb logcat -d -b crash > \"$FW_LIVE_DIR/locked-crash.log\"",
+        ...adbCaptureCommands("locked"),
       ],
     },
     {
       title: "3. Biometric prompt before session access",
       note: "Tap Unlock, keep biometric authentication pending, and prove the prompt appears before sessions or terminal content.",
       files: ["biometric.png", "biometric-ui.xml", "biometric-logcat.log", "biometric-crash.log"],
-      commands: [
-        "adb exec-out screencap -p > \"$FW_LIVE_DIR/biometric.png\"",
-        "adb shell uiautomator dump /sdcard/window.xml",
-        "adb pull /sdcard/window.xml \"$FW_LIVE_DIR/biometric-ui.xml\"",
-        "adb logcat -d > \"$FW_LIVE_DIR/biometric-logcat.log\"",
-        "adb logcat -d -b crash > \"$FW_LIVE_DIR/biometric-crash.log\"",
-      ],
+      commands: adbCaptureCommands("biometric"),
     },
     {
       title: "4. QR pairing and active dashboard",
-      note: "Run fw pair in a desktop transcript, approve explicitly, unlock, and capture the dashboard with desktop-created sessions.",
+      note: "After pre-pair evidence is captured, start fw pair in a desktop transcript when the phone is ready to scan the QR, approve explicitly, unlock, and capture the dashboard with desktop-created sessions.",
       files: ["pairing.txt", "dashboard.png", "dashboard-ui.xml", "dashboard-logcat.log", "dashboard-crash.log", "devices.txt", "sessions.txt"],
       commands: [
         "pair_start_ms=\"$(node -e 'console.log(Date.now())')\"",
         "script -q \"$FW_LIVE_DIR/pairing.txt\" fw pair",
         "pair_end_ms=\"$(node -e 'console.log(Date.now())')\"",
         "printf 'pair_flow_ms=%s\\n' \"$((pair_end_ms - pair_start_ms))\" | tee -a \"$FW_LIVE_DIR/pairing.txt\"",
-        "adb exec-out screencap -p > \"$FW_LIVE_DIR/dashboard.png\"",
-        "adb shell uiautomator dump /sdcard/window.xml",
-        "adb pull /sdcard/window.xml \"$FW_LIVE_DIR/dashboard-ui.xml\"",
-        "adb logcat -d > \"$FW_LIVE_DIR/dashboard-logcat.log\"",
-        "adb logcat -d -b crash > \"$FW_LIVE_DIR/dashboard-crash.log\"",
+        ...adbCaptureCommands("dashboard"),
         "fw devices > \"$FW_LIVE_DIR/devices.txt\"",
         "fw ls > \"$FW_LIVE_DIR/sessions.txt\"",
       ],
@@ -379,6 +409,7 @@ function captureStages() {
         "fw new --name fw_live_sub bash",
         "sub_visible_ms=\"$(node -e 'console.log(Date.now())')\"",
         "printf 'created_by_desktop_cli\\nvisible_ms=%s\\n' \"$((sub_visible_ms - sub_start_ms))\" | tee \"$FW_LIVE_DIR/subscription-visible.txt\"",
+        ...adbCaptureCommands("subscription"),
         "script -q \"$FW_LIVE_DIR/subscription-replay.txt\" fw attach fw_live_sub",
       ],
     },
@@ -387,6 +418,7 @@ function captureStages() {
       note: "Attach the desktop-created shell/bash session from Android, type android_live_ok, and prove desktop replay sees it.",
       files: ["session.png", "session-ui.xml", "session-logcat.log", "session-crash.log", "terminal-replay.txt"],
       commands: [
+        ...adbCaptureCommands("session"),
         "script -q \"$FW_LIVE_DIR/terminal-replay.txt\" fw attach shell",
       ],
     },
@@ -395,6 +427,7 @@ function captureStages() {
       note: "Attach the refactoringjob or generated default claude session from Android and capture a dedicated replay.",
       files: ["claude.png", "claude-ui.xml", "claude-logcat.log", "claude-crash.log", "claude-replay.txt"],
       commands: [
+        ...adbCaptureCommands("claude"),
         "script -q \"$FW_LIVE_DIR/claude-replay.txt\" fw attach refactoringjob",
       ],
     },
@@ -403,6 +436,7 @@ function captureStages() {
       note: "Run yes ANDROID_LIVE_FLOOD | head -10000 from Android and capture both phone render and desktop replay.",
       files: ["flood.png", "flood-ui.xml", "flood-logcat.log", "flood-crash.log", "flood-replay.txt"],
       commands: [
+        ...adbCaptureCommands("flood"),
         "script -q \"$FW_LIVE_DIR/flood-replay.txt\" fw attach shell",
       ],
     },
@@ -410,14 +444,16 @@ function captureStages() {
       title: "9. TUI attach",
       note: "Attach vim or htop from Android and capture visible TUI terminal content.",
       files: ["tui.png", "tui-ui.xml", "tui-logcat.log", "tui-crash.log"],
-      commands: [],
+      commands: adbCaptureCommands("tui"),
     },
     {
       title: "10. Resize and detach",
       note: "Resize the Android terminal, capture the reported PTY size, then detach and reattach the same shell session.",
       files: ["resize.png", "resize-ui.xml", "resize-logcat.log", "resize-crash.log", "resize-replay.txt", "detach.png", "detach-ui.xml", "detach-logcat.log", "detach-crash.log", "detach-replay.txt"],
       commands: [
+        ...adbCaptureCommands("resize"),
         "script -q \"$FW_LIVE_DIR/resize-replay.txt\" fw attach shell",
+        ...adbCaptureCommands("detach"),
         "script -q \"$FW_LIVE_DIR/detach-replay.txt\" fw attach shell",
       ],
     },
@@ -454,10 +490,15 @@ function captureStages() {
         "multisession-c-replay.txt",
       ],
       commands: [
+        ...adbCaptureCommands("background"),
         "script -q \"$FW_LIVE_DIR/background-replay.txt\" fw attach shell",
+        ...adbCaptureCommands("stale-biometric"),
         "printf 'stale_background_ms=<elapsed-ms>\\nstale_input_before_unlock_blocked\\n' | tee \"$FW_LIVE_DIR/stale-biometric.txt\"",
+        ...adbCaptureCommands("reconnect"),
         "script -q \"$FW_LIVE_DIR/reconnect-replay.txt\" fw attach shell",
+        ...adbCaptureCommands("restart"),
         "script -q \"$FW_LIVE_DIR/restart-replay.txt\" fw attach fw_restart_session",
+        ...adbCaptureCommands("multisession"),
         "script -q \"$FW_LIVE_DIR/multisession-a-replay.txt\" fw attach fwm_a",
         "script -q \"$FW_LIVE_DIR/multisession-b-replay.txt\" fw attach fwm_b",
         "script -q \"$FW_LIVE_DIR/multisession-c-replay.txt\" fw attach fwm_c",

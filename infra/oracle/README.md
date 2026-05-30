@@ -43,6 +43,21 @@ FIELDWORK_ORACLE_RETRY_ATTEMPTS=48 FIELDWORK_ORACLE_RETRY_SECONDS=900 \
   infra/oracle/provision-region.sh infra/oracle/terraform/mumbai.tfvars
 ```
 
+For a tighter Oracle-only capacity watch, use the capacity-report watcher
+instead of blind apply retries:
+
+```sh
+infra/oracle/watch-a1-capacity.sh --interval 10 infra/oracle/terraform/mumbai.tfvars
+```
+
+The watcher asks Oracle's compute-capacity-report API for `FAULT-DOMAIN-1`,
+`FAULT-DOMAIN-2`, and `FAULT-DOMAIN-3` every interval and runs `terraform apply`
+only after a fault domain reports `AVAILABLE`. It passes that fault domain into
+Terraform with `fault_domain`, keeps Terraform as the source of truth, and keeps
+watching if the launch races another tenant and returns a capacity error. Set
+`FIELDWORK_ORACLE_MAX_POLLS` or pass `--max-polls` for a bounded watch, or
+`--once` for a one-shot status check.
+
 Repeat with a second tfvars file for the failover region. Keep the two regions
 in separate Terraform workspaces or separate checked-out working directories so
 state files never overlap.

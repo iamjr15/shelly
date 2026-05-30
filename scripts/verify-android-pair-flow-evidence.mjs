@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import {
   verifyCleanAndroidLogs,
+  verifyInstalledAndroidPackageInfo,
   verifyNoAndroidSystemErrorOverlays,
   verifyPhysicalAndroidAdbDevices,
 } from "./android-evidence-common.mjs";
@@ -13,6 +14,7 @@ const failures = [];
 const requiredFiles = [
   "adb-devices.txt",
   "artifact-signing.txt",
+  "package-info.txt",
   "buildconfig.txt",
   "pairing.txt",
   "dashboard.png",
@@ -37,6 +39,7 @@ for (const file of requiredFiles) {
 if (failures.length === 0) {
   verifyAdbDevices(readText("adb-devices.txt"));
   verifyArtifactSigning(readText("artifact-signing.txt"));
+  verifyPackageInfo(readText("package-info.txt"));
   verifyBuildConfig(readText("buildconfig.txt"));
   verifyPairingTranscript(readText("pairing.txt"));
   verifyPng("dashboard.png");
@@ -65,6 +68,10 @@ function verifyArtifactSigning(text) {
   requirePatternText(text, /\bsigned release bundle ok\b/, "artifact-signing.txt must prove the release App Bundle was signed");
 }
 
+function verifyPackageInfo(text) {
+  verifyInstalledAndroidPackageInfo(text, failures, { forbidDebuggable: true });
+}
+
 function verifyBuildConfig(text) {
   requirePatternText(
     text,
@@ -84,14 +91,23 @@ function verifyBuildConfig(text) {
   );
   requirePatternText(
     text,
-    /\bFIELDWORK_DEBUG_PAIRING_PAYLOAD\s*=\s*""/,
-    "buildconfig.txt must prove no debug pairing payload is compiled into the release build",
+    /\bFIELDWORK_DEBUG_PAIRING_CODE\s*=\s*""/,
+    "buildconfig.txt must prove no debug pairing code is compiled into the release build",
   );
 }
 
 function verifyPairingTranscript(text) {
-  requirePatternText(text, /"pair_token"\s*:/, "pairing.txt must include the JSON QR pairing payload from fw pair");
-  requirePatternText(text, /Waiting for a device to scan/i, "pairing.txt must show fw pair waited for a device scan");
+  requirePatternText(
+    text,
+    /Scan the QR with the Fieldwork app .* enter this code:/i,
+    "pairing.txt must include the QR + manual-code prompt from fw pair",
+  );
+  requirePatternText(
+    text,
+    /^\s*[0-9A-HJKMNP-TV-Z]{2}\s[0-9A-HJKMNP-TV-Z]{3}\s*$/im,
+    "pairing.txt must include the grouped 5-character Crockford pairing code",
+  );
+  requirePatternText(text, /Expires in 10 minutes\./, "pairing.txt must show the 10-minute pairing code expiry");
   requirePatternText(
     text,
     /Pair request from device\b[\s\S]*approve\?\s*\[y\/N\]/i,
@@ -104,8 +120,9 @@ function verifyPairingTranscript(text) {
   } else if (Number(timing[1]) > 15_000) {
     failures.push(`pairing.txt records pair_flow_ms=${timing[1]}, expected <=15000`);
   }
-  rejectPatternText(text, /Denied\. Pair token has been consumed\./, "pairing.txt must not be a denied pairing transcript");
-  rejectPatternText(text, /\bFIELDWORK_DEBUG_PAIRING_PAYLOAD\b/, "pairing.txt must not use debug pairing payload injection");
+  rejectPatternText(text, /Denied\. Pairing code has been consumed\./, "pairing.txt must not be a denied pairing transcript");
+  rejectPatternText(text, /"pair_token"\s*:/, "pairing.txt must not embed a legacy JSON pair_token payload");
+  rejectPatternText(text, /\bFIELDWORK_DEBUG_PAIRING_CODE\b/, "pairing.txt must not use debug pairing code injection");
 }
 
 function verifyDashboard(ui, sessions, logcat) {

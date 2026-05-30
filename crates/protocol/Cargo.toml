@@ -8,6 +8,8 @@ description = "Fieldwork v1 wire protocol types and framing."
 
 [dependencies]
 bincode.workspace = true
+data-encoding.workspace = true
+postcard.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 uuid.workspace = true

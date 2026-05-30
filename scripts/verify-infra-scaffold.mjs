@@ -15,6 +15,7 @@ const files = {
   operations: read("docs/OPERATIONS.md"),
   terraformCheck: read("scripts/check-infra-terraform.sh"),
   provision: read("infra/oracle/provision-region.sh"),
+  capacityWatch: read("infra/oracle/watch-a1-capacity.sh"),
   gitignore: read(".gitignore"),
   ansibleVars: read("infra/relay/ansible/group_vars/all/main.yml"),
   controlService: read("infra/relay/ansible/templates/fieldwork-control-plane.service.j2"),
@@ -61,10 +62,22 @@ requireText(files.readme, "committed Terraform provider lockfile pins the signed
 requireText(files.readme, "generated `.terraform/` caches and\n  all state/tfvars remain ignored", "Oracle README must document ignored Terraform caches and state");
 requireText(files.readme, "infra/relay/ansible/inventory.ini", "Oracle README must document Ansible inventory handoff");
 requireText(files.readme, "FIELDWORK_ORACLE_RETRY_ATTEMPTS", "Oracle README must document capacity retry controls");
+requireText(files.readme, "infra/oracle/watch-a1-capacity.sh --interval 10", "Oracle README must document the capacity-report watcher");
+requireText(files.readme, "compute-capacity-report API", "Oracle README must explain that the watcher uses Oracle capacity reports");
+requireText(files.readme, "runs `terraform apply`\nonly after a fault domain reports `AVAILABLE`", "Oracle README must document capacity-aware Terraform apply behavior");
 requireText(files.provision, "terraform init", "Oracle provision wrapper must initialize Terraform");
 requireText(files.provision, "terraform apply", "Oracle provision wrapper must apply Terraform");
 requireText(files.provision, "FIELDWORK_ORACLE_RETRY_ATTEMPTS", "Oracle provision wrapper must support retry attempts");
 requireExecutable("infra/oracle/provision-region.sh");
+requireText(files.capacityWatch, "compute-capacity-report create", "Oracle capacity watcher must use the official compute capacity report API");
+requireText(files.capacityWatch, "FAULT-DOMAIN-1", "Oracle capacity watcher must check fault domain 1");
+requireText(files.capacityWatch, "FAULT-DOMAIN-2", "Oracle capacity watcher must check fault domain 2");
+requireText(files.capacityWatch, "FAULT-DOMAIN-3", "Oracle capacity watcher must check fault domain 3");
+requireText(files.capacityWatch, '."availability-status" == "AVAILABLE"', "Oracle capacity watcher must wait for AVAILABLE capacity");
+requireText(files.capacityWatch, '-var "fault_domain=$available_fd"', "Oracle capacity watcher must pass the selected fault domain to Terraform");
+requireText(files.capacityWatch, "Terraform raced capacity and lost; continuing to watch.", "Oracle capacity watcher must keep watching after capacity races");
+requireText(files.capacityWatch, "FIELDWORK_ORACLE_POLL_SECONDS", "Oracle capacity watcher must support configurable poll intervals");
+requireExecutable("infra/oracle/watch-a1-capacity.sh");
 requireText(files.terraformCheck, 'TF_PLUGIN_CACHE_DIR', "Terraform validation script must use a plugin cache outside the generated working directory");
 requireText(files.terraformCheck, 'mkdir -p "$TF_PLUGIN_CACHE_DIR"', "Terraform validation script must create the plugin cache before init");
 requireText(files.terraformCheck, 'trap cleanup EXIT', "Terraform validation script must clean generated .terraform working directory");
@@ -116,7 +129,7 @@ if (files.operations.includes(staleGithubIdentity)) {
 for (const prerequisite of [
   "Operator-controlled npm `fieldwork` meta package",
   "publish rights for the four\n  platform child packages",
-  "GitHub repository secrets for macOS signing/notarization",
+  "macOS\n  desktop npm artifacts use ad-hoc signing and do not require Apple credentials",
   "Two Oracle ARM A1 relay hosts in different regions",
   "Relay-only APNs `.p8`, FCM service-account JSON, and Honeycomb API key",
   "Physical iOS and Android devices for the Section 13 smoke tests",
@@ -140,10 +153,7 @@ for (const githubSecretChecklist of [
 
 for (const githubSecret of [
   "NPM_TOKEN",
-  "APPLE_P12_BASE64",
-  "APPLE_P12_PASSWORD",
   "APP_STORE_KEY_JSON",
-  "SENTRY_DSN",
   "IOS_DISTRIBUTION_CERTIFICATE_BASE64",
   "IOS_DISTRIBUTION_CERTIFICATE_PASSWORD",
   "IOS_PROVISIONING_PROFILE_BASE64",
@@ -173,10 +183,10 @@ for (const handoff of [
   "children publish first and `fieldwork`\n  publishes last with provenance",
   "Appendix B account and reservation work remains\n  outside agent ownership",
   "domain `fieldwork.dev`, GitHub org `fieldwork-app`,\n  GitHub repo `fieldwork`, `@fieldworkdev`",
-  "Oracle Cloud capacity, Apple\n  Developer, Sentry, Honeycomb, and launch-calendar commitments",
-  "signed/notarized Darwin artifacts, Linux archives,\n  SHA-256 files, and Sigstore attestations",
-  "node scripts/verify-macos-signing.mjs target/${{ matrix.target }}/release/fieldworkd",
-  "Developer ID,\n  hardened-runtime, and Gatekeeper-notarized",
+  "Oracle Cloud capacity, optional\n  Apple Developer work for iOS/notarized Mac artifacts, Honeycomb, and\n  launch-calendar commitments",
+  "ad-hoc-signed Darwin artifacts, Linux archives,\n  SHA-256 files, and Sigstore attestations",
+  "node scripts/verify-macos-signing.mjs target/${{ matrix.target }}/release",
+  "ad-hoc or Developer ID signature and no quarantine xattr",
   "verify HTTPS `/v1/version`, iroh relay\n  fallback, sampled Honeycomb traces, and 10/10 generic push delivery",
   "prepared App Store privacy nutrition labels and\n  Play Data safety answers",
   "iOS implementation work is\n  otherwise paused until the team resumes that track",

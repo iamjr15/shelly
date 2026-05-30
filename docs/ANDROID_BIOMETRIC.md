@@ -16,7 +16,7 @@ blocked.
 - Use exactly one physical Android phone with biometrics enrolled, not an emulator or
   AVD.
 - Install the signed release App Bundle output or APKs produced from it.
-- Do not use a debug build, biometric bypass, or debug pairing payload.
+- Do not use a debug build, biometric bypass, or debug pairing code.
 - Pair through the real QR scanner and explicit desktop approval before this
   gate, using the same constraints as `docs/ANDROID_PAIR_FLOW.md`.
 - Capture evidence with direct `adb`: device listing, locked and biometric
@@ -31,7 +31,38 @@ enabled.
 
 ```sh
 export FW_ANDROID_BIOMETRIC_DIR="/tmp/fieldwork-android-biometric-$(date +%Y%m%d%H%M%S)"
-mkdir -p "$FW_ANDROID_BIOMETRIC_DIR"
+pnpm scaffold:android-biometric-evidence -- --dir "$FW_ANDROID_BIOMETRIC_DIR"
+```
+
+The scaffold writes `README.md`, `manifest.json`, `missing-files.txt`,
+`capture-checklist.md`, and a direct-adb `preflight.sh`. It captures
+release/device/package proof plus locked launch, biometric prompt, stale
+biometric prompt, logcat, and crash-buffer evidence; it does not create desktop
+sessions, pair devices, complete biometric authentication, or create
+`stale-biometric.txt`.
+
+Before pairing or biometric testing, capture release/device/package proof and
+clear Android logs:
+
+```sh
+FIELDWORK_ANDROID_AAB=apps/android/app/build/outputs/bundle/release/app-release.aab \
+"$FW_ANDROID_BIOMETRIC_DIR/preflight.sh"
+```
+
+After pairing, seeding desktop sessions, and reaching each Android biometric
+stage, use the helper capture modes:
+
+```sh
+FIELDWORK_ANDROID_BIOMETRIC_CAPTURE_LOCKED=true "$FW_ANDROID_BIOMETRIC_DIR/preflight.sh"
+FIELDWORK_ANDROID_BIOMETRIC_CAPTURE_PROMPT=true "$FW_ANDROID_BIOMETRIC_DIR/preflight.sh"
+FIELDWORK_ANDROID_BIOMETRIC_CAPTURE_STALE=true "$FW_ANDROID_BIOMETRIC_DIR/preflight.sh"
+```
+
+After `stale-biometric.txt` is captured from the real stale-input blocking
+test, run the helper verifier:
+
+```sh
+FIELDWORK_ANDROID_BIOMETRIC_VERIFY=true "$FW_ANDROID_BIOMETRIC_DIR/preflight.sh"
 ```
 
 ## Release Build
@@ -49,7 +80,7 @@ The transcript must include `Android AAB ok:` and `signed release bundle ok`.
 Capture the release `BuildConfig` values:
 
 ```sh
-rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
+rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""' \
   apps/android/app/build/generated/source/buildConfig/release/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_ANDROID_BIOMETRIC_DIR/buildconfig.txt"
 ```
@@ -59,9 +90,18 @@ Capture the physical device list and install the release artifact:
 ```sh
 adb devices -l | tee "$FW_ANDROID_BIOMETRIC_DIR/adb-devices.txt"
 bundletool install-apks --apks /path/to/fieldwork-release.apks
+{
+  echo '$ adb shell pm path app.fieldwork.android'
+  adb shell pm path app.fieldwork.android
+  echo '$ adb shell dumpsys package app.fieldwork.android'
+  adb shell dumpsys package app.fieldwork.android
+} | tee "$FW_ANDROID_BIOMETRIC_DIR/package-info.txt"
 adb logcat -c
 adb logcat -b crash -c
 ```
+`package-info.txt` must prove the installed app is `app.fieldwork.android` with
+`versionName=1.0`, `versionCode=1`, and no `DEBUGGABLE` or `debuggable=true` markers.
+
 
 ## Pair And Seed Sessions
 

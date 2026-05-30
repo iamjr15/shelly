@@ -6,7 +6,9 @@ package="app.fieldwork.android"
 activity="$package/.MainActivity"
 fieldwork="${FIELDWORK_CLI_BINARY:-$root/target/release/fieldwork}"
 fieldworkd="${FIELDWORK_DAEMON_BINARY:-$root/target/release/fieldworkd}"
-iroh_relay_url="${FIELDWORK_ANDROID_IROH_RELAY_URL:-https://aps1-1.relay.n0.iroh-canary.iroh.link./}"
+iroh_relay_url="${FIELDWORK_ANDROID_IROH_RELAY_URL:-}"
+relay_control_url="${FIELDWORK_ANDROID_RELAY_CONTROL_URL:-${FIELDWORK_RELAY_CONTROL_URL:-}}"
+relay_signing_key="${FIELDWORK_RELAY_SIGNING_KEY_B64:-BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc}"
 intent_flags="0x24000000"
 
 if [[ ! -x "$fieldwork" || ! -x "$fieldworkd" ]]; then
@@ -192,6 +194,8 @@ desktop_env() {
     PATH="$bin:$PATH" \
     FIELDWORK_IROH_SECRET_KEY_B64=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI \
     FIELDWORK_IROH_RELAY_URL="$iroh_relay_url" \
+    FIELDWORK_RELAY_CONTROL_URL="$relay_control_url" \
+    FIELDWORK_RELAY_SIGNING_KEY_B64="$relay_signing_key" \
     FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED=false \
     "$@"
 }
@@ -241,22 +245,27 @@ exec 3<>"$tmp_dir/pair.in"
 desktop_env "$fieldwork" pair <"$tmp_dir/pair.in" >"$tmp_dir/pair.log" 2>&1 &
 pair_pid=$!
 
-payload=""
+pairing_code=""
 for _ in {1..100}; do
-  payload="$(grep -m1 '^{' "$tmp_dir/pair.log" || true)"
-  if [[ -n "$payload" ]]; then
+  pairing_code="$(grep -A1 'enter this code:' "$tmp_dir/pair.log" | tail -n1 | tr -d '[:space:]' || true)"
+  if [[ -n "$pairing_code" ]]; then
     break
   fi
   sleep 0.1
 done
-if [[ -z "$payload" ]]; then
-  echo "fieldwork pair did not print a JSON payload" >&2
+if [[ -z "$pairing_code" ]]; then
+  echo "fieldwork pair did not print a 5-char pairing code" >&2
   cat "$tmp_dir/pair.log" >&2 || true
+  exit 1
+fi
+if [[ -z "$relay_control_url" ]]; then
+  echo "Android emulator notification-tap smoke needs FIELDWORK_ANDROID_RELAY_CONTROL_URL set so the app can resolve the typed pairing code." >&2
   exit 1
 fi
 
 FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true \
-FIELDWORK_ANDROID_PAIRING_PAYLOAD="$payload" \
+FIELDWORK_ANDROID_PAIRING_CODE="$pairing_code" \
+FIELDWORK_RELAY_CONTROL_URL="$relay_control_url" \
   "$root/apps/android/gradlew" --no-daemon :app:installDebug >"$tmp_dir/install-debug.log"
 
 adb -s "$serial" shell pm clear "$package" >/dev/null
@@ -280,7 +289,7 @@ for _ in {1..60}; do
     sleep 1
     continue
   fi
-  if grep -q 'text="Pairing payload"' "$ui_xml"; then
+  if grep -q 'text="Pairing code"' "$ui_xml"; then
     break
   fi
   if grep -Eq "System UI isn't responding|Application Not Responding|Process system isn't responding" "$ui_xml"; then
@@ -290,7 +299,7 @@ for _ in {1..60}; do
   fi
   sleep 1
 done
-if ! grep -q 'text="Pairing payload"' "$ui_xml"; then
+if ! grep -q 'text="Pairing code"' "$ui_xml"; then
   echo "Android emulator notification-tap smoke did not reach the pairing screen." >&2
   sed -n '1,120p' "$ui_xml" >&2 || true
   exit 1

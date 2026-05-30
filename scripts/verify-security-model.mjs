@@ -61,8 +61,9 @@ function verifySecurityDoc(text) {
     "long-lived Ed25519/iroh identity",
     "They can list, subscribe, attach, send input, resize, detach,\n  and register/unregister push tokens",
     "They cannot create sessions, kill\n  sessions, or specify commands",
-    "sees daemon node IDs, daemon relay public keys, push tokens, opaque\n  session hashes, source IPs, aggregate metrics, and provider delivery status",
-    "must never receive terminal bytes, command lines, paths, plaintext session\n  names, QR pair tokens, or local scrollback",
+    "sees daemon node IDs, daemon relay public keys, push tokens, opaque\n  session hashes, source IPs, aggregate metrics, provider delivery status",
+    "only on the typed-code pairing path — short pairing codes mapped to opaque\n  reachability blobs (10-minute TTL, per-code lockout). The QR pairing path stays\n  daemon-local.",
+    "must never receive terminal bytes, command lines,\n  paths, plaintext session names, or local scrollback",
   ]) {
     requireNormalizedText(text, phrase, `docs/SECURITY.md trust boundary is missing: ${phrase}`);
   }
@@ -78,8 +79,9 @@ function verifySecurityDoc(text) {
   }
 
   for (const phrase of [
-    "Pair tokens are 32 random bytes, base32 encoded, 10-minute TTL, and single\n  use",
-    "desktop must explicitly approve the request",
+    "The credential is a single active 5-character Crockford code (`OsRng`,\n  confusable-free alphabet, ~25 bits, 10-minute TTL) that the daemon invalidates\n  after 5 wrong in-band attempts",
+    "A device gets the code either by scanning the\n  QR ticket (which carries it inline) or by typing it; the typed code is resolved\n  to the daemon's reachability through the rate-limited relay rendezvous",
+    "A QR scan or correct code is not enough: the desktop must explicitly approve\n  the request",
     "Approved devices authenticate with long-lived Ed25519/iroh keys",
     "Lost devices are revoked through `fieldwork devices remove`",
     "there is no\n  password fallback",

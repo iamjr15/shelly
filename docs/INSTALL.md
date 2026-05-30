@@ -10,11 +10,16 @@ fw
 fw refactoringjob
 ```
 
+Before a live test, run `fw doctor` to check the local CLI, daemon binary,
+Unix-socket hardening/protocol handshake, visible sessions, telemetry setting, and
+scrollback-encryption setting.
+
 The npm package scaffold is implemented under `packages/`, but the packages are not published until release credentials and platform artifacts are available. For current local development:
 
 ```sh
 cargo build --workspace
 target/debug/fieldwork
+target/debug/fieldwork doctor
 target/debug/fieldwork refactoringjob
 target/debug/fieldwork new --name shell bash
 target/debug/fieldwork new bash
@@ -45,9 +50,14 @@ Optional local daemon service install while developing:
 ```sh
 target/debug/fieldwork daemon install
 target/debug/fieldwork daemon status
+target/debug/fieldwork doctor --no-start
 ```
 
 This installs a user-level service only. It does not install a root daemon.
+`fieldwork doctor` checks the colocated `fieldworkd`, service status,
+Unix-socket parent/file hardening, protocol handshake, visible sessions,
+telemetry setting, and scrollback-encryption setting. Without `--no-start`, it
+may auto-start the daemon the same way `fw pair`, `fw`, and `fw <name>` do.
 
 Shell completion scripts can be generated locally:
 
@@ -64,14 +74,14 @@ registered for the short `fw` alias. Running the same subcommand through
 
 Installed npm builds check the npm registry at most once per day for a newer `fieldwork`. The notice is printed to stderr for human-facing commands only and never downloads an update; use `npm update -g fieldwork` to update both `fieldwork` and `fieldworkd`. Set `FIELDWORK_DISABLE_UPDATE_CHECK=1` to suppress the registry check.
 
-Daemon telemetry is off by default. To opt into local crash reporting, write the daemon config and restart the daemon:
+Daemon and mobile crash reporting are not bundled in v1. To record local diagnostics consent, write the daemon config and restart the daemon:
 
 ```sh
-target/debug/fieldwork settings telemetry on --sentry-dsn https://examplePublicKey@example.invalid/1
+target/debug/fieldwork settings telemetry on
 target/debug/fieldwork daemon restart
 ```
 
-Use `target/debug/fieldwork settings telemetry off` and restart the daemon to disable it again.
+Use `target/debug/fieldwork settings telemetry off` and restart the daemon to disable the local preference again. Production observability is relay-only Honeycomb tracing with aggregate/static fields.
 
 Local scrollback/device persistence is encrypted by default. Device registry rows
 use hashed keys, so raw device node IDs and push tokens live only inside encrypted
@@ -104,6 +114,13 @@ FIELDWORK_RELAY_CONTROL_URL=http://127.0.0.1:8443 target/debug/fieldworkd
 
 The relay gateway persists daemon keys, push-token ownership, and recent replay nonces in SQLite, then validates daemon signatures and privacy-preserving push requests locally. Set `FIELDWORK_RELAY_DB_PATH=off` for a purely in-memory local smoke test. Real APNs/FCM delivery requires relay-only Apple/Firebase credentials and physical-device verification, so it is not part of the local install flow.
 
+For operator-assisted live testing while Oracle A1 capacity is unavailable, the
+budgeted AWS Lightsail bridge exposes the control plane at
+`http://3.7.208.153:8443`. Use it only for first-round typed-code/control-plane
+testing; final production install guidance still requires operator-owned
+DNS/TLS, iroh fallback verification, Honeycomb receipt, and APNs/FCM provider
+credentials on the relay host.
+
 The production relay deploy scaffold lives under `infra/relay/ansible`. Override `fieldwork_relay_binary` when running the playbook. The default group variables set the HTTPS control listener to `0.0.0.0:8443`, the control metrics listener to `127.0.0.1:9090`, the relay OTLP endpoint to Honeycomb, the trace sample rate to `0.01`, and the SQLite path to `/var/lib/fieldwork/relay.db`. The same binary is also deployed as `fieldwork-iroh-relay.service` with `FIELDWORK_RELAY_MODE=iroh-relay`, ACME-backed HTTPS on `0.0.0.0:443`, HTTP challenge/probe handling on `0.0.0.0:80`, QUIC address discovery on `0.0.0.0:7842`, and iroh relay metrics on `127.0.0.1:9091`. The playbook creates the relay data directory as `0700`; the relay process enforces `0600` on the SQLite database and sidecar files. Control-plane TLS cert/key paths, APNs `.p8`, FCM service-account JSON, and Honeycomb API-key paths are passed to the control-plane unit via `LoadCredential` and must exist only on the relay host. APNs delivery also requires `fieldwork_relay_apns_team_id`, `fieldwork_relay_apns_key_id`, and `fieldwork_relay_apns_topic`; the relay caches the signed APNs provider JWT for 50 minutes. FCM delivery reads `fieldwork_relay_fcm_credential`, uses `fieldwork_relay_fcm_endpoint`, and caches the Google OAuth token returned from the service-account JWT exchange.
 
 Current npm packaging checks:
@@ -111,9 +128,13 @@ Current npm packaging checks:
 ```sh
 node scripts/verify-npm-packages.mjs
 node scripts/verify-changesets-config.mjs
+node scripts/test-release-artifacts-evidence.mjs
+node scripts/test-release-artifacts-scaffold.mjs
 node scripts/test-npm-dispatcher.mjs
 node scripts/test-npm-registry-state.mjs
 node scripts/test-npm-artifact-pack.mjs
+node scripts/test-npm-release-evidence.mjs
+node scripts/test-npm-release-scaffold.mjs
 node scripts/test-bun-install.mjs
 npm pack ./packages/cli --dry-run --json
 ```
@@ -122,7 +143,11 @@ npm pack ./packages/cli --dry-run --json
 `fieldworkd`: `fw` is a shorter alias for the same user-facing CLI, so `fw pair`
 starts the same QR-pairing flow as `fieldwork pair`. Postinstall swaps the CLI
 and daemon commands to native binaries when scripts are allowed, and the shipped
-dispatchers run the matching platform package when postinstall is skipped.
+dispatchers run the matching platform package when postinstall is skipped. On
+macOS, postinstall also ad-hoc signs the copied `fieldwork` and `fieldworkd`
+binaries and removes `com.apple.quarantine` only from those two verified
+executables, so the npm desktop path does not require Apple Developer ID
+notarization.
 Running either CLI name with no subcommand uses the no-args fast path: create
 and attach a new default `claude` session with an auto-generated one-word
 display name that mobile apps show from the daemon session list, even when other
@@ -146,6 +171,12 @@ children, run `node scripts/verify-npm-registry-state.mjs --expect-meta-publishe
 v1 release publish, add `--expect-latest-version=1.0.0 --expect-provenance` to
 verify the latest registry dist-tag and npm SLSA provenance metadata across the
 package family.
+For the final npm release evidence bundle, scaffold the capture directory with
+`pnpm scaffold:npm-release-evidence -- --print-dir`, run its `preflight.sh`,
+then verify sanitized workflow logs, publish logs, registry state, and package
+metadata with `pnpm check:npm-release-evidence -- "$FW_NPM_RELEASE_DIR"`. This
+is post-publish evidence capture only; it does not publish packages or query
+package-name availability.
 
 `scripts/test-bun-install.mjs` uses pinned `esbuild@0.25.12` registry packages to smoke-test Bun's platform optional-dependency selection for the same meta-package plus platform-child package pattern Fieldwork publishes.
 
@@ -155,7 +186,7 @@ Current iOS development flow:
 open apps/ios/Fieldwork.xcodeproj
 ```
 
-The Xcode target expects Xcode 16.3 for local development on the current macOS 15.2 host and a selected iOS SDK. It builds the Rust static libraries through `apps/ios/scripts/build-rust.sh`, generates the UniFFI Swift binding, links exact Swift Package Manager pins for SwiftTerm 1.13.0 and sentry-cocoa 9.13.0 from the committed `Package.resolved`, and runs the native SwiftUI app. The Rust script builds an xcframework with `arm64` iOS device plus `arm64`/`x86_64` iOS simulator slices. Full iOS verification is blocked in this shell because only Command Line Tools are selected, not Xcode. Local prerequisites already installed or downloaded: `xcodes` 1.6.2, `aria2` 1.37.0_2, Rust iOS targets, `.xcode-version` set to `16.3`, and reference/source checkouts for `SwiftTerm` v1.13.0, `blink`, and `sentry-cocoa` 9.13.0. `pnpm check:ios-prereqs` runs the same local audit, reports the remaining blocker, and now prints concrete recovery steps to authenticate, run `scripts/check-ios-prereqs.sh --download-xcode`, expand or place `Xcode_16.3.xip`, select `/Applications/Xcode-16.3.app/Contents/Developer`, run `sudo xcodebuild -runFirstLaunch`, rerun the audit, and then run `apps/ios/scripts/build-rust.sh`. Generated `target/debug` and Android build intermediates were cleaned while preserving the release AAB; the latest local audit reports at least 70 GiB free in `~/Downloads`, satisfying the repo script's Xcode download/expansion guard. Downloading Xcode itself remains blocked by Apple Developer authentication/access: `scripts/check-ios-prereqs.sh --download-xcode` and direct `xcodes download 16.3 --data-source xcodeReleases` both report a missing Apple ID/password or require an authenticated Apple Developer session, direct `curl` against Apple's Xcode 16.3 XIP redirects to the unauthorized page, and the existing Chrome session is not signed into an account with access. No Xcode `.xip` is present in `~/Downloads`. Direct Rust iOS target builds also fail until full Xcode is selected because dependency build scripts need `xcrun --sdk iphoneos` and `xcrun --sdk iphonesimulator`. TestFlight/App Store release builds are separate: Apple now requires Xcode 26+ with an iOS 26+ SDK, so `release-ios.yml` runs on `macos-26` and `pnpm check:ios-release-prereqs` verifies that release floor.
+The Xcode target expects Xcode 16.3 for local development on the current macOS 15.2 host and a selected iOS SDK. It builds the Rust static libraries through `apps/ios/scripts/build-rust.sh`, generates the UniFFI Swift binding, links the exact Swift Package Manager pin for SwiftTerm 1.13.0 from the committed `Package.resolved`, and runs the native SwiftUI app. The Rust script builds an xcframework with `arm64` iOS device plus `arm64`/`x86_64` iOS simulator slices. Full iOS verification is blocked in this shell because only Command Line Tools are selected, not Xcode. Local prerequisites already installed or downloaded: `xcodes` 1.6.2, `aria2` 1.37.0_2, Rust iOS targets, `.xcode-version` set to `16.3`, and reference/source checkouts for `SwiftTerm` v1.13.0 and `blink`. `pnpm check:ios-prereqs` runs the same local audit, reports the remaining blocker, and now prints concrete recovery steps to authenticate, run `scripts/check-ios-prereqs.sh --download-xcode`, expand or place `Xcode_16.3.xip`, select `/Applications/Xcode-16.3.app/Contents/Developer`, run `sudo xcodebuild -runFirstLaunch`, rerun the audit, and then run `apps/ios/scripts/build-rust.sh`. Generated `target/debug` and Android build intermediates were cleaned while preserving the release AAB; the latest local audit reports at least 70 GiB free in `~/Downloads`, satisfying the repo script's Xcode download/expansion guard. Downloading Xcode itself remains blocked by Apple Developer authentication/access: `scripts/check-ios-prereqs.sh --download-xcode` and direct `xcodes download 16.3 --data-source xcodeReleases` both report a missing Apple ID/password or require an authenticated Apple Developer session, direct `curl` against Apple's Xcode 16.3 XIP redirects to the unauthorized page, and the existing Chrome session is not signed into an account with access. No Xcode `.xip` is present in `~/Downloads`. Direct Rust iOS target builds also fail until full Xcode is selected because dependency build scripts need `xcrun --sdk iphoneos` and `xcrun --sdk iphonesimulator`. TestFlight/App Store release builds are separate: Apple now requires Xcode 26+ with an iOS 26+ SDK, so `release-ios.yml` runs on `macos-26` and `pnpm check:ios-release-prereqs` verifies that release floor.
 
 Current Android development flow:
 

@@ -45,6 +45,30 @@ try {
   fs.writeFileSync(path.join(unsigned, "artifact-signing.txt"), "Android AAB ok: unsigned local bundle ok\n");
   expectStatus(unsigned, 1, "unsigned AAB evidence should fail", "artifact-signing.txt must prove the release App Bundle was signed");
 
+  const missingPackageInfo = path.join(temp, "missing-package-info");
+  writeFixture(missingPackageInfo);
+  fs.rmSync(path.join(missingPackageInfo, "package-info.txt"));
+  expectStatus(missingPackageInfo, 1, "missing installed package proof should fail", "missing evidence file: package-info.txt");
+
+  const wrongPackageVersion = path.join(temp, "wrong-package-version");
+  writeFixture(wrongPackageVersion);
+  fs.writeFileSync(
+    path.join(wrongPackageVersion, "package-info.txt"),
+    [
+      "package:/data/app/~~hash/app.fieldwork.android-base.apk",
+      "Packages:",
+      "  Package [app.fieldwork.android] (abc):",
+      "    versionCode=2 minSdk=30 targetSdk=36",
+      "    versionName=1.1",
+    ].join("\n"),
+  );
+  expectStatus(
+    wrongPackageVersion,
+    1,
+    "wrong installed package version should fail",
+    "package-info.txt must prove installed versionName=1.0",
+  );
+
   const debugBuild = path.join(temp, "debug-build");
   writeFixture(debugBuild);
   fs.writeFileSync(
@@ -54,7 +78,7 @@ try {
       'BUILD_TYPE = "debug"',
       'DEBUG = Boolean.parseBoolean("true")',
       "FIELDWORK_BIOMETRIC_BYPASS = false",
-      'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+      'FIELDWORK_DEBUG_PAIRING_CODE = ""',
     ].join("\n"),
   );
   expectStatus(debugBuild, 1, "debug BuildConfig should fail", "buildconfig.txt must prove the tested build is the release variant");
@@ -68,7 +92,7 @@ try {
       'BUILD_TYPE = "release"',
       "DEBUG = false",
       "FIELDWORK_BIOMETRIC_BYPASS = true",
-      'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+      'FIELDWORK_DEBUG_PAIRING_CODE = ""',
     ].join("\n"),
   );
   expectStatus(bypassBuild, 1, "release build with biometric bypass should fail", "buildconfig.txt must prove biometric bypass is disabled");
@@ -116,7 +140,17 @@ function writeFixture(dir) {
   );
   fs.writeFileSync(
     path.join(dir, "artifact-signing.txt"),
-    "Android AAB ok: base/lib/arm64-v8a/libfieldwork_mobile_core.so; packaged manifest uses-permission allowlist and privacy surface ok; signed release bundle ok\n",
+    "Android AAB ok: base/lib/arm64-v8a/libfieldwork_mobile_core.so; packaged manifest identity, version, uses-permission allowlist, and privacy surface ok; signed release bundle ok\n",
+  );
+  fs.writeFileSync(
+    path.join(dir, "package-info.txt"),
+    [
+      "package:/data/app/~~hash/app.fieldwork.android-base.apk",
+      "Packages:",
+      "  Package [app.fieldwork.android] (abc):",
+      "    versionCode=1 minSdk=30 targetSdk=36",
+      "    versionName=1.0",
+    ].join("\n"),
   );
   fs.writeFileSync(
     path.join(dir, "buildconfig.txt"),
@@ -125,7 +159,7 @@ function writeFixture(dir) {
       'BUILD_TYPE = "release"',
       "DEBUG = false",
       "FIELDWORK_BIOMETRIC_BYPASS = false",
-      'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+      'FIELDWORK_DEBUG_PAIRING_CODE = ""',
     ].join("\n"),
   );
   fs.writeFileSync(path.join(dir, "install.txt"), "Success\n");

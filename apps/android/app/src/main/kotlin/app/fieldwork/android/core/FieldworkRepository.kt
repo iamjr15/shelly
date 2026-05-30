@@ -8,6 +8,7 @@ import uniffi.fieldwork_mobile_core.AgentStateFfi
 import uniffi.fieldwork_mobile_core.AttachedSession
 import uniffi.fieldwork_mobile_core.ClientConfig
 import uniffi.fieldwork_mobile_core.DaemonConfig
+import uniffi.fieldwork_mobile_core.DaemonInfo
 import uniffi.fieldwork_mobile_core.FieldworkClient
 import uniffi.fieldwork_mobile_core.MobilePlatform
 import uniffi.fieldwork_mobile_core.PushPlatform
@@ -18,6 +19,7 @@ internal interface FieldworkRepositoryClient {
     val savedPairing: PairedDaemonRecord?
     fun restore(): Boolean
     suspend fun pair(qrPayload: String)
+    suspend fun pairWithCode(code: String)
     suspend fun listSessions(): List<MobileSession>
     suspend fun subscribeSessions(onUpdate: (List<MobileSession>) -> Unit)
     suspend fun attach(sessionId: String, lastSeenSeq: ULong? = null): AttachedSession
@@ -46,6 +48,18 @@ class FieldworkRepository(context: Context) : FieldworkRepositoryClient {
         client = freshClient
         val info = freshClient.pairWithQr(qrPayload)
         debugLog("pair completed")
+        persistPairing(info)
+    }
+
+    override suspend fun pairWithCode(code: String) {
+        val freshClient = createClient(null)
+        client = freshClient
+        val info = freshClient.pairWithCode(code)
+        debugLog("pairWithCode completed")
+        persistPairing(info)
+    }
+
+    private fun persistPairing(info: DaemonInfo) {
         val record = PairedDaemonRecord(
             daemonNodeId = info.daemonNodeId,
             relayUrl = info.relayUrl,
@@ -125,6 +139,7 @@ class FieldworkRepository(context: Context) : FieldworkRepositoryClient {
                         addrs = it.addrs,
                     )
                 },
+                relayControlUrl = BuildConfig.FIELDWORK_RELAY_CONTROL_URL.ifBlank { null },
             ),
         )
     }

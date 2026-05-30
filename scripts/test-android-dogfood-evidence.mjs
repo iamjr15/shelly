@@ -75,12 +75,27 @@ try {
     path.join(bypassBuild, "buildconfig.txt"),
     [
       'public static final String APPLICATION_ID = "app.fieldwork.android";',
-      'public static final String BUILD_TYPE = "debug";',
+      'public static final String BUILD_TYPE = "release";',
+      "public static final boolean DEBUG = false;",
       "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = true;",
-      'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "";',
+      'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "";',
     ].join("\n"),
   );
   expectStatus(bypassBuild, 1, "biometric bypass build should fail", "buildconfig.txt must prove biometric bypass is disabled");
+
+  const debugBuild = path.join(temp, "debug-build");
+  writeFixture(debugBuild);
+  fs.writeFileSync(
+    path.join(debugBuild, "buildconfig.txt"),
+    [
+      'public static final String APPLICATION_ID = "app.fieldwork.android";',
+      'public static final String BUILD_TYPE = "debug";',
+      'public static final boolean DEBUG = Boolean.parseBoolean("true");',
+      "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
+      'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "";',
+    ].join("\n"),
+  );
+  expectStatus(debugBuild, 1, "debug dogfood build should fail", "buildconfig.txt must prove the installed test build is the release variant");
 
   const debugPairingBuild = path.join(temp, "debug-pairing-build");
   writeFixture(debugPairingBuild);
@@ -88,12 +103,13 @@ try {
     path.join(debugPairingBuild, "buildconfig.txt"),
     [
       'public static final String APPLICATION_ID = "app.fieldwork.android";',
-      'public static final String BUILD_TYPE = "debug";',
+      'public static final String BUILD_TYPE = "release";',
+      "public static final boolean DEBUG = false;",
       "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
-      'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "{\\"pair\\":true}";',
+      'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "A1B2C";',
     ].join("\n"),
   );
-  expectStatus(debugPairingBuild, 1, "debug pairing payload build should fail", "buildconfig.txt must prove no debug pairing payload is compiled in");
+  expectStatus(debugPairingBuild, 1, "debug pairing code build should fail", "buildconfig.txt must prove no debug pairing code is compiled in");
 
   const badTyping = path.join(temp, "bad-typing");
   writeFixture(badTyping);
@@ -131,13 +147,15 @@ function writeFixture(dir) {
     path.join(dir, "adb-devices.txt"),
     "List of devices attached\nR58M1234567 device product:panther model:Pixel_8_Pro device:panther transport_id:1\n",
   );
+  writePackageInfo(dir);
   fs.writeFileSync(
     path.join(dir, "buildconfig.txt"),
     [
       'public static final String APPLICATION_ID = "app.fieldwork.android";',
-      'public static final String BUILD_TYPE = "debug";',
+      'public static final String BUILD_TYPE = "release";',
+      "public static final boolean DEBUG = false;",
       "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
-      'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "";',
+      'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "";',
     ].join("\n"),
   );
   fs.writeFileSync(
@@ -167,6 +185,19 @@ function writeFixture(dir) {
     fs.writeFileSync(path.join(dir, `${name}-logcat.log`), `I Fieldwork: ${name} dogfood evidence\n`);
     fs.writeFileSync(path.join(dir, `${name}-crash.log`), "");
   }
+}
+
+function writePackageInfo(dir) {
+  fs.writeFileSync(
+    path.join(dir, "package-info.txt"),
+    [
+      "package:/data/app/~~hash/app.fieldwork.android-base.apk",
+      "Packages:",
+      "  Package [app.fieldwork.android] (abc):",
+      "    versionCode=1 minSdk=30 targetSdk=36",
+      "    versionName=1.0",
+    ].join("\n"),
+  );
 }
 
 function writePng(file) {

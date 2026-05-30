@@ -66,6 +66,20 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func pair(code: String) async {
+        guard await ensureUnlocked(reason: "Pair Fieldwork with this daemon") else {
+            return
+        }
+        do {
+            try await service.pair(code: code)
+            isPaired = true
+            statusMessage = "Paired"
+            await activatePairedSessionServices()
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
     func refreshSessions() async {
         guard isPaired else {
             sessions = []
@@ -143,9 +157,9 @@ final class AppModel: ObservableObject {
     func answerTelemetryConsent(accepted: Bool) {
         showsTelemetryConsentPrompt = false
         if accepted {
-            MobileTelemetry.setCrashReportingEnabled(true)
+            MobileTelemetry.setDiagnosticsEnabled(true)
         } else {
-            MobileTelemetry.declineCrashReporting()
+            MobileTelemetry.declineDiagnostics()
         }
     }
 

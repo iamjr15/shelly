@@ -44,14 +44,6 @@ jobs:
             any($libs[]; .SupportedPlatform == "ios" and (.SupportedArchitectures | index("arm64"))) and
             any($libs[]; .SupportedPlatform == "ios" and .SupportedPlatformVariant == "simulator" and (.SupportedArchitectures | index("arm64")) and (.SupportedArchitectures | index("x86_64")))
           '
-      - name: Verify mobile Sentry DSN
-        env:
-          FIELDWORK_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-        run: |
-          if [ -z "$FIELDWORK_SENTRY_DSN" ]; then
-            echo "SENTRY_DSN is required so opt-in mobile crash reporting works in release builds."
-            exit 1
-          fi
       - name: Install Apple signing assets
         env:
           IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
@@ -119,7 +111,6 @@ jobs:
       - name: Build archive
         env:
           FIELDWORK_SKIP_RUST_BUILD: "1"
-          FIELDWORK_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           xcodebuild \
             -project apps/ios/Fieldwork.xcodeproj \

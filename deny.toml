@@ -16,6 +16,11 @@ ignore = [
   # Transitive through iroh's Linux network discovery stack and image codecs used
   # by QR/terminal dependencies. No direct Fieldwork usage.
   "RUSTSEC-2024-0436",
+  # Transitive through postcard -> heapless for the compact fw1 pairing-ticket
+  # encoding (and through iroh-relay's postcard path). `cargo update -p
+  # postcard --dry-run` currently has no compatible lockfile move, and
+  # Fieldwork does not use atomic-polyfill APIs directly.
+  "RUSTSEC-2023-0089",
 ]
 # cargo audit also warns on RUSTSEC-2026-0002 for lru 0.12.5 through
 # tattoy-wezterm-term. cargo-deny treats it as a warning, not an ignored

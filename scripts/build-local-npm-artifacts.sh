@@ -75,7 +75,63 @@ for package_dir in "$root"/packages/cli "$root"/packages/cli-*; do
   cp "$root/NOTICE" "$package_dir/NOTICE"
 done
 
+prepare_darwin_trust() {
+  local package="$1"
+  local out="$root/packages/cli-$package/bin"
+
+  codesign --force --sign - "$out/fieldwork" >/dev/null
+  codesign --force --sign - "$out/fieldworkd" >/dev/null
+  xattr -d com.apple.quarantine "$out/fieldwork" "$out/fieldworkd" 2>/dev/null || true
+  node scripts/verify-macos-signing.mjs "$out"
+}
+
+prepare_darwin_trust darwin-arm64
+prepare_darwin_trust darwin-x64
+
+archive_root="${FIELDWORK_LOCAL_NPM_ARCHIVE_DIR:-$target_root_abs/local-npm-artifacts}"
+mkdir -p "$archive_root"
+rm -f \
+  "$archive_root"/fieldwork-darwin-arm64.tar.gz \
+  "$archive_root"/fieldwork-darwin-x64.tar.gz \
+  "$archive_root"/fieldwork-linux-arm64.tar.gz \
+  "$archive_root"/fieldwork-linux-x64.tar.gz \
+  "$archive_root"/fieldwork-darwin-arm64.tar.gz.sha256.local \
+  "$archive_root"/fieldwork-darwin-x64.tar.gz.sha256.local \
+  "$archive_root"/fieldwork-linux-arm64.tar.gz.sha256.local \
+  "$archive_root"/fieldwork-linux-x64.tar.gz.sha256.local
+
+archive_tmp="$(mktemp -d "${TMPDIR:-/tmp}/fieldwork-local-npm-artifacts.XXXXXX")"
+trap 'rm -rf "$archive_tmp"' EXIT
+
+archive_platform_package() {
+  local package="$1"
+  local package_dir="$root/packages/cli-$package"
+  local stage="$archive_tmp/fieldwork-$package"
+  local archive="$archive_root/fieldwork-$package.tar.gz"
+
+  rm -rf "$stage"
+  mkdir -p "$stage"
+  cp "$package_dir/bin/fieldwork" "$stage/fieldwork"
+  cp "$package_dir/bin/fieldworkd" "$stage/fieldworkd"
+  cp "$package_dir/LICENSE" "$stage/LICENSE"
+  cp "$package_dir/NOTICE" "$stage/NOTICE"
+  chmod 755 "$stage/fieldwork" "$stage/fieldworkd"
+
+  (cd "$archive_tmp" && LC_ALL=C LANG=C COPYFILE_DISABLE=1 tar -czf "$archive" "fieldwork-$package")
+  LC_ALL=C LANG=C shasum -a 256 "$archive" >"$archive.sha256.local"
+
+  if [[ "$package" == darwin-* ]]; then
+    node scripts/verify-macos-signing.mjs "$archive"
+  fi
+}
+
+archive_platform_package darwin-arm64
+archive_platform_package darwin-x64
+archive_platform_package linux-arm64
+archive_platform_package linux-x64
+
 node scripts/verify-npm-packages.mjs --require-binaries
 node scripts/publish-npm-packages.mjs --check-ready
 
 echo "local npm artifact build/stage ok"
+echo "local npm platform archives: $archive_root"

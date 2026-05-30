@@ -41,7 +41,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.fieldwork.android.core.AndroidBiometricGate
 import app.fieldwork.android.core.FieldworkViewModel
-import app.fieldwork.android.core.MobileSession
 import app.fieldwork.android.features.pairing.PairingScreen
 import app.fieldwork.android.features.sessions.SessionsScreen
 import app.fieldwork.android.features.settings.SettingsScreen
@@ -81,7 +80,9 @@ fun FieldworkApp(
 ) {
     val state by viewModel.state.collectAsState()
     var selectedTab by remember { mutableStateOf(AppTab.Sessions) }
-    var activeTerminalSession by remember { mutableStateOf<MobileSession?>(null) }
+    val activeTerminalSession = state.activeTerminalSessionId?.let { sessionId ->
+        state.sessions.firstOrNull { it.id == sessionId }
+    }
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -93,9 +94,6 @@ fun FieldworkApp(
     LaunchedEffect(state.paired, state.unlocked) {
         if (state.paired && state.unlocked) {
             onRequestNotifications()
-        }
-        if (!state.paired || !state.unlocked) {
-            activeTerminalSession = null
         }
     }
 
@@ -125,7 +123,7 @@ fun FieldworkApp(
             if (state.unlocked) {
                 Scaffold(
                     bottomBar = {
-                        if (activeTerminalSession == null) {
+                        if (state.activeTerminalSessionId == null) {
                             NavigationBar {
                                 NavigationBarItem(
                                     selected = selectedTab == AppTab.Sessions,
@@ -136,7 +134,7 @@ fun FieldworkApp(
                                 NavigationBarItem(
                                     selected = selectedTab == AppTab.Settings,
                                     onClick = {
-                                        activeTerminalSession = null
+                                        viewModel.closeTerminalSession()
                                         selectedTab = AppTab.Settings
                                     },
                                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
@@ -152,20 +150,21 @@ fun FieldworkApp(
                                 if (state.restoringPairing) {
                                     RestoringPairingPlaceholder(padding)
                                 } else if (state.paired) {
-                                    val terminalSession = activeTerminalSession
-                                    if (terminalSession == null) {
+                                    if (state.activeTerminalSessionId == null) {
                                         SessionsScreen(
                                             padding = padding,
                                             viewModel = viewModel,
                                             biometricGate = biometricGate,
-                                            onOpenSession = { activeTerminalSession = it },
+                                            onOpenSession = viewModel::openTerminalSession,
                                         )
+                                    } else if (activeTerminalSession == null) {
+                                        RestoringPairingPlaceholder(padding)
                                     } else {
                                         TerminalScreen(
-                                            session = terminalSession,
+                                            session = activeTerminalSession,
                                             viewModel = viewModel,
                                             biometricGate = biometricGate,
-                                            onBack = { activeTerminalSession = null },
+                                            onBack = viewModel::closeTerminalSession,
                                         )
                                     }
                                 } else {
@@ -173,6 +172,7 @@ fun FieldworkApp(
                                         padding = padding,
                                         pairing = state.loading,
                                         onPair = viewModel::pair,
+                                        onPairWithCode = viewModel::pairWithCode,
                                     )
                                 }
                             }
@@ -215,7 +215,7 @@ fun FieldworkApp(
                     text = "Help improve Fieldwork?",
                     style = MaterialTheme.typography.titleLarge,
                 )
-                Text("Crash reports only. No code, prompts, terminal output, or file paths.")
+                Text("Product diagnostics only. No code, prompts, terminal output, or file paths.")
                 Button(
                     onClick = { viewModel.answerTelemetryConsent(true) },
                     modifier = Modifier.fillMaxWidth(),

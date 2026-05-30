@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
-    @AppStorage("telemetryOptIn") private var telemetryOptIn = false
+    @AppStorage("diagnosticsOptIn") private var diagnosticsOptIn = false
     @State private var confirmUnpair = false
 
     var body: some View {
@@ -32,9 +32,9 @@ struct SettingsView: View {
             }
 
             Section("Privacy") {
-                Toggle("Share crash reports", isOn: $telemetryOptIn)
-                    .onChange(of: telemetryOptIn) { _, _ in
-                        MobileTelemetry.setCrashReportingEnabled(telemetryOptIn)
+                Toggle("Share diagnostics", isOn: $diagnosticsOptIn)
+                    .onChange(of: diagnosticsOptIn) { _, _ in
+                        MobileTelemetry.setDiagnosticsEnabled(diagnosticsOptIn)
                     }
             }
 

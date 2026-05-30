@@ -15,7 +15,7 @@ Sources:
 - Face ID/Touch ID and BiometricPrompt are OS-mediated. Fieldwork never receives or stores biometric material.
 - Terminal content, commands, paths, and session names are not sent to Fieldwork-operated analytics or push providers. Live terminal bytes travel only between the user's paired devices over encrypted iroh connections.
 - Push payloads contain only fixed enum-derived copy plus opaque lowercase 64-character hex session hashes. The app rejects malformed hashes and fetches actual terminal content from the paired daemon after unlock.
-- Mobile crash reporting is off by default and starts only after the user opts in through Settings or the delayed one-time consent prompt, and only when the release build contains a Sentry DSN.
+- Mobile product diagnostics sharing is off by default. No mobile crash-reporting SDK is bundled in v1.
 - Android Firebase Messaging auto-init and Firebase Analytics collection are disabled in the manifest. FCM token generation is enabled only after pairing, biometric unlock, and only when `google-services.json` is present. Refreshed Android FCM tokens are queued in app-private `fieldwork_push_tokens.xml`, excluded from backup/transfer, and sent only after pairing plus biometric unlock.
 
 ## App Store Connect
@@ -27,8 +27,7 @@ Data linked to the user:
 | Data type | Collection | Purpose | Notes |
 | --- | --- | --- | --- |
 | Identifiers: Device ID | Yes | App Functionality | APNs token registered after pairing so the daemon/relay can address generic push notifications. Not used for tracking or advertising. |
-| Diagnostics: Crash Data | Optional | App Functionality | Sentry crash reporting only after explicit opt-in. `sendDefaultPii=false`; no terminal content is intentionally attached. |
-| Diagnostics: Performance Data | Optional | App Functionality | Sentry SDK diagnostic context only after explicit opt-in; trace sampling is disabled. |
+| Diagnostics: Performance Data | Optional | App Functionality | Local diagnostics consent is optional. v1 does not bundle a mobile crash-reporting SDK or send mobile diagnostics off device. |
 
 Data not collected by Fieldwork for App Store label purposes:
 
@@ -43,9 +42,9 @@ Submission notes:
 
 ## Google Play Data Safety
 
-Does the app collect or share user data? Yes, because FCM push tokens / Firebase installation identifiers and opt-in crash diagnostics can be transmitted off device.
+Does the app collect or share user data? Yes, because FCM push tokens / Firebase installation identifiers can be transmitted off device.
 
-Data shared with third parties: No, assuming APNs/FCM/Sentry are documented as service providers processing data for Fieldwork under the published privacy policy and applicable agreements. If that legal posture changes, mark the relevant rows as shared.
+Data shared with third parties: No, assuming APNs/FCM are documented as service providers processing data for Fieldwork under the published privacy policy and applicable agreements. If that legal posture changes, mark the relevant rows as shared.
 
 Security practices:
 
@@ -58,8 +57,7 @@ Data types:
 | Category | Type | Collected | Shared | Purpose | Required |
 | --- | --- | --- | --- | --- | --- |
 | Device or other IDs | FCM registration token / Firebase installation ID | Yes | No | App functionality | Required for Android push after pairing; core attach/list/input workflows still work without push delivery. |
-| App info and performance | Crash logs | Optional | No | App functionality | Optional; collected only after explicit crash-reporting opt-in. |
-| App info and performance | Diagnostics | Optional | No | App functionality | Optional; limited to Sentry diagnostic context with default PII disabled and trace sampling off. |
+| App info and performance | Diagnostics | Optional | No | App functionality | Optional local consent only in v1; no mobile diagnostics are sent off device. |
 
 Not declared as collected:
 
@@ -72,8 +70,7 @@ Pre-submission checks:
 
 - Run `pnpm check:store-privacy` before every mobile release candidate. It
   verifies this answer sheet still declares the same App Store/Play data facts
-  enforced by the mobile manifests, native notification handlers, and Sentry
-  settings.
+  enforced by the mobile manifests and native notification handlers.
 - Run `pnpm check:mobile-privacy` before every mobile release candidate. It
   verifies the Android permission/default-collection surface, iOS privacy usage
   strings, APNs entitlement build settings, biometric-only gates, and mobile
@@ -82,7 +79,6 @@ Pre-submission checks:
   app root surfaces, unlock-gated session/push activation, generated iOS
   mobile-core linkage, the Android queued FCM-token tests and backup/transfer
   exclusions, and the iOS no-stub-build guard.
-- Confirm the production Android manifest still has `firebase_messaging_auto_init_enabled=false`, `firebase_analytics_collection_enabled=false`, and `io.sentry.auto-init=false`.
+- Confirm the production Android manifest still has `firebase_messaging_auto_init_enabled=false` and `firebase_analytics_collection_enabled=false`.
 - Confirm the built iOS app still uses fixed APNs alert copy and does not add terminal content to notification payloads.
-- Confirm Sentry release settings do not enable session replay, screenshots, user interaction tracing, or default PII.
 - Run the relay push-payload privacy test and inspect a real APNs/FCM delivery before checking the Section 13 privacy gates.

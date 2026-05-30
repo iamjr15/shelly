@@ -1,6 +1,6 @@
 use crate::types::{
     AgentSource, AgentState, Capabilities, ClientId, ClientKind, ClientSize, DeviceSummary,
-    PairingPayload, PushPlatform, SessionId, SessionSummary,
+    PairingTicket, PushPlatform, SessionId, SessionSummary,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -80,10 +80,10 @@ pub enum ClientToServerMsg {
         /// Whether the user approved the pairing.
         approved: bool,
     },
-    /// Presents a QR pair token from a remote device.
-    PairWithToken {
-        /// Single-use base32 pair token.
-        pair_token: String,
+    /// Presents a short pairing code from a remote device.
+    PairWithCode {
+        /// Normalized short pairing code; verified attempt-capped by the daemon.
+        code: String,
         /// User-facing mobile device name.
         device_name: String,
         /// Remote iroh node id; must match the authenticated connection peer.
@@ -187,10 +187,10 @@ pub enum ServerToClientMsg {
         /// Number of broadcast messages skipped by the receiver.
         skipped_bytes: u64,
     },
-    /// Pairing QR payload is ready for display.
+    /// Pairing ticket is ready for QR display and relay publication.
     PairingStarted {
-        /// QR-encoded payload.
-        payload: PairingPayload,
+        /// Compact pairing ticket carrying reachability and the short code.
+        ticket: PairingTicket,
     },
     /// A remote device is waiting for explicit desktop approval.
     PairingApprovalRequested {

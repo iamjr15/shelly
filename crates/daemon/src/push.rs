@@ -20,6 +20,10 @@ use tracing::{debug, warn};
 const SERVICE: &str = "app.fieldwork";
 const RELAY_SIGNING_ACCOUNT: &str = "relay-signing-key-v1";
 const RELAY_CONTROL_URL_ENV: &str = "FIELDWORK_RELAY_CONTROL_URL";
+/// Optional base64 (no-pad) override for the relay signing key, mirroring
+/// `FIELDWORK_IROH_SECRET_KEY_B64`. Lets hermetic e2e harnesses without OS
+/// keychain access (CI, isolated temp HOME) exercise the relay publish path.
+const RELAY_SIGNING_KEY_ENV: &str = "FIELDWORK_RELAY_SIGNING_KEY_B64";
 const RELAY_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const RELAY_RETRY_MIN_DELAY: Duration = Duration::from_secs(1);
 const RELAY_RETRY_MAX_DELAY: Duration = Duration::from_secs(8);
@@ -82,6 +86,28 @@ impl PushDispatcher {
         self.send(PushCommand::RegisterToken { platform, token });
     }
 
+    /// Best-effort publish of a pairing code and its opaque reachability blob to
+    /// the relay rendezvous endpoint so the typed-code path can resolve it.
+    ///
+    /// No-op (with a debug log) when the relay control URL is unset; any relay
+    /// failure is logged as a warning and dropped so the QR path keeps working.
+    pub(crate) fn publish_pairing_code(
+        &self,
+        code: String,
+        ticket_blob: String,
+        expires_at_ms: u64,
+    ) {
+        if self.tx.is_none() {
+            debug!("relay control URL unset; skipping pairing-code publish");
+            return;
+        }
+        self.send(PushCommand::PublishPairingCode {
+            code,
+            ticket_blob,
+            expires_at_ms,
+        });
+    }
+
     pub(crate) fn unregister_token(&self, token: String) {
         self.send(PushCommand::UnregisterToken { token });
     }
@@ -120,6 +146,11 @@ pub(crate) enum PushCommand {
     },
     UnregisterToken {
         token: String,
+    },
+    PublishPairingCode {
+        code: String,
+        ticket_blob: String,
+        expires_at_ms: u64,
     },
     AwaitingInput {
         session_id: SessionId,
@@ -193,6 +224,14 @@ impl PushWorker {
                     self.register_token(platform, token).await
                 }
                 PushCommand::UnregisterToken { token } => self.unregister_token(token).await,
+                PushCommand::PublishPairingCode {
+                    code,
+                    ticket_blob,
+                    expires_at_ms,
+                } => {
+                    self.publish_pairing_code(code, ticket_blob, expires_at_ms)
+                        .await
+                }
                 PushCommand::AwaitingInput {
                     session_id,
                     session_name,
@@ -267,6 +306,37 @@ impl PushWorker {
                 };
                 worker
                     .post_signed_json_once("/v1/push/unregister-token", &body, &nonce, ts_ms)
+                    .await
+            }
+        })
+        .await
+    }
+
+    async fn publish_pairing_code(
+        &mut self,
+        code: String,
+        ticket_blob: String,
+        expires_at_ms: u64,
+    ) -> Result<()> {
+        let daemon_node_id = self.ensure_daemon_registered().await?;
+        let worker = &*self;
+        retry_relay_operation(self.retry, "publish pairing code", || {
+            let daemon_node_id = daemon_node_id.clone();
+            let code = code.clone();
+            let ticket_blob = ticket_blob.clone();
+            async move {
+                let nonce = nonce();
+                let ts_ms = now_ms();
+                let body = PublishPairingCodeRequest {
+                    daemon_node_id,
+                    code,
+                    ticket_blob,
+                    expires_at_ms,
+                    nonce: nonce.clone(),
+                    ts_ms,
+                };
+                worker
+                    .post_signed_json_once("/v1/pair/publish", &body, &nonce, ts_ms)
                     .await
             }
         })
@@ -491,6 +561,16 @@ struct UnregisterTokenRequest {
 }
 
 #[derive(Serialize)]
+struct PublishPairingCodeRequest {
+    daemon_node_id: String,
+    code: String,
+    ticket_blob: String,
+    expires_at_ms: u64,
+    nonce: String,
+    ts_ms: u64,
+}
+
+#[derive(Serialize)]
 struct PushRequest {
     daemon_node_id: String,
     recipient_token: String,
@@ -553,6 +633,9 @@ fn nonce() -> String {
 }
 
 fn load_or_create_signing_key() -> Result<SigningKey> {
+    if let Some(key) = signing_key_from_env()? {
+        return Ok(key);
+    }
     let entry =
         keyring::Entry::new(SERVICE, RELAY_SIGNING_ACCOUNT).context("open OS keychain entry")?;
     match entry.get_password() {
@@ -577,6 +660,22 @@ fn decode_signing_key(encoded: &str) -> Result<SigningKey> {
         .try_into()
         .map_err(|_| anyhow::anyhow!("relay signing key must be 32 bytes"))?;
     Ok(SigningKey::from_bytes(&key))
+}
+
+/// Reads the relay signing key from [`RELAY_SIGNING_KEY_ENV`] when set, so test
+/// harnesses without OS keychain access can sign relay requests. Mirrors the
+/// iroh secret-key env override; empty/unset falls back to the keychain.
+fn signing_key_from_env() -> Result<Option<SigningKey>> {
+    let Some(value) = std::env::var_os(RELAY_SIGNING_KEY_ENV) else {
+        return Ok(None);
+    };
+    let value = value.to_string_lossy();
+    if value.trim().is_empty() {
+        return Ok(None);
+    }
+    decode_signing_key(value.trim())
+        .with_context(|| format!("decode {RELAY_SIGNING_KEY_ENV}"))
+        .map(Some)
 }
 
 #[cfg(test)]
@@ -625,6 +724,53 @@ mod tests {
             serde_json::to_string(&RelayPushPlatform::Fcm).unwrap(),
             r#""fcm""#
         );
+    }
+
+    static SIGNING_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn signing_key_env_override_loads_without_keychain() {
+        let _guard = SIGNING_ENV_LOCK.lock().unwrap();
+        let previous = std::env::var_os(RELAY_SIGNING_KEY_ENV);
+        // Same fixed test key the local handoff smoke uses (32 bytes of 0x07).
+        let encoded = STANDARD_NO_PAD.encode([7_u8; 32]);
+        unsafe {
+            std::env::set_var(RELAY_SIGNING_KEY_ENV, &encoded);
+        }
+
+        let key = signing_key_from_env()
+            .expect("env signing key decodes")
+            .expect("env signing key present");
+        assert_eq!(key.to_bytes(), [7_u8; 32]);
+
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var(RELAY_SIGNING_KEY_ENV, value),
+                None => std::env::remove_var(RELAY_SIGNING_KEY_ENV),
+            }
+        }
+    }
+
+    #[test]
+    fn signing_key_env_is_ignored_when_unset_or_blank() {
+        let _guard = SIGNING_ENV_LOCK.lock().unwrap();
+        let previous = std::env::var_os(RELAY_SIGNING_KEY_ENV);
+        unsafe {
+            std::env::set_var(RELAY_SIGNING_KEY_ENV, "   ");
+        }
+
+        assert!(
+            signing_key_from_env()
+                .expect("blank env is not an error")
+                .is_none()
+        );
+
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var(RELAY_SIGNING_KEY_ENV, value),
+                None => std::env::remove_var(RELAY_SIGNING_KEY_ENV),
+            }
+        }
     }
 
     #[tokio::test]

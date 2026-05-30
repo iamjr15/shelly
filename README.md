@@ -23,6 +23,9 @@ already exist. The generated or chosen session name is stored in the daemon
 summary, so it appears as the active session name in the mobile app dashboard.
 The daemon rejects duplicate session names, so a named shortcut always resolves
 to one PTY.
+Run `fw doctor` before a live test if you want a local preflight of the CLI,
+daemon binary, Unix-socket hardening/protocol handshake, current sessions,
+telemetry setting, and scrollback-encryption setting.
 Desktop distribution is npm-only for v1; Homebrew, `curl | sh`, `cargo install`, and self-update are intentionally out of scope.
 
 ## Screenshots
@@ -55,6 +58,7 @@ The first operator-assisted Android physical-device handoff pass is defined in [
 ```sh
 cargo build --workspace
 target/debug/fieldwork
+target/debug/fieldwork doctor
 target/debug/fieldwork refactoringjob
 target/debug/fieldwork new --name shell bash
 target/debug/fieldwork new bash
@@ -72,6 +76,10 @@ The daemon persists session summaries and scrollback locally in encrypted `redb`
 Live sessions keep a daemon-side WezTerm terminal model. Warm reconnects replay raw bytes from the 256 KB ring; stale attaches get a synthetic ANSI snapshot so full-screen TUIs have a correct current viewport instead of relying on incomplete scrollback.
 
 Daemon lifecycle commands currently include `fieldwork daemon start`, `status`, `logs`, `install`, `restart`, and `uninstall`. Service install is user-level only.
+Run `fieldwork doctor` before live testing to check the colocated `fieldworkd`,
+service status, Unix-socket parent/file hardening, protocol handshake, visible
+sessions, telemetry setting, and scrollback-encryption setting. Add
+`--no-start` to inspect only an already-running daemon without auto-starting one.
 
 Help and shell completions are generated for the invoked command name:
 `fieldwork --help` prints the long command usage, `fw --help` prints
@@ -87,7 +95,7 @@ Claude/Codex state hooks are local CLI adapters for this milestone. Claude Stop 
 target/debug/fieldwork pair
 ```
 
-The CLI prints a QR plus the JSON payload, waits for an incoming device request, and prompts for explicit approval. Pair tokens are 32 random bytes, base32 encoded, single-use, and expire after 10 minutes.
+The CLI prints a QR plus a grouped 5-character pairing code ("Scan the QR with the Fieldwork app — or enter this code:"), waits for an incoming device request, and prompts for explicit approval. The pairing code is a single active 5-character Crockford base32 code, case-insensitive, expires after 10 minutes, and is invalidated after 5 wrong in-band attempts.
 
 For headless transport smoke tests, the hidden Rust client can stand in for a phone:
 
@@ -105,6 +113,6 @@ The same `fieldwork-relay` binary can run the iroh fallback relay with `FIELDWOR
 
 Relay provider support is relay-only. APNs loads the `.p8` key through systemd credentials or an explicit relay env path, caches the ES256 provider JWT for 50 minutes, and sends only fixed copy plus opaque session hashes through a persistent provider client with HTTP/2 keepalive pings. APNs `BadDeviceToken` responses remove the relay token binding from memory and SQLite before the relay reports a provider error to the daemon. FCM loads the Firebase service-account JSON through the same relay-only credential path, exchanges a signed RS256 JWT for a cached OAuth token, sends the same privacy-preserving payload contract through the same keepalive client policy, and prunes FCM `UNREGISTERED` tokens as stale bindings.
 
-Daemon telemetry is off by default. `fieldwork settings telemetry on --sentry-dsn <dsn>` persists consent in the user config file, and `fieldwork settings telemetry off` disables it again. `FIELDWORK_TELEMETRY_OPT_IN=true` plus `FIELDWORK_SENTRY_DSN` remains available as an environment override for local smoke tests. The daemon reads telemetry settings on startup, so restart `fieldworkd` after changing them.
+Daemon and mobile crash reporting are not bundled in v1. `fieldwork settings telemetry on` persists local diagnostics consent in the user config file, and `fieldwork settings telemetry off` disables it again. Production observability is relay-only Honeycomb tracing with aggregate/static fields and relay-host credentials.
 
-The npm-only desktop distribution scaffold is present under `packages/`: `fieldwork` plus the four v1 platform packages. The meta package uses optional dependencies, postinstall binary copy/swap, and a dispatcher fallback for `--omit=optional` installs. The CLI checks the npm registry at most once per day for human-facing commands and prints a non-fatal `npm update -g fieldwork` notice to stderr when a newer version exists. The production npm publish, Oracle relay deployment, TestFlight, and Play internal release workflows are scaffolded but require external credentials and hosted infrastructure before they can run end to end. Relay deployment, provider credential rotation, and incident response are documented in [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+The npm-only desktop distribution scaffold is present under `packages/`: `fieldwork` plus the four v1 platform packages. The meta package uses optional dependencies, postinstall binary copy/swap, and a dispatcher fallback for `--omit=optional` installs. The CLI checks the npm registry at most once per day for human-facing commands and prints a non-fatal `npm update -g fieldwork` notice to stderr when a newer version exists. The production npm publish, Oracle relay deployment, TestFlight, and Play internal release workflows are scaffolded but require external credentials and hosted infrastructure before they can run end to end. Because Oracle Mumbai A1 capacity is blocked, an AWS Lightsail `relay` host is available as a budgeted live-test bridge at `http://3.7.208.153:8443`; it is not final production relay evidence until DNS/TLS, iroh fallback, Honeycomb, and APNs/FCM credentials are installed and verified. Relay deployment, provider credential rotation, and incident response are documented in [`docs/OPERATIONS.md`](docs/OPERATIONS.md).

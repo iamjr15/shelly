@@ -12,10 +12,10 @@ surface visible before session access.
 
 - Use exactly one physical Android phone, not an emulator or AVD.
 - Install the signed release App Bundle output or APKs produced from it.
-- Do not use a debug build, biometric bypass, or debug pairing payload.
+- Do not use a debug build, biometric bypass, or debug pairing code.
 - Capture evidence with direct `adb`: device listing, install transcript,
-  `am start -W` launch transcripts, screenshot, UI dump, logcat, and crash
-  buffer.
+  installed package proof, `am start -W` launch transcripts, screenshot, UI
+  dump, logcat, and crash buffer.
 - Evidence must contain no Android fatal/ANR logcat entries, no Android system
   not-responding overlays, and empty crash buffers after `adb logcat -c`.
 
@@ -23,7 +23,32 @@ surface visible before session access.
 
 ```sh
 export FW_ANDROID_COLD_DIR="/tmp/fieldwork-android-cold-start-$(date +%Y%m%d%H%M%S)"
-mkdir -p "$FW_ANDROID_COLD_DIR"
+pnpm scaffold:android-cold-start-evidence -- --dir "$FW_ANDROID_COLD_DIR"
+```
+
+The scaffold writes `README.md`, `manifest.json`, `missing-files.txt`,
+`capture-checklist.md`, and a direct-adb `preflight.sh`. It does not bypass the
+physical-device gate: `preflight.sh` only passes when run against exactly one
+physical Android phone with the signed release artifact installed, and it
+rejects emulator, debug, debuggable, biometric-bypass, debug-pairing, warm
+launch, slow-launch, unlocked-surface, fatal-log, and non-empty crash-buffer
+evidence.
+
+The shortest release-device capture path is:
+
+```sh
+FIELDWORK_ANDROID_RELEASE_APKS=/path/to/fieldwork-release.apks \
+FIELDWORK_ANDROID_AAB=apps/android/app/build/outputs/bundle/release/app-release.aab \
+"$FW_ANDROID_COLD_DIR/preflight.sh"
+```
+
+If signing or install was captured outside the helper, pass the transcript
+files:
+
+```sh
+FIELDWORK_ANDROID_ARTIFACT_SIGNING_FILE=/path/to/artifact-signing.txt \
+FIELDWORK_ANDROID_INSTALL_TRANSCRIPT_FILE=/path/to/install.txt \
+"$FW_ANDROID_COLD_DIR/preflight.sh"
 ```
 
 ## Signed Release Artifact
@@ -41,7 +66,7 @@ The transcript must contain `Android AAB ok:` and `signed release bundle ok`.
 Capture the release `BuildConfig` values:
 
 ```sh
-rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
+rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""' \
   apps/android/app/build/generated/source/buildConfig/release/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_ANDROID_COLD_DIR/buildconfig.txt"
 ```
@@ -54,11 +79,18 @@ Capture the physical device list and install transcript:
 adb devices -l | tee "$FW_ANDROID_COLD_DIR/adb-devices.txt"
 bundletool install-apks --apks /path/to/fieldwork-release.apks \
   | tee "$FW_ANDROID_COLD_DIR/install.txt"
+{
+  echo '$ adb shell pm path app.fieldwork.android'
+  adb shell pm path app.fieldwork.android
+  echo '$ adb shell dumpsys package app.fieldwork.android'
+  adb shell dumpsys package app.fieldwork.android
+} | tee "$FW_ANDROID_COLD_DIR/package-info.txt"
 ```
 
 If installing a release APK directly, capture `adb install -r ...` output in the
 same `install.txt`. The transcript must include `Success`, `Installed`, or
-`installed`.
+`installed`. `package-info.txt` must prove the installed release package is
+`app.fieldwork.android` with `versionName=1.0`, `versionCode=1`, and no `DEBUGGABLE` or `debuggable=true` markers.
 
 ## Cold Launch Samples
 

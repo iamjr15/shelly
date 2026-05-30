@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { verifyPhysicalAndroidAdbDevices } from "./android-evidence-common.mjs";
+import {
+  verifyInstalledAndroidPackageInfo,
+  verifyPhysicalAndroidAdbDevices,
+} from "./android-evidence-common.mjs";
 
 const root = path.resolve(new URL("..", import.meta.url).pathname);
 const options = parseArgs(process.argv.slice(2));
@@ -36,11 +40,13 @@ function runReadinessCheck({ root, localOnly }) {
 
   checkExecutable(path.join(root, "target/release/fieldwork"), "release fieldwork binary", failures, ok);
   checkExecutable(path.join(root, "target/release/fieldworkd"), "release fieldworkd binary", failures, ok);
+  checkReleaseCommandSurface({ root, failures, ok });
   checkFile(path.join(root, "apps/android/app/build/outputs/apk/debug/app-debug.apk"), "Android debug APK", failures, ok);
   checkFile(path.join(root, "apps/android/app/build/outputs/bundle/release/app-release.aab"), "Android unsigned release AAB", failures, ok);
   checkFile(path.join(root, "scripts/create-live-testing-evidence-dir.mjs"), "live testing evidence scaffold", failures, ok);
   checkFile(path.join(root, "scripts/verify-live-testing-evidence.mjs"), "live testing evidence verifier", failures, ok);
   checkFile(path.join(root, "docs/LIVE_TESTING.md"), "live testing runbook", failures, ok);
+  checkFwAlias({ localOnly, failures, pending, ok });
 
   const buildConfigPath = path.join(root, "apps/android/app/build/generated/source/buildConfig/debug/app/fieldwork/android/BuildConfig.java");
   if (fs.existsSync(buildConfigPath)) {
@@ -64,6 +70,52 @@ function runReadinessCheck({ root, localOnly }) {
   checkAdbState({ localOnly, failures, pending, ok });
 
   return { failures, ok, pending };
+}
+
+function checkFwAlias({ localOnly, failures, pending, ok }) {
+  const result = spawnSync("fw", ["--help"], { encoding: "utf8" });
+  const strictEvaluation = evaluateFwAliasResult(result, { localOnly: false });
+  if (strictEvaluation.failures.length === 0) {
+    ok.push(...strictEvaluation.ok);
+    return;
+  }
+
+  if (localOnly) {
+    const shimEvaluation = evaluateRepoLocalFwShim({ root });
+    if (shimEvaluation.failures.length === 0) {
+      ok.push(...shimEvaluation.ok);
+      return;
+    }
+  }
+
+  const evaluated = evaluateFwAliasResult(result, { localOnly });
+  ok.push(...evaluated.ok);
+  pending.push(...evaluated.pending);
+  failures.push(...evaluated.failures);
+}
+
+function checkReleaseCommandSurface({ root, failures, ok }) {
+  const fieldwork = path.join(root, "target/release/fieldwork");
+  if (fs.existsSync(fieldwork)) {
+    const evaluated = evaluateReleaseFieldworkDoctorHelp(
+      spawnSync(fieldwork, ["doctor", "--help"], {
+        encoding: "utf8",
+      }),
+    );
+    ok.push(...evaluated.ok);
+    failures.push(...evaluated.failures);
+  }
+
+  const fieldworkd = path.join(root, "target/release/fieldworkd");
+  if (fs.existsSync(fieldworkd)) {
+    const evaluated = evaluateReleaseDaemonHelp(
+      spawnSync(fieldworkd, ["--help"], {
+        encoding: "utf8",
+      }),
+    );
+    ok.push(...evaluated.ok);
+    failures.push(...evaluated.failures);
+  }
 }
 
 function checkExecutable(filePath, label, failures, ok) {
@@ -101,7 +153,8 @@ function checkBuildConfigText(text, failures, ok, { file = "BuildConfig.java" } 
     [/\bBUILD_TYPE\s*=\s*"debug"/, `${file} must be the debug build for first-round live testing`],
     [/\bDEBUG\s*=\s*(?:Boolean\.parseBoolean\("true"\)|true)/, `${file} must have BuildConfig.DEBUG enabled`],
     [/\bFIELDWORK_BIOMETRIC_BYPASS\s*=\s*false\b/, `${file} must disable the debug biometric bypass`],
-    [/\bFIELDWORK_DEBUG_PAIRING_PAYLOAD\s*=\s*""/, `${file} must not embed a debug pairing payload`],
+    [/\bFIELDWORK_DEBUG_PAIRING_CODE\s*=\s*""/, `${file} must not embed a debug pairing code`],
+    [/\bFIELDWORK_RELAY_CONTROL_URL\s*=\s*""/, `${file} must not embed a debug relay control URL`],
   ];
 
   const before = failures.length;
@@ -111,7 +164,7 @@ function checkBuildConfigText(text, failures, ok, { file = "BuildConfig.java" } 
     }
   }
   if (failures.length === before) {
-    ok.push("debug BuildConfig is normal: no bypass and no embedded pairing payload");
+    ok.push("debug BuildConfig is normal: no bypass, no embedded pairing code, and no relay override");
   }
 }
 
@@ -141,18 +194,35 @@ function checkAdbState({ localOnly, failures, pending, ok }) {
 }
 
 function checkInstalledAndroidPackage({ failures, ok }) {
-  const installed = spawnSync("adb", ["shell", "pm", "path", "app.fieldwork.android"], {
+  const pathResult = spawnSync("adb", ["shell", "pm", "path", "app.fieldwork.android"], {
     encoding: "utf8",
   });
-  if (installed.error) {
-    failures.push(`adb package check failed to start: ${installed.error.message}`);
+  if (pathResult.error) {
+    failures.push(`adb package check failed to start: ${pathResult.error.message}`);
     return;
   }
-  if (installed.status !== 0 || !/^package:/m.test(installed.stdout)) {
+  if (pathResult.status !== 0 || !/^package:/m.test(pathResult.stdout)) {
     failures.push("app.fieldwork.android is not installed on the connected device; run adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk");
     return;
   }
-  ok.push("app.fieldwork.android is installed on the connected adb device");
+
+  const packageResult = spawnSync("adb", ["shell", "dumpsys", "package", "app.fieldwork.android"], {
+    encoding: "utf8",
+  });
+  if (packageResult.error) {
+    failures.push(`adb package details check failed to start: ${packageResult.error.message}`);
+    return;
+  }
+  if (packageResult.status !== 0) {
+    failures.push(`adb package details check failed:\n${trimCommandOutput(packageResult.stdout)}${trimCommandOutput(packageResult.stderr)}`);
+    return;
+  }
+
+  const before = failures.length;
+  verifyInstalledAndroidPackageInfo(`${pathResult.stdout}\n${packageResult.stdout}`, failures, { file: "adb package check" });
+  if (failures.length === before) {
+    ok.push("installed app.fieldwork.android package proof matches versionName=1.0 and versionCode=1");
+  }
 }
 
 function evaluateAdbStateText(text, { localOnly }) {
@@ -168,13 +238,173 @@ function evaluateAdbStateText(text, { localOnly }) {
     return { failures, ok, pending, physicalReady: true };
   }
 
-  if (localOnly && devices.length === 0) {
-    pending.push("connect exactly one authorized physical Android phone before the evidence pass");
+  if (localOnly) {
+    pending.push(adbPendingMessage(devices));
     return { failures, ok, pending, physicalReady: false };
   }
 
   failures.push(...adbFailures);
   return { failures, ok, pending, physicalReady: false };
+}
+
+function evaluateFwAliasResult(result, { localOnly }) {
+  const ok = [];
+  const pending = [];
+  const failures = [];
+  const setupMessage = "install the npm package or run the docs/LIVE_TESTING.md Desktop Setup shim first";
+
+  if (result.error) {
+    const message = `fw is unavailable; ${setupMessage}`;
+    if (localOnly) {
+      pending.push(message);
+    } else {
+      failures.push(message);
+    }
+    return { failures, ok, pending };
+  }
+
+  const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+  if (result.status !== 0 || !/\bUsage:\s+fw\b/.test(output)) {
+    const message = `fw on PATH must resolve the Fieldwork short alias and print Usage: fw; ${setupMessage}`;
+    if (localOnly) {
+      pending.push(message);
+    } else {
+      failures.push(message);
+    }
+    return { failures, ok, pending };
+  }
+
+  ok.push("fw short alias resolves to Fieldwork CLI");
+  return { failures, ok, pending };
+}
+
+function evaluateRepoLocalFwShim({ root }) {
+  const ok = [];
+  const failures = [];
+  const releaseFieldwork = path.join(root, "target/release/fieldwork");
+  if (!fs.existsSync(releaseFieldwork) || !fs.statSync(releaseFieldwork).isFile() || (fs.statSync(releaseFieldwork).mode & 0o111) === 0) {
+    failures.push("repo-local release fieldwork is unavailable for the local fw shim");
+    return { failures, ok };
+  }
+
+  const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-live-fw-shim-"));
+  try {
+    const fw = path.join(shimDir, "fw");
+    fs.symlinkSync(releaseFieldwork, fw);
+    const help = evaluateRepoLocalFwShimHelp(spawnSync(fw, ["--help"], { cwd: root, encoding: "utf8" }));
+    const doctorHelp = evaluateRepoLocalFwShimDoctorHelp(spawnSync(fw, ["doctor", "--help"], { cwd: root, encoding: "utf8" }));
+    ok.push(...help.ok, ...doctorHelp.ok);
+    failures.push(...help.failures, ...doctorHelp.failures);
+  } finally {
+    fs.rmSync(shimDir, { recursive: true, force: true });
+  }
+  return { failures, ok };
+}
+
+function evaluateRepoLocalFwShimHelp(result) {
+  const ok = [];
+  const failures = [];
+  if (result.error) {
+    failures.push(`repo-local fw shim could not start: ${result.error.message}`);
+    return { failures, ok };
+  }
+  const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+  if (result.status !== 0 || !/\bUsage:\s+fw\b/.test(output)) {
+    failures.push("repo-local release fieldwork does not render Usage: fw when invoked through the live-testing shim");
+    return { failures, ok };
+  }
+  ok.push("repo-local release fieldwork supports the fw short alias through the live-testing shim");
+  return { failures, ok };
+}
+
+function evaluateRepoLocalFwShimDoctorHelp(result) {
+  const ok = [];
+  const failures = [];
+  if (result.error) {
+    failures.push(`repo-local fw doctor shim could not start: ${result.error.message}`);
+    return { failures, ok };
+  }
+  const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+  if (result.status !== 0 || !/\bUsage:\s+fw\s+doctor\b/.test(output) || !/--no-start\b/.test(output)) {
+    failures.push("repo-local release fieldwork does not render the fw doctor command surface through the live-testing shim");
+    return { failures, ok };
+  }
+  ok.push("repo-local release fieldwork supports fw doctor through the live-testing shim");
+  return { failures, ok };
+}
+
+function evaluateReleaseFieldworkDoctorHelp(result) {
+  const ok = [];
+  const failures = [];
+  const rebuildMessage = "rebuild release desktop binaries with `cargo build --release -p fieldwork-cli -p fieldwork-daemon` or `pnpm build:local-npm-artifacts`";
+
+  if (result.error) {
+    failures.push(`release fieldwork doctor --help could not start: ${result.error.message}; ${rebuildMessage}`);
+    return { failures, ok };
+  }
+
+  const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+  if (result.status !== 0) {
+    failures.push(`release fieldwork doctor --help failed; ${rebuildMessage}\n${trimCommandOutput(output)}`);
+    return { failures, ok };
+  }
+
+  if (!/\bUsage:\s+(?:fieldwork|fw)\s+doctor\b/.test(output) || !/--no-start\b/.test(output)) {
+    failures.push(`release fieldwork binary is stale or missing the doctor command surface; ${rebuildMessage}`);
+    return { failures, ok };
+  }
+
+  ok.push("release fieldwork command surface includes doctor");
+  return { failures, ok };
+}
+
+function evaluateReleaseDaemonHelp(result) {
+  const ok = [];
+  const failures = [];
+  const rebuildMessage = "rebuild release desktop binaries with `cargo build --release -p fieldwork-cli -p fieldwork-daemon` or `pnpm build:local-npm-artifacts`";
+
+  if (result.error) {
+    failures.push(`release fieldworkd --help could not start: ${result.error.message}; ${rebuildMessage}`);
+    return { failures, ok };
+  }
+
+  const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+  if (result.status !== 0) {
+    failures.push(`release fieldworkd --help failed; ${rebuildMessage}\n${trimCommandOutput(output)}`);
+    return { failures, ok };
+  }
+
+  if (!/\bUsage:\s+fieldworkd\b/.test(output)) {
+    failures.push(`release fieldworkd binary is stale or missing its help surface; ${rebuildMessage}`);
+    return { failures, ok };
+  }
+
+  ok.push("release fieldworkd help surface is current");
+  return { failures, ok };
+}
+
+function adbPendingMessage(devices) {
+  if (devices.length === 0) {
+    return "connect exactly one authorized physical Android phone before the evidence pass";
+  }
+
+  if (devices.some((device) => device.state !== "device")) {
+    return "authorize or reconnect the Android phone before the evidence pass; local mode does not accept offline or unauthorized adb targets";
+  }
+
+  if (devices.length > 1) {
+    return "disconnect extra adb targets before the evidence pass; exactly one authorized physical Android phone is required";
+  }
+
+  if (devices.some(isEmulatorDevice)) {
+    return "disconnect the emulator/AVD and connect exactly one authorized physical Android phone before the evidence pass";
+  }
+
+  return "connect exactly one authorized physical Android phone before the evidence pass";
+}
+
+function isEmulatorDevice(device) {
+  return /^(?:emulator-\d+)$/i.test(device.serial) || /\b(?:sdk_gphone|sdk_gphone64|generic_x86|generic_x86_64|goldfish|ranchu|qemu|avd|device:emu[^\s]*)\b/i.test(device.details);
 }
 
 function parseAdbDevices(text) {
@@ -238,7 +468,8 @@ function runSelfTest() {
       'public static final String APPLICATION_ID = "app.fieldwork.android";',
       'public static final String BUILD_TYPE = "debug";',
       "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
-      'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "";',
+      'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "";',
+      'public static final String FIELDWORK_RELAY_CONTROL_URL = "";',
     ].join("\n"),
     failures,
     ok,
@@ -252,7 +483,8 @@ function runSelfTest() {
         'public static final String APPLICATION_ID = "app.fieldwork.android";',
         'public static final String BUILD_TYPE = "release";',
         "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
-        'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "";',
+        'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "";',
+        'public static final String FIELDWORK_RELAY_CONTROL_URL = "";',
       ].join("\n"),
       "must be the debug build",
     ],
@@ -262,7 +494,8 @@ function runSelfTest() {
         'public static final String APPLICATION_ID = "app.fieldwork.android";',
         'public static final String BUILD_TYPE = "debug";',
         "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = true;",
-        'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "";',
+        'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "";',
+        'public static final String FIELDWORK_RELAY_CONTROL_URL = "";',
       ].join("\n"),
       "must disable the debug biometric bypass",
     ],
@@ -272,15 +505,128 @@ function runSelfTest() {
         'public static final String APPLICATION_ID = "app.fieldwork.android";',
         'public static final String BUILD_TYPE = "debug";',
         "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
-        'public static final String FIELDWORK_DEBUG_PAIRING_PAYLOAD = "{\\"pair\\":true}";',
+        'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "K7M2Q";',
+        'public static final String FIELDWORK_RELAY_CONTROL_URL = "";',
       ].join("\n"),
-      "must not embed a debug pairing payload",
+      "must not embed a debug pairing code",
+    ],
+    [
+      [
+        'public static final boolean DEBUG = Boolean.parseBoolean("true");',
+        'public static final String APPLICATION_ID = "app.fieldwork.android";',
+        'public static final String BUILD_TYPE = "debug";',
+        "public static final boolean FIELDWORK_BIOMETRIC_BYPASS = false;",
+        'public static final String FIELDWORK_DEBUG_PAIRING_CODE = "";',
+        'public static final String FIELDWORK_RELAY_CONTROL_URL = "https://relay.example.test";',
+      ].join("\n"),
+      "must not embed a debug relay control URL",
     ],
   ]) {
     const textFailures = [];
     checkBuildConfigText(text, textFailures, []);
     expect(textFailures.some((failure) => failure.includes(expected)), `BuildConfig failure should include ${expected}`);
   }
+
+  expectDeepEqual(
+    evaluateFwAliasResult({ status: 0, stdout: "Usage: fw [COMMAND]\n", stderr: "" }, { localOnly: false }),
+    {
+      failures: [],
+      ok: ["fw short alias resolves to Fieldwork CLI"],
+      pending: [],
+    },
+    "valid fw alias help should pass",
+  );
+  expectDeepEqual(
+    evaluateFwAliasResult({ error: new Error("ENOENT"), stdout: "", stderr: "" }, { localOnly: true }),
+    {
+      failures: [],
+      ok: [],
+      pending: ["fw is unavailable; install the npm package or run the docs/LIVE_TESTING.md Desktop Setup shim first"],
+    },
+    "local-only missing fw alias should be pending guidance",
+  );
+  expect(
+    evaluateFwAliasResult({ error: new Error("ENOENT"), stdout: "", stderr: "" }, { localOnly: false }).failures.some((failure) =>
+      failure.includes("fw is unavailable"),
+    ),
+    "strict missing fw alias should fail",
+  );
+  expect(
+    evaluateFwAliasResult({ status: 0, stdout: "Usage: fieldwork [COMMAND]\n", stderr: "" }, { localOnly: false }).failures.some((failure) =>
+      failure.includes("Usage: fw"),
+    ),
+    "strict wrong fw alias should fail",
+  );
+  expect(
+    evaluateFwAliasResult({ status: 2, stdout: "", stderr: "not fieldwork\n" }, { localOnly: true }).pending.some((failure) =>
+      failure.includes("Usage: fw"),
+    ),
+    "local-only wrong fw alias should be pending guidance",
+  );
+  expectDeepEqual(
+    evaluateRepoLocalFwShimHelp({ status: 0, stdout: "Usage: fw [COMMAND]\n", stderr: "" }),
+    {
+      failures: [],
+      ok: ["repo-local release fieldwork supports the fw short alias through the live-testing shim"],
+    },
+    "repo-local fw shim help should pass when argv0 renders fw",
+  );
+  expect(
+    evaluateRepoLocalFwShimHelp({ status: 0, stdout: "Usage: fieldwork [COMMAND]\n", stderr: "" }).failures.some((failure) =>
+      failure.includes("Usage: fw"),
+    ),
+    "repo-local fw shim help should fail when argv0 does not render fw",
+  );
+  expectDeepEqual(
+    evaluateRepoLocalFwShimDoctorHelp({ status: 0, stdout: "Usage: fw doctor [OPTIONS]\n      --no-start\n", stderr: "" }),
+    {
+      failures: [],
+      ok: ["repo-local release fieldwork supports fw doctor through the live-testing shim"],
+    },
+    "repo-local fw doctor shim help should pass",
+  );
+  expect(
+    evaluateRepoLocalFwShimDoctorHelp({ status: 0, stdout: "Usage: fieldwork doctor [OPTIONS]\n", stderr: "" }).failures.some((failure) =>
+      failure.includes("fw doctor"),
+    ),
+    "repo-local fw doctor shim help should fail without fw doctor usage and no-start",
+  );
+  expectDeepEqual(
+    evaluateReleaseFieldworkDoctorHelp({
+      status: 0,
+      stdout: "Usage: fieldwork doctor [OPTIONS]\n\nOptions:\n      --no-start\n",
+      stderr: "",
+    }),
+    {
+      failures: [],
+      ok: ["release fieldwork command surface includes doctor"],
+    },
+    "current release fieldwork doctor help should pass",
+  );
+  expect(
+    evaluateReleaseFieldworkDoctorHelp({ status: 0, stdout: "Usage: fieldwork [COMMAND]\n", stderr: "" }).failures.some((failure) =>
+      failure.includes("stale"),
+    ),
+    "release fieldwork help without doctor surface should fail as stale",
+  );
+  expect(
+    evaluateReleaseFieldworkDoctorHelp({ status: 2, stdout: "", stderr: "error: unrecognized subcommand 'doctor'\n" }).failures.some((failure) =>
+      failure.includes("doctor --help failed"),
+    ),
+    "release fieldwork doctor command failure should fail readiness",
+  );
+  expectDeepEqual(
+    evaluateReleaseDaemonHelp({ status: 0, stdout: "Usage: fieldworkd [OPTIONS]\n", stderr: "" }),
+    {
+      failures: [],
+      ok: ["release fieldworkd help surface is current"],
+    },
+    "current release fieldworkd help should pass",
+  );
+  expect(
+    evaluateReleaseDaemonHelp({ status: 0, stdout: "not fieldworkd\n", stderr: "" }).failures.some((failure) => failure.includes("fieldworkd binary is stale")),
+    "release fieldworkd help without expected usage should fail",
+  );
 
   const emptyAdbFailures = [];
   verifyPhysicalAndroidAdbDevices("List of devices attached\n\n", emptyAdbFailures, { file: "adb devices -l" });
@@ -307,9 +653,56 @@ function runSelfTest() {
   const emulatorAdbText = "List of devices attached\nemulator-5554 device product:sdk_gphone64 model:sdk_gphone64_arm64 device:emu64a transport_id:1\n";
   verifyPhysicalAndroidAdbDevices(emulatorAdbText, emulatorFailures, { file: "adb devices -l" });
   expect(emulatorFailures.some((failure) => failure.includes("not an emulator")), "emulator adb output should fail physical-device verification");
+  expectDeepEqual(
+    evaluateAdbStateText(emulatorAdbText, { localOnly: true }),
+    {
+      failures: [],
+      ok: [],
+      pending: ["disconnect the emulator/AVD and connect exactly one authorized physical Android phone before the evidence pass"],
+      physicalReady: false,
+    },
+    "local-only emulator adb output should be pending guidance, not evidence",
+  );
   expect(
-    evaluateAdbStateText(emulatorAdbText, { localOnly: true }).failures.some((failure) => failure.includes("not an emulator")),
-    "local-only emulator adb output should still fail",
+    evaluateAdbStateText(emulatorAdbText, { localOnly: false }).failures.some((failure) => failure.includes("not an emulator")),
+    "strict emulator adb output should fail",
+  );
+
+  const unauthorizedAdbText = "List of devices attached\nR5CT123ABC unauthorized usb:1-1 product:raven model:Pixel_6 device:raven transport_id:2\n";
+  expectDeepEqual(
+    evaluateAdbStateText(unauthorizedAdbText, { localOnly: true }),
+    {
+      failures: [],
+      ok: [],
+      pending: ["authorize or reconnect the Android phone before the evidence pass; local mode does not accept offline or unauthorized adb targets"],
+      physicalReady: false,
+    },
+    "local-only unauthorized adb output should be pending guidance",
+  );
+  expect(
+    evaluateAdbStateText(unauthorizedAdbText, { localOnly: false }).failures.some((failure) => failure.includes("unauthorized")),
+    "strict unauthorized adb output should fail",
+  );
+
+  const multiDeviceAdbText = [
+    "List of devices attached",
+    "R5CT123ABC device usb:1-1 product:raven model:Pixel_6 device:raven transport_id:2",
+    "R5CT456DEF device usb:1-2 product:oriole model:Pixel_6 device:oriole transport_id:3",
+    "",
+  ].join("\n");
+  expectDeepEqual(
+    evaluateAdbStateText(multiDeviceAdbText, { localOnly: true }),
+    {
+      failures: [],
+      ok: [],
+      pending: ["disconnect extra adb targets before the evidence pass; exactly one authorized physical Android phone is required"],
+      physicalReady: false,
+    },
+    "local-only multi-device adb output should be pending guidance",
+  );
+  expect(
+    evaluateAdbStateText(multiDeviceAdbText, { localOnly: false }).failures.some((failure) => failure.includes("found 2")),
+    "strict multi-device adb output should fail",
   );
 
   const physicalFailures = [];
@@ -325,6 +718,39 @@ function runSelfTest() {
       physicalReady: true,
     },
     "single authorized physical adb output should be ready",
+  );
+
+  const installedPackageFailures = [];
+  verifyInstalledAndroidPackageInfo(
+    [
+      "package:/data/app/~~hash/app.fieldwork.android-base.apk",
+      "Packages:",
+      "  Package [app.fieldwork.android] (abc):",
+      "    versionCode=1 minSdk=30 targetSdk=36",
+      "    versionName=1.0",
+    ].join("\n"),
+    installedPackageFailures,
+  );
+  expectDeepEqual(installedPackageFailures, [], "installed package proof should pass for expected app id and version");
+
+  const wrongInstalledPackageFailures = [];
+  verifyInstalledAndroidPackageInfo(
+    [
+      "package:/data/app/~~hash/app.fieldwork.android-base.apk",
+      "Packages:",
+      "  Package [app.fieldwork.android] (abc):",
+      "    versionCode=2 minSdk=30 targetSdk=36",
+      "    versionName=1.1",
+    ].join("\n"),
+    wrongInstalledPackageFailures,
+  );
+  expect(
+    wrongInstalledPackageFailures.some((failure) => failure.includes("versionName=1.0")),
+    "wrong installed versionName should fail readiness verification",
+  );
+  expect(
+    wrongInstalledPackageFailures.some((failure) => failure.includes("versionCode=1")),
+    "wrong installed versionCode should fail readiness verification",
   );
 
   console.log("live testing readiness self-test ok");

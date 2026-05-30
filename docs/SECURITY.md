@@ -12,13 +12,15 @@ Fieldwork v1 has four trust zones:
 - **Daemon**: owns PTYs, device registry, scrollback, pairing approval, local
   state inference, relay-signing keys, and push-token registration dispatch.
 - **Paired mobile devices**: authenticated by long-lived Ed25519/iroh identity
-  after QR pairing. They can list, subscribe, attach, send input, resize, detach,
-  and register/unregister push tokens. They cannot create sessions, kill
-  sessions, or specify commands.
+  after pairing (scanning the QR ticket or typing the 5-character code). They can
+  list, subscribe, attach, send input, resize, detach, and register/unregister
+  push tokens. They cannot create sessions, kill sessions, or specify commands.
 - **Relay**: sees daemon node IDs, daemon relay public keys, push tokens, opaque
-  session hashes, source IPs, aggregate metrics, and provider delivery status.
-  It must never receive terminal bytes, command lines, paths, plaintext session
-  names, QR pair tokens, or local scrollback.
+  session hashes, source IPs, aggregate metrics, provider delivery status, and —
+  only on the typed-code pairing path — short pairing codes mapped to opaque
+  reachability blobs (10-minute TTL, per-code lockout). The QR pairing path stays
+  daemon-local. The relay must never receive terminal bytes, command lines,
+  paths, plaintext session names, or local scrollback.
 
 ## Local IPC
 
@@ -34,9 +36,13 @@ The daemon control socket is local-only and user-owned:
 
 Pairing is intentionally two-step:
 
-- Pair tokens are 32 random bytes, base32 encoded, 10-minute TTL, and single
-  use.
-- A QR scan is not enough: the desktop must explicitly approve the request.
+- The credential is a single active 5-character Crockford code (`OsRng`,
+  confusable-free alphabet, ~25 bits, 10-minute TTL) that the daemon invalidates
+  after 5 wrong in-band attempts. A device gets the code either by scanning the
+  QR ticket (which carries it inline) or by typing it; the typed code is resolved
+  to the daemon's reachability through the rate-limited relay rendezvous.
+- A QR scan or correct code is not enough: the desktop must explicitly approve
+  the request.
 - Approved devices authenticate with long-lived Ed25519/iroh keys.
 - Lost devices are revoked through `fieldwork devices remove`; there is no
   password fallback.

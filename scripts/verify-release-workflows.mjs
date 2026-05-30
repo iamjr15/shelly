@@ -1,9 +1,23 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(new URL("..", import.meta.url).pathname);
+const args = process.argv.slice(2);
 const failures = [];
+
+if (args.includes("--self-test")) {
+  runSelfTest();
+  process.exit(0);
+}
+
+for (const arg of args) {
+  if (arg !== "--self-test") {
+    console.error(`unknown argument: ${arg}`);
+    process.exit(2);
+  }
+}
 
 const workflows = {
   ci: read(".github/workflows/ci.yml"),
@@ -30,6 +44,12 @@ verifySiteDeploy(workflows.site, siteConfig);
 verifyDependabot(workflows.dependabot);
 verifyCiWiresVerifier(workflows.ci);
 verifyCargoDistArchiveOnly(distConfig);
+for (const [name, text] of Object.entries(workflows)) {
+  if (name === "dependabot") {
+    continue;
+  }
+  verifyWorkflowRunBlockSyntax(name, text, failures);
+}
 
 if (failures.length > 0) {
   console.error(failures.join("\n"));
@@ -44,37 +64,16 @@ function verifyRustRelease(text) {
     requireText(text, `package: ${platform}`, `release-rust matrix is missing ${platform}`);
   }
   requireText(text, "sigstore/cosign-installer@v3", "release-rust must install cosign");
-  requireText(text, "Verify Darwin signing prerequisites", "release-rust must fail closed before Darwin build when Apple signing/notarization secrets are absent");
-  requireBefore(
-    text,
-    "Verify Darwin signing prerequisites",
-    "dtolnay/rust-toolchain@stable",
-    "release-rust must preflight Darwin signing prerequisites before toolchain setup and release build",
-  );
-  requireText(
-    text,
-    "Apple signing/notarization secrets are required before building Darwin release artifacts.",
-    "release-rust early Darwin credential failure must explain the external signing gate",
-  );
-  requireText(text, "cargo install apple-codesign --locked", "release-rust must install locked rcodesign");
+  requireText(text, "Ad-hoc sign Darwin CLI and daemon", "release-rust must ad-hoc sign Darwin CLI and daemon without Apple credentials");
   requireText(text, "Verify relay-only provider secret boundary", "release-rust must run provider secret-boundary verifier after build");
   requireText(text, "node scripts/verify-secret-boundaries.mjs", "release-rust must run provider secret-boundary verifier");
   requireText(text, "node scripts/verify-telemetry-privacy.mjs", "release-rust must run telemetry privacy verifier");
-  for (const secret of ["APPLE_P12_BASE64", "APPLE_P12_PASSWORD", "APP_STORE_KEY_JSON"]) {
-    requireText(text, secret, `release-rust must require ${secret} for Darwin signing`);
-  }
-  requireText(text, "exit 1", "release-rust signing steps must fail closed when required secrets are absent");
-  requireText(text, 'signing_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/fieldwork-signing.XXXXXX")"', "release-rust must decode Apple signing/notarization assets outside the repository workspace");
-  requireText(text, 'trap \'rm -rf "$signing_dir" target/${{ matrix.target }}/release/fieldworkd.zip\' EXIT', "release-rust must clean decoded Apple signing/notarization assets");
-  requireText(text, 'chmod 600 "$cert_path" "$app_store_key_path"', "release-rust must restrict decoded Apple signing/notarization assets");
-  requireText(text, '--p12-file "$cert_path"', "release-rust must sign from the temporary certificate path");
-  requireText(text, '--api-key-path "$app_store_key_path"', "release-rust must notarize from the temporary App Store key path");
-  requireText(text, "--code-signature-flags runtime", "release-rust must sign macOS daemon with hardened runtime");
-  requireText(text, "target/${{ matrix.target }}/release/fieldworkd", "release-rust must sign the daemon binary");
-  requireText(text, "rcodesign notary-submit", "release-rust must submit macOS daemon for notarization");
-  requireText(text, "--wait --staple", "release-rust notarization must wait and staple");
-  requireText(text, "codesign --verify", "release-rust must verify the signed daemon");
-  requireText(text, "node scripts/verify-macos-signing.mjs", "release-rust must run the macOS signing/notarization verifier before archiving Darwin artifacts");
+  rejectText(text, "APPLE_P12_BASE64", "release-rust must not require Apple P12 credentials for the npm Darwin path");
+  rejectText(text, "APP_STORE_KEY_JSON", "release-rust must not require App Store Connect credentials for the npm Darwin path");
+  rejectText(text, "rcodesign notary-submit", "release-rust must not require notarization for the npm Darwin path");
+  requireText(text, "codesign --force --sign -", "release-rust must use local ad-hoc codesign for Darwin npm artifacts");
+  requireText(text, "codesign --verify --verbose=2", "release-rust must verify Darwin ad-hoc signatures");
+  requireText(text, "node scripts/verify-macos-signing.mjs", "release-rust must run the macOS npm trust verifier before archiving Darwin artifacts");
   for (const binary of ["fieldwork", "fieldworkd"]) {
     requireText(text, `cp target/\${{ matrix.target }}/release/${binary}`, `release-rust archive must include ${binary}`);
   }
@@ -141,7 +140,6 @@ function verifyIosRelease(text, projectText) {
   requireText(text, "apps/ios/scripts/build-rust.sh", "release-ios must build the Rust xcframework");
   requireText(text, "Verify xcframework slices", "release-ios must verify xcframework slices");
   for (const secret of [
-    "SENTRY_DSN",
     "IOS_DISTRIBUTION_CERTIFICATE_BASE64",
     "IOS_DISTRIBUTION_CERTIFICATE_PASSWORD",
     "IOS_PROVISIONING_PROFILE_BASE64",
@@ -193,19 +191,24 @@ function verifyAndroidRelease(text) {
   );
   requireText(
     text,
-    "Sentry, Firebase, Android signing, and Play upload secrets are required before building the Android release.",
+    "Firebase, Android signing, relay control URL, and Play upload secrets are required before building the Android release.",
     "release-android early credential failure must explain the external release gate",
   );
   requireText(text, "apps/android/scripts/build-rust.sh", "release-android must build Rust mobile libraries");
   for (const secret of [
-    "SENTRY_DSN",
     "ANDROID_GOOGLE_SERVICES_JSON",
     "ANDROID_KEYSTORE_BASE64",
     "ANDROID_KEYSTORE_PROPERTIES",
+    "FIELDWORK_RELAY_CONTROL_URL",
     "PLAY_SERVICE_ACCOUNT_JSON",
   ]) {
     requireText(text, secret, `release-android must require ${secret}`);
   }
+  requireText(
+    text,
+    "FIELDWORK_RELAY_CONTROL_URL must be an https:// relay control endpoint for Android typed-code pairing.",
+    "release-android must reject non-HTTPS relay control URLs",
+  );
   requireText(text, "node scripts/verify-telemetry-privacy.mjs", "release-android must run telemetry privacy verifier");
   requireText(text, "chmod 600 apps/android/app/google-services.json", "release-android must restrict Firebase config permissions");
   requireText(text, "chmod 600 apps/android/app/release.keystore apps/android/keystore.properties", "release-android must restrict signing asset permissions");
@@ -216,7 +219,11 @@ function verifyAndroidRelease(text) {
   requireText(text, "node scripts/verify-store-privacy.mjs", "release-android must run store privacy verifier after manifest merge");
   requireText(text, "node scripts/verify-android-aab.mjs", "release-android must verify AAB contents");
   rejectText(text, "node scripts/verify-android-aab.mjs --expect-unsigned", "release-android must not use the local unsigned-AAB verifier mode");
-  requireText(text, "node scripts/verify-android-aab.mjs --expect-signed", "release-android must require signed AAB signature entries before Play upload");
+  requireText(
+    text,
+    "node scripts/verify-android-aab.mjs --expect-signed --expect-relay-control-url",
+    "release-android must require signed AAB signature entries and a release relay URL before Play upload",
+  );
   requireText(text, "jarsigner -verify -certs", "release-android must verify AAB signature");
   requireText(text, "packageName: app.fieldwork.android", "release-android must upload the Fieldwork package");
   requireText(text, "track: internal", "release-android must upload to the Play internal track first");
@@ -316,6 +323,7 @@ function verifyCiWiresVerifier(text) {
   requireText(text, "scripts/smoke-local-handoff.sh", "CI must run the local handoff smoke");
   requireText(text, "node scripts/smoke-relay-otlp-loopback.mjs", "CI must run the relay OTLP loopback smoke");
   requireText(text, "node scripts/verify-release-workflows.mjs", "CI must run the release workflow verifier");
+  requireText(text, "node scripts/verify-release-workflows.mjs --self-test", "CI must run the release workflow verifier self-test");
   requireText(text, "node scripts/verify-rust-workspace.mjs", "CI must run the Rust workspace verifier");
   requireText(text, "node scripts/verify-npm-packages.mjs", "CI must run the npm package verifier");
   requireText(text, "node scripts/verify-changesets-config.mjs", "CI must run the Changesets fixed-group verifier");
@@ -336,7 +344,11 @@ function verifyCiWiresVerifier(text) {
   requireText(text, "node scripts/test-bun-install.mjs", "CI must run the Bun optional-dependency install smoke");
   requireText(text, "node scripts/test-android-aab-verifier.mjs", "CI must run the Android AAB verifier self-test");
   requireText(text, "node scripts/test-release-artifacts.mjs", "CI must run the release artifact verifier tests");
+  requireText(text, "node scripts/test-release-artifacts-evidence.mjs", "CI must run the release artifact evidence verifier self-test");
+  requireText(text, "node scripts/test-release-artifacts-scaffold.mjs", "CI must run the release artifact evidence scaffold self-test");
   requireText(text, "node scripts/test-macos-signing-verifier.mjs", "CI must run the macOS signing verifier self-test");
+  requireText(text, "node scripts/test-macos-signing-evidence.mjs", "CI must run the macOS signing evidence verifier self-test");
+  requireText(text, "node scripts/test-macos-signing-scaffold.mjs", "CI must run the macOS signing evidence scaffold self-test");
   requireText(text, "node scripts/test-npm-dispatcher.mjs", "CI must run the npm dispatcher test");
   requireText(text, "node scripts/test-npm-registry-state.mjs", "CI must run the deterministic npm registry-state checker test");
   requireText(text, "node scripts/test-npm-publish-plan.mjs", "CI must run the npm publish-plan test");
@@ -371,6 +383,113 @@ function verifyCiWiresVerifier(text) {
   requireText(text, "swiftc -parse -target arm64-apple-macosx15.0 $(find apps/ios/Sources/App apps/ios/Sources/Core apps/ios/Sources/Features apps/ios/Sources/UI -name '*.swift')", "CI must parse all iOS Swift sources, including SwiftTermView fallback code");
   rejectText(text, "! -name 'SwiftTermView.swift'", "CI must not exclude the SwiftTerm terminal wrapper from Swift parsing");
   requireText(text, "apps/android/gradlew --no-daemon :app:testDebugUnitTest", "CI must run Android unit tests for native notification/privacy helpers");
+}
+
+function verifyWorkflowRunBlockSyntax(name, text, targetFailures) {
+  for (const block of extractLiteralRunBlocks(text)) {
+    const result = spawnSync("bash", ["-n"], {
+      cwd: root,
+      encoding: "utf8",
+      input: block.script,
+    });
+    if (result.error) {
+      targetFailures.push(`${name} workflow run block at line ${block.line} could not start bash -n: ${result.error.message}`);
+      continue;
+    }
+    if (result.status !== 0) {
+      targetFailures.push(
+        `${name} workflow run block at line ${block.line} has invalid bash syntax:\n${trimCommandOutput(result.stdout)}${trimCommandOutput(result.stderr)}`,
+      );
+    }
+  }
+}
+
+function extractLiteralRunBlocks(text) {
+  const lines = text.split(/\r?\n/);
+  const blocks = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^(\s*)run:\s*\|[-+]?\s*$/);
+    if (!match) {
+      continue;
+    }
+
+    const runIndent = match[1].length;
+    const rawBlock = [];
+    let cursor = index + 1;
+    while (cursor < lines.length) {
+      const line = lines[cursor];
+      const indent = leadingSpaces(line);
+      if (line.trim() !== "" && indent <= runIndent) {
+        break;
+      }
+      rawBlock.push(line);
+      cursor += 1;
+    }
+
+    const nonBlank = rawBlock.filter((line) => line.trim() !== "");
+    const contentIndent = nonBlank.length > 0 ? Math.min(...nonBlank.map(leadingSpaces)) : runIndent + 2;
+    const script = rawBlock
+      .map((line) => (line.trim() === "" ? "" : line.slice(Math.min(contentIndent, line.length))))
+      .join("\n");
+    blocks.push({ line: index + 1, script });
+  }
+
+  return blocks;
+}
+
+function leadingSpaces(line) {
+  return line.match(/^ */)[0].length;
+}
+
+function trimCommandOutput(text) {
+  const trimmed = String(text || "").trim();
+  return trimmed.length > 0 ? `${trimmed}\n` : "";
+}
+
+function runSelfTest() {
+  const valid = `
+name: Valid
+jobs:
+  test:
+    steps:
+      - name: valid shell
+        run: |
+          if [ -n "\${FIELDWORK_TEST:-}" ]; then
+            echo ok
+          fi
+`.trimStart();
+  const invalid = `
+name: Invalid
+jobs:
+  test:
+    steps:
+      - name: invalid shell
+        run: |
+          if [ -n "\${FIELDWORK_TEST:-}" ]; then
+            echo missing-fi
+`.trimStart();
+
+  const validBlocks = extractLiteralRunBlocks(valid);
+  assert(validBlocks.length === 1, "self-test must extract one valid run block");
+  const validFailures = [];
+  verifyWorkflowRunBlockSyntax("valid", valid, validFailures);
+  assert(validFailures.length === 0, `valid run block should pass bash -n: ${validFailures.join("\n")}`);
+
+  const invalidFailures = [];
+  verifyWorkflowRunBlockSyntax("invalid", invalid, invalidFailures);
+  assert(
+    invalidFailures.some((failure) => failure.includes("line 6") && failure.includes("invalid bash syntax")),
+    `invalid run block should fail with source line context: ${invalidFailures.join("\n")}`,
+  );
+
+  console.log("release workflow run-block syntax self-test ok");
+}
+
+function assert(value, message) {
+  if (!value) {
+    throw new Error(message);
+  }
 }
 
 function verifyCargoDistArchiveOnly(text) {

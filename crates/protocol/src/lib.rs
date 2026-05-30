@@ -6,6 +6,8 @@
 //! same message model with MessagePack encoding so mobile bindings do not need
 //! to understand Rust-specific bincode details.
 
+/// Shared short pairing-code alphabet and normalization helpers.
+pub mod code;
 /// Length-prefixed bincode framing helpers for local IPC.
 pub mod framing;
 /// Client/server protocol messages.
@@ -15,13 +17,14 @@ pub mod types;
 /// Protocol contract version.
 pub mod version;
 
+pub use code::{CODE_ALPHABET, CODE_LEN, is_valid_code, normalize_code};
 pub use framing::{
     FrameError, decode_bincode, decode_frame, encode_bincode, encode_frame, max_frame_len,
 };
 pub use messages::{ClientToServerMsg, ErrorCode, ServerToClientMsg};
 pub use types::{
     AgentSource, AgentState, Capabilities, ClientId, ClientKind, ClientSize, DeviceSummary,
-    PairingPayload, PushPlatform, SessionId, SessionSummary, now_ms,
+    PairingTicket, PushPlatform, SessionId, SessionSummary, TicketError, now_ms,
 };
 pub use version::CONTRACT_VERSION;
 
@@ -48,8 +51,8 @@ mod tests {
     }
 
     #[test]
-    fn protocol_version_is_v1() {
-        assert_eq!(CONTRACT_VERSION, 1);
+    fn protocol_version_is_v2() {
+        assert_eq!(CONTRACT_VERSION, 2);
     }
 
     #[test]
@@ -109,13 +112,13 @@ mod tests {
     }
 
     #[test]
-    fn round_trips_pairing_payload() {
+    fn round_trips_pairing_ticket() {
         let msg = ServerToClientMsg::PairingStarted {
-            payload: PairingPayload {
-                relay_url: Some("https://relay.example".to_string()),
+            ticket: PairingTicket {
+                code: "AB234".to_string(),
                 node_id: "node".to_string(),
+                relay_url: Some("https://relay.example".to_string()),
                 addrs: vec!["127.0.0.1:1234".to_string()],
-                pair_token: "ABC".to_string(),
                 expires_at: now_ms() + 60_000,
             },
         };
@@ -123,6 +126,26 @@ mod tests {
         let frame = encode_frame(&msg).unwrap();
         let decoded: ServerToClientMsg = decode_frame(&frame).unwrap();
         assert_eq!(decoded, msg);
+    }
+
+    #[test]
+    fn pairing_ticket_string_round_trips_exactly() {
+        let ticket = PairingTicket {
+            code: "AB234".to_string(),
+            node_id: "node-daemon".to_string(),
+            relay_url: Some("https://relay.example".to_string()),
+            addrs: vec!["127.0.0.1:1234".to_string()],
+            expires_at: 1_700_000_060_000,
+        };
+
+        let encoded = ticket.encode().unwrap();
+        assert!(encoded.starts_with("fw1"));
+        assert_eq!(PairingTicket::decode(&encoded).unwrap(), ticket);
+        // The base32 body decodes case-insensitively.
+        assert_eq!(
+            PairingTicket::decode(&encoded.to_lowercase()).unwrap(),
+            ticket
+        );
     }
 
     #[test]
@@ -296,9 +319,9 @@ mod tests {
                 },
             ),
             wire_case(
-                "pair_with_token",
-                ClientToServerMsg::PairWithToken {
-                    pair_token: "ABCDEF".to_string(),
+                "pair_with_code",
+                ClientToServerMsg::PairWithCode {
+                    code: "AB234".to_string(),
                     device_name: "Phone".to_string(),
                     device_node_id: "node-phone".to_string(),
                 },
@@ -404,11 +427,11 @@ mod tests {
             wire_case(
                 "pairing_started",
                 ServerToClientMsg::PairingStarted {
-                    payload: PairingPayload {
-                        relay_url: Some("https://relay.example".to_string()),
+                    ticket: PairingTicket {
+                        code: "AB234".to_string(),
                         node_id: "node-daemon".to_string(),
+                        relay_url: Some("https://relay.example".to_string()),
                         addrs: vec!["127.0.0.1:1234".to_string()],
-                        pair_token: "ABCDEF".to_string(),
                         expires_at: 1_700_000_060_000,
                     },
                 },

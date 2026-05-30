@@ -13,9 +13,10 @@ kill sessions, or choose commands.
 ## Prerequisites
 
 - Exactly one physical Android phone with biometrics enrolled.
-- Android app installed from the current checkout or release candidate.
+- Android release-variant app installed from the current checkout or release candidate; do not use a debug build.
+- `BuildConfig.DEBUG = false`.
 - `FIELDWORK_BIOMETRIC_BYPASS = false`.
-- `FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""`.
+- `FIELDWORK_DEBUG_PAIRING_CODE = ""`.
 - Local desktop `fieldwork`/`fw` and `fieldworkd` available.
 
 USB debugging is not an end-user requirement. It is used here only to capture
@@ -28,16 +29,61 @@ not-responding overlays, and empty crash buffers after `adb logcat -c`.
 
 ```sh
 export FW_DOGFOOD_DIR="/tmp/fieldwork-android-dogfood-$(date +%Y%m%d%H%M%S)"
-mkdir -p "$FW_DOGFOOD_DIR"
+pnpm scaffold:android-dogfood-evidence -- --dir "$FW_DOGFOOD_DIR"
+```
 
+The scaffold writes `README.md`, `manifest.json`, `missing-files.txt`,
+`capture-checklist.md`, and a direct-adb `preflight.sh`. It captures physical
+device/package/build proof plus staged renderer screenshots, UI dumps, logcat,
+and crash buffers; it does not create dogfood duration proof, human-review
+markers, or PTY replay transcripts.
+
+Before pairing or starting the dogfood window, capture device/package/build
+proof and clear Android logs:
+
+```sh
+"$FW_DOGFOOD_DIR/preflight.sh"
+```
+
+After the physical phone is attached to the live `claude` session, use the
+helper capture modes:
+
+```sh
+FIELDWORK_ANDROID_DOGFOOD_CAPTURE_CLAUDE=true "$FW_DOGFOOD_DIR/preflight.sh"
+FIELDWORK_ANDROID_DOGFOOD_CAPTURE_SCROLL=true "$FW_DOGFOOD_DIR/preflight.sh"
+FIELDWORK_ANDROID_DOGFOOD_CAPTURE_RESIZE=true "$FW_DOGFOOD_DIR/preflight.sh"
+FIELDWORK_ANDROID_DOGFOOD_CAPTURE_PASTE=true "$FW_DOGFOOD_DIR/preflight.sh"
+FIELDWORK_ANDROID_DOGFOOD_CAPTURE_FINAL=true "$FW_DOGFOOD_DIR/preflight.sh"
+```
+
+After `dogfood-duration.txt`, `typing-replay.txt`, `scroll-replay.txt`,
+`resize-replay.txt`, and `paste-replay.txt` are captured from the real
+30-minute physical run, run the helper verifier:
+
+```sh
+FIELDWORK_ANDROID_DOGFOOD_VERIFY=true "$FW_DOGFOOD_DIR/preflight.sh"
+```
+
+Manual capture equivalents are shown below.
+
+```sh
 adb devices -l | tee "$FW_DOGFOOD_DIR/adb-devices.txt"
-rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "(debug|release)"|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""' \
-  apps/android/app/build/generated/source/buildConfig/debug/app/fieldwork/android/BuildConfig.java \
+{
+  echo '$ adb shell pm path app.fieldwork.android'
+  adb shell pm path app.fieldwork.android
+  echo '$ adb shell dumpsys package app.fieldwork.android'
+  adb shell dumpsys package app.fieldwork.android
+} | tee "$FW_DOGFOOD_DIR/package-info.txt"
+rg 'APPLICATION_ID = "app\.fieldwork\.android"|BUILD_TYPE = "release"|DEBUG = false|DEBUG = Boolean\.parseBoolean\("false"\)|FIELDWORK_BIOMETRIC_BYPASS = false|FIELDWORK_DEBUG_PAIRING_CODE = ""' \
+  apps/android/app/build/generated/source/buildConfig/release/app/fieldwork/android/BuildConfig.java \
   | tee "$FW_DOGFOOD_DIR/buildconfig.txt"
 
 fw daemon start
 fw refactoringjob
 ```
+`package-info.txt` must prove the installed app is `app.fieldwork.android` with
+`versionName=1.0`, `versionCode=1`, and no `DEBUGGABLE` or `debuggable=true` markers.
+
 
 Pair the physical phone through the normal QR scanner and explicit desktop
 approval. Open `refactoringjob` or another desktop-created `claude` session

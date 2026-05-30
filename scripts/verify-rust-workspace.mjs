@@ -43,6 +43,7 @@ verifyPackage("crates/mobile-core/Cargo.toml", {
   bins: [{ name: "uniffi-bindgen", path: "uniffi-bindgen.rs" }],
 });
 verifyNoDirectLruUse();
+verifyNoDirectAtomicPolyfillUse();
 
 if (failures.length > 0) {
   console.error(failures.join("\n"));
@@ -130,6 +131,22 @@ function verifyNoDirectLruUse() {
     const text = read(rel);
     if (text.includes("lru::")) {
       failures.push(`${rel} must not use lru:: directly while RUSTSEC-2026-0002 is allowed only as a transitive terminal-state dependency`);
+    }
+  }
+}
+
+function verifyNoDirectAtomicPolyfillUse() {
+  for (const rel of ["Cargo.toml", ...expectedMembers.map((member) => `${member}/Cargo.toml`)]) {
+    const text = read(rel);
+    if (/^\s*atomic-polyfill\s*[.=]/m.test(text)) {
+      failures.push(`${rel} must not depend directly on atomic-polyfill while RUSTSEC-2023-0089 is allowed only through the postcard/iroh transitive path`);
+    }
+  }
+
+  for (const rel of rustFiles(path.join(root, "crates"))) {
+    const text = read(rel);
+    if (text.includes("atomic_polyfill::")) {
+      failures.push(`${rel} must not use atomic_polyfill:: directly while RUSTSEC-2023-0089 is allowlisted only as a transitive pairing-ticket dependency`);
     }
   }
 }

@@ -51,7 +51,7 @@ try {
       'BUILD_TYPE = "debug"',
       'DEBUG = Boolean.parseBoolean("true")',
       "FIELDWORK_BIOMETRIC_BYPASS = false",
-      'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+      'FIELDWORK_DEBUG_PAIRING_CODE = ""',
     ].join("\n"),
   );
   expectStatus(debugBuild, 1, "debug BuildConfig should fail", "buildconfig.txt must prove the tested build is the release variant");
@@ -157,8 +157,9 @@ function writeFixture(dir) {
   );
   fs.writeFileSync(
     path.join(dir, "artifact-signing.txt"),
-    "Android AAB ok: base/lib/arm64-v8a/libfieldwork_mobile_core.so; packaged manifest uses-permission allowlist and privacy surface ok; signed release bundle ok\n",
+    "Android AAB ok: base/lib/arm64-v8a/libfieldwork_mobile_core.so; packaged manifest identity, version, uses-permission allowlist, and privacy surface ok; signed release bundle ok\n",
   );
+  writePackageInfo(dir);
   fs.writeFileSync(
     path.join(dir, "buildconfig.txt"),
     [
@@ -166,10 +167,10 @@ function writeFixture(dir) {
       'BUILD_TYPE = "release"',
       "DEBUG = false",
       "FIELDWORK_BIOMETRIC_BYPASS = false",
-      'FIELDWORK_DEBUG_PAIRING_PAYLOAD = ""',
+      'FIELDWORK_DEBUG_PAIRING_CODE = ""',
     ].join("\n"),
   );
-  fs.writeFileSync(path.join(dir, "relay-version.txt"), '{"relay_version":"1.0.0","contract_version":1}\n');
+  fs.writeFileSync(path.join(dir, "relay-version.txt"), '{"relay_version":"1.0.0","contract_version":2}\n');
   fs.writeFileSync(
     path.join(dir, "token-registration.txt"),
     "platform=fcm\nRegisterPushToken sent\n/v1/push/register-token accepted\n",
@@ -227,6 +228,19 @@ function writeDelivery(options = {}) {
     lines.push(`notification_received_${index}_ok`);
   }
   return `${lines.join("\n")}\n`;
+}
+
+function writePackageInfo(dir) {
+  fs.writeFileSync(
+    path.join(dir, "package-info.txt"),
+    [
+      "package:/data/app/~~hash/app.fieldwork.android-base.apk",
+      "Packages:",
+      "  Package [app.fieldwork.android] (abc):",
+      "    versionCode=1 minSdk=30 targetSdk=36",
+      "    versionName=1.0",
+    ].join("\n"),
+  );
 }
 
 function writePng(file, { width, height }) {
