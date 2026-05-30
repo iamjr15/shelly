@@ -58,8 +58,7 @@ run(findPythonWithTomllib(), ["-c", tomlVerifierSource(), ...tomlPaths]);
 
 verifyPlistAndProjectAssets(plistPaths);
 
-run("xmllint", ["--noout", ...xmlSvgPaths]);
-console.log(`xml/svg asset syntax ok (${xmlSvgPaths.length} files)`);
+verifyXmlAndSvgAssets(xmlSvgPaths);
 
 function gitLsFiles(pathspecs) {
   const result = spawnSync("git", ["ls-files", ...pathspecs], {
@@ -146,6 +145,32 @@ for relative_path in sys.argv[1:]:
         sys.exit(1)
 
 print(f"xml plist syntax ok ({len(sys.argv) - 1} files)")
+`.trim();
+}
+
+function verifyXmlAndSvgAssets(relativePaths) {
+  if (!process.env.FIELDWORK_STRUCTURED_ASSETS_FORCE_PORTABLE_XML && commandAvailable("xmllint")) {
+    run("xmllint", ["--noout", ...relativePaths]);
+    console.log(`xml/svg asset syntax ok (${relativePaths.length} files)`);
+    return;
+  }
+
+  run(findPythonWithTomllib(), ["-c", xmlVerifierSource(), ...relativePaths]);
+  console.log(`xml/svg asset syntax ok (${relativePaths.length} files; portable fallback)`);
+}
+
+function xmlVerifierSource() {
+  return `
+import pathlib
+import sys
+import xml.etree.ElementTree as ET
+
+for relative_path in sys.argv[1:]:
+    try:
+        ET.parse(pathlib.Path(relative_path))
+    except Exception as exc:
+        print(f"{relative_path} is not valid XML: {exc}", file=sys.stderr)
+        sys.exit(1)
 `.trim();
 }
 

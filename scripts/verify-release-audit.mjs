@@ -245,7 +245,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "docs SVG assets with `xmllint --noout`",
+    "Android XML resources and docs SVG assets with `xmllint --noout` when available plus a portable Python XML fallback on hosts without `xmllint`",
     "release audit must record SVG XML checks in the local release gate",
   );
   requireText(
@@ -3742,6 +3742,7 @@ function verifyVerifierIsWired() {
   requireText(structuredAssets, "plistlib", "structured asset verifier must parse XML plist assets without plutil");
   requireText(structuredAssets, "verifyXcodeProjectStructure", "structured asset verifier must validate Xcode project structure without plutil");
   requireText(structuredAssets, "xmllint", "structured asset verifier must lint Android XML and docs SVG assets");
+  requireText(structuredAssets, "xml.etree.ElementTree", "structured asset verifier must parse XML assets without xmllint");
   requireText(structuredAssets, "apps/android/app/src/main/AndroidManifest.xml", "structured asset verifier must include the Android manifest");
   requireText(structuredAssets, "docs/assets/*.svg", "structured asset verifier must include docs SVG assets");
   requireText(localRelease, "scripts/verify-no-ship-markers.mjs", "local release gate must include no-ship marker verification");

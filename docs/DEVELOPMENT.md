@@ -133,7 +133,8 @@ assets, using Python's standard `tomllib` for TOML, lints the iOS project
 plist, Info.plist, and entitlements with `plutil -lint` when available, uses a
 portable XML-plist parse plus Xcode project structural fallback on non-macOS
 hosts, and validates Android XML resources plus docs SVG assets with
-`xmllint --noout`.
+`xmllint --noout` when available or Python's standard XML parser on hosts
+without `xmllint`.
 
 For first-round Android live-test prep without a connected phone, run
 `pnpm check:live-testing-readiness:local`. It verifies the local release

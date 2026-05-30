@@ -1195,7 +1195,7 @@ function verifyWiring(allFiles) {
   );
   requireText(
     allFiles.development,
-    "Android XML resources plus docs SVG assets with\n`xmllint --noout`",
+    "Android XML resources plus docs SVG assets with\n`xmllint --noout` when available or Python's standard XML parser on hosts\nwithout `xmllint`",
     "docs/DEVELOPMENT.md must document Android XML and SVG syntax coverage in local release",
   );
   for (const script of [
