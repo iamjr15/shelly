@@ -838,15 +838,20 @@ mod snapshot_tests {
         .expect("spawn vim session");
         let _kill_on_drop = KillOnDrop(Arc::clone(&session));
 
-        let source_state = wait_for_vim_alt_screen(&session);
-        let (seq, snapshot) = session.attach_bytes(Some(u64::MAX));
-        let client_state = TerminalModel::test_state_after_snapshot(size, &snapshot);
+        wait_for_vim_alt_screen(&session);
+        let (source_state, direct_snapshot) = snapshot_state_and_bytes(&session);
+        let direct_client_state = TerminalModel::test_state_after_snapshot(size, &direct_snapshot);
+        assert!(direct_snapshot.starts_with(b"\x1b[?1049h"));
+        assert_eq!(direct_client_state, source_state);
+
+        let (seq, attach_snapshot) = session.attach_bytes(Some(u64::MAX));
+        let attach_state = TerminalModel::test_state_after_snapshot(size, &attach_snapshot);
         let end_seq = session.ring.lock().expect("ring lock poisoned").end_seq();
 
         assert!(seq <= end_seq);
-        assert!(snapshot.starts_with(b"\x1b[?1049h"));
-        assert!(client_state.alt_screen);
-        assert_eq!(client_state, source_state);
+        assert!(attach_snapshot.starts_with(b"\x1b[?1049h"));
+        assert!(attach_state.alt_screen);
+        assert!(attach_state.contains_text("localhost"));
     }
 
     #[test]
@@ -895,7 +900,14 @@ mod snapshot_tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    fn wait_for_vim_alt_screen(session: &Session) -> crate::terminal_model::TerminalTestState {
+    fn snapshot_state_and_bytes(
+        session: &Session,
+    ) -> (crate::terminal_model::TerminalTestState, Vec<u8>) {
+        let terminal = session.terminal.lock().expect("terminal lock poisoned");
+        (terminal.test_state(), terminal.render_snapshot())
+    }
+
+    fn wait_for_vim_alt_screen(session: &Session) {
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut last_ready_state = None;
         let mut stable_samples = 0;
@@ -909,7 +921,7 @@ mod snapshot_tests {
                 if last_ready_state.as_ref() == Some(&state) {
                     stable_samples += 1;
                     if stable_samples >= 3 {
-                        return state;
+                        return;
                     }
                 } else {
                     last_ready_state = Some(state);
