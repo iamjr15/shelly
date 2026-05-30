@@ -48,7 +48,11 @@ class TerminalControllerTest {
     fun lagReattachesFromLatestLastSeenSeq() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val oldAttachment = FakeAttachedSession(lastSeenSeq = 42UL)
-        val newAttachment = FakeAttachedSession(lastSeenSeq = 42UL)
+        val newSubscribed = CompletableDeferred<Unit>()
+        val newAttachment = FakeAttachedSession(
+            lastSeenSeq = 42UL,
+            onSubscribe = { newSubscribed.complete(Unit) },
+        )
         val reattachedFrom = CompletableDeferred<ULong?>()
         val recordedOffsets = mutableListOf<ULong>()
         val controller = TerminalController(
@@ -68,6 +72,7 @@ class TerminalControllerTest {
         controller.onLag(3UL)
 
         assertEquals(42UL, withTimeout(1_000) { reattachedFrom.await() })
+        withTimeout(1_000) { newSubscribed.await() }
         assertEquals(listOf(42UL, 42UL), recordedOffsets)
         assertEquals(1, oldAttachment.detachCalls)
         assertEquals(1, oldAttachment.destroyCalls)

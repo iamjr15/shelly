@@ -60,13 +60,23 @@ pub(crate) struct TerminalTestState {
 #[cfg(test)]
 impl TerminalTestState {
     pub(crate) fn contains_text(&self, needle: &str) -> bool {
-        self.visible_cells.iter().any(|line| {
-            let text = line
-                .iter()
-                .map(|(_, text, _)| text.as_str())
-                .collect::<String>();
-            text.contains(needle)
-        })
+        self.visible_text().iter().any(|line| line.contains(needle))
+    }
+
+    pub(crate) fn visible_text(&self) -> Vec<String> {
+        self.visible_cells
+            .iter()
+            .map(|line| {
+                let mut text = String::new();
+                for (cell_index, cell_text, _) in line {
+                    while text.chars().count() < *cell_index {
+                        text.push(' ');
+                    }
+                    text.push_str(cell_text);
+                }
+                text.trim_end().to_string()
+            })
+            .collect()
     }
 }
 

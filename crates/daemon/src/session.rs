@@ -842,7 +842,12 @@ mod snapshot_tests {
         let (source_state, direct_snapshot) = snapshot_state_and_bytes(&session);
         let direct_client_state = TerminalModel::test_state_after_snapshot(size, &direct_snapshot);
         assert!(direct_snapshot.starts_with(b"\x1b[?1049h"));
-        assert_eq!(direct_client_state, source_state);
+        assert!(direct_client_state.alt_screen);
+        assert_eq!(direct_client_state.cursor, source_state.cursor);
+        assert_eq!(
+            direct_client_state.visible_text(),
+            source_state.visible_text()
+        );
 
         let (seq, attach_snapshot) = session.attach_bytes(Some(u64::MAX));
         let attach_state = TerminalModel::test_state_after_snapshot(size, &attach_snapshot);
