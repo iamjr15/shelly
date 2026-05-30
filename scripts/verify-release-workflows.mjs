@@ -264,17 +264,22 @@ function verifySiteDeploy(text, astroConfig) {
   requireText(text, "cache-dependency-path: site/pnpm-lock.yaml", "deploy-site must cache against the isolated site lockfile");
   requireText(text, "pnpm --dir site install --ignore-workspace --frozen-lockfile", "deploy-site must install the isolated site package from its lockfile");
   requireText(text, "pnpm build:site", "deploy-site must build the same static site command exposed at the root");
-  requireText(text, "Verify Cloudflare credentials", "deploy-site must fail closed before Cloudflare deploy");
+  requireText(text, "Verify Cloudflare credentials", "deploy-site must preflight Cloudflare credentials");
+  requireText(text, "id: cloudflare-preflight", "deploy-site must expose a Cloudflare credential preflight output");
   requireBefore(
     text,
     "Verify Cloudflare credentials",
     "pnpm --dir site install --ignore-workspace --frozen-lockfile",
-    "deploy-site must fail closed on Cloudflare credentials before site install/build",
+    "deploy-site must check Cloudflare credentials before site install/build",
   );
   requireText(text, "CLOUDFLARE_API_TOKEN", "deploy-site must require CLOUDFLARE_API_TOKEN");
   requireText(text, "CLOUDFLARE_ACCOUNT_ID", "deploy-site must require CLOUDFLARE_ACCOUNT_ID");
   requireText(text, "Cloudflare Pages credentials are required to deploy fieldwork.dev.", "deploy-site must explain the blocked external credential gate");
-  requireText(text, "exit 1", "deploy-site credential verification must fail closed");
+  requireText(text, 'if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then', "deploy-site manual dispatch must fail closed on missing Cloudflare credentials");
+  requireText(text, "Skipping Cloudflare Pages deploy for this push.", "deploy-site pushes without Cloudflare credentials must skip cleanly");
+  requireText(text, 'echo "skip_deploy=1" >> "$GITHUB_OUTPUT"', "deploy-site credential preflight must signal skipped push deploys");
+  requireText(text, "if: steps.cloudflare-preflight.outputs.skip_deploy != '1'", "deploy-site install/build/deploy steps must honor skipped push deploys");
+  requireText(text, "exit 1", "deploy-site manual credential verification must fail closed");
   requireText(text, "cloudflare/wrangler-action@v3", "deploy-site must deploy through Cloudflare wrangler-action");
   requireText(text, "pages deploy site/dist --project-name fieldwork-dev --branch main", "deploy-site must deploy site/dist to the fieldwork-dev Pages project");
   requireText(astroConfig, 'site: "https://fieldwork.dev"', "Astro config must pin the canonical fieldwork.dev site URL");
