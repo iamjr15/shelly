@@ -1190,12 +1190,12 @@ function verifyWiring(allFiles) {
   );
   requireText(
     allFiles.development,
-    "lints the iOS project\nplist, Info.plist, and entitlements with `plutil -lint`",
+    "lints the iOS project\nplist, Info.plist, and entitlements with `plutil -lint` when available, uses a\nportable XML-plist parse plus Xcode project structural fallback on non-macOS\nhosts",
     "docs/DEVELOPMENT.md must document plist/project syntax coverage in local release",
   );
   requireText(
     allFiles.development,
-    "Android\nXML resources plus docs SVG assets with\n`xmllint --noout`",
+    "Android XML resources plus docs SVG assets with\n`xmllint --noout`",
     "docs/DEVELOPMENT.md must document Android XML and SVG syntax coverage in local release",
   );
   for (const script of [

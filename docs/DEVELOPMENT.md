@@ -130,8 +130,9 @@ syntax-checks every checked-in Node script under `scripts/*.mjs` with
 `apps/ios/scripts/*.sh`, including the Android emulator smoke scripts, without
 requiring an emulator. It also parses tracked repo JSON and TOML package/config
 assets, using Python's standard `tomllib` for TOML, lints the iOS project
-plist, Info.plist, and entitlements with `plutil -lint`, and validates Android
-XML resources plus docs SVG assets with
+plist, Info.plist, and entitlements with `plutil -lint` when available, uses a
+portable XML-plist parse plus Xcode project structural fallback on non-macOS
+hosts, and validates Android XML resources plus docs SVG assets with
 `xmllint --noout`.
 
 For first-round Android live-test prep without a connected phone, run

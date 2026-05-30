@@ -240,7 +240,7 @@ function verifyPromptToArtifactChecklist() {
   );
   requireText(
     audit,
-    "iOS plist/project metadata with `plutil -lint`",
+    "iOS plist/project metadata with `plutil -lint` when available plus a portable plist/project fallback on non-macOS hosts",
     "release audit must record plist/project checks in the local release gate",
   );
   requireText(
@@ -3738,6 +3738,9 @@ function verifyVerifierIsWired() {
   requireText(structuredAssets, "*.toml", "structured asset verifier must parse tracked TOML assets");
   requireText(structuredAssets, "tomllib", "structured asset verifier must use a real TOML parser");
   requireText(structuredAssets, "plutil", "structured asset verifier must lint iOS plist/project metadata");
+  requireText(structuredAssets, "portable fallback", "structured asset verifier must support non-macOS plist/project checks");
+  requireText(structuredAssets, "plistlib", "structured asset verifier must parse XML plist assets without plutil");
+  requireText(structuredAssets, "verifyXcodeProjectStructure", "structured asset verifier must validate Xcode project structure without plutil");
   requireText(structuredAssets, "xmllint", "structured asset verifier must lint Android XML and docs SVG assets");
   requireText(structuredAssets, "apps/android/app/src/main/AndroidManifest.xml", "structured asset verifier must include the Android manifest");
   requireText(structuredAssets, "docs/assets/*.svg", "structured asset verifier must include docs SVG assets");
