@@ -237,7 +237,9 @@ function verifyDevelopmentDoc(text) {
   for (const section of [
     "The protocol crate uses insta snapshots",
     "The daemon ring buffer has proptest coverage",
-    "The cold/stale attach snapshot gate also starts a real `vim /etc/hosts` PTY",
+    "The cold/stale attach snapshot gates pair deterministic terminal-model coverage",
+    "with a real `vim /etc/hosts` PTY",
+    "compares alt-screen mode, cursor position, and\nrendered visible text",
     "The UniFFI mobile core exposes `attach_session_from(id, last_seen_seq)`",
     "`Output.seq` is already the byte offset after the carried chunk",
     "raw output bytes are delivered without UTF-8 decoding",

@@ -210,10 +210,12 @@ The daemon ring buffer has proptest coverage for randomized append/replay window
 cargo test -p fieldwork-daemon ring::tests::snapshot_and_replay_match_last_capacity_bytes
 ```
 
-The cold/stale attach snapshot gate also starts a real `vim /etc/hosts` PTY
-session, forces the stale attach path, feeds `Attached.initial_bytes` into a
-fresh in-process `wezterm-term` model, and compares the resulting alt-screen
-cell state with the daemon's model:
+The cold/stale attach snapshot gates pair deterministic terminal-model coverage
+with a real `vim /etc/hosts` PTY. The deterministic unit test verifies exact
+visible-cell attributes and cursor restoration. The real Vim test forces the
+stale attach path, feeds `Attached.initial_bytes` into a fresh in-process
+`wezterm-term` model, and compares alt-screen mode, cursor position, and
+rendered visible text with the daemon's model:
 
 ```sh
 cargo test -p fieldwork-daemon snapshot_tests::stale_attach_snapshot_rehydrates_real_vim_session
