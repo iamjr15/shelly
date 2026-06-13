@@ -64,6 +64,12 @@ The workflow expects these GitHub Secrets:
 AWS role is assumed through GitHub OIDC and is limited to reading Lightsail
 instance state plus opening/closing the temporary SSH ingress rule.
 
+The AWS OIDC trust accepts only the GitHub Actions subject for the
+`relay-production` environment, and that environment has a deployment branch
+policy allowing only `main`. This keeps AWS role assumption tied to the
+release environment instead of any arbitrary workflow or branch in the
+repository.
+
 Lightsail host creation is direct Terraform. Run `terraform init` and
 `terraform apply` in `infra/lightsail/terraform` with a local, ignored tfvars
 file containing operator SSH CIDRs. Existing AWS CLI-created resources must be
