@@ -2,7 +2,7 @@
 //! UniFFI mobile client surface for native iOS and Android apps.
 //!
 //! The API intentionally exposes only pair/list/attach/input/resize/detach and
-//! push-token registration. It does not expose session creation, command
+//! push-token registration/unregistration. It does not expose session creation, command
 //! selection, or session termination, preserving the v1 mobile security boundary.
 
 use fieldwork_protocol::{
@@ -16,6 +16,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::time::{Duration, timeout};
 
@@ -273,7 +274,7 @@ impl FieldworkClient {
 
     /// Connects to a previously paired daemon and verifies authorization with a ping.
     pub async fn connect(self: Arc<Self>) -> Result<(), FieldworkError> {
-        let endpoint = endpoint_for_secret(&self.secret_key).await?;
+        let endpoint = self.endpoint().await?;
         let target = self.daemon_target().await?;
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
         write_hello(&mut send, self.config.platform).await?;
@@ -404,6 +405,30 @@ impl FieldworkClient {
             ))),
         }
     }
+
+    /// Unregisters the native APNs/FCM token from the paired daemon.
+    pub async fn unregister_push_token(
+        self: Arc<Self>,
+        platform: PushPlatform,
+        token: String,
+    ) -> Result<(), FieldworkError> {
+        let (mut send, mut recv) = self.open_authenticated_stream().await?;
+        write_msg(
+            &mut send,
+            &ClientToServerMsg::UnregisterPushToken {
+                platform: platform.into(),
+                token,
+            },
+        )
+        .await?;
+        match read_msg::<ServerToClientMsg>(&mut recv).await? {
+            ServerToClientMsg::Pong { .. } => Ok(()),
+            ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
+            other => Err(FieldworkError::Protocol(format!(
+                "unexpected daemon response to UnregisterPushToken: {other:?}"
+            ))),
+        }
+    }
 }
 
 impl FieldworkClient {
@@ -495,32 +520,20 @@ enum StreamDecision {
 impl AttachedSession {
     /// Sends raw input bytes to the attached PTY.
     pub async fn send_input(self: Arc<Self>, bytes: Vec<u8>) -> Result<(), FieldworkError> {
-        let mut send = self.take_send().await?;
-        write_msg(
-            &mut send,
-            &ClientToServerMsg::Input {
-                session_id: self.session_id,
-                bytes,
-            },
-        )
-        .await?;
-        self.replace_send(send).await;
-        Ok(())
+        self.write_to_send_stream(&ClientToServerMsg::Input {
+            session_id: self.session_id,
+            bytes,
+        })
+        .await
     }
 
     /// Updates this mobile client's terminal viewport.
     pub async fn resize(self: Arc<Self>, cols: u16, rows: u16) -> Result<(), FieldworkError> {
-        let mut send = self.take_send().await?;
-        write_msg(
-            &mut send,
-            &ClientToServerMsg::Resize {
-                session_id: self.session_id,
-                size: ClientSize { cols, rows },
-            },
-        )
-        .await?;
-        self.replace_send(send).await;
-        Ok(())
+        self.write_to_send_stream(&ClientToServerMsg::Resize {
+            session_id: self.session_id,
+            size: ClientSize { cols, rows },
+        })
+        .await
     }
 
     /// Streams initial bytes, output, lag, state, and exit events to the callback.
@@ -550,10 +563,15 @@ impl AttachedSession {
 
     /// Detaches this client without killing the desktop session.
     pub async fn detach(self: Arc<Self>) -> Result<(), FieldworkError> {
-        let mut send = self.take_send().await?;
-        write_msg(&mut send, &ClientToServerMsg::DetachSession).await?;
+        let mut guard = self.send.lock().await;
+        let send = guard
+            .as_mut()
+            .ok_or_else(|| FieldworkError::Protocol("send stream closed".to_string()))?;
+        if let Err(error) = write_msg(send, &ClientToServerMsg::DetachSession).await {
+            guard.take();
+            return Err(error);
+        }
         let _ = send.finish();
-        self.replace_send(send).await;
         Ok(())
     }
 
@@ -597,16 +615,19 @@ impl AttachedSession {
         }
     }
 
-    async fn take_send(&self) -> Result<SendStream, FieldworkError> {
-        self.send
-            .lock()
-            .await
-            .take()
-            .ok_or_else(|| FieldworkError::Protocol("send stream is already in use".to_string()))
-    }
-
-    async fn replace_send(&self, send: SendStream) {
-        *self.send.lock().await = Some(send);
+    async fn write_to_send_stream(
+        &self,
+        message: &ClientToServerMsg,
+    ) -> Result<(), FieldworkError> {
+        let mut guard = self.send.lock().await;
+        let send = guard
+            .as_mut()
+            .ok_or_else(|| FieldworkError::Protocol("send stream closed".to_string()))?;
+        if let Err(error) = write_msg(send, message).await {
+            guard.take();
+            return Err(error);
+        }
+        Ok(())
     }
 
     async fn take_recv(&self) -> Result<RecvStream, FieldworkError> {
@@ -728,6 +749,14 @@ async fn read_msg<T>(reader: &mut RecvStream) -> Result<T, FieldworkError>
 where
     T: DeserializeOwned,
 {
+    read_msg_from(reader).await
+}
+
+async fn read_msg_from<T, R>(reader: &mut R) -> Result<T, FieldworkError>
+where
+    T: DeserializeOwned,
+    R: AsyncRead + Unpin,
+{
     let mut len_bytes = [0_u8; 4];
     reader
         .read_exact(&mut len_bytes)
@@ -748,6 +777,14 @@ where
 async fn write_msg<T>(writer: &mut SendStream, message: &T) -> Result<(), FieldworkError>
 where
     T: Serialize,
+{
+    write_msg_to(writer, message).await
+}
+
+async fn write_msg_to<T, W>(writer: &mut W, message: &T) -> Result<(), FieldworkError>
+where
+    T: Serialize,
+    W: AsyncWrite + Unpin,
 {
     let payload = rmp_serde::to_vec_named(message)
         .map_err(|error| FieldworkError::Protocol(error.to_string()))?;
@@ -891,6 +928,7 @@ impl From<ProtocolSessionSummary> for SessionSummaryFfi {
 mod tests {
     use super::*;
     use std::sync::Mutex as StdMutex;
+    use tokio::io::duplex;
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     enum SinkEvent {
@@ -988,6 +1026,52 @@ mod tests {
         });
 
         assert!(matches!(result, Err(FieldworkError::InvalidConfig(_))));
+    }
+
+    #[tokio::test]
+    async fn mobile_messagepack_frame_helpers_round_trip_length_prefixed_transport() {
+        let (mut writer, mut reader) = duplex(1024);
+
+        write_msg_to(&mut writer, &ClientToServerMsg::Ping { seq: 9 })
+            .await
+            .unwrap();
+        drop(writer);
+
+        let decoded: ClientToServerMsg = read_msg_from(&mut reader).await.unwrap();
+
+        assert_eq!(decoded, ClientToServerMsg::Ping { seq: 9 });
+    }
+
+    #[tokio::test]
+    async fn mobile_messagepack_frame_reader_rejects_oversized_length_before_allocating() {
+        let (mut writer, mut reader) = duplex(16);
+        writer
+            .write_all(&((max_frame_len() as u32 + 1).to_be_bytes()))
+            .await
+            .unwrap();
+        drop(writer);
+
+        let error = read_msg_from::<ClientToServerMsg, _>(&mut reader)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(error, FieldworkError::Protocol(message) if message.contains("frame too large"))
+        );
+    }
+
+    #[tokio::test]
+    async fn mobile_messagepack_frame_reader_rejects_incomplete_payload() {
+        let (mut writer, mut reader) = duplex(16);
+        writer.write_all(&8_u32.to_be_bytes()).await.unwrap();
+        writer.write_all(&[0]).await.unwrap();
+        drop(writer);
+
+        let error = read_msg_from::<ClientToServerMsg, _>(&mut reader)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, FieldworkError::Transport(_)));
     }
 
     #[test]

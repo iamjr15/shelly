@@ -2,6 +2,8 @@ package app.fieldwork.android.core
 
 import android.content.Context
 import android.os.Looper
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
@@ -27,6 +29,11 @@ import uniffi.fieldwork_mobile_core.NoHandle
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
 class FieldworkViewModelTest {
+    private companion object {
+        const val TEST_PAIRING_TICKET = "fw1testpairingticket"
+        const val TEST_PAIRING_TICKET_2 = "fw1secondtestpairingticket"
+    }
+
     private lateinit var context: Context
 
     @Before
@@ -75,16 +82,87 @@ class FieldworkViewModelTest {
     }
 
     @Test
+    fun syncFcmTokenCancellationStopsRegistrationWithoutClearingQueuedToken() {
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            onRegisterFcmToken = { token ->
+                if (token == "queued-token") {
+                    throw CancellationException("fcm sync canceled")
+                }
+            },
+        )
+        val fcmTokens = FakeFcmTokenSource(pending = "queued-token", current = "current-token")
+        val viewModel = testViewModel(repository, fcmTokens)
+
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        assertEquals(emptyList<String>(), repository.registeredFcmTokens)
+        assertEquals(emptyList<String>(), fcmTokens.clearedMatchingTokens)
+        assertEquals("queued-token", fcmTokens.pendingToken(context))
+        assertNull(viewModel.state.value.message)
+    }
+
+    @Test
     fun unpairClearsQueuedFcmToken() {
         val repository = FakeRepository(restoredPairing = testPairing())
         val fcmTokens = FakeFcmTokenSource(pending = "queued-token", current = null)
         val viewModel = testViewModel(repository, fcmTokens)
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+        viewModel.openTerminalSession(testSession(id = "018f0000-0000-7000-8000-0000000000aa"))
 
         viewModel.unpair()
+        drainMainLooper()
 
         assertEquals(1, fcmTokens.clearAllCalls)
         assertEquals(1, repository.clearCalls)
         assertNull(fcmTokens.pendingToken(context))
+        assertFalse(viewModel.state.value.restoringPairing)
+        assertFalse(viewModel.state.value.paired)
+        assertEquals(emptyList<MobileSession>(), viewModel.state.value.sessions)
+        assertNull(viewModel.state.value.activeTerminalSessionId)
+    }
+
+    @Test
+    fun unpairUnregistersPendingAndCurrentFcmTokensBeforeClearingRepository() {
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            onRegisterFcmToken = { throw IllegalStateException("offline during sync") },
+        )
+        val fcmTokens = FakeFcmTokenSource(pending = "queued-token", current = "current-token")
+        val viewModel = testViewModel(repository, fcmTokens)
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        viewModel.unpair()
+        drainMainLooper()
+
+        assertEquals(listOf("queued-token", "current-token"), repository.unregisteredFcmTokens)
+        assertEquals(1, fcmTokens.clearAllCalls)
+        assertEquals(1, repository.clearCalls)
+        assertNull(fcmTokens.pendingToken(context))
+        assertFalse(viewModel.state.value.paired)
+    }
+
+    @Test
+    fun unpairStillClearsLocalStateWhenFcmUnregisterFails() {
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            onUnregisterFcmToken = { throw IllegalStateException("relay unavailable") },
+        )
+        val fcmTokens = FakeFcmTokenSource(pending = null, current = "current-token")
+        val viewModel = testViewModel(repository, fcmTokens)
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        viewModel.unpair()
+        drainMainLooper()
+
+        assertEquals(listOf("current-token"), repository.unregisteredFcmTokens)
+        assertEquals(1, fcmTokens.clearAllCalls)
+        assertEquals(1, repository.clearCalls)
+        assertFalse(viewModel.state.value.paired)
         assertFalse(viewModel.state.value.restoringPairing)
     }
 
@@ -251,6 +329,27 @@ class FieldworkViewModelTest {
     }
 
     @Test
+    fun sessionSubscriptionCleanEndRetriesWithoutUserVisibleAlert() {
+        val session = testSession(id = "018f0000-0000-7000-8000-0000000000f1")
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            sessions = listOf(session),
+            subscriptionCleanReturnsBeforeHold = 1,
+        )
+        val viewModel = testViewModel(
+            repository = repository,
+            sessionSubscriptionRetryDelayMillis = 0L,
+        )
+
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        waitForState { repository.subscribeCalls >= 2 }
+        assertNull(viewModel.state.value.message)
+        assertEquals(listOf(session), viewModel.state.value.sessions)
+    }
+
+    @Test
     fun setLockedStopsSessionSubscriptionUpdates() {
         val first = testSession(id = "018f0000-0000-7000-8000-000000000009")
         val second = testSession(id = "018f0000-0000-7000-8000-00000000000a")
@@ -267,6 +366,57 @@ class FieldworkViewModelTest {
 
         assertEquals(1, repository.subscribeCalls)
         assertEquals(listOf(first), viewModel.state.value.sessions)
+    }
+
+    @Test
+    fun backgroundGraceClosesTerminalStopsSubscriptionAndForegroundRestartsIt() {
+        val session = testSession(id = "018f0000-0000-7000-8000-0000000000b0")
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            sessions = listOf(session),
+        )
+        val viewModel = testViewModel(
+            repository = repository,
+            backgroundDetachGraceMillis = 0L,
+        )
+
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+        viewModel.openTerminalSession(session)
+        assertEquals(1, repository.subscribeCalls)
+
+        viewModel.onAppBackgrounded()
+        drainMainLooper()
+
+        assertNull(viewModel.state.value.activeTerminalSessionId)
+        assertEquals(1, repository.subscribeCalls)
+
+        viewModel.onAppForegrounded()
+        drainMainLooper()
+
+        waitForState { repository.subscribeCalls == 2 }
+        assertEquals(listOf(session), viewModel.state.value.sessions)
+    }
+
+    @Test
+    fun foregroundBeforeBackgroundGraceKeepsTerminalAndSubscription() {
+        val session = testSession(id = "018f0000-0000-7000-8000-0000000000b1")
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            sessions = listOf(session),
+        )
+        val viewModel = testViewModel(repository)
+
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+        viewModel.openTerminalSession(session)
+
+        viewModel.onAppBackgrounded()
+        viewModel.onAppForegrounded()
+        drainMainLooper()
+
+        assertEquals(session.id, viewModel.state.value.activeTerminalSessionId)
+        assertEquals(1, repository.subscribeCalls)
     }
 
     @Test
@@ -301,10 +451,10 @@ class FieldworkViewModelTest {
         val viewModel = testViewModel(repository, fcmTokens)
 
         viewModel.setUnlocked(true)
-        viewModel.pair("fieldwork-pair:v1:payload")
+        viewModel.pair(TEST_PAIRING_TICKET)
         drainMainLooper()
 
-        assertEquals("fieldwork-pair:v1:payload", repository.pairedPayload)
+        assertEquals(TEST_PAIRING_TICKET, repository.pairedPayload)
         assertEquals(true, viewModel.state.value.paired)
         assertFalse(viewModel.state.value.restoringPairing)
         assertEquals(pairing, viewModel.state.value.pairedDaemon)
@@ -349,7 +499,7 @@ class FieldworkViewModelTest {
         val viewModel = testViewModel(repository)
 
         viewModel.setUnlocked(true)
-        viewModel.pair("fieldwork-pair:v1:payload")
+        viewModel.pair(TEST_PAIRING_TICKET)
         drainMainLooper()
 
         assertEquals(listOf(session), viewModel.state.value.sessions)
@@ -367,7 +517,7 @@ class FieldworkViewModelTest {
         val fcmTokens = FakeFcmTokenSource(pending = "queued-token", current = "current-token")
         val viewModel = testViewModel(repository, fcmTokens)
 
-        viewModel.pair("fieldwork-pair:v1:payload")
+        viewModel.pair(TEST_PAIRING_TICKET)
         drainMainLooper()
 
         assertEquals(true, viewModel.state.value.paired)
@@ -375,6 +525,45 @@ class FieldworkViewModelTest {
         assertEquals(emptyList<MobileSession>(), viewModel.state.value.sessions)
         assertEquals(0, repository.subscribeCalls)
         assertEquals(emptyList<String>(), repository.registeredFcmTokens)
+    }
+
+    @Test
+    fun pairCancellationDoesNotShowUserVisibleAlert() {
+        val repository = FakeRepository(
+            restoredPairing = null,
+            pairResult = testPairing(),
+            onPair = {
+                throw CancellationException("pair canceled")
+            },
+        )
+        val viewModel = testViewModel(repository)
+
+        viewModel.pair(TEST_PAIRING_TICKET)
+        drainMainLooper()
+
+        assertFalse(viewModel.state.value.loading)
+        assertFalse(viewModel.state.value.paired)
+        assertNull(viewModel.state.value.message)
+        assertNull(repository.savedPairing)
+    }
+
+    @Test
+    fun pairFailureUsesStableMessageWithoutLeakingTransportDetails() {
+        val repository = FakeRepository(
+            restoredPairing = null,
+            pairResult = testPairing(),
+            onPair = {
+                throw IllegalStateException("node id 12D3 path /Users/example/private")
+            },
+        )
+        val viewModel = testViewModel(repository)
+
+        viewModel.pairWithCode("AB12C")
+        drainMainLooper()
+
+        assertFalse(viewModel.state.value.loading)
+        assertFalse(viewModel.state.value.paired)
+        assertEquals("Pairing failed", viewModel.state.value.message)
     }
 
     @Test
@@ -401,19 +590,19 @@ class FieldworkViewModelTest {
             drainMainLooper()
             viewModel.setUnlocked(true)
 
-            viewModel.pair("fieldwork-pair:v1:first")
+            viewModel.pair(TEST_PAIRING_TICKET)
             drainMainLooper()
             assertTrue(pairStarted.await(1, TimeUnit.SECONDS))
             assertTrue(viewModel.state.value.loading)
 
-            viewModel.pair("fieldwork-pair:v1:second")
+            viewModel.pair(TEST_PAIRING_TICKET_2)
             drainMainLooper()
-            assertEquals(listOf("fieldwork-pair:v1:first"), repository.pairedPayloads)
+            assertEquals(listOf(TEST_PAIRING_TICKET), repository.pairedPayloads)
 
             releasePair.countDown()
             waitForState { viewModel.state.value.paired && !viewModel.state.value.loading }
 
-            assertEquals(listOf("fieldwork-pair:v1:first"), repository.pairedPayloads)
+            assertEquals(listOf(TEST_PAIRING_TICKET), repository.pairedPayloads)
         } finally {
             repositoryDispatcher.close()
         }
@@ -453,6 +642,20 @@ class FieldworkViewModelTest {
     }
 
     @Test
+    fun savedPairingRestoreFailureUsesStableMessageWithoutLeakingStorageDetails() {
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            onRestore = {
+                throw IllegalStateException("keystore path /data/user/0/app.fieldwork.android")
+            },
+        )
+        val viewModel = testViewModel(repository)
+
+        assertFalse(viewModel.state.value.restoringPairing)
+        assertEquals("Saved pairing unavailable", viewModel.state.value.message)
+    }
+
+    @Test
     fun refreshSessionsRunsRepositoryWorkOffMainThread() {
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
@@ -487,6 +690,41 @@ class FieldworkViewModelTest {
         } finally {
             repositoryDispatcher.close()
         }
+    }
+
+    @Test
+    fun refreshSessionsCancellationDoesNotShowUserVisibleAlert() {
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            onListSessions = {
+                throw CancellationException("refresh canceled")
+            },
+        )
+        val viewModel = testViewModel(repository)
+
+        viewModel.refreshSessions()
+        drainMainLooper()
+
+        assertFalse(viewModel.state.value.loading)
+        assertNull(viewModel.state.value.message)
+        assertEquals(emptyList<MobileSession>(), viewModel.state.value.sessions)
+    }
+
+    @Test
+    fun refreshSessionsFailureUsesStableMessageWithoutLeakingDaemonDetails() {
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            onListSessions = {
+                throw IllegalStateException("daemon node id 12D3 path /tmp/private.sock")
+            },
+        )
+        val viewModel = testViewModel(repository)
+
+        viewModel.refreshSessions()
+        drainMainLooper()
+
+        assertFalse(viewModel.state.value.loading)
+        assertEquals("Sessions unavailable", viewModel.state.value.message)
     }
 
     @Test
@@ -536,7 +774,7 @@ class FieldworkViewModelTest {
     }
 
     @Test
-    fun pairCancelsPendingSavedPairingRestoreResult() {
+    fun pairCancelsPendingSavedPairingRestoreResultAndKeepsFreshRepositoryState() {
         val restoreStarted = CountDownLatch(1)
         val restoreRelease = CountDownLatch(1)
         val stalePairing = testPairing(daemonNodeId = "stale-daemon")
@@ -557,17 +795,64 @@ class FieldworkViewModelTest {
 
         assertTrue(restoreStarted.await(1, TimeUnit.SECONDS))
 
-        viewModel.pair("fieldwork-pair:v1:fresh")
+        viewModel.pair(TEST_PAIRING_TICKET)
         drainMainLooper()
         waitForState { viewModel.state.value.pairedDaemon == freshPairing }
 
         restoreRelease.countDown()
-        waitForState { repository.savedPairing == stalePairing }
+        waitForState { repository.savedPairing == freshPairing }
         drainMainLooper()
 
         assertEquals(true, viewModel.state.value.paired)
         assertFalse(viewModel.state.value.restoringPairing)
         assertEquals(freshPairing, viewModel.state.value.pairedDaemon)
+        assertEquals(freshPairing, repository.savedPairing)
+    }
+
+    @Test
+    fun pairAfterUnpairWithSlowUnregisterPersistsNewPairing() {
+        val unregisterStarted = CountDownLatch(1)
+        val releaseUnregister = CountDownLatch(1)
+        val freshPairing = testPairing(daemonNodeId = "fresh-daemon")
+        val repository = FakeRepository(
+            restoredPairing = testPairing(daemonNodeId = "stale-daemon"),
+            pairResult = freshPairing,
+            onUnregisterFcmToken = {
+                unregisterStarted.countDown()
+                assertTrue(releaseUnregister.await(2, TimeUnit.SECONDS))
+            },
+        )
+        val repositoryDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        try {
+            val viewModel = FieldworkViewModel(
+                context,
+                repository,
+                FakeFcmTokenSource(pending = null, current = "current-token"),
+                restoreDispatcher = Dispatchers.Unconfined,
+                repositoryDispatcher = repositoryDispatcher,
+            )
+            drainMainLooper()
+            viewModel.setUnlocked(true)
+            waitForState { !viewModel.state.value.loading }
+
+            viewModel.unpair()
+            drainMainLooper()
+            assertTrue(unregisterStarted.await(1, TimeUnit.SECONDS))
+
+            viewModel.pair(TEST_PAIRING_TICKET)
+            drainMainLooper()
+            assertEquals(emptyList<String>(), repository.pairedPayloads)
+
+            releaseUnregister.countDown()
+            waitForState { viewModel.state.value.paired && !viewModel.state.value.loading }
+
+            assertEquals(listOf(TEST_PAIRING_TICKET), repository.pairedPayloads)
+            assertEquals(1, repository.clearCalls)
+            assertEquals(freshPairing, repository.savedPairing)
+            assertEquals(freshPairing, viewModel.state.value.pairedDaemon)
+        } finally {
+            repositoryDispatcher.close()
+        }
     }
 
     private fun drainMainLooper() {
@@ -589,6 +874,7 @@ class FieldworkViewModelTest {
         repository: FakeRepository,
         fcmTokens: FakeFcmTokenSource = FakeFcmTokenSource(pending = null, current = null),
         sessionSubscriptionRetryDelayMillis: Long = 750L,
+        backgroundDetachGraceMillis: Long = 5 * 60 * 1000L,
     ): FieldworkViewModel {
         return FieldworkViewModel(
             context,
@@ -597,6 +883,7 @@ class FieldworkViewModelTest {
             restoreDispatcher = Dispatchers.Unconfined,
             repositoryDispatcher = Dispatchers.Unconfined,
             sessionSubscriptionRetryDelayMillis = sessionSubscriptionRetryDelayMillis,
+            backgroundDetachGraceMillis = backgroundDetachGraceMillis,
         ).also {
             drainMainLooper()
         }
@@ -661,14 +948,18 @@ class FieldworkViewModelTest {
         private val initialSubscriptionSessions: List<MobileSession>? = sessions,
         private val attachedSessions: ArrayDeque<AttachedSession> = ArrayDeque(),
         private val subscriptionFailures: ArrayDeque<Throwable> = ArrayDeque(),
+        private var subscriptionCleanReturnsBeforeHold: Int = 0,
         private val onRestore: (() -> Unit)? = null,
         private val onPair: ((String) -> Unit)? = null,
         private val onListSessions: (() -> Unit)? = null,
         private val onAttach: ((ULong?) -> Unit)? = null,
+        private val onRegisterFcmToken: ((String) -> Unit)? = null,
+        private val onUnregisterFcmToken: ((String) -> Unit)? = null,
     ) : FieldworkRepositoryClient {
         override var savedPairing: PairedDaemonRecord? = null
             private set
         val registeredFcmTokens = mutableListOf<String>()
+        val unregisteredFcmTokens = mutableListOf<String>()
         val pairedPayloads = mutableListOf<String>()
         var pairedPayload: String? = null
             private set
@@ -683,7 +974,9 @@ class FieldworkViewModelTest {
 
         override fun restore(): Boolean {
             onRestore?.invoke()
-            savedPairing = restoredPairing
+            if (savedPairing == null) {
+                savedPairing = restoredPairing
+            }
             return restoredPairing != null
         }
 
@@ -711,6 +1004,11 @@ class FieldworkViewModelTest {
             subscriptionFailures.removeFirstOrNull()?.let { throw it }
             subscriptionSink = onUpdate
             initialSubscriptionSessions?.let(onUpdate)
+            if (subscriptionCleanReturnsBeforeHold > 0) {
+                subscriptionCleanReturnsBeforeHold -= 1
+                return
+            }
+            CompletableDeferred<Unit>().await()
         }
 
         fun emitSessions(sessions: List<MobileSession>) {
@@ -725,7 +1023,13 @@ class FieldworkViewModelTest {
         override fun recordLastSeenSeq(sessionId: String, seq: ULong) = Unit
 
         override suspend fun registerFcmToken(token: String) {
+            onRegisterFcmToken?.invoke(token)
             registeredFcmTokens += token
+        }
+
+        override suspend fun unregisterFcmToken(token: String) {
+            unregisteredFcmTokens += token
+            onUnregisterFcmToken?.invoke(token)
         }
 
         override fun clear() {

@@ -28,7 +28,7 @@ expression: cases
   decoded: "Lag { session_id: SessionId(018f0000-0000-7000-8000-000000000001), skipped_bytes: 3 }"
 - name: pairing_started
   frame_len: 108
-  decoded: "PairingStarted { ticket: PairingTicket { code: \"AB234\", node_id: \"node-daemon\", relay_url: Some(\"https://relay.example\"), addrs: [\"127.0.0.1:1234\"], expires_at: 1700000060000 } }"
+  decoded: "PairingStarted { ticket: PairingTicket { code: \"AB234\", node_id: \"node-daemon\", relay_url: Some(\"https://relay.example\"), addrs: [\"127.0.0.1:1234\"], expires_at: 1700000300000 } }"
 - name: pairing_approval_requested
   frame_len: 63
   decoded: "PairingApprovalRequested { request_id: ClientId(018f0000-0000-7000-8000-000000000002), device_name: \"Phone\", device_node_id: \"node-phone\" }"

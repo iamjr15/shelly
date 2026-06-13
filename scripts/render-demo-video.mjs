@@ -59,8 +59,8 @@ const slides = [
     title: "Production gates are explicit",
     lines: [
       "Local code, package, relay, Android AAB, privacy, and protocol gates are verified.",
-      "Final release still requires signing, provider credentials, hosted relay, npm publish, and physical-device evidence.",
-      "iOS verification resumes after full Xcode and Apple signing access are available.",
+      "Final release still requires signing, provider credentials, hosted relay, npm publish, and physical-device passes.",
+      "iOS is deferred; the current local release surface stays Android, relay, npm, site, and desktop CLI.",
     ],
   },
 ];

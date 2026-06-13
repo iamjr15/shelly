@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.Fieldwork" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">#111111</item>
+        <item name="android:windowBackground">#FF101412</item>
+    </style>
+</resources>

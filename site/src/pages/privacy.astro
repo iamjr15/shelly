@@ -24,7 +24,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       </article>
       <article class="tile">
         <h3>Pairing</h3>
-        <p>The QR token is short-lived and single-use. Long-lived device access uses the paired iroh node identity and can be revoked from the desktop CLI.</p>
+        <p>The QR carries a compact `fw1` pairing ticket with reachability plus a 5-character Crockford code. The code expires after 5 minutes, wrong attempts are capped, and long-lived access uses the paired iroh node identity that can be revoked from the desktop CLI.</p>
       </article>
       <article class="tile">
         <h3>Push</h3>

@@ -7,7 +7,7 @@ mod fcm;
 use axum::{
     Router,
     body::Bytes,
-    extract::{Path as AxumPath, State},
+    extract::{ConnectInfo, Path as AxumPath, State},
     http::{HeaderMap, Method, StatusCode, header::CONTENT_TYPE},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -40,8 +40,10 @@ const RATE_LIMIT_CACHE_CAPACITY: u64 = 100_000;
 const PUSH_TOKEN_TTL_MS: u64 = 90 * 24 * 60 * 60 * 1000;
 /// Per-IP cap on pairing-code resolution attempts inside one minute window.
 const RESOLVE_ATTEMPTS_PER_MINUTE: u32 = 20;
-/// Failed resolves a single code tolerates before it is locked and deleted.
-const RESOLVE_MAX_FAILURES_PER_CODE: u32 = 5;
+/// Per-client cap on daemon registration attempts inside one minute window.
+const REGISTER_ATTEMPTS_PER_MINUTE: u32 = 10;
+/// Upper bound on distinct daemon registrations retained by the relay.
+const MAX_DAEMONS: usize = 1_000_000;
 
 /// Shared relay application state.
 #[derive(Clone, Default)]
@@ -50,9 +52,11 @@ pub struct RelayState {
     metrics: Arc<RelayMetrics>,
     rate_limits: RateLimitCache,
     resolve_rate_limits: RateLimitCache,
+    register_rate_limits: RateLimitCache,
     version_cache: VersionCache,
     providers: PushProviders,
     store: Option<RelayStore>,
+    trust_forwarded_for: bool,
 }
 
 #[derive(Default)]
@@ -70,7 +74,6 @@ struct PairingCodeEntry {
     daemon_node_id: String,
     ticket_blob: String,
     expires_at_ms: u64,
-    failed_resolves: u32,
 }
 
 #[derive(Default)]
@@ -347,6 +350,22 @@ impl ApiError {
         }
     }
 
+    fn register_rate_limited() -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "rate_limited",
+            message: "per-client daemon registration rate limit exceeded".to_string(),
+        }
+    }
+
+    fn daemon_capacity() -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "capacity_exhausted",
+            message: "daemon registry is at capacity".to_string(),
+        }
+    }
+
     fn not_found(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::NOT_FOUND,
@@ -402,20 +421,39 @@ impl RelayState {
             metrics: Arc::default(),
             rate_limits: RateLimitCache::default(),
             resolve_rate_limits: RateLimitCache::default(),
+            register_rate_limits: RateLimitCache::default(),
             version_cache: VersionCache::default(),
             providers: PushProviders::from_env()?,
             store: Some(store),
+            trust_forwarded_for: false,
         })
     }
 
     /// Builds relay state from production environment variables.
     pub fn from_env() -> anyhow::Result<Self> {
+        let trust_forwarded_for = trust_forwarded_for_from_env()?;
         let path = std::env::var("FIELDWORK_RELAY_DB_PATH")
             .unwrap_or_else(|_| "/var/lib/fieldwork/relay.db".to_string());
         if path.trim().is_empty() || path == "off" {
-            return Ok(Self::default());
+            return Ok(Self {
+                trust_forwarded_for,
+                ..Self::default()
+            });
         }
-        Self::open_sqlite(path)
+        let mut state = Self::open_sqlite(path)?;
+        state.trust_forwarded_for = trust_forwarded_for;
+        Ok(state)
+    }
+}
+
+fn trust_forwarded_for_from_env() -> anyhow::Result<bool> {
+    let Some(value) = std::env::var_os("FIELDWORK_RELAY_TRUST_FORWARDED_FOR") else {
+        return Ok(false);
+    };
+    match value.to_string_lossy().trim().to_ascii_lowercase().as_str() {
+        "" | "0" | "false" | "no" | "off" => Ok(false),
+        "1" | "true" | "yes" | "on" => Ok(true),
+        _ => anyhow::bail!("FIELDWORK_RELAY_TRUST_FORWARDED_FOR must be true or false"),
     }
 }
 
@@ -652,7 +690,6 @@ impl RelayStore {
                     expires_at_ms: expires_at_ms
                         .try_into()
                         .map_err(|_| anyhow::anyhow!("stored pairing code expiry is negative"))?,
-                    failed_resolves: 0,
                 },
             );
         }
@@ -915,7 +952,11 @@ pub async fn serve_with_metrics(addr: &str, metrics_addr: Option<&str>) -> anyho
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(%addr, "fieldwork relay listening");
-    axum::serve(listener, app(state)).await?;
+    axum::serve(
+        listener,
+        app(state).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 
@@ -934,7 +975,7 @@ pub async fn serve_tls_with_metrics(
     let addr: SocketAddr = addr.parse()?;
     tracing::info!(%addr, "fieldwork relay TLS control plane listening");
     axum_server::bind_rustls(addr, tls_config)
-        .serve(app(state).into_make_service())
+        .serve(app(state).into_make_service_with_connect_info::<SocketAddr>())
         .await?;
     Ok(())
 }
@@ -982,10 +1023,24 @@ async fn version(State(state): State<RelayState>) -> impl IntoResponse {
 )]
 async fn register_daemon(
     State(state): State<RelayState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     bytes: Bytes,
 ) -> Result<impl IntoResponse, ApiError> {
+    let client = client_identifier(peer, &headers, state.trust_forwarded_for);
+    let minute = now_ms() / 60_000;
+    if state.register_rate_limits.increment(&client, minute) > REGISTER_ATTEMPTS_PER_MINUTE {
+        return Err(ApiError::register_rate_limited());
+    }
+
     let request: RegisterDaemonRequest = parse_validated(&bytes)?;
     let public_key = decode_public_key(&request.public_key)?;
+    {
+        let inner = state.inner.lock().expect("relay state lock poisoned");
+        if daemon_capacity_exceeded(&inner, &request.daemon_node_id, MAX_DAEMONS) {
+            return Err(ApiError::daemon_capacity());
+        }
+    }
     if let Some(store) = &state.store {
         store
             .save_daemon(&request.daemon_node_id, &public_key)
@@ -1238,7 +1293,6 @@ async fn publish_pairing_code(
                 daemon_node_id: request.daemon_node_id,
                 ticket_blob: request.ticket_blob,
                 expires_at_ms: request.expires_at_ms,
-                failed_resolves: 0,
             },
         );
     state
@@ -1256,12 +1310,16 @@ async fn publish_pairing_code(
 )]
 async fn resolve_pairing_code(
     State(state): State<RelayState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     AxumPath(code): AxumPath<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    // Defend the internet-facing oracle before touching the code store: a
-    // weak short code only stays secret behind per-client throttling.
-    let client = client_identifier(&headers);
+    // Brute force on this oracle is mitigated in layers: per-client throttling
+    // here, 5-minute single-use codes, a uniform 404 for format and lookup
+    // misses, the daemon-side 5-wrong-attempt cap, and explicit desktop
+    // approval. A per-code lockout was rejected because it would let an
+    // attacker invalidate a victim's active code in 5 guesses (DoS).
+    let client = client_identifier(peer, &headers, state.trust_forwarded_for);
     let minute = now_ms() / 60_000;
     if state.resolve_rate_limits.increment(&client, minute) > RESOLVE_ATTEMPTS_PER_MINUTE {
         return Err(ApiError::resolve_rate_limited());
@@ -1310,7 +1368,7 @@ async fn resolve_pairing_code(
                     tracing::warn!(%error, "failed to delete expired pairing code");
                 }
             } else {
-                register_failed_resolve(&state, &code);
+                tracing::debug!("relay pairing code resolve miss");
             }
             Err(ApiError::not_found("pairing code not found"))
         }
@@ -1320,32 +1378,6 @@ async fn resolve_pairing_code(
 enum CodeResolution {
     Hit { ticket_blob: String },
     Miss { delete: bool },
-}
-
-/// Records a wrong guess against a present code and locks it after the cap so a
-/// brute-force walk over the short keyspace cannot outlast a single code.
-fn register_failed_resolve(state: &RelayState, code: &str) {
-    let lock_out = {
-        let mut inner = state.inner.lock().expect("relay state lock poisoned");
-        match inner.pairing_codes.get_mut(code) {
-            Some(entry) => {
-                entry.failed_resolves += 1;
-                if entry.failed_resolves >= RESOLVE_MAX_FAILURES_PER_CODE {
-                    inner.pairing_codes.remove(code);
-                    true
-                } else {
-                    false
-                }
-            }
-            None => false,
-        }
-    };
-    if lock_out
-        && let Some(store) = &state.store
-        && let Err(error) = store.delete_pairing_code(code)
-    {
-        tracing::warn!(%error, "failed to delete locked-out pairing code");
-    }
 }
 
 /// Drops every in-memory code owned by `daemon_node_id` except `keep`,
@@ -1379,17 +1411,28 @@ fn forget_pairing_code(state: &RelayState, code: &str) {
     }
 }
 
-/// Derives the rate-limit bucket for a resolve caller. Behind the hosted
-/// reverse proxy the real client is the first `x-forwarded-for` hop; absent
-/// that header (e.g. direct/local callers) every request shares one bucket.
-fn client_identifier(headers: &HeaderMap) -> String {
-    headers
-        .get(FORWARDED_FOR_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "unknown".to_string())
+/// Derives the rate-limit bucket for an unauthenticated caller. The connecting
+/// socket address is authoritative; the first `x-forwarded-for` hop is honored
+/// only when `FIELDWORK_RELAY_TRUST_FORWARDED_FOR` marks the deployment as
+/// sitting behind a trusted reverse proxy, since the header is forgeable.
+fn client_identifier(peer: SocketAddr, headers: &HeaderMap, trust_forwarded_for: bool) -> String {
+    if trust_forwarded_for
+        && let Some(forwarded) = headers
+            .get(FORWARDED_FOR_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(',').next())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    {
+        return forwarded.to_string();
+    }
+    peer.ip().to_string()
+}
+
+/// True when registering `daemon_node_id` would grow the registry past
+/// `max_daemons`; re-registering an existing id is always allowed.
+fn daemon_capacity_exceeded(inner: &RelayInner, daemon_node_id: &str, max_daemons: usize) -> bool {
+    inner.daemons.len() >= max_daemons && !inner.daemons.contains_key(daemon_node_id)
 }
 
 fn remove_push_token_binding(
@@ -1638,11 +1681,16 @@ mod tests {
     use axum::{
         Router,
         body::{Body, to_bytes},
+        extract::connect_info::MockConnectInfo,
         http::Request,
         routing::post,
     };
     use ed25519_dalek::{Signer, SigningKey};
     use tower::ServiceExt;
+
+    fn test_app(state: RelayState) -> Router {
+        app(state).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 4321))))
+    }
 
     const DAEMON_A: &str = "daemon-node-a-1234567890";
     const DAEMON_B: &str = "daemon-node-b-1234567890";
@@ -1799,7 +1847,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
             "nonce-old-0000001",
             old_ts,
         );
-        let response = app(state)
+        let response = test_app(state)
             .oneshot(
                 Request::post("/v1/push/register-token")
                     .header(SIGNATURE_HEADER, signature)
@@ -1937,7 +1985,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         register_daemon_key(&state, DAEMON_A, &key).await;
         register_token_for(&state, DAEMON_A, &key, "nonce-register-version").await;
 
-        let response = app(state)
+        let response = test_app(state)
             .oneshot(Request::get("/v1/version").body(Body::empty()).unwrap())
             .await
             .unwrap();
@@ -2250,7 +2298,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
             ts_ms: now_ms(),
         })
         .unwrap();
-        let response = app(state)
+        let response = test_app(state)
             .oneshot(
                 Request::post("/v1/push/register-token")
                     .header(SIGNATURE_HEADER, "not-base64")
@@ -2278,7 +2326,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
     }
 
     async fn resolve(state: &RelayState, code: &str) -> axum::response::Response {
-        app(state.clone())
+        test_app(state.clone())
             .oneshot(
                 Request::get(format!("/v1/pair/resolve/{code}"))
                     .body(Body::empty())
@@ -2293,7 +2341,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         code: &str,
         client_ip: &str,
     ) -> axum::response::Response {
-        app(state.clone())
+        test_app(state.clone())
             .oneshot(
                 Request::get(format!("/v1/pair/resolve/{code}"))
                     .header(FORWARDED_FOR_HEADER, client_ip)
@@ -2310,7 +2358,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         let key = SigningKey::from_bytes(&[7; 32]);
         register_daemon_key(&state, DAEMON_A, &key).await;
 
-        let expires = now_ms() + 10 * 60 * 1000;
+        let expires = now_ms() + 5 * 60 * 1000;
         let body = publish_body(CODE, expires, "nonce-pair-publish1", now_ms());
         let response = signed_post(
             &state,
@@ -2341,11 +2389,11 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
 
         let body = publish_body(
             CODE,
-            now_ms() + 10 * 60 * 1000,
+            now_ms() + 5 * 60 * 1000,
             "nonce-pair-unsigned",
             now_ms(),
         );
-        let response = app(state.clone())
+        let response = test_app(state.clone())
             .oneshot(
                 Request::post("/v1/pair/publish")
                     .body(Body::from(body))
@@ -2384,12 +2432,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         register_daemon_key(&state, DAEMON_A, &key).await;
 
         // Publish a valid code, then age it out directly in state.
-        let body = publish_body(
-            CODE,
-            now_ms() + 10 * 60 * 1000,
-            "nonce-pair-aged1",
-            now_ms(),
-        );
+        let body = publish_body(CODE, now_ms() + 5 * 60 * 1000, "nonce-pair-aged1", now_ms());
         let response =
             signed_post(&state, &key, "/v1/pair/publish", body, "nonce-pair-aged1").await;
         assert_eq!(response.status(), StatusCode::CREATED);
@@ -2415,55 +2458,13 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
     }
 
     #[tokio::test]
-    async fn resolve_locks_out_code_after_repeated_wrong_guesses() {
-        // Per-code lockout fires on a code that EXISTS but is repeatedly missed.
-        // Resolution only misses a present code when the supplied code does not
-        // match it, so seed a present entry and drive failures against its key
-        // through register_failed_resolve (the same path the handler invokes on
-        // a non-matching present code) to exercise the cap deterministically.
-        let state = RelayState::default();
-        {
-            let mut inner = state.inner.lock().expect("relay state lock poisoned");
-            inner.pairing_codes.insert(
-                CODE.to_string(),
-                PairingCodeEntry {
-                    daemon_node_id: DAEMON_A.to_string(),
-                    ticket_blob: TICKET_BLOB.to_string(),
-                    expires_at_ms: now_ms() + 10 * 60 * 1000,
-                    failed_resolves: 0,
-                },
-            );
-        }
-
-        for _ in 0..(RESOLVE_MAX_FAILURES_PER_CODE - 1) {
-            register_failed_resolve(&state, CODE);
-            assert!(
-                state
-                    .inner
-                    .lock()
-                    .expect("relay state lock poisoned")
-                    .pairing_codes
-                    .contains_key(CODE),
-                "code should survive until the failure cap"
-            );
-        }
-        // The final failure trips the lockout and deletes the code.
-        register_failed_resolve(&state, CODE);
-        assert!(
-            !state
-                .inner
-                .lock()
-                .expect("relay state lock poisoned")
-                .pairing_codes
-                .contains_key(CODE)
-        );
-        // A locked-out code resolves as a uniform miss thereafter.
-        assert_eq!(resolve(&state, CODE).await.status(), StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
     async fn resolve_rate_limits_per_client_ip() {
-        let state = RelayState::default();
+        // Behind a trusted reverse proxy the first x-forwarded-for hop is the
+        // real client, so distinct hops get distinct budgets.
+        let state = RelayState {
+            trust_forwarded_for: true,
+            ..RelayState::default()
+        };
 
         for index in 0..RESOLVE_ATTEMPTS_PER_MINUTE {
             let response = resolve_from_ip(&state, "ABCDE", "203.0.113.7").await;
@@ -2480,6 +2481,24 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         // A different client IP still gets a fresh budget.
         let response = resolve_from_ip(&state, "ABCDE", "203.0.113.8").await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn resolve_rate_limit_ignores_forwarded_for_without_trusted_proxy() {
+        let state = RelayState::default();
+
+        for index in 0..RESOLVE_ATTEMPTS_PER_MINUTE {
+            let response = resolve_from_ip(&state, "ABCDE", &format!("203.0.113.{index}")).await;
+            assert_eq!(
+                response.status(),
+                StatusCode::NOT_FOUND,
+                "attempt {index} should miss, not throttle yet"
+            );
+        }
+        // Spoofing a fresh x-forwarded-for value must not mint a fresh budget:
+        // without the trusted-proxy flag the bucket keys on the socket address.
+        let response = resolve_from_ip(&state, "ABCDE", "198.51.100.99").await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
     }
 
     #[tokio::test]
@@ -2500,7 +2519,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
 
         let body = publish_body(
             CODE,
-            now_ms() + 10 * 60 * 1000,
+            now_ms() + 5 * 60 * 1000,
             "nonce-pair-sqlite1",
             now_ms(),
         );
@@ -2525,7 +2544,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
 
         let body = publish_body(
             CODE,
-            now_ms() + 10 * 60 * 1000,
+            now_ms() + 5 * 60 * 1000,
             "nonce-pair-metric1",
             now_ms(),
         );
@@ -2541,17 +2560,84 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         assert!(!metrics.contains(TICKET_BLOB));
     }
 
+    #[tokio::test]
+    async fn register_daemon_rate_limits_per_client() {
+        let state = RelayState::default();
+        let key = SigningKey::from_bytes(&[7; 32]);
+
+        for index in 0..REGISTER_ATTEMPTS_PER_MINUTE {
+            let response =
+                register_daemon_response(&state, &format!("daemon-node-rate-{index:04}"), &key)
+                    .await;
+            assert_eq!(
+                response.status(),
+                StatusCode::CREATED,
+                "attempt {index} should register, not throttle yet"
+            );
+        }
+        // The next registration from the same client is throttled.
+        let response = register_daemon_response(&state, "daemon-node-rate-over", &key).await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn register_daemon_overwrites_existing_id_under_cap() {
+        let state = RelayState::default();
+        let key = SigningKey::from_bytes(&[7; 32]);
+
+        register_daemon_key(&state, DAEMON_A, &key).await;
+        register_daemon_key(&state, DAEMON_A, &key).await;
+
+        assert_eq!(
+            state
+                .inner
+                .lock()
+                .expect("relay state lock poisoned")
+                .daemons
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn daemon_capacity_allows_same_id_overwrite_but_blocks_new_ids() {
+        let mut inner = RelayInner::default();
+        let key = SigningKey::from_bytes(&[7; 32]).verifying_key();
+        inner.daemons.insert(DAEMON_A.to_string(), key);
+        inner.daemons.insert(DAEMON_B.to_string(), key);
+
+        assert!(!daemon_capacity_exceeded(&inner, DAEMON_A, 2));
+        assert!(daemon_capacity_exceeded(
+            &inner,
+            "daemon-node-c-1234567890",
+            2
+        ));
+        assert!(!daemon_capacity_exceeded(
+            &inner,
+            "daemon-node-c-1234567890",
+            3
+        ));
+    }
+
     async fn register_daemon_key(state: &RelayState, daemon: &str, key: &SigningKey) {
+        let response = register_daemon_response(state, daemon, key).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    async fn register_daemon_response(
+        state: &RelayState,
+        daemon: &str,
+        key: &SigningKey,
+    ) -> axum::response::Response {
         let body = serde_json::to_vec(&RegisterDaemonRequest {
             daemon_node_id: daemon.to_string(),
             public_key: BASE64.encode(key.verifying_key().to_bytes()),
         })
         .unwrap();
-        let response = app(state.clone())
+        test_app(state.clone())
             .oneshot(Request::post("/v1/pair").body(Body::from(body)).unwrap())
             .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::CREATED);
+            .unwrap()
     }
 
     async fn register_token_for(state: &RelayState, daemon: &str, key: &SigningKey, nonce: &str) {
@@ -2592,7 +2678,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
             .as_u64()
             .unwrap();
         let signature = sign(key, path, &body, nonce, ts_ms);
-        app(state.clone())
+        test_app(state.clone())
             .oneshot(
                 Request::post(path)
                     .header(SIGNATURE_HEADER, signature)

@@ -1,4 +1,5 @@
 mod ipc;
+#[cfg(feature = "test-client")]
 mod iroh_client;
 mod service;
 mod settings;
@@ -10,42 +11,17 @@ use clap_complete::Shell;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use fieldwork_protocol::{
     AgentSource, AgentState, CONTRACT_VERSION, ClientSize, ClientToServerMsg, ServerToClientMsg,
-    SessionId, SessionSummary,
+    SessionId, SessionSummary, now_ms,
 };
 use qrcode::{QrCode, render::unicode};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
-use std::io::Read;
+use std::io::{IsTerminal, Read, Write};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-const AUTO_SESSION_NAMES: &[&str] = &[
-    "waffle",
-    "pickle",
-    "noodle",
-    "bagel",
-    "nacho",
-    "spatula",
-    "kazoo",
-    "widget",
-    "pancake",
-    "pretzel",
-    "cupcake",
-    "lollipop",
-    "confetti",
-    "sprocket",
-    "marble",
-    "boomerang",
-    "muffin",
-    "donut",
-    "toaster",
-    "sprinkle",
-    "gizmo",
-    "jellybean",
-];
 
 #[derive(Parser)]
 #[command(name = "fieldwork")]
@@ -61,6 +37,7 @@ struct Cli {
 enum Command {
     Pair,
     #[command(hide = true)]
+    #[cfg(feature = "test-client")]
     PairTest {
         #[arg(long)]
         payload: Option<String>,
@@ -95,6 +72,8 @@ enum Command {
         #[arg(long)]
         expect_protocol_mismatch: bool,
         #[arg(long)]
+        expect_local_cli_forbidden: bool,
+        #[arg(long)]
         expect_forbidden_create: bool,
         #[arg(long)]
         expect_forbidden_kill: Option<String>,
@@ -116,6 +95,8 @@ enum Command {
     Kill {
         session: String,
     },
+    #[command(name = "kill-all")]
+    KillAll,
     Devices {
         #[command(subcommand)]
         command: Option<DeviceCommand>,
@@ -212,6 +193,7 @@ async fn main() -> Result<()> {
     match cli.command {
         None => run_default().await,
         Some(Command::Pair) => pair_device().await,
+        #[cfg(feature = "test-client")]
         Some(Command::PairTest {
             payload,
             code,
@@ -229,6 +211,7 @@ async fn main() -> Result<()> {
             connect_only,
             expect_unauthorized,
             expect_protocol_mismatch,
+            expect_local_cli_forbidden,
             expect_forbidden_create,
             expect_forbidden_kill,
             expect_forbidden_agent_event,
@@ -250,6 +233,7 @@ async fn main() -> Result<()> {
                 connect_only,
                 expect_unauthorized,
                 expect_protocol_mismatch,
+                expect_local_cli_forbidden,
                 expect_forbidden_create,
                 expect_forbidden_kill,
                 expect_forbidden_agent_event,
@@ -260,6 +244,7 @@ async fn main() -> Result<()> {
         Some(Command::New { dir, name, command }) => create_session(dir, name, command).await,
         Some(Command::Attach { session }) => attach_session(session).await,
         Some(Command::Kill { session }) => kill_session(session).await,
+        Some(Command::KillAll) => kill_all_sessions().await,
         Some(Command::Devices { command }) => {
             match command {
                 Some(DeviceCommand::Remove { name }) => {
@@ -351,6 +336,7 @@ fn should_check_update_notice(command: Option<&Command>) -> bool {
         Some(Command::Ls)
             | Some(Command::New { .. })
             | Some(Command::Kill { .. })
+            | Some(Command::KillAll)
             | Some(Command::Devices { .. })
             | Some(Command::Settings { .. })
             | Some(Command::Daemon { .. })
@@ -466,20 +452,74 @@ async fn pair_device() -> Result<()> {
     };
     let encoded = ticket.encode().context("encode pairing ticket")?;
     let qr = QrCode::new(encoded.as_bytes()).context("build pairing QR")?;
-    let image = qr.render::<unicode::Dense1x2>().quiet_zone(true).build();
+    let terminal = terminal_size();
+    let use_ansi = ansi_output_enabled();
 
-    println!("{image}");
-    println!("Scan the QR with the Fieldwork app — or enter this code:");
-    println!("    {}", group_code(&ticket.code));
-    println!("Expires in 10 minutes.");
+    println!("{}", style_bold("Fieldwork pairing", use_ansi));
+    println!();
+    if let Some(image) = render_pairing_qr_for_terminal(&qr, terminal, use_ansi) {
+        println!("{image}");
+        println!();
+    } else {
+        let (cols, rows) = pairing_qr_terminal_dimensions(qr.width());
+        println!(
+            "{}",
+            style_dim(
+                &format!(
+                    "QR hidden for this pane. It needs {cols}x{rows}; widen the terminal and run `fw pair` again."
+                ),
+                use_ansi
+            )
+        );
+        println!();
+    }
+    println!(
+        "{}",
+        style_dim(
+            "Scan the QR with the Fieldwork app — or enter this code:",
+            use_ansi
+        )
+    );
+    println!(
+        "    {}",
+        style_pairing_code(&group_code(&ticket.code), use_ansi)
+    );
+    let inline_countdown = std::io::stdout().is_terminal();
+    if !print_pairing_countdown(ticket.expires_at, use_ansi, inline_countdown, true)? {
+        if inline_countdown {
+            println!();
+        }
+        bail!("pairing code expired. Run `fw pair` again.");
+    }
+    let mut countdown = tokio::time::interval(Duration::from_secs(1));
+    countdown.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     loop {
-        match ipc::read_msg::<_, ServerToClientMsg>(&mut conn).await? {
+        let message = {
+            let read = ipc::read_msg::<_, ServerToClientMsg>(&mut conn);
+            tokio::pin!(read);
+            loop {
+                tokio::select! {
+                    message = &mut read => break message?,
+                    _ = countdown.tick() => {
+                        if !print_pairing_countdown(ticket.expires_at, use_ansi, inline_countdown, false)? {
+                            if inline_countdown {
+                                println!();
+                            }
+                            bail!("pairing code expired. Run `fw pair` again.");
+                        }
+                    }
+                }
+            }
+        };
+
+        match message {
             ServerToClientMsg::PairingApprovalRequested {
                 request_id,
                 device_name,
                 device_node_id,
             } => {
+                finish_pairing_countdown(inline_countdown, use_ansi)?;
                 println!(
                     "Pair request from device \"{device_name}\" ({}) — approve? [y/N]",
                     short_node_id(&device_node_id)
@@ -551,6 +591,147 @@ fn group_code(code: &str) -> String {
         head.iter().collect::<String>(),
         tail.iter().collect::<String>()
     )
+}
+
+const ANSI_RESET: &str = "\x1b[0m";
+const ANSI_BOLD: &str = "\x1b[1m";
+const ANSI_DIM: &str = "\x1b[2m";
+const ANSI_PAIRING_CODE: &str = "\x1b[1;36m";
+const ANSI_QR_LIGHT_PANEL: &str = "\x1b[30;107m";
+const QR_QUIET_ZONE_MODULES: usize = 4;
+const PAIRING_TEXT_ROWS: usize = 6;
+
+fn ansi_output_enabled() -> bool {
+    if std::env::var_os("NO_COLOR").is_some() {
+        return false;
+    }
+    if std::env::var_os("FORCE_COLOR").is_some() {
+        return true;
+    }
+
+    std::io::stdout().is_terminal()
+        && std::env::var("TERM")
+            .map(|term| term != "dumb")
+            .unwrap_or(true)
+}
+
+fn style_bold(text: &str, use_ansi: bool) -> String {
+    style_ansi(text, use_ansi, ANSI_BOLD)
+}
+
+fn style_dim(text: &str, use_ansi: bool) -> String {
+    style_ansi(text, use_ansi, ANSI_DIM)
+}
+
+fn style_pairing_code(text: &str, use_ansi: bool) -> String {
+    style_ansi(text, use_ansi, ANSI_PAIRING_CODE)
+}
+
+fn style_ansi(text: &str, use_ansi: bool, code: &str) -> String {
+    if use_ansi {
+        format!("{code}{text}{ANSI_RESET}")
+    } else {
+        text.to_string()
+    }
+}
+
+fn print_pairing_countdown(
+    expires_at: u64,
+    use_ansi: bool,
+    inline: bool,
+    force: bool,
+) -> Result<bool> {
+    let remaining_secs = pairing_remaining_seconds(expires_at);
+    let active = remaining_secs > 0;
+    let text = if active {
+        format!("Expires in {}.", format_pairing_countdown(remaining_secs))
+    } else {
+        "Expired. Run `fw pair` again.".to_string()
+    };
+
+    if inline {
+        let padded = format!("{text:<48}");
+        print!("\r{}", style_dim(&padded, use_ansi));
+        std::io::stdout()
+            .flush()
+            .context("flush pairing countdown")?;
+    } else if force || !active {
+        println!("{}", style_dim(&text, use_ansi));
+    }
+
+    Ok(active)
+}
+
+fn finish_pairing_countdown(inline: bool, use_ansi: bool) -> Result<()> {
+    if inline {
+        if use_ansi {
+            print!("\r\x1b[2K");
+        } else {
+            print!("\r{:<48}\r", "");
+        }
+        std::io::stdout()
+            .flush()
+            .context("flush pairing countdown")?;
+    }
+    Ok(())
+}
+
+fn pairing_remaining_seconds(expires_at: u64) -> u64 {
+    let remaining_ms = expires_at.saturating_sub(now_ms());
+    remaining_ms.saturating_add(999) / 1000
+}
+
+fn format_pairing_countdown(seconds: u64) -> String {
+    format!("{}:{:02}", seconds / 60, seconds % 60)
+}
+
+fn render_pairing_qr_for_terminal(
+    qr: &QrCode,
+    terminal: ClientSize,
+    use_ansi: bool,
+) -> Option<String> {
+    if pairing_qr_fits_terminal(qr.width(), terminal) {
+        let image = qr.render::<unicode::Dense1x2>().quiet_zone(true).build();
+        Some(format_pairing_qr_image(&image, terminal, use_ansi))
+    } else {
+        None
+    }
+}
+
+fn format_pairing_qr_image(image: &str, terminal: ClientSize, use_ansi: bool) -> String {
+    let qr_cols = image
+        .lines()
+        .map(|line| line.chars().count())
+        .max()
+        .unwrap_or(0);
+    let padding = centered_padding(qr_cols, terminal.cols);
+    let prefix = " ".repeat(padding);
+
+    image
+        .lines()
+        .map(|line| {
+            if use_ansi {
+                format!("{prefix}{ANSI_QR_LIGHT_PANEL}{line}{ANSI_RESET}")
+            } else {
+                format!("{prefix}{line}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn centered_padding(content_cols: usize, terminal_cols: u16) -> usize {
+    usize::from(terminal_cols).saturating_sub(content_cols) / 2
+}
+
+fn pairing_qr_fits_terminal(qr_modules: usize, terminal: ClientSize) -> bool {
+    let (cols, rows) = pairing_qr_terminal_dimensions(qr_modules);
+    usize::from(terminal.cols) >= cols && usize::from(terminal.rows) >= rows + PAIRING_TEXT_ROWS
+}
+
+fn pairing_qr_terminal_dimensions(qr_modules: usize) -> (usize, usize) {
+    let cols = qr_modules + (QR_QUIET_ZONE_MODULES * 2);
+    (cols, cols.div_ceil(2))
 }
 
 async fn run_hook(command: HookCommand) -> Result<()> {
@@ -664,70 +845,38 @@ async fn list_sessions() -> Result<()> {
 }
 
 async fn run_default() -> Result<()> {
-    let sessions = fetch_sessions().await?;
-    let summary = create_session_summary(
-        PathBuf::from("."),
-        Some(auto_session_name(&sessions)),
-        Vec::new(),
-    )
-    .await?;
-    eprintln!("created {}\t{}", summary.id, summary.name);
+    let summary = create_session_summary(PathBuf::from("."), None, Vec::new()).await?;
+    eprintln!("fieldwork session started {}\t{}", summary.id, summary.name);
     attach_session(summary.id.to_string()).await
 }
 
 async fn open_named_session(args: Vec<OsString>) -> Result<()> {
-    let name = parse_named_shortcut_args(args)?;
+    let bin_name = invoked_cli_bin_name();
+    let name = parse_named_shortcut_args(args, &bin_name)?;
     let sessions = fetch_sessions().await?;
     if let Some(session) = sessions.iter().find(|session| session.name == name) {
         return attach_session(session.id.to_string()).await;
     }
 
     let summary = create_session_summary(PathBuf::from("."), Some(name), Vec::new()).await?;
-    eprintln!("created {}\t{}", summary.id, summary.name);
+    eprintln!("fieldwork session started {}\t{}", summary.id, summary.name);
     attach_session(summary.id.to_string()).await
 }
 
-fn parse_named_shortcut_args(args: Vec<OsString>) -> Result<String> {
+fn parse_named_shortcut_args(args: Vec<OsString>, bin_name: &str) -> Result<String> {
     let mut args = args.into_iter();
     let Some(name) = args.next() else {
         bail!("named session shortcut requires a session name");
     };
     if args.next().is_some() {
         bail!(
-            "named session shortcut accepts one session name; use `fieldwork new --name <name> -- <cmd...>` to choose a command"
+            "named session shortcut accepts one session name; use `{bin_name} new --name <name> -- <cmd...>` to choose a command"
         );
     }
     let name = name
         .into_string()
         .map_err(|_| anyhow::anyhow!("named session shortcut requires a UTF-8 session name"))?;
     normalize_session_name(name)
-}
-
-fn auto_session_name(existing: &[SessionSummary]) -> String {
-    let start = auto_name_start_index();
-    for offset in 0..AUTO_SESSION_NAMES.len() {
-        let name = AUTO_SESSION_NAMES[(start + offset) % AUTO_SESSION_NAMES.len()];
-        if existing.iter().all(|session| session.name != name) {
-            return name.to_string();
-        }
-    }
-
-    let base = AUTO_SESSION_NAMES[start % AUTO_SESSION_NAMES.len()];
-    for suffix in 2.. {
-        let candidate = format!("{base}{suffix}");
-        if existing.iter().all(|session| session.name != candidate) {
-            return candidate;
-        }
-    }
-    unreachable!("unbounded suffix search always returns")
-}
-
-fn auto_name_start_index() -> usize {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or_default();
-    (nanos as usize ^ std::process::id() as usize) % AUTO_SESSION_NAMES.len()
 }
 
 async fn fetch_sessions() -> Result<Vec<SessionSummary>> {
@@ -768,18 +917,16 @@ async fn create_session_summary(
     mut command: Vec<String>,
 ) -> Result<SessionSummary> {
     if command.is_empty() {
-        command.push("claude".to_string());
+        command = default_session_command();
     }
     let cwd = dir
         .canonicalize()
         .with_context(|| format!("canonicalize {}", dir.display()))?;
-    let name = match name {
-        Some(name) => normalize_session_name(name)?,
-        None => session_name(&command, &cwd),
-    };
     let size = terminal_size();
 
     let (mut conn, _) = ipc::connect_local().await?;
+    let name = requested_session_name(name)?;
+
     ipc::write_msg(
         &mut conn,
         &ClientToServerMsg::CreateSession {
@@ -797,6 +944,22 @@ async fn create_session_summary(
         ServerToClientMsg::Error { message, .. } => bail!("{message}"),
         other => bail!("unexpected daemon response: {other:?}"),
     }
+}
+
+fn default_session_command() -> Vec<String> {
+    vec![default_shell()]
+}
+
+fn default_shell() -> String {
+    default_shell_from_env(std::env::var_os("SHELL"))
+}
+
+fn default_shell_from_env(shell: Option<OsString>) -> String {
+    shell
+        .and_then(|value| value.into_string().ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "/bin/sh".to_string())
 }
 
 async fn attach_session(session_ref: String) -> Result<()> {
@@ -867,38 +1030,54 @@ async fn attach_session(session_ref: String) -> Result<()> {
         let mut stdin = tokio::io::stdin();
         let mut buf = [0_u8; 1024];
         let mut prefix = false;
+        let mut winch =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::window_change())?;
         loop {
-            let n = stdin.read(&mut buf).await?;
-            if n == 0 {
-                break;
-            }
-
-            let mut outgoing = Vec::with_capacity(n);
-            for &byte in &buf[..n] {
-                if prefix {
-                    prefix = false;
-                    if byte == b'd' || byte == b'D' {
-                        ipc::write_msg(&mut writer, &ClientToServerMsg::DetachSession).await?;
-                        return anyhow::Ok(());
+            tokio::select! {
+                n = stdin.read(&mut buf) => {
+                    let n = n?;
+                    if n == 0 {
+                        break;
                     }
-                    outgoing.push(0x02);
-                    outgoing.push(byte);
-                } else if byte == 0x02 {
-                    prefix = true;
-                } else {
-                    outgoing.push(byte);
-                }
-            }
 
-            if !outgoing.is_empty() {
-                ipc::write_msg(
-                    &mut writer,
-                    &ClientToServerMsg::Input {
-                        session_id,
-                        bytes: outgoing,
-                    },
-                )
-                .await?;
+                    let mut outgoing = Vec::with_capacity(n);
+                    for &byte in &buf[..n] {
+                        if prefix {
+                            prefix = false;
+                            if byte == b'd' || byte == b'D' {
+                                ipc::write_msg(&mut writer, &ClientToServerMsg::DetachSession).await?;
+                                return anyhow::Ok(());
+                            }
+                            outgoing.push(0x02);
+                            outgoing.push(byte);
+                        } else if byte == 0x02 {
+                            prefix = true;
+                        } else {
+                            outgoing.push(byte);
+                        }
+                    }
+
+                    if !outgoing.is_empty() {
+                        ipc::write_msg(
+                            &mut writer,
+                            &ClientToServerMsg::Input {
+                                session_id,
+                                bytes: outgoing,
+                            },
+                        )
+                        .await?;
+                    }
+                }
+                _ = winch.recv() => {
+                    ipc::write_msg(
+                        &mut writer,
+                        &ClientToServerMsg::Resize {
+                            session_id,
+                            size: terminal_size(),
+                        },
+                    )
+                    .await?;
+                }
             }
         }
         anyhow::Ok(())
@@ -922,15 +1101,64 @@ async fn attach_session(session_ref: String) -> Result<()> {
 async fn kill_session(session_ref: String) -> Result<()> {
     let (mut conn, _) = ipc::connect_local().await?;
     let session = resolve_session(&mut conn, &session_ref).await?;
-    ipc::write_msg(
-        &mut conn,
-        &ClientToServerMsg::KillSession {
-            session_id: session.id,
-        },
-    )
-    .await?;
-    println!("removed {}", session.id);
+    kill_session_by_id(&mut conn, session.id).await?;
+    wait_for_sessions_removed(&[session.id]).await?;
+    println!("removed {}\t{}", session.id, session.name);
     Ok(())
+}
+
+async fn kill_all_sessions() -> Result<()> {
+    let sessions = fetch_sessions().await?;
+    if sessions.is_empty() {
+        println!("No sessions.");
+        return Ok(());
+    }
+
+    let (mut conn, _) = ipc::connect_local().await?;
+    for session in &sessions {
+        kill_session_by_id(&mut conn, session.id).await?;
+    }
+    let ids: Vec<SessionId> = sessions.iter().map(|session| session.id).collect();
+    wait_for_sessions_removed(&ids).await?;
+
+    for session in &sessions {
+        println!("removed {}\t{}", session.id, session.name);
+    }
+    println!(
+        "removed {} session{}",
+        sessions.len(),
+        if sessions.len() == 1 { "" } else { "s" }
+    );
+    Ok(())
+}
+
+async fn kill_session_by_id(
+    conn: &mut interprocess::local_socket::tokio::Stream,
+    id: SessionId,
+) -> Result<()> {
+    ipc::write_msg(conn, &ClientToServerMsg::KillSession { session_id: id }).await?;
+    Ok(())
+}
+
+async fn wait_for_sessions_removed(ids: &[SessionId]) -> Result<()> {
+    let mut remaining = Vec::new();
+    for _ in 0..50 {
+        let sessions = fetch_sessions().await?;
+        remaining = sessions
+            .into_iter()
+            .filter(|session| ids.contains(&session.id))
+            .map(|session| session.id.to_string())
+            .collect();
+        if remaining.is_empty() {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    bail!(
+        "timed out waiting for sessions to be removed: {}",
+        remaining.join(", ")
+    )
 }
 
 async fn run_doctor(no_start: bool) -> Result<()> {
@@ -1076,10 +1304,18 @@ async fn run_doctor(no_start: bool) -> Result<()> {
     }
 
     match settings::scrollback_encryption_status() {
-        Ok(status) => println!(
-            "scrollback encryption: {}",
-            if status.enabled { "on" } else { "off" }
-        ),
+        Ok(status) => match settings::scrollback_encryption_env_override() {
+            Ok(Some(enabled)) => println!(
+                "scrollback encryption: {} (env override; config: {})",
+                if enabled { "on" } else { "off" },
+                if status.enabled { "on" } else { "off" },
+            ),
+            Ok(None) => println!(
+                "scrollback encryption: {}",
+                if status.enabled { "on" } else { "off" }
+            ),
+            Err(error) => println!("scrollback encryption: unavailable ({error})"),
+        },
         Err(error) => println!("scrollback encryption: unavailable ({error})"),
     }
 
@@ -1365,14 +1601,6 @@ fn normalized_terminal_size(cols: u16, rows: u16) -> ClientSize {
     }
 }
 
-fn session_name(command: &[String], cwd: &std::path::Path) -> String {
-    let dir = cwd
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("work");
-    format!("{} · {dir}", command[0])
-}
-
 fn normalize_session_name(name: String) -> Result<String> {
     let name = name.trim().to_string();
     if name.is_empty() {
@@ -1382,6 +1610,13 @@ fn normalize_session_name(name: String) -> Result<String> {
         bail!("session name cannot contain control characters");
     }
     Ok(name)
+}
+
+fn requested_session_name(name: Option<String>) -> Result<String> {
+    match name {
+        Some(name) => normalize_session_name(name),
+        None => Ok(String::new()),
+    }
 }
 
 fn print_daemon_logs(tail: usize) -> Result<()> {
@@ -1451,15 +1686,17 @@ impl Drop for RawMode {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUTO_SESSION_NAMES, Cli, Command, HookCommand, MacosSignatureKind, auto_session_name,
-        cli_command_with_bin_name, codex_state_from_json, codex_states_from_payload,
-        completion_bin_name_with_override, doctor_socket_file_status, doctor_socket_parent_status,
-        macos_trust_mode_from_signature_kinds, normalize_session_name, parse_macos_signature_kind,
-        parse_named_shortcut_args, should_check_update_notice,
+        ANSI_QR_LIGHT_PANEL, ANSI_RESET, Cli, ClientSize, Command, HookCommand, MacosSignatureKind,
+        PAIRING_TEXT_ROWS, centered_padding, cli_command_with_bin_name, codex_state_from_json,
+        codex_states_from_payload, completion_bin_name_with_override, default_shell_from_env,
+        doctor_socket_file_status, doctor_socket_parent_status, format_pairing_countdown,
+        format_pairing_qr_image, macos_trust_mode_from_signature_kinds, normalize_session_name,
+        pairing_qr_fits_terminal, pairing_qr_terminal_dimensions, parse_macos_signature_kind,
+        parse_named_shortcut_args, requested_session_name, should_check_update_notice,
     };
     use clap::Parser;
     use clap_complete::Shell;
-    use fieldwork_protocol::{AgentState, SessionId};
+    use fieldwork_protocol::AgentState;
     use std::ffi::OsString;
     use std::fs;
     use std::os::unix::fs::{PermissionsExt, symlink};
@@ -1530,6 +1767,7 @@ mod tests {
             name: None,
             command: vec!["bash".to_string()],
         })));
+        assert!(should_check_update_notice(Some(&Command::KillAll)));
         assert!(should_check_update_notice(Some(&Command::Doctor {
             no_start: true,
         })));
@@ -1554,6 +1792,19 @@ mod tests {
     fn no_args_parse_to_no_args_fast_path() {
         let cli = Cli::try_parse_from(["fieldwork"]).expect("no-arg CLI parses");
         assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn default_session_command_uses_user_shell() {
+        assert_eq!(
+            default_shell_from_env(Some(OsString::from("/bin/zsh"))),
+            "/bin/zsh"
+        );
+        assert_eq!(
+            default_shell_from_env(Some(OsString::from("  "))),
+            "/bin/sh"
+        );
+        assert_eq!(default_shell_from_env(None), "/bin/sh");
     }
 
     #[test]
@@ -1618,12 +1869,30 @@ mod tests {
     }
 
     #[test]
+    fn named_shortcut_command_error_follows_invoked_alias() {
+        let error = parse_named_shortcut_args(
+            vec![OsString::from("refactoringjob"), OsString::from("bash")],
+            "fw",
+        )
+        .expect_err("extra named-shortcut argument should fail");
+        let message = error.to_string();
+        assert!(message.contains("use `fw new --name <name> -- <cmd...>`"));
+        assert!(!message.contains("use `fieldwork new"));
+    }
+
+    #[test]
     fn doctor_parses_with_no_start_flag() {
         let cli = Cli::try_parse_from(["fw", "doctor", "--no-start"]).expect("doctor parses");
         let Some(Command::Doctor { no_start }) = cli.command else {
             panic!("expected doctor command");
         };
         assert!(no_start);
+    }
+
+    #[test]
+    fn kill_all_parses_as_top_level_command() {
+        let cli = Cli::try_parse_from(["fw", "kill-all"]).expect("kill-all parses");
+        assert!(matches!(cli.command, Some(Command::KillAll)));
     }
 
     #[test]
@@ -1755,41 +2024,33 @@ mod tests {
     #[test]
     fn named_shortcut_requires_exactly_one_valid_name() {
         assert_eq!(
-            parse_named_shortcut_args(vec![OsString::from("  refactoringjob  ")])
+            parse_named_shortcut_args(vec![OsString::from("  refactoringjob  ")], "fieldwork")
                 .expect("valid shortcut"),
             "refactoringjob"
         );
-        assert!(parse_named_shortcut_args(Vec::new()).is_err());
+        assert!(parse_named_shortcut_args(Vec::new(), "fieldwork").is_err());
         assert!(
-            parse_named_shortcut_args(vec![
-                OsString::from("refactoringjob"),
-                OsString::from("bash")
-            ])
+            parse_named_shortcut_args(
+                vec![OsString::from("refactoringjob"), OsString::from("bash")],
+                "fieldwork"
+            )
             .is_err()
         );
         assert!(normalize_session_name("line\nbreak".to_string()).is_err());
     }
 
     #[test]
-    fn auto_session_names_are_one_word_and_avoid_collisions() {
-        let name = auto_session_name(&[]);
-        assert!(AUTO_SESSION_NAMES.contains(&name.as_str()));
-        assert!(
-            name.chars()
-                .all(|ch| !ch.is_whitespace() && !ch.is_control())
-        );
+    fn missing_new_name_is_left_for_daemon_generation() {
+        assert_eq!(requested_session_name(None).unwrap(), "");
+    }
 
-        let existing: Vec<_> = AUTO_SESSION_NAMES
-            .iter()
-            .map(|name| test_summary(name))
-            .collect();
-        let fallback = auto_session_name(&existing);
-        assert!(!existing.iter().any(|session| session.name == fallback));
-        assert!(
-            fallback
-                .chars()
-                .all(|ch| !ch.is_whitespace() && !ch.is_control())
+    #[test]
+    fn explicit_new_name_is_normalized_before_create() {
+        assert_eq!(
+            requested_session_name(Some("  refactoringjob  ".to_string())).unwrap(),
+            "refactoringjob"
         );
+        assert!(requested_session_name(Some("line\nbreak".to_string())).is_err());
     }
 
     #[test]
@@ -1803,17 +2064,59 @@ mod tests {
         assert_eq!(size.rows, 24);
     }
 
-    fn test_summary(name: &str) -> fieldwork_protocol::SessionSummary {
-        fieldwork_protocol::SessionSummary {
-            id: SessionId::new(),
-            name: name.to_string(),
-            command: vec!["claude".to_string()],
-            cwd: PathBuf::from("."),
-            created_at: 0,
-            last_activity: 0,
-            state: AgentState::Idle,
-            last_line: None,
-            model: None,
-        }
+    #[test]
+    fn pairing_qr_fits_only_when_terminal_can_show_whole_code() {
+        let qr_modules = 85;
+        let (cols, rows) = pairing_qr_terminal_dimensions(qr_modules);
+        assert_eq!(cols, 93);
+        assert_eq!(rows, 47);
+
+        assert!(pairing_qr_fits_terminal(
+            qr_modules,
+            ClientSize {
+                cols: cols as u16,
+                rows: (rows + PAIRING_TEXT_ROWS) as u16,
+            }
+        ));
+        assert!(!pairing_qr_fits_terminal(
+            qr_modules,
+            ClientSize {
+                cols: (cols - 1) as u16,
+                rows: (rows + PAIRING_TEXT_ROWS) as u16,
+            }
+        ));
+        assert!(!pairing_qr_fits_terminal(
+            qr_modules,
+            ClientSize {
+                cols: cols as u16,
+                rows: (rows + PAIRING_TEXT_ROWS - 1) as u16,
+            }
+        ));
+    }
+
+    #[test]
+    fn pairing_qr_image_is_centered_when_terminal_is_wider() {
+        assert_eq!(centered_padding(4, 10), 3);
+        let rendered =
+            format_pairing_qr_image("abcd\nefgh", ClientSize { cols: 10, rows: 24 }, false);
+
+        assert_eq!(rendered, "   abcd\n   efgh");
+    }
+
+    #[test]
+    fn pairing_qr_image_uses_light_panel_when_ansi_is_enabled() {
+        let rendered = format_pairing_qr_image("  \n██", ClientSize { cols: 2, rows: 24 }, true);
+
+        assert_eq!(
+            rendered,
+            format!("{ANSI_QR_LIGHT_PANEL}  {ANSI_RESET}\n{ANSI_QR_LIGHT_PANEL}██{ANSI_RESET}")
+        );
+    }
+
+    #[test]
+    fn pairing_countdown_formats_minutes_and_seconds() {
+        assert_eq!(format_pairing_countdown(300), "5:00");
+        assert_eq!(format_pairing_countdown(65), "1:05");
+        assert_eq!(format_pairing_countdown(4), "0:04");
     }
 }

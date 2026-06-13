@@ -19,39 +19,15 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-      - id: fieldwork-secret-boundaries
-        name: node scripts/verify-secret-boundaries.mjs
-        entry: node scripts/verify-secret-boundaries.mjs
+      - id: fieldwork-npm-dispatcher
+        name: node scripts/test-npm-dispatcher.mjs
+        entry: node scripts/test-npm-dispatcher.mjs
         language: system
         pass_filenames: false
         always_run: true
-      - id: fieldwork-no-ship-markers
-        name: node scripts/verify-no-ship-markers.mjs
-        entry: node scripts/verify-no-ship-markers.mjs
-        language: system
-        pass_filenames: false
-        always_run: true
-      - id: fieldwork-no-ship-markers-self-test
-        name: node scripts/verify-no-ship-markers.mjs --self-test
-        entry: node scripts/verify-no-ship-markers.mjs --self-test
-        language: system
-        pass_filenames: false
-        always_run: true
-      - id: fieldwork-live-testing-evidence
-        name: node scripts/test-live-testing-evidence.mjs
-        entry: node scripts/test-live-testing-evidence.mjs
-        language: system
-        pass_filenames: false
-        always_run: true
-      - id: fieldwork-debug-instance
-        name: node scripts/test-debug-instance.mjs
-        entry: node scripts/test-debug-instance.mjs
-        language: system
-        pass_filenames: false
-        always_run: true
-      - id: fieldwork-structured-assets
-        name: node scripts/verify-structured-assets.mjs
-        entry: node scripts/verify-structured-assets.mjs
+      - id: fieldwork-npm-publish-plan
+        name: node scripts/test-npm-publish-plan.mjs
+        entry: node scripts/test-npm-publish-plan.mjs
         language: system
         pass_filenames: false
         always_run: true

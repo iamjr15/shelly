@@ -2,26 +2,26 @@ package app.fieldwork.android.core
 
 import android.content.Context
 import android.util.Base64
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import org.json.JSONArray
 import org.json.JSONObject
 
-class PairingStore(context: Context) {
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
+class PairingStore internal constructor(
+    context: Context,
+    private val cipher: PairingCipher,
+) {
+    constructor(context: Context) : this(context, KeystorePairingCipher())
 
-    private val prefs = EncryptedSharedPreferences.create(
-        context,
-        "fieldwork_pairing",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    private val prefs = context.getSharedPreferences("fieldwork_pairing_v2", Context.MODE_PRIVATE)
+
+    init {
+        context.deleteSharedPreferences("fieldwork_pairing")
+    }
 
     fun load(): PairedDaemonRecord? {
-        val raw = prefs.getString("daemon", null) ?: return null
+        val stored = prefs.getString("daemon", null) ?: return null
+        val raw = runCatching {
+            String(cipher.decrypt(Base64.decode(stored, Base64.NO_WRAP)), Charsets.UTF_8)
+        }.getOrNull() ?: return null
         val json = JSONObject(raw)
         return PairedDaemonRecord(
             daemonNodeId = json.getString("daemonNodeId"),
@@ -45,7 +45,8 @@ class PairingStore(context: Context) {
             .put("deviceNodeId", record.deviceNodeId)
             .put("deviceSecretKey", Base64.encodeToString(record.deviceSecretKey, Base64.NO_WRAP))
             .put("pairedAtMillis", record.pairedAtMillis)
-        prefs.edit().putString("daemon", json.toString()).apply()
+        val encrypted = cipher.encrypt(json.toString().toByteArray(Charsets.UTF_8))
+        prefs.edit().putString("daemon", Base64.encodeToString(encrypted, Base64.NO_WRAP)).apply()
     }
 
     fun clear() {

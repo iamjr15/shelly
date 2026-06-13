@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
@@ -25,6 +26,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -38,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.fieldwork.android.core.AndroidBiometricGate
 import app.fieldwork.android.core.FieldworkViewModel
@@ -55,7 +58,7 @@ private enum class AppTab {
     Settings,
 }
 
-private val FieldworkColorScheme = lightColorScheme(
+private val FieldworkLightColorScheme = lightColorScheme(
     primary = Color(0xFF245B4E),
     onPrimary = Color.White,
     primaryContainer = Color(0xFFD7EEE6),
@@ -71,6 +74,24 @@ private val FieldworkColorScheme = lightColorScheme(
     outline = Color(0xFF737B72),
 )
 
+private val FieldworkDarkColorScheme = darkColorScheme(
+    primary = Color(0xFF8DCCB8),
+    onPrimary = Color(0xFF12342C),
+    primaryContainer = Color(0xFF1D4037),
+    onPrimaryContainer = Color(0xFFD7EEE6),
+    secondary = Color(0xFFD2C1A5),
+    onSecondary = Color(0xFF352B1B),
+    background = Color(0xFF101412),
+    onBackground = Color(0xFFE8EAE5),
+    surface = Color(0xFF181C1A),
+    onSurface = Color(0xFFE8EAE5),
+    surfaceVariant = Color(0xFF2A302D),
+    onSurfaceVariant = Color(0xFFC3CAC2),
+    outline = Color(0xFF8A938A),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FieldworkApp(
@@ -80,11 +101,13 @@ fun FieldworkApp(
 ) {
     val state by viewModel.state.collectAsState()
     var selectedTab by remember { mutableStateOf(AppTab.Sessions) }
+    var unlockUnavailableMessage by remember { mutableStateOf(biometricGate.unlockUnavailableMessage()) }
     val activeTerminalSession = state.activeTerminalSessionId?.let { sessionId ->
         state.sessions.firstOrNull { it.id == sessionId }
     }
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
+    val colorScheme = if (isSystemInDarkTheme()) FieldworkDarkColorScheme else FieldworkLightColorScheme
 
     LaunchedEffect(Unit) {
         val unlocked = biometricGate.unlock("Unlock Fieldwork")
@@ -100,8 +123,13 @@ fun FieldworkApp(
     DisposableEffect(lifecycleOwner, biometricGate, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> AndroidBiometricGate.markBackgrounded()
+                Lifecycle.Event.ON_STOP -> {
+                    AndroidBiometricGate.markBackgrounded()
+                    viewModel.onAppBackgrounded()
+                }
                 Lifecycle.Event.ON_RESUME -> {
+                    unlockUnavailableMessage = biometricGate.unlockUnavailableMessage()
+                    viewModel.onAppForegrounded()
                     if (biometricGate.shouldLockOnResume) {
                         viewModel.setUnlocked(false)
                         scope.launch {
@@ -118,7 +146,7 @@ fun FieldworkApp(
         }
     }
 
-    MaterialTheme(colorScheme = FieldworkColorScheme) {
+    MaterialTheme(colorScheme = colorScheme) {
         Surface(modifier = Modifier.fillMaxSize()) {
             if (state.unlocked) {
                 Scaffold(
@@ -181,7 +209,8 @@ fun FieldworkApp(
                     }
                 }
             } else {
-                LockedOverlay {
+                LockedOverlay(unavailableMessage = unlockUnavailableMessage) {
+                    unlockUnavailableMessage = biometricGate.unlockUnavailableMessage()
                     scope.launch {
                         viewModel.setUnlocked(biometricGate.unlock("Unlock Fieldwork"))
                     }
@@ -215,7 +244,11 @@ fun FieldworkApp(
                     text = "Help improve Fieldwork?",
                     style = MaterialTheme.typography.titleLarge,
                 )
-                Text("Product diagnostics only. No code, prompts, terminal output, or file paths.")
+                Text(
+                    "Records a local preference only. This version of Fieldwork collects and sends no diagnostics; " +
+                        "the preference takes effect only if a future version adds them. " +
+                        "No code, prompts, terminal output, or file paths.",
+                )
                 Button(
                     onClick = { viewModel.answerTelemetryConsent(true) },
                     modifier = Modifier.fillMaxWidth(),
@@ -246,21 +279,38 @@ private fun RestoringPairingPlaceholder(padding: PaddingValues) {
 }
 
 @Composable
-private fun LockedOverlay(onUnlock: () -> Unit) {
+private fun LockedOverlay(
+    unavailableMessage: String?,
+    onUnlock: () -> Unit,
+) {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Button(
-                onClick = onUnlock,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Icon(Icons.Default.Lock, contentDescription = null)
-                Text("Unlock")
+                Button(
+                    onClick = onUnlock,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                ) {
+                    Icon(Icons.Default.Lock, contentDescription = null)
+                    Text("Unlock")
+                }
+                unavailableMessage?.let { message ->
+                    Text(
+                        text = message,
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
     }

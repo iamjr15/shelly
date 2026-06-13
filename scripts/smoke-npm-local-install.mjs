@@ -73,7 +73,8 @@ try {
   assertIncludes(run(daemonBin, ["--help"], { cwd: projectDir, env: isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) }).stdout, "Usage:", "fieldworkd help");
 
   if (process.platform === "darwin") {
-    run(process.execPath, ["scripts/verify-macos-signing.mjs", installedBinDir], { cwd: root });
+    assertDarwinTrust(installedFieldwork);
+    assertDarwinTrust(installedDaemon);
   }
 
   console.log(`npm local install smoke ok: fieldwork + fieldwork-${hostKey}`);
@@ -144,6 +145,18 @@ function rejectJsFallback(file) {
   const firstBytes = fs.readFileSync(file).subarray(0, 64).toString("utf8");
   if (firstBytes.startsWith("#!/usr/bin/env node")) {
     fail(`${file} still contains the JS dispatcher fallback after postinstall`);
+  }
+}
+
+function assertDarwinTrust(file) {
+  run("codesign", ["--verify", "--verbose=2", file], { cwd: root });
+  const quarantine = spawnSync("xattr", ["-p", "com.apple.quarantine", file], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (quarantine.status === 0) {
+    fail(`${file} still has com.apple.quarantine metadata`);
   }
 }
 

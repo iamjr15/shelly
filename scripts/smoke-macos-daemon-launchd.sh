@@ -46,7 +46,7 @@ if pgrep -x fieldworkd >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "$tmp/home" "$tmp/runtime" "$tmp/config" "$tmp/state" "$tmp/cache" "$tmp/logs" "$tmp/packs" "$tmp/project" "$tmp/bin" "$tmp/evidence"
+mkdir -p "$tmp/home" "$tmp/runtime" "$tmp/config" "$tmp/state" "$tmp/cache" "$tmp/logs" "$tmp/packs" "$tmp/project" "$tmp/bin" "$tmp/artifacts"
 chmod 700 "$tmp/home" "$tmp/runtime" "$tmp/config" "$tmp/state" "$tmp/cache" "$tmp/logs"
 printf '{ "private": true }\n' >"$tmp/project/package.json"
 
@@ -97,7 +97,7 @@ pack_package() {
 
 platform_pack="$(pack_package "$platform_dir")"
 meta_pack="$(pack_package "$meta_dir")"
-npm install --prefix "$tmp/project" --package-lock=false --no-audit --no-fund "$platform_pack" "$meta_pack" >"$tmp/evidence/npm-install.txt" 2>&1
+npm install --prefix "$tmp/project" --package-lock=false --no-audit --no-fund "$platform_pack" "$meta_pack" >"$tmp/artifacts/npm-install.txt" 2>&1
 
 fieldwork="$tmp/project/node_modules/fieldwork/bin/fieldwork"
 fieldworkd="$tmp/project/node_modules/fieldwork/bin/fieldworkd"
@@ -110,7 +110,19 @@ for binary in "$fieldwork" "$fieldworkd" "$fw"; do
   fi
 done
 
-node "$repo_root/scripts/verify-macos-signing.mjs" "$tmp/project/node_modules/fieldwork/bin" >"$tmp/evidence/macos-signing.txt"
+{
+  codesign --verify --verbose=2 "$fieldwork"
+  codesign --verify --verbose=2 "$fieldworkd"
+  if xattr -p com.apple.quarantine "$fieldwork" >/dev/null 2>&1; then
+    echo "fieldwork still has com.apple.quarantine metadata" >&2
+    exit 1
+  fi
+  if xattr -p com.apple.quarantine "$fieldworkd" >/dev/null 2>&1; then
+    echo "fieldworkd still has com.apple.quarantine metadata" >&2
+    exit 1
+  fi
+  echo "macOS npm trust smoke ok"
+} >"$tmp/artifacts/macos-signing.txt" 2>&1
 
 # The production service uses the OS keychain. This deterministic key is a
 # launchd-session-only smoke substitute so the test can run without an
@@ -123,7 +135,7 @@ launchd_env_set=1
   echo "LaunchAgent: $HOME/Library/LaunchAgents/app.fieldwork.daemon.plist"
   "$fieldwork" daemon install
   echo "socket: reachable"
-} >"$tmp/evidence/service-install.txt" 2>&1
+} >"$tmp/artifacts/service-install.txt" 2>&1
 service_installed=1
 
 plist="$HOME/Library/LaunchAgents/app.fieldwork.daemon.plist"
@@ -140,28 +152,28 @@ if grep -Fq "FIELDWORK_IROH_SECRET_KEY_B64" "$plist"; then
   exit 1
 fi
 
-"$fieldwork" daemon status >"$tmp/evidence/daemon-status-before.txt"
-grep -Eiq "service: (running|installed)" "$tmp/evidence/daemon-status-before.txt"
-grep -Fq "socket: reachable" "$tmp/evidence/daemon-status-before.txt"
+"$fieldwork" daemon status >"$tmp/artifacts/daemon-status-before.txt"
+grep -Eiq "service: (running|installed)" "$tmp/artifacts/daemon-status-before.txt"
+grep -Fq "socket: reachable" "$tmp/artifacts/daemon-status-before.txt"
 
-"$fw" doctor --no-start >"$tmp/evidence/doctor-no-start.txt"
-grep -Fq "macOS trust: ok (npm/ad-hoc/not-notarized" "$tmp/evidence/doctor-no-start.txt"
-grep -Fq "socket path: $XDG_RUNTIME_DIR/fieldwork/control.sock" "$tmp/evidence/doctor-no-start.txt"
-grep -Fq "summary: ok" "$tmp/evidence/doctor-no-start.txt"
+"$fw" doctor --no-start >"$tmp/artifacts/doctor-no-start.txt"
+grep -Fq "macOS trust: ok (npm/ad-hoc/not-notarized" "$tmp/artifacts/doctor-no-start.txt"
+grep -Fq "socket path: $XDG_RUNTIME_DIR/fieldwork/control.sock" "$tmp/artifacts/doctor-no-start.txt"
+grep -Fq "summary: ok" "$tmp/artifacts/doctor-no-start.txt"
 
 # Use the temp project outside macOS Desktop/Documents TCC-protected locations so
 # this smoke verifies launchd PTY survival rather than operator privacy grants.
-"$fieldwork" new --dir "$tmp/project" --name macos_kill -- /bin/sh -c "printf 'MACOS_KILL_SCROLLBACK_BEFORE\n'; sleep 600" >"$tmp/evidence/new-kill-session.txt"
+"$fieldwork" new --dir "$tmp/project" --name macos_kill -- /bin/sh -c "printf 'MACOS_KILL_SCROLLBACK_BEFORE\n'; sleep 600" >"$tmp/artifacts/new-kill-session.txt"
 for attempt in $(seq 1 10); do
-  (sleep 2; printf '\002d') | perl -e 'alarm 10; exec @ARGV' script -q "$tmp/evidence/kill-live-replay.txt" "$fieldwork" attach macos_kill >/dev/null 2>&1 || true
-  if grep -Fq "MACOS_KILL_SCROLLBACK_BEFORE" "$tmp/evidence/kill-live-replay.txt"; then
+  (sleep 2; printf '\002d') | perl -e 'alarm 10; exec @ARGV' script -q "$tmp/artifacts/kill-live-replay.txt" "$fieldwork" attach macos_kill >/dev/null 2>&1 || true
+  if grep -Fq "MACOS_KILL_SCROLLBACK_BEFORE" "$tmp/artifacts/kill-live-replay.txt"; then
     break
   fi
   sleep 0.5
 done
-grep -Fq "MACOS_KILL_SCROLLBACK_BEFORE" "$tmp/evidence/kill-live-replay.txt"
+grep -Fq "MACOS_KILL_SCROLLBACK_BEFORE" "$tmp/artifacts/kill-live-replay.txt"
 # Session scrollback persists on the daemon's 30-second checkpoint loop. Wait
-# for one checkpoint so the launchd restart evidence proves restored scrollback,
+# for one checkpoint so the launchd restart check proves restored scrollback,
 # not just restored session metadata.
 sleep "${FIELDWORK_MACOS_LAUNCHD_PERSIST_WAIT_SECONDS:-35}"
 
@@ -169,16 +181,16 @@ kill_start_ms="$(node -e 'console.log(Date.now())')"
 pkill -KILL -x fieldworkd
 
 for _ in $(seq 1 80); do
-  if "$fieldwork" daemon status >"$tmp/evidence/daemon-status-after-kill.tmp" 2>&1 \
-    && grep -Fq "socket: reachable" "$tmp/evidence/daemon-status-after-kill.tmp"; then
+  if "$fieldwork" daemon status >"$tmp/artifacts/daemon-status-after-kill.tmp" 2>&1 \
+    && grep -Fq "socket: reachable" "$tmp/artifacts/daemon-status-after-kill.tmp"; then
     break
   fi
   sleep 0.25
 done
 
-if ! grep -Fq "socket: reachable" "$tmp/evidence/daemon-status-after-kill.tmp"; then
+if ! grep -Fq "socket: reachable" "$tmp/artifacts/daemon-status-after-kill.tmp"; then
   echo "launchd did not restore the daemon socket after pkill" >&2
-  cat "$tmp/evidence/daemon-status-after-kill.tmp" >&2 || true
+  cat "$tmp/artifacts/daemon-status-after-kill.tmp" >&2 || true
   exit 1
 fi
 
@@ -186,31 +198,35 @@ kill_end_ms="$(node -e 'console.log(Date.now())')"
 {
   echo "pkill -KILL fieldworkd"
   echo "restart_ms=$((kill_end_ms - kill_start_ms))"
-  cat "$tmp/evidence/daemon-status-after-kill.tmp"
+  cat "$tmp/artifacts/daemon-status-after-kill.tmp"
   echo "processes_died_documented=true"
-} >"$tmp/evidence/kill-restart.txt"
+} >"$tmp/artifacts/kill-restart.txt"
 
-"$fieldwork" ls >"$tmp/evidence/ls-after-kill.txt"
-grep -Fq "macos_kill" "$tmp/evidence/ls-after-kill.txt"
+"$fieldwork" ls >"$tmp/artifacts/ls-after-kill.txt"
+grep -Fq "macos_kill" "$tmp/artifacts/ls-after-kill.txt"
 
-(printf '\002d'; sleep 1) | perl -e 'alarm 8; exec @ARGV' script -q "$tmp/evidence/kill-replay.txt" "$fieldwork" attach macos_kill >/dev/null 2>&1 || true
-grep -Fq "MACOS_KILL_SCROLLBACK_BEFORE" "$tmp/evidence/kill-replay.txt"
-grep -aiq "fieldwork: session exited" "$tmp/evidence/kill-replay.txt"
+(printf '\002d'; sleep 1) | perl -e 'alarm 8; exec @ARGV' script -q "$tmp/artifacts/kill-replay.txt" "$fieldwork" attach macos_kill >/dev/null 2>&1 || true
+grep -Fq "MACOS_KILL_SCROLLBACK_BEFORE" "$tmp/artifacts/kill-replay.txt"
+grep -aiq "fieldwork: session exited" "$tmp/artifacts/kill-replay.txt"
 
-"$fieldwork" daemon status >"$tmp/evidence/daemon-status-after.txt"
-grep -Eiq "service: (running|installed)" "$tmp/evidence/daemon-status-after.txt"
-grep -Fq "socket: reachable" "$tmp/evidence/daemon-status-after.txt"
+"$fieldwork" daemon status >"$tmp/artifacts/daemon-status-after.txt"
+grep -Eiq "service: (running|installed)" "$tmp/artifacts/daemon-status-after.txt"
+grep -Fq "socket: reachable" "$tmp/artifacts/daemon-status-after.txt"
 
 latest_log="$(find "$FIELDWORK_LOG_DIR" -type f -name 'daemon.log*' -print | sort | tail -n 1)"
 if [[ -z "$latest_log" ]]; then
   echo "daemon log was not created under $FIELDWORK_LOG_DIR" >&2
   exit 1
 fi
-cp "$latest_log" "$tmp/evidence/daemon-log.txt"
-if grep -Eiq '\b(panic|panicked|FATAL|segmentation fault|crash|uncaught exception)\b' "$tmp/evidence/daemon-log.txt"; then
+cp "$latest_log" "$tmp/artifacts/daemon-log.txt"
+if grep -Eiq '\b(panic|panicked|FATAL|segmentation fault|crash|uncaught exception)\b' "$tmp/artifacts/daemon-log.txt"; then
   echo "daemon log contains a crash marker" >&2
-  cat "$tmp/evidence/daemon-log.txt" >&2
+  cat "$tmp/artifacts/daemon-log.txt" >&2
   exit 1
 fi
 
-echo "macOS launchd daemon smoke ok: $tmp/evidence"
+if [[ "${FIELDWORK_SMOKE_KEEP_TMP:-}" == "1" ]]; then
+  echo "macOS launchd daemon smoke ok: $tmp/artifacts"
+else
+  echo "macOS launchd daemon smoke ok (set FIELDWORK_SMOKE_KEEP_TMP=1 to retain artifacts)"
+fi

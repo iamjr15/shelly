@@ -5,7 +5,7 @@ use fieldwork_protocol::{
     normalize_code,
 };
 use iroh::endpoint::{RecvStream, SendStream, presets};
-use iroh::{Endpoint, EndpointAddr, RelayUrl, SecretKey, TransportAddr};
+use iroh::{Endpoint, EndpointAddr, RelayMode, RelayUrl, SecretKey, TransportAddr};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::fs;
 use std::fs::OpenOptions;
@@ -33,6 +33,7 @@ pub(crate) struct PairTestOptions {
     pub(crate) connect_only: bool,
     pub(crate) expect_unauthorized: bool,
     pub(crate) expect_protocol_mismatch: bool,
+    pub(crate) expect_local_cli_forbidden: bool,
     pub(crate) expect_forbidden_create: bool,
     pub(crate) expect_forbidden_kill: Option<String>,
     pub(crate) expect_forbidden_agent_event: bool,
@@ -58,7 +59,8 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
     if !options.reconnect_expect_output.is_empty()
         && (options.expect_forbidden_create
             || options.expect_forbidden_kill.is_some()
-            || options.expect_forbidden_agent_event)
+            || options.expect_forbidden_agent_event
+            || options.expect_local_cli_forbidden)
     {
         bail!("--reconnect-expect-output cannot be combined with forbidden-operation probes");
     }
@@ -91,6 +93,10 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
     let secret_key = load_or_create_secret_key(options.secret_key_path.as_deref())?;
     let endpoint = Endpoint::builder(presets::N0)
         .secret_key(secret_key)
+        // `pair-test` is a local simulated-phone harness. It connects through
+        // the daemon's direct ticket addresses so local smokes do not depend on,
+        // or tear down, the public n0 relay actor.
+        .relay_mode(RelayMode::Disabled)
         .bind()
         .await
         .context("bind test iroh endpoint")?;
@@ -108,6 +114,21 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
         )
         .await?;
         expect_protocol_mismatch(&mut recv).await?;
+        let _ = send.finish();
+        return Ok(());
+    }
+
+    if options.expect_local_cli_forbidden {
+        write_msg(
+            &mut send,
+            &ClientToServerMsg::Hello {
+                client_kind: ClientKind::LocalCli,
+                client_version: env!("CARGO_PKG_VERSION").to_string(),
+                protocol_version: CONTRACT_VERSION,
+            },
+        )
+        .await?;
+        expect_forbidden(&mut recv, "LocalCli Hello").await?;
         let _ = send.finish();
         return Ok(());
     }

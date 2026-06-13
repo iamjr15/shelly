@@ -72,6 +72,12 @@ impl StoredDevice {
         self.push_token = Some(token);
         self.mark_seen();
     }
+
+    pub fn clear_push_token(&mut self) {
+        self.push_platform = None;
+        self.push_token = None;
+        self.mark_seen();
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -215,10 +221,14 @@ impl Persistence {
         let mut sessions = Vec::new();
         for row in table.iter().context("iterate sessions table")? {
             let (_, value) = row.context("read sessions table row")?;
-            let plaintext = self.decode_payload(value.value())?;
-            let session: StoredSession =
-                decode_bincode(&plaintext).context("decode stored session")?;
-            sessions.push(session);
+            match self.decode_payload(value.value()).and_then(|plaintext| {
+                decode_bincode::<StoredSession>(&plaintext).context("decode stored session")
+            }) {
+                Ok(session) => sessions.push(session),
+                Err(error) => {
+                    tracing::warn!(%error, "skipping unreadable persisted session row");
+                }
+            }
         }
         sessions.sort_by_key(|session| session.summary.created_at);
         Ok(sessions)
@@ -349,10 +359,14 @@ impl Persistence {
         let mut devices = Vec::new();
         for row in table.iter().context("iterate devices table")? {
             let (_, value) = row.context("read devices table row")?;
-            let plaintext = self.decode_payload(value.value())?;
-            let device: StoredDevice =
-                decode_bincode(&plaintext).context("decode stored device")?;
-            devices.push(device);
+            match self.decode_payload(value.value()).and_then(|plaintext| {
+                decode_bincode::<StoredDevice>(&plaintext).context("decode stored device")
+            }) {
+                Ok(device) => devices.push(device),
+                Err(error) => {
+                    tracing::warn!(%error, "skipping unreadable persisted device row");
+                }
+            }
         }
         devices.sort_by_key(|device| device.paired_at);
         Ok(devices)
@@ -523,7 +537,7 @@ fn default_devices_db_path() -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Persistence, StoredDevice, StoredSession};
+    use super::{DEVICES_TABLE, Persistence, SESSIONS_TABLE, StoredDevice, StoredSession};
     use fieldwork_protocol::{AgentState, SessionId, SessionSummary, now_ms};
     use std::fs;
     use std::os::unix::fs::{PermissionsExt, symlink};
@@ -562,6 +576,65 @@ mod tests {
             !raw.windows(b"secret-output".len())
                 .any(|window| window == b"secret-output")
         );
+    }
+
+    #[test]
+    fn load_sessions_skips_unreadable_rows() {
+        let tmp = tempfile::tempdir().unwrap();
+        let persistence = Persistence::open_with_key(tmp.path().join("sessions.redb"), [14; 32])
+            .expect("open persistence");
+        let session = StoredSession {
+            summary: SessionSummary {
+                id: SessionId::new(),
+                name: "bash · test".to_string(),
+                command: vec!["bash".to_string()],
+                cwd: PathBuf::from("/tmp"),
+                created_at: now_ms(),
+                last_activity: now_ms(),
+                state: AgentState::Idle,
+                last_line: None,
+                model: None,
+            },
+            scrollback_start_seq: 0,
+            scrollback: Vec::new(),
+            exit_code: None,
+        };
+        persistence.save_session(&session).unwrap();
+
+        let write = persistence.sessions_db.begin_write().unwrap();
+        {
+            let mut table = write.open_table(SESSIONS_TABLE).unwrap();
+            table
+                .insert("corrupt-session", b"not a stored session".as_slice())
+                .unwrap();
+        }
+        write.commit().unwrap();
+
+        let loaded = persistence.load_sessions().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].summary.id, session.summary.id);
+    }
+
+    #[test]
+    fn load_devices_skips_unreadable_rows() {
+        let tmp = tempfile::tempdir().unwrap();
+        let persistence = Persistence::open_with_key(tmp.path().join("sessions.redb"), [15; 32])
+            .expect("open persistence");
+        let device = StoredDevice::new("Alice Phone".to_string(), "node-secret".to_string());
+        persistence.save_device(&device).unwrap();
+
+        let write = persistence.devices_db.begin_write().unwrap();
+        {
+            let mut table = write.open_table(DEVICES_TABLE).unwrap();
+            table
+                .insert("corrupt-device", b"not a stored device".as_slice())
+                .unwrap();
+        }
+        write.commit().unwrap();
+
+        let loaded = persistence.load_devices().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].name, "Alice Phone");
     }
 
     #[test]

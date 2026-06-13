@@ -12,8 +12,8 @@ use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system}
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 use tokio::sync::broadcast;
 
@@ -42,7 +42,7 @@ pub struct Session {
     persistence: Option<Arc<Persistence>>,
     push: Option<PushDispatcher>,
     persist_dirty: AtomicBool,
-    resize_epoch: AtomicU64,
+    resize_tx: mpsc::Sender<()>,
 }
 
 impl Session {
@@ -95,6 +95,7 @@ impl Session {
             pair.master.take_writer().context("take PTY writer")?,
         ));
         let (subscribers, _) = broadcast::channel(1024);
+        let (resize_tx, resize_rx) = mpsc::channel();
         let terminal =
             TerminalModel::new(size, Box::new(PtyResponseWriter::new(Arc::clone(&writer))));
         let session = Arc::new(Self {
@@ -118,13 +119,14 @@ impl Session {
             persistence,
             push,
             persist_dirty: AtomicBool::new(false),
-            resize_epoch: AtomicU64::new(0),
+            resize_tx,
         });
 
         session.persist();
         Self::start_reader(Arc::clone(&session), reader)?;
         Self::start_idle_loop(Arc::clone(&session))?;
         Self::start_persistence_loop(Arc::clone(&session))?;
+        Self::start_resize_loop(Arc::clone(&session), resize_rx)?;
         Ok(session)
     }
 
@@ -270,7 +272,7 @@ impl Session {
         let source_matches_command = matches!(
             (source, self.command_kind),
             (AgentSource::Claude, CommandKind::Claude) | (AgentSource::Codex, CommandKind::Codex)
-        );
+        ) || self.command_kind == CommandKind::Unknown;
         if !source_matches_command {
             tracing::warn!(
                 session_id = %self.id,
@@ -305,13 +307,13 @@ impl Session {
                 loop {
                     match reader.read(&mut buf) {
                         Ok(0) => {
-                            session.mark_exited(0);
+                            session.mark_exited(session.reap_exit_code(0));
                             break;
                         }
                         Ok(n) => session.record_output(&buf[..n]),
                         Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
                         Err(_) => {
-                            session.mark_exited(1);
+                            session.mark_exited(session.reap_exit_code(1));
                             break;
                         }
                     }
@@ -319,6 +321,25 @@ impl Session {
             })
             .context("spawn PTY reader thread")?;
         Ok(())
+    }
+
+    fn reap_exit_code(&self, fallback: i32) -> i32 {
+        for attempt in 0..40 {
+            if attempt > 0 {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            let status = self
+                .child
+                .lock()
+                .expect("PTY child lock poisoned")
+                .try_wait();
+            match status {
+                Ok(Some(status)) => return status.exit_code() as i32,
+                Ok(None) => {}
+                Err(_) => return fallback,
+            }
+        }
+        fallback
     }
 
     fn start_idle_loop(session: Arc<Self>) -> Result<()> {
@@ -368,6 +389,41 @@ impl Session {
                 }
             })
             .context("spawn persistence thread")?;
+        Ok(())
+    }
+
+    fn start_resize_loop(session: Arc<Self>, rx: mpsc::Receiver<()>) -> Result<()> {
+        std::thread::Builder::new()
+            .name(format!("fieldwork-resize-{}", session.id))
+            .spawn(move || {
+                loop {
+                    match rx.recv_timeout(Duration::from_millis(500)) {
+                        Ok(()) => {}
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                            if session.exit_code().is_some() {
+                                break;
+                            }
+                            continue;
+                        }
+                        Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+                    while rx
+                        .recv_timeout(Duration::from_millis(RESIZE_DEBOUNCE_MS))
+                        .is_ok()
+                    {}
+                    if session.exit_code().is_some() {
+                        break;
+                    }
+                    if let Err(error) = session.apply_min_attached_resize() {
+                        tracing::warn!(
+                            %error,
+                            session_id = %session.id,
+                            "failed to apply debounced resize"
+                        );
+                    }
+                }
+            })
+            .context("spawn resize debounce thread")?;
         Ok(())
     }
 
@@ -499,27 +555,8 @@ impl Session {
         Ok(())
     }
 
-    fn schedule_min_attached_resize(self: &Arc<Self>) {
-        let epoch = self.resize_epoch.fetch_add(1, Ordering::AcqRel) + 1;
-        let session = Arc::clone(self);
-        if let Err(error) = std::thread::Builder::new()
-            .name(format!("fieldwork-resize-{}", self.id))
-            .spawn(move || {
-                std::thread::sleep(Duration::from_millis(RESIZE_DEBOUNCE_MS));
-                if session.resize_epoch.load(Ordering::Acquire) != epoch {
-                    return;
-                }
-                if let Err(error) = session.apply_min_attached_resize() {
-                    tracing::warn!(
-                        %error,
-                        session_id = %session.id,
-                        "failed to apply debounced resize"
-                    );
-                }
-            })
-        {
-            tracing::warn!(%error, session_id = %self.id, "failed to spawn resize debounce thread");
-        }
+    fn schedule_min_attached_resize(&self) {
+        let _ = self.resize_tx.send(());
     }
 }
 
@@ -548,7 +585,7 @@ mod handoff_tests {
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
     use tokio::sync::broadcast;
     use tokio::time::timeout;
 
@@ -646,6 +683,38 @@ mod handoff_tests {
     }
 
     #[tokio::test]
+    async fn generic_fieldwork_session_accepts_local_agent_hook_state() {
+        let cwd = tempfile::tempdir().expect("tempdir");
+        let command = write_sleeping_stub(cwd.path(), "bash");
+        let size = ClientSize { cols: 80, rows: 24 };
+        let session = Session::spawn(
+            "agent-agnostic".to_string(),
+            vec![command.to_string_lossy().into_owned()],
+            cwd.path().to_path_buf(),
+            HashMap::new(),
+            size,
+            None,
+            None,
+        )
+        .expect("spawn generic shell session");
+        let _kill_on_drop = KillOnDrop(Arc::clone(&session));
+        let mut rx = session.subscribe();
+
+        session
+            .apply_agent_state_event(
+                AgentSource::Claude,
+                AgentState::AwaitingInput,
+                Some("Continue?".to_string()),
+            )
+            .expect("agent hook applies inside generic session");
+
+        let summary = session.summary();
+        assert_eq!(summary.state, AgentState::AwaitingInput);
+        assert_eq!(summary.last_line.as_deref(), Some("Continue?"));
+        assert_agent_state_changed(&mut rx, AgentState::AwaitingInput).await;
+    }
+
+    #[tokio::test]
     async fn mismatched_local_agent_hook_is_rejected() {
         let cwd = tempfile::tempdir().expect("tempdir");
         let command = write_sleeping_stub(cwd.path(), "codex");
@@ -674,6 +743,87 @@ mod handoff_tests {
         let summary = session.summary();
         assert_eq!(summary.state, AgentState::Idle);
         assert_eq!(summary.last_line, None);
+    }
+
+    #[tokio::test]
+    async fn unknown_command_prompt_shaped_output_never_becomes_awaiting_input() {
+        let cwd = tempfile::tempdir().expect("tempdir");
+        let command = write_sleeping_stub(cwd.path(), "bash");
+        let size = ClientSize { cols: 80, rows: 24 };
+        let session = Session::spawn(
+            "unknown-command".to_string(),
+            vec![command.to_string_lossy().into_owned()],
+            cwd.path().to_path_buf(),
+            HashMap::new(),
+            size,
+            None,
+            None,
+        )
+        .expect("spawn unknown command session");
+        let _kill_on_drop = KillOnDrop(Arc::clone(&session));
+        let mut rx = session.subscribe();
+
+        session.record_output(b"Do you want to continue? [y/n]\n{\"type\":\"awaiting_input\"}\n");
+
+        let mut saw_working = false;
+        loop {
+            match rx.try_recv() {
+                Ok(ServerToClientMsg::AgentStateChanged { state, .. }) => {
+                    assert_ne!(state, AgentState::AwaitingInput);
+                    if state == AgentState::Working {
+                        saw_working = true;
+                    }
+                }
+                Ok(ServerToClientMsg::Output { .. }) => {}
+                Ok(message) => panic!("unexpected message: {message:?}"),
+                Err(broadcast::error::TryRecvError::Empty) => break,
+                Err(error) => panic!("unexpected broadcast receive error: {error}"),
+            }
+        }
+
+        assert!(saw_working);
+        assert_eq!(session.summary().state, AgentState::Working);
+    }
+
+    #[test]
+    fn session_exit_reports_real_child_exit_code() {
+        let cwd = tempfile::tempdir().expect("tempdir");
+        let size = ClientSize { cols: 80, rows: 24 };
+        let session = Session::spawn(
+            "exit-code".to_string(),
+            vec!["sh".to_string(), "-c".to_string(), "exit 3".to_string()],
+            cwd.path().to_path_buf(),
+            HashMap::new(),
+            size,
+            None,
+            None,
+        )
+        .expect("spawn exiting session");
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let exit_code = loop {
+            if let Some(code) = session.exit_code() {
+                break code;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "session did not exit before timeout"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        };
+        assert_eq!(exit_code, 3);
+
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            if session.summary().state == AgentState::Crashed {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "non-zero exit did not mark session crashed"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
     }
 
     struct KillOnDrop(Arc<Session>);

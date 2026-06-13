@@ -5,12 +5,13 @@ use anyhow::{Context, Result, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
 use fieldwork_protocol::{
     CONTRACT_VERSION, ClientId, ClientKind, ClientToServerMsg, ErrorCode, ServerToClientMsg,
-    max_frame_len, normalize_code,
+    SessionId, max_frame_len, normalize_code,
 };
 use iroh::endpoint::{Connection, RecvStream, SendStream, presets};
 use iroh::{Endpoint, RelayMode, RelayUrl, SecretKey};
 use serde::{Serialize, de::DeserializeOwned};
 use std::sync::Arc;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::time::{Duration, timeout};
 use tracing::{debug, error, info, warn};
@@ -102,6 +103,12 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
             protocol_version,
             ..
         } if protocol_version == CONTRACT_VERSION => {
+            if let Some(error) = iroh_client_kind_error(client_kind) {
+                write_msg(&writer, &error).await?;
+                finish_writer(&writer).await?;
+                return Ok(());
+            }
+
             let client_id = ClientId::new();
             write_msg(
                 &writer,
@@ -344,10 +351,15 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                 if !require_paired(&writer, paired).await? {
                     continue;
                 }
-                let error = state
+                let Some(session) = state
                     .sessions
                     .get(&session_id)
-                    .and_then(|session| session.write_input(&bytes).err());
+                    .map(|entry| Arc::clone(&entry))
+                else {
+                    write_session_not_found(&writer, session_id).await?;
+                    continue;
+                };
+                let error = session.write_input(&bytes).err();
                 if let Some(error) = error {
                     write_msg(
                         &writer,
@@ -363,10 +375,15 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                 if !require_paired(&writer, paired).await? {
                     continue;
                 }
-                let error = state
+                let Some(session) = state
                     .sessions
                     .get(&session_id)
-                    .and_then(|session| session.update_client_size(client_id, size).err());
+                    .map(|entry| Arc::clone(&entry))
+                else {
+                    write_session_not_found(&writer, session_id).await?;
+                    continue;
+                };
+                let error = session.update_client_size(client_id, size).err();
                 if let Some(error) = error {
                     write_msg(
                         &writer,
@@ -397,6 +414,25 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                     }
                 }
             }
+            ClientToServerMsg::UnregisterPushToken { platform, token } => {
+                if !require_paired(&writer, paired).await? {
+                    continue;
+                }
+                match state.clear_device_push(&remote_node_id, platform, token) {
+                    Ok(true) => write_msg(&writer, &ServerToClientMsg::Pong { seq: 0 }).await?,
+                    Ok(false) => write_unauthorized(&writer).await?,
+                    Err(error) => {
+                        write_msg(
+                            &writer,
+                            &ServerToClientMsg::Error {
+                                code: ErrorCode::Internal,
+                                message: error.to_string(),
+                            },
+                        )
+                        .await?;
+                    }
+                }
+            }
             ClientToServerMsg::Ping { seq } => {
                 if !require_paired(&writer, paired).await? {
                     continue;
@@ -411,12 +447,7 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
             | ClientToServerMsg::ListDevices
             | ClientToServerMsg::RemoveDevice { .. }
             | ClientToServerMsg::AgentStateEvent { .. } => {
-                if matches!(client_kind, ClientKind::IosApp | ClientKind::AndroidApp) {
-                    write_forbidden(&writer, "mobile clients cannot perform this operation")
-                        .await?;
-                } else {
-                    write_forbidden(&writer, "iroh transport accepts mobile clients only").await?;
-                }
+                write_forbidden(&writer, forbidden_iroh_operation_message(client_kind)).await?;
             }
         }
     }
@@ -465,12 +496,46 @@ fn pairing_peer_identity_error(
     })
 }
 
+fn forbidden_iroh_operation_message(client_kind: ClientKind) -> &'static str {
+    match client_kind {
+        ClientKind::IosApp | ClientKind::AndroidApp => {
+            "mobile clients cannot perform this operation"
+        }
+        ClientKind::LocalCli => "iroh transport accepts mobile clients only",
+    }
+}
+
+fn iroh_client_kind_error(client_kind: ClientKind) -> Option<ServerToClientMsg> {
+    if matches!(client_kind, ClientKind::IosApp | ClientKind::AndroidApp) {
+        return None;
+    }
+
+    Some(ServerToClientMsg::Error {
+        code: ErrorCode::Forbidden,
+        message: "iroh transport accepts mobile clients only".to_string(),
+    })
+}
+
 async fn write_forbidden(writer: &Arc<Mutex<SendStream>>, message: &str) -> Result<()> {
     write_msg(
         writer,
         &ServerToClientMsg::Error {
             code: ErrorCode::Forbidden,
             message: message.to_string(),
+        },
+    )
+    .await
+}
+
+async fn write_session_not_found(
+    writer: &Arc<Mutex<SendStream>>,
+    session_id: SessionId,
+) -> Result<()> {
+    write_msg(
+        writer,
+        &ServerToClientMsg::Error {
+            code: ErrorCode::NotFound,
+            message: format!("session not found: {session_id}"),
         },
     )
     .await
@@ -487,8 +552,10 @@ async fn finish_writer(writer: &Arc<Mutex<SendStream>>) -> Result<()> {
 
 #[cfg(test)]
 mod peer_identity_tests {
-    use super::pairing_peer_identity_error;
-    use fieldwork_protocol::{ErrorCode, ServerToClientMsg};
+    use super::{
+        forbidden_iroh_operation_message, iroh_client_kind_error, pairing_peer_identity_error,
+    };
+    use fieldwork_protocol::{ClientKind, ErrorCode, ServerToClientMsg};
 
     #[test]
     fn pairing_peer_identity_match_is_allowed() {
@@ -505,11 +572,48 @@ mod peer_identity_tests {
             })
         );
     }
+
+    #[test]
+    fn forbidden_operation_messages_preserve_iroh_mobile_boundary() {
+        assert_eq!(
+            forbidden_iroh_operation_message(ClientKind::IosApp),
+            "mobile clients cannot perform this operation"
+        );
+        assert_eq!(
+            forbidden_iroh_operation_message(ClientKind::AndroidApp),
+            "mobile clients cannot perform this operation"
+        );
+        assert_eq!(
+            forbidden_iroh_operation_message(ClientKind::LocalCli),
+            "iroh transport accepts mobile clients only"
+        );
+    }
+
+    #[test]
+    fn iroh_handshake_accepts_only_mobile_client_kinds() {
+        assert!(iroh_client_kind_error(ClientKind::IosApp).is_none());
+        assert!(iroh_client_kind_error(ClientKind::AndroidApp).is_none());
+        assert_eq!(
+            iroh_client_kind_error(ClientKind::LocalCli),
+            Some(ServerToClientMsg::Error {
+                code: ErrorCode::Forbidden,
+                message: "iroh transport accepts mobile clients only".to_string(),
+            })
+        );
+    }
 }
 
 async fn read_msg<T>(reader: &mut RecvStream) -> Result<T>
 where
     T: DeserializeOwned,
+{
+    read_msg_from(reader).await
+}
+
+async fn read_msg_from<T, R>(reader: &mut R) -> Result<T>
+where
+    T: DeserializeOwned,
+    R: AsyncRead + Unpin,
 {
     let mut len_bytes = [0_u8; 4];
     reader
@@ -532,11 +636,19 @@ async fn write_msg<T>(writer: &Arc<Mutex<SendStream>>, message: &T) -> Result<()
 where
     T: Serialize,
 {
+    let mut writer = writer.lock().await;
+    write_msg_to(&mut *writer, message).await
+}
+
+async fn write_msg_to<T, W>(writer: &mut W, message: &T) -> Result<()>
+where
+    T: Serialize,
+    W: AsyncWrite + Unpin,
+{
     let payload = rmp_serde::to_vec_named(message).context("encode messagepack frame")?;
     if payload.len() > max_frame_len() {
         bail!("frame too large: {}", payload.len());
     }
-    let mut writer = writer.lock().await;
     writer
         .write_all(&(payload.len() as u32).to_be_bytes())
         .await
@@ -608,10 +720,12 @@ fn secret_key_from_env() -> Result<Option<SecretKey>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{IROH_SECRET_KEY_ENV, secret_key_from_env};
+    use super::{IROH_SECRET_KEY_ENV, read_msg_from, secret_key_from_env, write_msg_to};
     use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
+    use fieldwork_protocol::{ServerToClientMsg, max_frame_len};
     use std::ffi::OsString;
     use std::sync::Mutex;
+    use tokio::io::{AsyncWriteExt as _, duplex};
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -663,5 +777,49 @@ mod tests {
                 .to_string()
                 .contains("FIELDWORK_IROH_SECRET_KEY_B64 must decode to 32 bytes")
         );
+    }
+
+    #[tokio::test]
+    async fn messagepack_frame_helpers_round_trip_length_prefixed_transport() {
+        let (mut writer, mut reader) = duplex(1024);
+
+        write_msg_to(&mut writer, &ServerToClientMsg::Pong { seq: 7 })
+            .await
+            .unwrap();
+        drop(writer);
+
+        let decoded: ServerToClientMsg = read_msg_from(&mut reader).await.unwrap();
+
+        assert_eq!(decoded, ServerToClientMsg::Pong { seq: 7 });
+    }
+
+    #[tokio::test]
+    async fn messagepack_frame_reader_rejects_oversized_length_before_allocating() {
+        let (mut writer, mut reader) = duplex(16);
+        writer
+            .write_all(&((max_frame_len() as u32 + 1).to_be_bytes()))
+            .await
+            .unwrap();
+        drop(writer);
+
+        let error = read_msg_from::<ServerToClientMsg, _>(&mut reader)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("frame too large"));
+    }
+
+    #[tokio::test]
+    async fn messagepack_frame_reader_rejects_incomplete_payload() {
+        let (mut writer, mut reader) = duplex(16);
+        writer.write_all(&8_u32.to_be_bytes()).await.unwrap();
+        writer.write_all(&[0]).await.unwrap();
+        drop(writer);
+
+        let error = read_msg_from::<ServerToClientMsg, _>(&mut reader)
+            .await
+            .unwrap_err();
+
+        assert!(format!("{error:#}").contains("read iroh frame payload"));
     }
 }

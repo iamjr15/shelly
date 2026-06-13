@@ -17,12 +17,16 @@ Environment=FIELDWORK_RELAY_OTLP_SAMPLE_RATE={{ fieldwork_relay_otlp_sample_rate
 {% if fieldwork_relay_honeycomb_dataset | length > 0 %}
 Environment=FIELDWORK_RELAY_HONEYCOMB_DATASET={{ fieldwork_relay_honeycomb_dataset }}
 {% endif %}
+{% if fieldwork_relay_apns_team_id | length > 0 %}
 Environment=FIELDWORK_APNS_TEAM_ID={{ fieldwork_relay_apns_team_id }}
 Environment=FIELDWORK_APNS_KEY_ID={{ fieldwork_relay_apns_key_id }}
 Environment=FIELDWORK_APNS_TOPIC={{ fieldwork_relay_apns_topic }}
 Environment=FIELDWORK_APNS_ENDPOINT={{ fieldwork_relay_apns_endpoint }}
+{% endif %}
 Environment=FIELDWORK_FCM_ENDPOINT={{ fieldwork_relay_fcm_endpoint }}
+{% if fieldwork_relay_apns_team_id | length > 0 %}
 LoadCredential=apns.p8:{{ fieldwork_relay_apns_credential }}
+{% endif %}
 LoadCredential=fcm-service-account.json:{{ fieldwork_relay_fcm_credential }}
 LoadCredential=honeycomb-api-key:{{ fieldwork_relay_honeycomb_credential }}
 LoadCredential=control-plane.crt:{{ fieldwork_relay_control_tls_cert }}

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
     <exclude domain="sharedpref" path="fieldwork_pairing.xml" />
+    <exclude domain="sharedpref" path="fieldwork_pairing_v2.xml" />
     <exclude domain="sharedpref" path="fieldwork_push_tokens.xml" />
 </full-backup-content>

@@ -51,8 +51,8 @@ mod tests {
     }
 
     #[test]
-    fn protocol_version_is_v2() {
-        assert_eq!(CONTRACT_VERSION, 2);
+    fn protocol_version_is_v3() {
+        assert_eq!(CONTRACT_VERSION, 3);
     }
 
     #[test]
@@ -119,7 +119,7 @@ mod tests {
                 node_id: "node".to_string(),
                 relay_url: Some("https://relay.example".to_string()),
                 addrs: vec!["127.0.0.1:1234".to_string()],
-                expires_at: now_ms() + 60_000,
+                expires_at: 1_700_000_300_000,
             },
         };
 
@@ -135,7 +135,7 @@ mod tests {
             node_id: "node-daemon".to_string(),
             relay_url: Some("https://relay.example".to_string()),
             addrs: vec!["127.0.0.1:1234".to_string()],
-            expires_at: 1_700_000_060_000,
+            expires_at: 1_700_000_300_000,
         };
 
         let encoded = ticket.encode().unwrap();
@@ -350,6 +350,13 @@ mod tests {
                 },
             ),
             wire_case("subscribe_sessions", ClientToServerMsg::SubscribeSessions),
+            wire_case(
+                "unregister_push_token",
+                ClientToServerMsg::UnregisterPushToken {
+                    platform: PushPlatform::Apns,
+                    token: "opaque-token".to_string(),
+                },
+            ),
         ]
     }
 
@@ -432,7 +439,7 @@ mod tests {
                         node_id: "node-daemon".to_string(),
                         relay_url: Some("https://relay.example".to_string()),
                         addrs: vec!["127.0.0.1:1234".to_string()],
-                        expires_at: 1_700_000_060_000,
+                        expires_at: 1_700_000_300_000,
                     },
                 },
             ),

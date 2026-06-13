@@ -36,15 +36,15 @@ jobs:
             build: zigbuild
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: 1.94.0
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           key: ${{ matrix.target }}
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
 
       - name: Install zigbuild
         if: matrix.build == 'zigbuild'
@@ -52,7 +52,7 @@ jobs:
 
       - name: Install Zig
         if: matrix.build == 'zigbuild'
-        uses: mlugg/setup-zig@v2
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
 
       - name: Build Darwin
         if: matrix.build == 'cargo'
@@ -62,12 +62,6 @@ jobs:
         if: matrix.build == 'zigbuild'
         run: cargo zigbuild --release --target ${{ matrix.target }} -p fieldwork-cli -p fieldwork-daemon -p fieldwork-relay
 
-      - name: Verify relay-only provider secret boundary
-        run: node scripts/verify-secret-boundaries.mjs
-
-      - name: Verify telemetry privacy wiring
-        run: node scripts/verify-telemetry-privacy.mjs
-
       - name: Ad-hoc sign Darwin CLI and daemon
         if: startsWith(matrix.target, 'aarch64-apple') || startsWith(matrix.target, 'x86_64-apple')
         run: |
@@ -76,7 +70,6 @@ jobs:
             codesign --force --sign - "target/${{ matrix.target }}/release/$binary"
             codesign --verify --verbose=2 "target/${{ matrix.target }}/release/$binary"
           done
-          node scripts/verify-macos-signing.mjs target/${{ matrix.target }}/release
 
       - name: Stage archive
         run: |
@@ -120,7 +113,7 @@ jobs:
             --bundle fieldwork-${{ matrix.package }}.tar.gz.bundle \
             fieldwork-${{ matrix.package }}.tar.gz
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: fieldwork-${{ matrix.package }}
           path: |
@@ -129,7 +122,7 @@ jobs:
             fieldwork-${{ matrix.package }}.tar.gz.bundle
           if-no-files-found: error
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |

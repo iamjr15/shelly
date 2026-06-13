@@ -9,6 +9,7 @@ subscribe_pid=""
 relay_pid=""
 host_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
 host_rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+runtime_panic_pattern='thread .+ panicked|panicked at|task [0-9]+ was cancelled'
 
 cleanup() {
   if [[ -n "$daemon_pid" ]]; then
@@ -30,6 +31,48 @@ cleanup() {
   rm -rf "$tmp"
 }
 trap cleanup EXIT
+
+check_runtime_panic_logs() {
+  local log_dir="$1"
+  local panic_log="$2"
+  local logs=("$log_dir"/*.log)
+
+  if [[ ! -e "${logs[0]}" ]]; then
+    return 0
+  fi
+
+  if grep -R -n -E "$runtime_panic_pattern" "${logs[@]}" >"$panic_log"; then
+    echo "local handoff smoke logs contain a runtime panic" >&2
+    cat "$panic_log" >&2
+    return 1
+  fi
+}
+
+self_test_panic_guard() {
+  local clean_dir="$tmp/clean-logs"
+  local panic_dir="$tmp/panic-logs"
+
+  mkdir -p "$clean_dir" "$panic_dir"
+  printf 'normal daemon shutdown\n' >"$clean_dir/daemon.log"
+  check_runtime_panic_logs "$clean_dir" "$tmp/clean-panic.log"
+
+  printf "thread 'tokio-rt-worker' panicked at tokio/src/task/join_set.rs:453:29: task 51 was cancelled\n" >"$panic_dir/pair-test.log"
+  if check_runtime_panic_logs "$panic_dir" "$tmp/panic-panic.log" 2>"$tmp/panic-stderr.log"; then
+    echo "panic guard self-test did not reject a runtime panic log" >&2
+    exit 1
+  fi
+  grep -Fq "local handoff smoke logs contain a runtime panic" "$tmp/panic-stderr.log"
+  grep -Fq "pair-test.log" "$tmp/panic-stderr.log"
+  printf 'local handoff panic guard self-test ok\n'
+}
+
+if [[ "${1:-}" == "--self-test-panic-guard" ]]; then
+  self_test_panic_guard
+  exit 0
+elif [[ $# -gt 0 ]]; then
+  echo "unknown argument: $1" >&2
+  exit 2
+fi
 
 mkdir -p "$tmp/home" "$tmp/runtime" "$tmp/config" "$tmp/state" "$tmp/bin"
 chmod 700 "$tmp/runtime"
@@ -73,7 +116,7 @@ done
 EOF
 chmod +x "$tmp/bin/claude"
 
-cargo build -q -p fieldwork-cli -p fieldwork-daemon -p fieldwork-relay
+cargo build -q -p fieldwork-cli -p fieldwork-daemon -p fieldwork-relay --features fieldwork-cli/test-client
 
 fieldwork="$cargo_target_dir/debug/fieldwork"
 fieldworkd="$cargo_target_dir/debug/fieldworkd"
@@ -200,7 +243,7 @@ else
   exit 1
 fi
 
-run_fieldwork_new "$tmp/new-claude.log" --dir "$tmp/home"
+run_fieldwork_new "$tmp/new-claude.log" --dir "$tmp/home" claude
 claude_created="$(cat "$tmp/new-claude.log")"
 claude_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-claude.log")"
 
@@ -243,7 +286,7 @@ pair_pid=$!
 # The v2 `fieldwork pair` prints a compact QR plus a human pairing CODE; the raw
 # "fw1..." ticket never appears in plaintext. Capture the code, then resolve it
 # once through the relay rendezvous to recover the exact ticket the QR encodes.
-# The relay resolve is single-use AND per-IP rate limited, so wait for the
+# The relay resolve is single-use AND per-client rate limited, so wait for the
 # daemon's async publish to land via the non-consuming publish counter, then
 # resolve exactly once.
 pair_code="$(capture_pair_code "$tmp/pair.log" || true)"
@@ -282,6 +325,21 @@ fi
 if ! grep -q '^protocol mismatch as expected:' "$tmp/protocol-mismatch.log"; then
   echo "iroh transport did not reject protocol-version mismatch" >&2
   cat "$tmp/protocol-mismatch.log" >&2 || true
+  exit 1
+fi
+
+if ! "$fieldwork" pair-test \
+  --payload "$payload" \
+  --expect-local-cli-forbidden \
+  >"$tmp/local-cli-forbidden.log" 2>&1; then
+  echo "iroh LocalCli handshake probe failed" >&2
+  cat "$tmp/local-cli-forbidden.log" >&2 || true
+  exit 1
+fi
+
+if ! grep -q '^LocalCli Hello forbidden as expected:' "$tmp/local-cli-forbidden.log"; then
+  echo "iroh transport did not reject a LocalCli client kind before Welcome" >&2
+  cat "$tmp/local-cli-forbidden.log" >&2 || true
   exit 1
 fi
 
@@ -435,12 +493,12 @@ fi
   >"$tmp/attach-claude.log" 2>&1
 
 if ! grep -q '^attached ' "$tmp/attach-claude.log"; then
-  echo "paired simulated phone did not attach to default claude session" >&2
+  echo "paired simulated phone did not attach to explicit claude session" >&2
   cat "$tmp/attach-claude.log" >&2 || true
   exit 1
 fi
 if ! grep -q '^saw expected output: stub: hello from mobile' "$tmp/attach-claude.log"; then
-  echo "paired simulated phone did not send input to default claude session" >&2
+  echo "paired simulated phone did not send input to explicit claude session" >&2
   cat "$tmp/attach-claude.log" >&2 || true
   exit 1
 fi
@@ -559,7 +617,7 @@ if ! printf '%s' "$after_restart" | grep -q 'bash'; then
   exit 1
 fi
 if ! printf '%s' "$after_restart" | grep -q 'claude'; then
-  echo "restored session list did not include the default claude session" >&2
+  echo "restored session list did not include the explicit claude session" >&2
   printf 'before restart: %s\n' "$before_restart" >&2
   printf 'after restart: %s\n' "$after_restart" >&2
   exit 1
@@ -583,17 +641,20 @@ if ! printf '%s' "$after_restart" | grep -q 'FW_RECONNECT_READY'; then
   exit 1
 fi
 
-printf 'PASS create/default: %s\n' "$claude_created"
+check_runtime_panic_logs "$tmp" "$tmp/panic.log"
+
+printf 'PASS create/claude: %s\n' "$claude_created"
 printf 'PASS create/bash: %s\n' "$bash_created"
 printf 'PASS create/tui: %s\n' "$tui_created"
 printf 'PASS create/subscribed: %s\n' "$subscribe_created"
 printf 'PASS create/reconnect: %s\n' "$reconnect_created"
 printf 'PASS protocol mismatch: %s\n' "$(tr '\n' ' ' <"$tmp/protocol-mismatch.log")"
+printf 'PASS iroh LocalCli rejected: %s\n' "$(tr '\n' ' ' <"$tmp/local-cli-forbidden.log")"
 printf 'PASS pair duration s: %s\n' "$pair_duration_s"
 printf 'PASS pair/list/attach bash (QR ticket path): %s\n' "$(tr '\n' ' ' <"$tmp/pairtest.log")"
 printf 'PASS pair/attach bash (typed-code relay path): %s\n' "$(tr '\n' ' ' <"$tmp/pairtest-code.log")"
 printf 'PASS subscribed session appeared: %s\n' "$(tr '\n' ' ' <"$tmp/subscribe.log")"
-printf 'PASS attach default claude: %s\n' "$(tr '\n' ' ' <"$tmp/attach-claude.log")"
+printf 'PASS attach explicit claude: %s\n' "$(tr '\n' ' ' <"$tmp/attach-claude.log")"
 printf 'PASS attach subscribed session: %s\n' "$(tr '\n' ' ' <"$tmp/attach-subscribe.log")"
 printf 'PASS reconnect replay: %s\n' "$(tr '\n' ' ' <"$tmp/reconnect.log")"
 printf 'PASS attach tui: %s\n' "$(tr '\n' ' ' <"$tmp/attach-tui.log")"

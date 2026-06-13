@@ -6,6 +6,10 @@ license.workspace = true
 repository.workspace = true
 description = "Fieldwork desktop CLI."
 
+[features]
+default = []
+test-client = ["dep:iroh"]
+
 [[bin]]
 name = "fieldwork"
 path = "src/main.rs"
@@ -17,7 +21,7 @@ clap_complete.workspace = true
 crossterm.workspace = true
 fieldwork-protocol = { path = "../protocol" }
 interprocess.workspace = true
-iroh.workspace = true
+iroh = { workspace = true, optional = true }
 libc.workspace = true
 qrcode.workspace = true
 reqwest.workspace = true

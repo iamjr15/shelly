@@ -80,7 +80,9 @@ fn read_config_file(path: &Path) -> Result<Config> {
 }
 
 fn env_var(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|value| !value.is_empty())
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn parse_bool(value: &str) -> Result<bool> {
@@ -123,7 +125,47 @@ fn default_config_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::read_config_file;
+    use super::{env_var, parse_bool_with_name, read_config_file};
+
+    #[test]
+    fn env_var_treats_empty_and_whitespace_values_as_unset() {
+        let name = "FIELDWORK_DAEMON_TEST_EMPTY_ENV";
+        unsafe {
+            std::env::set_var(name, "");
+        }
+        assert_eq!(env_var(name), None);
+
+        unsafe {
+            std::env::set_var(name, "   ");
+        }
+        assert_eq!(env_var(name), None);
+
+        unsafe {
+            std::env::set_var(name, "false");
+        }
+        assert_eq!(env_var(name).as_deref(), Some("false"));
+
+        unsafe {
+            std::env::remove_var(name);
+        }
+    }
+
+    #[test]
+    fn env_override_bool_parser_accepts_expected_values() {
+        for value in ["1", "true", "TRUE", "yes", "on", " On "] {
+            assert!(parse_bool_with_name(value, "TEST").unwrap());
+        }
+
+        for value in ["0", "false", "FALSE", "no", "off", " Off "] {
+            assert!(!parse_bool_with_name(value, "TEST").unwrap());
+        }
+
+        let error = parse_bool_with_name("maybe", "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED"));
+        assert!(error.contains("maybe"));
+    }
 
     #[test]
     fn loads_toml_config_file() {

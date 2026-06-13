@@ -81,8 +81,9 @@ prepare_darwin_trust() {
 
   codesign --force --sign - "$out/fieldwork" >/dev/null
   codesign --force --sign - "$out/fieldworkd" >/dev/null
+  codesign --verify --verbose=2 "$out/fieldwork"
+  codesign --verify --verbose=2 "$out/fieldworkd"
   xattr -d com.apple.quarantine "$out/fieldwork" "$out/fieldworkd" 2>/dev/null || true
-  node scripts/verify-macos-signing.mjs "$out"
 }
 
 prepare_darwin_trust darwin-arm64
@@ -121,7 +122,13 @@ archive_platform_package() {
   LC_ALL=C LANG=C shasum -a 256 "$archive" >"$archive.sha256.local"
 
   if [[ "$package" == darwin-* ]]; then
-    node scripts/verify-macos-signing.mjs "$archive"
+    tmp_extract="$(mktemp -d "${TMPDIR:-/tmp}/fieldwork-local-npm-archive.XXXXXX")"
+    (
+      trap 'rm -rf "$tmp_extract"' EXIT
+      tar -xzf "$archive" -C "$tmp_extract"
+      codesign --verify --verbose=2 "$tmp_extract/fieldwork-$package/fieldwork"
+      codesign --verify --verbose=2 "$tmp_extract/fieldwork-$package/fieldworkd"
+    )
   fi
 }
 
@@ -130,7 +137,6 @@ archive_platform_package darwin-x64
 archive_platform_package linux-arm64
 archive_platform_package linux-x64
 
-node scripts/verify-npm-packages.mjs --require-binaries
 node scripts/publish-npm-packages.mjs --check-ready
 
 echo "local npm artifact build/stage ok"

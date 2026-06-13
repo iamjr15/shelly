@@ -25,27 +25,42 @@ internal interface FieldworkRepositoryClient {
     suspend fun attach(sessionId: String, lastSeenSeq: ULong? = null): AttachedSession
     fun recordLastSeenSeq(sessionId: String, seq: ULong)
     suspend fun registerFcmToken(token: String)
+    suspend fun unregisterFcmToken(token: String)
     fun clear()
 }
 
 class FieldworkRepository(context: Context) : FieldworkRepositoryClient {
     private val appContext = context.applicationContext
     private val store by lazy { PairingStore(appContext) }
+    private val stateLock = Any()
     private var client: FieldworkClient? = null
     private val lastSeenSeqBySession = mutableMapOf<String, ULong>()
 
+    @Volatile
     override var savedPairing: PairedDaemonRecord? = null
         private set
 
     override fun restore(): Boolean {
-        savedPairing = store.load()
-        client = savedPairing?.let(::createClient)
+        val restored = store.load()
+        val restoredClient = restored?.let(::createClient)
+        val accepted = synchronized(stateLock) {
+            if (client != null || savedPairing != null) {
+                false
+            } else {
+                savedPairing = restored
+                client = restoredClient
+                true
+            }
+        }
+        if (!accepted) {
+            restoredClient?.destroy()
+        }
         return savedPairing != null
     }
 
     override suspend fun pair(qrPayload: String) {
         val freshClient = createClient(null)
-        client = freshClient
+        replaceClient(freshClient)
         val info = freshClient.pairWithQr(qrPayload)
         debugLog("pair completed")
         persistPairing(info)
@@ -53,7 +68,7 @@ class FieldworkRepository(context: Context) : FieldworkRepositoryClient {
 
     override suspend fun pairWithCode(code: String) {
         val freshClient = createClient(null)
-        client = freshClient
+        replaceClient(freshClient)
         val info = freshClient.pairWithCode(code)
         debugLog("pairWithCode completed")
         persistPairing(info)
@@ -69,8 +84,7 @@ class FieldworkRepository(context: Context) : FieldworkRepositoryClient {
             pairedAtMillis = System.currentTimeMillis(),
         )
         store.save(record)
-        savedPairing = record
-        client = createClient(record)
+        replacePairing(record, createClient(record))
     }
 
     override suspend fun listSessions(): List<MobileSession> {
@@ -97,7 +111,7 @@ class FieldworkRepository(context: Context) : FieldworkRepositoryClient {
     }
 
     override suspend fun attach(sessionId: String, lastSeenSeq: ULong?): AttachedSession {
-        val seq = lastSeenSeq ?: lastSeenSeqBySession[sessionId]
+        val seq = lastSeenSeq ?: cachedLastSeenSeq(sessionId)
         return if (seq == null) {
             requireClient().attachSession(sessionId)
         } else {
@@ -106,23 +120,74 @@ class FieldworkRepository(context: Context) : FieldworkRepositoryClient {
     }
 
     override fun recordLastSeenSeq(sessionId: String, seq: ULong) {
-        lastSeenSeqBySession[sessionId] = seq
+        synchronized(stateLock) {
+            lastSeenSeqBySession[sessionId] = seq
+        }
     }
 
     override suspend fun registerFcmToken(token: String) {
         requireClient().registerPushToken(PushPlatform.FCM, token)
     }
 
+    override suspend fun unregisterFcmToken(token: String) {
+        requireClient().unregisterPushToken(PushPlatform.FCM, token)
+    }
+
     override fun clear() {
+        val clearedClient = createClient(null)
         store.clear()
-        lastSeenSeqBySession.clear()
-        savedPairing = null
-        client?.destroy()
-        client = createClient(null)
+        val previous = synchronized(stateLock) {
+            lastSeenSeqBySession.clear()
+            savedPairing = null
+            val old = client
+            client = clearedClient
+            old
+        }
+        previous?.destroy()
     }
 
     private fun requireClient(): FieldworkClient {
-        return client ?: createClient(savedPairing).also { client = it }
+        synchronized(stateLock) {
+            client?.let { return it }
+        }
+        val record = savedPairing
+        val freshClient = createClient(record)
+        val winner = synchronized(stateLock) {
+            client ?: freshClient.also { client = it }
+        }
+        if (winner !== freshClient) {
+            freshClient.destroy()
+        }
+        return winner
+    }
+
+    private fun cachedLastSeenSeq(sessionId: String): ULong? {
+        return synchronized(stateLock) {
+            lastSeenSeqBySession[sessionId]
+        }
+    }
+
+    private fun replaceClient(next: FieldworkClient) {
+        val previous = synchronized(stateLock) {
+            val old = client
+            client = next
+            old
+        }
+        if (previous !== next) {
+            previous?.destroy()
+        }
+    }
+
+    private fun replacePairing(record: PairedDaemonRecord, nextClient: FieldworkClient) {
+        val previous = synchronized(stateLock) {
+            savedPairing = record
+            val old = client
+            client = nextClient
+            old
+        }
+        if (previous !== nextClient) {
+            previous?.destroy()
+        }
     }
 
     private fun createClient(record: PairedDaemonRecord?): FieldworkClient {

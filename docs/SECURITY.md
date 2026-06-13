@@ -18,8 +18,10 @@ Fieldwork v1 has four trust zones:
 - **Relay**: sees daemon node IDs, daemon relay public keys, push tokens, opaque
   session hashes, source IPs, aggregate metrics, provider delivery status, and —
   only on the typed-code pairing path — short pairing codes mapped to opaque
-  reachability blobs (10-minute TTL, per-code lockout). The QR pairing path stays
-  daemon-local. The relay must never receive terminal bytes, command lines,
+  reachability blobs (5-minute TTL, per-client resolve throttling, uniform
+  misses, and single-use successful resolves). The QR pairing path stays
+  daemon-local. The daemon still owns the in-band wrong-attempt cap before
+  desktop approval. The relay must never receive terminal bytes, command lines,
   paths, plaintext session names, or local scrollback.
 
 ## Local IPC
@@ -37,10 +39,12 @@ The daemon control socket is local-only and user-owned:
 Pairing is intentionally two-step:
 
 - The credential is a single active 5-character Crockford code (`OsRng`,
-  confusable-free alphabet, ~25 bits, 10-minute TTL) that the daemon invalidates
-  after 5 wrong in-band attempts. A device gets the code either by scanning the
-  QR ticket (which carries it inline) or by typing it; the typed code is resolved
-  to the daemon's reachability through the rate-limited relay rendezvous.
+  confusable-free alphabet, ~25 bits, 5-minute TTL). Starting a new desktop
+  pairing prompt supersedes any previous active code, and the daemon invalidates
+  the active code after 5 wrong in-band attempts. A device gets the code either
+  by scanning the QR ticket (which carries it inline) or by typing it; the typed
+  code is resolved to the daemon's reachability through the rate-limited relay
+  rendezvous.
 - A QR scan or correct code is not enough: the desktop must explicitly approve
   the request.
 - Approved devices authenticate with long-lived Ed25519/iroh keys.
@@ -63,10 +67,8 @@ fieldwork settings scrollback-encryption off
 The opt-out applies after daemon restart and makes future local persistence
 plaintext until encryption is turned back on.
 
-Mobile pairing records are platform-protected:
-
-- iOS uses this-device-only Keychain items with data-protection accessibility.
-- Android uses encrypted, backup-excluded preferences.
+Android pairing records use encrypted, backup-excluded preferences. iOS pairing
+storage is deferred with the parked iOS app source.
 
 ## Terminal Privacy
 
@@ -89,23 +91,24 @@ Relay push endpoints require:
 - Push-token ownership binding to the registering daemon.
 - garde request validation.
 - Per-daemon rate limiting.
-- Relay-only APNs `.p8`, FCM service-account JSON, and Honeycomb credentials.
+- Relay-only FCM service-account JSON and Honeycomb credentials.
 
 Relay telemetry is aggregate-only. Honeycomb credentials are loaded only by the
 relay service through credential paths and are redacted from debug output. The
 relay OTLP exporter uses OpenTelemetry's Reqwest rustls native-root feature so
-Honeycomb TLS follows the host OS trust store; the static telemetry verifier
-rejects a regression to WebPKI-only roots for that Fieldwork-owned path.
+Honeycomb TLS follows the host OS trust store; relay OTLP loopback coverage
+guards the Fieldwork-owned telemetry path against leaking terminal, session, or
+token sentinels.
 
 NPM publish credentials (`NPM_TOKEN` / `NODE_AUTH_TOKEN`) live only in the
-operator environment or GitHub Secrets. Repository `.npmrc` files and literal
-npm token strings are rejected by `pnpm check:secret-boundaries`, and the same
-check scans built non-relay artifacts for npm auth-token patterns.
+operator environment or GitHub Secrets. Do not commit repository `.npmrc` files,
+literal npm token strings, npm auth-token environment assignments, FCM
+service-account JSON, or Honeycomb API keys.
 
 ## Mobile Runtime Gates
 
-iOS and Android gate app resume and stale terminal input with biometric-only
-policies. Android emulator QA can compile a local bypass only with
+Android gates app resume and stale terminal input with biometric-only policies.
+Android emulator QA can compile a local bypass only with
 `FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true`; the runtime check still requires
 `BuildConfig.DEBUG`, and release builds hardcode the bypass off. Release
 verification still requires physical devices for biometric prompt behavior,
@@ -114,22 +117,20 @@ reconnect, and terminal flood rendering.
 
 ## Verification
 
-Local security coverage is enforced by:
+Local security coverage should include the core Rust tests plus the handoff and
+relay smoke tests:
 
 ```sh
+cargo fmt --check
+cargo clippy --workspace -- -D warnings
 cargo nextest run --workspace
-pnpm check:security-model
-pnpm check:mobile-privacy
-pnpm check:store-privacy
-pnpm check:telemetry-privacy
-pnpm check:secret-boundaries
-pnpm check:relay-provider-clients
-pnpm check:v1-boundary
-pnpm check:daemon-service
-pnpm check:infra-scaffold
+cargo test --workspace --doc
 scripts/smoke-local-handoff.sh
+pnpm test:relay-tls
+pnpm test:relay-otlp
 ```
 
-The remaining release gates require real provider credentials, signed/notarized
+The remaining release gates require real provider credentials, signed release
 artifacts, hosted relay deployment, npm provenance visibility, and physical
-iOS/Android devices.
+Android devices. Notarized Mac app/pkg artifacts remain optional and deferred;
+the npm desktop path uses ad-hoc-signed CLI/daemon artifacts.

@@ -4,7 +4,7 @@ Decision: use `connectbot/termlib` for v1 Android.
 
 Rationale:
 
-- `termlib` is an Apache-2.0 native Jetpack Compose terminal backed by MIT-licensed libvterm, so it consumes the same raw PTY byte stream as SwiftTerm on iOS.
+- `termlib` is an Apache-2.0 native Jetpack Compose terminal backed by MIT-licensed libvterm, so it consumes the same raw PTY byte stream that Fieldwork transports between daemon and mobile clients.
 - It supports the v1 rendering needs called out in `PLAN.md`: 256/true color, double-width and combining characters, text selection, scrolling, zoom, and resize.
 - It is published as `org.connectbot:termlib`; the Android app currently pins `0.0.35`.
 - Recent upstream work specifically addressed two v1 risk areas: IME `ACTION_MULTIPLE` input handling and terminal recomposition overhead.
@@ -15,33 +15,32 @@ Known risk:
 
 Local verification status:
 
-- Implemented an Android Compose v0 target that wires `Terminal(...)` to `mobile-core` `ByteStreamSink` output and sends termlib keyboard bytes back through `AttachedSession.sendInput`.
+- Implemented the native Android Compose app target that wires `Terminal(...)` to `mobile-core` `ByteStreamSink` output and sends termlib keyboard bytes back through `AttachedSession.sendInput`.
 - XML resources lint locally with `xmllint`.
-- `apps/android/scripts/build-rust.sh` builds the Rust mobile core for `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
-- `apps/android/gradlew --no-daemon bundleRelease` builds a release AAB that includes all three ABI slices.
-- `pnpm test:android-emulator` aggregates the direct-adb emulator substitutes: debug launch timing, pair flow, dashboard subscription, terminal flood rendering, background replay, restart restore, multisession, reconnect, and notification tap routing.
-- Latest hosted-relay aggregate run on 2026-05-29 passed on `emulator-5554` with locked debug launch `TotalTime=6448ms`, pair `pair_flow_ms=1420`, session subscription `visible_ms=5493`, 8437/14400 flood screenshot nonblack samples, no Fieldwork crash log entries, and adb artifacts captured under `/tmp/fieldwork-android-aggregate-*`.
+- Android Gradle app tasks depend on `buildRustMobileCore`, which runs `apps/android/scripts/build-rust.sh` before Kotlin compilation or native-library merge.
+- `apps/android/gradlew --no-daemon bundleRelease` builds the Rust mobile core for `arm64-v8a`, `armeabi-v7a`, and `x86_64`, then emits a release AAB that includes all three ABI slices.
+- Latest direct adb emulator pass on 2026-06-02 used `Medium_Phone_API_36.1`,
+  paired through the local relay/daemon, attached to a daemon-owned `bash`
+  session named `pretzel`, sent `fw_android_direct_ok` from the Android terminal,
+  verified the live PTY bytes through a second paired client, force-stopped and
+  relaunched the app, restored the paired dashboard, and found no Fieldwork
+  crash/ANR logcat entries. This was a direct adb spot check, not a repo-owned
+  evidence harness.
 - A 2026-05-21 direct adb terminal attach/input refresh on `Medium_Phone_API_36.1`
   kept the terminal surface at the app root while attached, hid the global
-  Sessions/Settings bottom navigation, showed the terminal accessory bar, and
-  explicitly focused termlib's IME target. Evidence under
-  `/tmp/fieldwork-adb-terminalfix-live-20260521155139` includes screenshots, UI
-  XML, app logcat, an empty crash buffer, and a separately approved verifier
-  client that saw `android-direct: android_terminal_fix_ok` from emulator
-  keyboard input in the live PTY.
+  Sessions/Settings bottom navigation, showed the terminal accessory bar,
+  explicitly focused termlib's IME target, and verified through a separately
+  paired client that emulator keyboard input reached the live PTY as
+  `android-direct: android_terminal_fix_ok`.
 - A same-day direct adb TUI attach pass opened a daemon-owned `htop` session
   named `tui` from the Android dashboard and captured the attached terminal
   rendering `htop` function-key chrome (`F1Help`, `F2Setup`, `F10Quit`) with
   `Attached` status, the accessory bar, no global bottom navigation, focused
-  termlib IME target, app logcat, and empty crash buffers under
-  `/tmp/fieldwork-adb-tui-live-20260521160229`.
-- The required 30-minute physical Android device dogfood is a counted unchecked
-  `PLAN.md` release gate before Play internal distribution.
-  `docs/ANDROID_DOGFOOD.md` defines the physical runbook, and
-  `pnpm check:android-dogfood-evidence -- "$FW_DOGFOOD_DIR"` verifies the
-  required adb evidence for the attached Claude session, 30-minute duration,
-  typing, scroll, resize, paste, and crash/ANR absence. It remains blocked in
-  this shell by the lack of an attached Android test device.
+  termlib IME target, app logcat, and empty crash buffers. These were direct
+  adb spot checks, not repo-owned evidence harnesses.
+- A physical Android release-device pass is still required before Play internal
+  distribution. The current local substitute is direct manual `adb` screenshots,
+  UI dumps, and logcat inspection on an emulator when a device is available.
 
 Sources checked on 2026-05-18:
 

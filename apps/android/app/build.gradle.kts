@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.gradle.api.tasks.Exec
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -21,6 +22,20 @@ fun escapedBuildConfigString(value: String): String = value.replace("\\", "\\\\"
 val debugBiometricBypass = System.getenv("FIELDWORK_ANDROID_BIOMETRIC_BYPASS") == "true"
 val debugPairingCode = escapedBuildConfigString(System.getenv("FIELDWORK_ANDROID_PAIRING_CODE").orEmpty())
 val relayControlUrl = escapedBuildConfigString(System.getenv("FIELDWORK_RELAY_CONTROL_URL").orEmpty())
+val fieldworkAbiFilter = providers.gradleProperty("fieldwork.android.abiFilter").orNull?.trim().orEmpty()
+val repoRoot = rootProject.projectDir.parentFile.parentFile
+val buildRustMobileCore = tasks.register<Exec>("buildRustMobileCore") {
+    group = "build"
+    description = "Builds Rust mobile-core libraries and regenerates UniFFI Kotlin bindings."
+    workingDir = repoRoot
+    commandLine(rootProject.file("scripts/build-rust.sh").absolutePath)
+    inputs.dir(repoRoot.resolve("crates/mobile-core"))
+    inputs.dir(repoRoot.resolve("crates/protocol"))
+    inputs.file(repoRoot.resolve("Cargo.toml"))
+    inputs.file(repoRoot.resolve("Cargo.lock"))
+    outputs.dir(rootProject.file("generated"))
+    outputs.dir(project.file("src/main/jniLibs"))
+}
 
 android {
     namespace = "app.fieldwork.android"
@@ -35,6 +50,11 @@ android {
         buildConfigField("boolean", "FIELDWORK_BIOMETRIC_BYPASS", "false")
         buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_CODE", "\"\"")
         buildConfigField("String", "FIELDWORK_RELAY_CONTROL_URL", "\"$relayControlUrl\"")
+        if (fieldworkAbiFilter.isNotEmpty()) {
+            ndk {
+                abiFilters += fieldworkAbiFilter
+            }
+        }
     }
 
     sourceSets {
@@ -103,7 +123,6 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.9.7")
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("androidx.biometric:biometric-ktx:1.4.0-alpha02")
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation(platform("com.google.firebase:firebase-bom:34.13.0"))
     implementation("com.google.firebase:firebase-messaging")
 
@@ -119,4 +138,12 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16")
+}
+
+tasks.matching { task ->
+    (task.name.startsWith("compile") && task.name.endsWith("Kotlin")) ||
+        (task.name.startsWith("merge") && task.name.endsWith("JniLibFolders")) ||
+        (task.name.startsWith("merge") && task.name.endsWith("NativeLibs"))
+}.configureEach {
+    dependsOn(buildRustMobileCore)
 }

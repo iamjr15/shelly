@@ -1,5 +1,7 @@
 /target/
 /references/
+/plans/
+/tasks/
 /node_modules/
 /packages/*/node_modules/
 /site/node_modules/
@@ -20,10 +22,10 @@
 fcm-service-account.json
 google-services.json
 honeycomb-api-key
-infra/oracle/terraform/.terraform/
-infra/oracle/terraform/*.tfstate
-infra/oracle/terraform/*.tfstate.*
-infra/oracle/terraform/*.tfvars
+infra/lightsail/terraform/.terraform/
+infra/lightsail/terraform/*.tfstate
+infra/lightsail/terraform/*.tfstate.*
+infra/lightsail/terraform/*.tfvars
 **/*.log
 *.hprof
 .DS_Store

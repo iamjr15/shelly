@@ -60,6 +60,12 @@ pub fn scrollback_encryption_status() -> Result<ScrollbackEncryptionStatus> {
     scrollback_encryption_status_at_path(&path)
 }
 
+pub fn scrollback_encryption_env_override() -> Result<Option<bool>> {
+    env_var("FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED")
+        .map(|value| parse_bool_with_name(&value, "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED"))
+        .transpose()
+}
+
 pub fn set_scrollback_encryption(enabled: bool) -> Result<ScrollbackEncryptionStatus> {
     let path = default_config_path();
     set_scrollback_encryption_at_path(&path, enabled)
@@ -118,6 +124,20 @@ fn read_config(path: &Path) -> Result<UserConfig> {
     let contents = fs::read_to_string(path)
         .with_context(|| format!("read settings file {}", path.display()))?;
     toml::from_str(&contents).with_context(|| format!("parse settings file {}", path.display()))
+}
+
+fn env_var(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn parse_bool_with_name(value: &str, name: &str) -> Result<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        other => bail!("invalid boolean value for {name}: {other}"),
+    }
 }
 
 fn write_config(path: &Path, config: &UserConfig) -> Result<()> {
@@ -195,11 +215,51 @@ fn default_true() -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        scrollback_encryption_status_at_path, set_scrollback_encryption_at_path,
-        set_telemetry_at_path, telemetry_status_at_path,
+        env_var, parse_bool_with_name, scrollback_encryption_status_at_path,
+        set_scrollback_encryption_at_path, set_telemetry_at_path, telemetry_status_at_path,
     };
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn env_var_treats_empty_and_whitespace_values_as_unset() {
+        let name = "FIELDWORK_TEST_EMPTY_ENV";
+        unsafe {
+            std::env::set_var(name, "");
+        }
+        assert_eq!(env_var(name), None);
+
+        unsafe {
+            std::env::set_var(name, "   ");
+        }
+        assert_eq!(env_var(name), None);
+
+        unsafe {
+            std::env::set_var(name, "true");
+        }
+        assert_eq!(env_var(name).as_deref(), Some("true"));
+
+        unsafe {
+            std::env::remove_var(name);
+        }
+    }
+
+    #[test]
+    fn scrollback_env_override_bool_parser_accepts_expected_values() {
+        for value in ["1", "true", "TRUE", "yes", "on", " On "] {
+            assert!(parse_bool_with_name(value, "TEST").unwrap());
+        }
+
+        for value in ["0", "false", "FALSE", "no", "off", " Off "] {
+            assert!(!parse_bool_with_name(value, "TEST").unwrap());
+        }
+
+        let error = parse_bool_with_name("maybe", "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED"));
+        assert!(error.contains("maybe"));
+    }
 
     #[test]
     fn telemetry_on_writes_private_config() {

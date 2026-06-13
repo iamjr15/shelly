@@ -89,11 +89,11 @@ grep -Fq "socket path: $XDG_RUNTIME_DIR/fieldwork/control.sock" "$tmp/doctor.log
 grep -Fq "daemon connection: ok (reachable ($XDG_RUNTIME_DIR/fieldwork/control.sock))" "$tmp/doctor.log"
 grep -Fq "socket parent: ok (owned by current user, mode 0700, not symlink ($XDG_RUNTIME_DIR/fieldwork))" "$tmp/doctor.log"
 grep -Fq "socket file: ok (socket, mode 0600, not symlink ($XDG_RUNTIME_DIR/fieldwork/control.sock))" "$tmp/doctor.log"
-grep -Fq "protocol: ok (contract v2)" "$tmp/doctor.log"
+grep -Fq "protocol: ok (contract v3)" "$tmp/doctor.log"
 grep -Fq "push notifications: off" "$tmp/doctor.log"
 grep -Fq "session list: ok (1 session(s))" "$tmp/doctor.log"
 grep -Fq "telemetry: off" "$tmp/doctor.log"
-grep -Fq "scrollback encryption: on" "$tmp/doctor.log"
+grep -Fq "scrollback encryption: off (env override; config: on)" "$tmp/doctor.log"
 grep -Fq "summary: ok" "$tmp/doctor.log"
 
 "$fw" doctor --help >"$tmp/doctor-help.log"

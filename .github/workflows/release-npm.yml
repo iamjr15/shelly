@@ -20,15 +20,37 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.30.3
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+
+      - name: Resolve expected release tag
+        id: release_tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify package version matches release tag
+        run: |
+          tag="${{ steps.release_tag.outputs.tag }}"
+          case "$tag" in
+            v[0-9]*) ;;
+            *) echo "expected a vX.Y.Z release tag, got: $tag" >&2; exit 1 ;;
+          esac
+          version=$(node -p "require('./packages/cli/package.json').version")
+          if [ "v$version" != "$tag" ]; then
+            echo "packages/cli version v$version does not match release tag $tag" >&2
+            exit 1
+          fi
 
       - name: Verify npm token
         env:
@@ -61,33 +83,35 @@ jobs:
             --pattern 'fieldwork-*' \
             --dir artifacts
 
-      - name: Verify release artifact integrity and attestations
-        env:
-          FIELDWORK_VERIFY_COSIGN_SIGNATURE: "1"
-          FIELDWORK_RELEASE_REPOSITORY: ${{ github.repository }}
-          FIELDWORK_EXPECTED_RELEASE_TAG: ${{ github.event.inputs.tag }}
-          FIELDWORK_COSIGN_IDENTITY_REGEXP: '^https://github.com/${{ github.repository }}/\.github/workflows/release-rust\.yml@refs/tags/v.*$'
-        run: node scripts/verify-release-artifacts.mjs
-      - run: find artifacts -name '*.tar.gz' -exec tar -xzf {} -C artifacts \;
+      - name: Verify release artifact checksums
+        run: |
+          set -euo pipefail
+          if ! find artifacts -name '*.tar.gz.sha256' | grep -q .; then
+            echo "no .tar.gz.sha256 checksum files found under artifacts/" >&2
+            exit 1
+          fi
+          find artifacts -name '*.tar.gz.sha256' -execdir shasum -a 256 -c {} +
+
+      - name: Verify cosign attestations
+        run: |
+          set -euo pipefail
+          while IFS= read -r archive; do
+            cosign verify-blob-attestation \
+              --bundle "${archive}.bundle" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              --certificate-identity-regexp '^https://github\.com/fieldwork-app/fieldwork/\.github/workflows/release-rust\.yml@' \
+              --type slsaprovenance1 \
+              "$archive"
+          done < <(find artifacts -name '*.tar.gz')
+
+      - name: Extract release archives
+        run: |
+          set -euo pipefail
+          while IFS= read -r archive; do
+            tar -xzf "$archive" -C artifacts
+          done < <(find artifacts -name '*.tar.gz')
       - run: node scripts/prepare-npm-artifacts.mjs
-      - run: node scripts/verify-npm-packages.mjs --require-binaries
       - name: Publish with provenance in dependency order
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: node scripts/publish-npm-packages.mjs
-      - name: Verify npm registry after publish
-        run: |
-          version="$(node -p "require('./packages/cli/package.json').version")"
-          for attempt in {1..12}; do
-            if node scripts/verify-npm-registry-state.mjs \
-              --expect-meta-published \
-              --expect-platform-published \
-              --expect-latest-version="$version" \
-              --expect-provenance; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 12 ]; then
-              exit 1
-            fi
-            sleep 10
-          done

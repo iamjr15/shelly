@@ -4,16 +4,17 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 
 <BaseLayout
   title="Protocol"
-  description="Fieldwork protocol overview: contract version 1, length-prefixed framing, pairing, attach replay, and push registration."
+  description="Fieldwork protocol overview: contract version 3, length-prefixed framing, pairing tickets, attach replay, and push registration."
 >
   <section class="page">
     <div class="page-copy">
       <p class="eyebrow">Protocol</p>
-      <h1>Contract version 1.</h1>
+      <h1>Contract version 3.</h1>
       <p class="lede">
-        Every client starts with `Hello` and rejects contract mismatches. Local IPC uses
-        bincode; mobile transport uses MessagePack. Both paths keep the same length-prefixed
-        frame shape.
+        Every client starts with `Hello` and rejects contract mismatches. Version 3
+        carries compact pairing tickets while preserving the raw PTY byte contract:
+        local IPC uses bincode, mobile transport uses MessagePack, and iroh
+        accepts only paired mobile client kinds.
       </p>
     </div>
 
@@ -28,11 +29,11 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       </article>
       <article class="tile">
         <h3>Pairing</h3>
-        <p>Pair tokens are 32 random bytes, base32 encoded, single-use, and expire after 10 minutes. The desktop must approve the request.</p>
+        <p>Pairing uses a 5-character Crockford code plus a compact `fw1` PairingTicket. A single active code expires after 5 minutes, wrong attempts are capped, and the desktop must approve the request.</p>
       </article>
       <article class="tile">
         <h3>Mobile capabilities</h3>
-        <p>Mobile clients can list, attach, input, resize, detach, ping, and register push tokens. Create and kill operations are rejected.</p>
+        <p>Mobile clients can list, attach, input, resize, detach, ping, and register push tokens. Create and kill operations are rejected, and desktop CLI clients use the local Unix socket instead of iroh.</p>
       </article>
     </div>
   </section>

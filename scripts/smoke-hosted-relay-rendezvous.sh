@@ -2,6 +2,9 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
 relay_control_url="${1:-${FIELDWORK_HOSTED_RELAY_CONTROL_URL:-${FIELDWORK_RELAY_CONTROL_URL:-}}}"
 
 if [[ -z "$relay_control_url" ]]; then
@@ -10,7 +13,7 @@ Set FIELDWORK_HOSTED_RELAY_CONTROL_URL, FIELDWORK_RELAY_CONTROL_URL, or pass the
 relay control URL as the first argument.
 
 Example:
-  scripts/smoke-hosted-relay-rendezvous.sh http://3.7.208.153:8443
+  scripts/smoke-hosted-relay-rendezvous.sh https://relay.example.com
 MSG
   exit 2
 fi
@@ -81,11 +84,17 @@ EOF
 chmod +x "$tmp/bin/claude"
 
 cargo_target_dir="${CARGO_TARGET_DIR:-$repo_root/target}"
-fieldwork="${FIELDWORK_BIN:-$cargo_target_dir/release/fieldwork}"
+fieldwork_bin_overridden=0
+if [[ -n "${FIELDWORK_BIN:-}" ]]; then
+  fieldwork="$FIELDWORK_BIN"
+  fieldwork_bin_overridden=1
+else
+  fieldwork="$cargo_target_dir/release/fieldwork"
+fi
 fieldworkd="${FIELDWORK_DAEMON_BIN:-$cargo_target_dir/release/fieldworkd}"
 
 if [[ ! -x "$fieldwork" || ! -x "$fieldworkd" ]]; then
-  cargo build -q -p fieldwork-cli -p fieldwork-daemon
+  cargo build -q -p fieldwork-cli -p fieldwork-daemon --features fieldwork-cli/test-client
   fieldwork="${FIELDWORK_BIN:-$cargo_target_dir/debug/fieldwork}"
   fieldworkd="${FIELDWORK_DAEMON_BIN:-$cargo_target_dir/debug/fieldworkd}"
 fi
@@ -93,6 +102,20 @@ fi
 if [[ ! -x "$fieldwork" || ! -x "$fieldworkd" ]]; then
   echo "fieldwork and fieldworkd binaries are required" >&2
   exit 1
+fi
+
+if ! "$fieldwork" pair-test --help >/dev/null 2>&1; then
+  if [[ "$fieldwork_bin_overridden" -eq 1 ]]; then
+    echo "FIELDWORK_BIN must point to a fieldwork binary built with --features fieldwork-cli/test-client for hosted relay smoke" >&2
+    exit 1
+  fi
+
+  cargo build -q -p fieldwork-cli --features fieldwork-cli/test-client
+  fieldwork="$cargo_target_dir/debug/fieldwork"
+  if ! "$fieldwork" pair-test --help >/dev/null 2>&1; then
+    echo "debug fieldwork binary does not expose pair-test after building with fieldwork-cli/test-client" >&2
+    exit 1
+  fi
 fi
 
 curl -fsS --max-time 10 "$relay_control_url/healthz" >"$tmp/relay-health.txt"

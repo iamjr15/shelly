@@ -120,6 +120,13 @@ pub enum ClientToServerMsg {
     /// then sends a replacement list whenever sessions are created, removed, or
     /// their dashboard state changes.
     SubscribeSessions,
+    /// Unregisters a mobile push token for the authenticated paired device.
+    UnregisterPushToken {
+        /// Provider that issued the token.
+        platform: PushPlatform,
+        /// Opaque provider token to remove from local daemon state and relay ownership.
+        token: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

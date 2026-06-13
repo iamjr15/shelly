@@ -13,8 +13,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.getAndUpdate
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.security.MessageDigest
 
 data class FieldworkUiState(
@@ -51,6 +54,7 @@ class FieldworkViewModel internal constructor(
     private val restoreDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val repositoryDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val sessionSubscriptionRetryDelayMillis: Long = 750L,
+    private val backgroundDetachGraceMillis: Long = 5 * 60 * 1000L,
 ) : ViewModel() {
     constructor(context: Context) : this(context, FieldworkRepository(context), AndroidFcmTokenSource)
 
@@ -59,6 +63,8 @@ class FieldworkViewModel internal constructor(
     private var pendingPushSessionIdHash: String? = null
     private var sessionSubscriptionJob: Job? = null
     private var restoreJob: Job? = null
+    private var unpairJob: Job? = null
+    private var backgroundDetachJob: Job? = null
     private var restoreGeneration = 0
     val state: StateFlow<FieldworkUiState> = _state.asStateFlow()
 
@@ -70,18 +76,19 @@ class FieldworkViewModel internal constructor(
     }
 
     fun setUnlocked(unlocked: Boolean) {
-        val wasUnlocked = _state.value.unlocked
-        _state.value = _state.value.copy(
-            unlocked = unlocked,
-            activeTerminalSessionId = if (unlocked) _state.value.activeTerminalSessionId else null,
-        )
+        val previous = _state.getAndUpdate {
+            it.copy(
+                unlocked = unlocked,
+                activeTerminalSessionId = if (unlocked) it.activeTerminalSessionId else null,
+            )
+        }
         if (!unlocked) {
-            if (wasUnlocked) {
+            if (previous.unlocked) {
                 stopSessionSubscription()
             }
             return
         }
-        if (unlocked && !wasUnlocked && _state.value.paired) {
+        if (unlocked && !previous.unlocked && _state.value.paired) {
             refreshSessions()
             startSessionSubscription()
             syncFcmToken()
@@ -103,30 +110,40 @@ class FieldworkViewModel internal constructor(
         restoreGeneration += 1
         restoreJob?.cancel()
         restoreJob = null
-        _state.value = _state.value.copy(
-            restoringPairing = false,
-            loading = true,
-            message = null,
-        )
+        _state.update {
+            it.copy(
+                restoringPairing = false,
+                loading = true,
+                message = null,
+            )
+        }
         viewModelScope.launch {
             try {
+                unpairJob?.join()
+                unpairJob = null
                 withContext(repositoryDispatcher) {
                     pairAction()
                 }
-                _state.value = _state.value.copy(
-                    paired = true,
-                    pairedDaemon = repository.savedPairing,
-                    message = "Paired",
-                )
+                val pairedDaemon = repository.savedPairing
+                _state.update {
+                    it.copy(
+                        paired = true,
+                        pairedDaemon = pairedDaemon,
+                        message = "Paired",
+                    )
+                }
                 if (_state.value.unlocked) {
                     startSessionSubscription()
                     loadSessions()
                     syncFcmToken()
                 }
             } catch (error: Throwable) {
-                _state.value = _state.value.copy(message = error.message ?: error.toString())
+                if (error is CancellationException) {
+                    throw error
+                }
+                _state.update { it.copy(message = PAIRING_FAILED_MESSAGE) }
             } finally {
-                _state.value = _state.value.copy(loading = false)
+                _state.update { it.copy(loading = false) }
             }
         }
     }
@@ -148,7 +165,7 @@ class FieldworkViewModel internal constructor(
         }
         return TerminalController(
             session = session,
-            attachedSession = attached,
+            initialAttachedSession = attached,
             scope = viewModelScope,
             inputGate = inputGate,
             reattach = { lastSeenSeq ->
@@ -162,17 +179,33 @@ class FieldworkViewModel internal constructor(
     }
 
     fun unpair() {
+        val wasPaired = _state.value.paired
+        val wasUnlocked = _state.value.unlocked
+        val pendingToken = fcmTokens.pendingToken(appContext)
         restoreGeneration += 1
         restoreJob?.cancel()
         restoreJob = null
         stopSessionSubscription()
         pendingPushSessionIdHash = null
-        fcmTokens.clearPendingToken(appContext)
-        repository.clear()
         _state.value = FieldworkUiState(
-            unlocked = _state.value.unlocked,
+            unlocked = wasUnlocked,
             restoringPairing = false,
         )
+        unpairJob = viewModelScope.launch {
+            try {
+                if (wasPaired && wasUnlocked) {
+                    withTimeoutOrNull(5_000L) {
+                        val tokens = listOfNotNull(pendingToken, currentFcmTokenForUnpair()).distinct()
+                        for (token in tokens) {
+                            unregisterFcmTokenForUnpair(token)
+                        }
+                    }
+                }
+            } finally {
+                fcmTokens.clearPendingToken(appContext)
+                repository.clear()
+            }
+        }
     }
 
     fun handlePushIntent(sessionIdHash: String) {
@@ -192,15 +225,32 @@ class FieldworkViewModel internal constructor(
     }
 
     fun consumeTargetSession() {
-        _state.value = _state.value.copy(targetSession = null)
+        _state.update { it.copy(targetSession = null) }
     }
 
     fun openTerminalSession(session: MobileSession) {
-        _state.value = _state.value.copy(activeTerminalSessionId = session.id)
+        _state.update { it.copy(activeTerminalSessionId = session.id) }
     }
 
     fun closeTerminalSession() {
-        _state.value = _state.value.copy(activeTerminalSessionId = null)
+        _state.update { it.copy(activeTerminalSessionId = null) }
+    }
+
+    fun onAppBackgrounded() {
+        backgroundDetachJob?.cancel()
+        backgroundDetachJob = viewModelScope.launch {
+            delay(backgroundDetachGraceMillis)
+            closeTerminalSession()
+            stopSessionSubscription()
+        }
+    }
+
+    fun onAppForegrounded() {
+        backgroundDetachJob?.cancel()
+        backgroundDetachJob = null
+        if (_state.value.paired && _state.value.unlocked) {
+            startSessionSubscription()
+        }
     }
 
     fun syncFcmToken() {
@@ -212,13 +262,16 @@ class FieldworkViewModel internal constructor(
             val tokens = listOfNotNull(pendingToken, fcmTokens.currentToken(appContext))
                 .distinct()
             for (token in tokens) {
-                runCatching {
+                try {
                     withContext(repositoryDispatcher) {
                         repository.registerFcmToken(token)
                     }
-                }.onSuccess {
                     if (token == pendingToken) {
                         fcmTokens.clearPendingToken(appContext, token)
+                    }
+                } catch (error: Throwable) {
+                    if (error is CancellationException) {
+                        throw error
                     }
                 }
             }
@@ -226,12 +279,35 @@ class FieldworkViewModel internal constructor(
     }
 
     fun clearMessage() {
-        _state.value = _state.value.copy(message = null)
+        _state.update { it.copy(message = null) }
+    }
+
+    private suspend fun currentFcmTokenForUnpair(): String? {
+        return try {
+            fcmTokens.currentToken(appContext)
+        } catch (error: Throwable) {
+            if (error is CancellationException) {
+                throw error
+            }
+            null
+        }
+    }
+
+    private suspend fun unregisterFcmTokenForUnpair(token: String) {
+        try {
+            withContext(repositoryDispatcher) {
+                repository.unregisterFcmToken(token)
+            }
+        } catch (error: Throwable) {
+            if (error is CancellationException) {
+                throw error
+            }
+        }
     }
 
     fun answerTelemetryConsent(accepted: Boolean) {
         MobileTelemetry.setDiagnosticsEnabled(appContext, accepted)
-        _state.value = _state.value.copy(telemetryConsentPromptVisible = false)
+        _state.update { it.copy(telemetryConsentPromptVisible = false) }
     }
 
     private suspend fun loadSessions() {
@@ -251,11 +327,14 @@ class FieldworkViewModel internal constructor(
             if (generation != restoreGeneration) {
                 return@onSuccess
             }
-            _state.value = _state.value.copy(
-                paired = paired,
-                restoringPairing = false,
-                pairedDaemon = repository.savedPairing,
-            )
+            val pairedDaemon = repository.savedPairing
+            _state.update {
+                it.copy(
+                    paired = paired,
+                    restoringPairing = false,
+                    pairedDaemon = pairedDaemon,
+                )
+            }
             if (paired && _state.value.unlocked) {
                 refreshSessions()
                 startSessionSubscription()
@@ -265,10 +344,12 @@ class FieldworkViewModel internal constructor(
             if (error is CancellationException) {
                 throw error
             }
-            _state.value = _state.value.copy(
-                restoringPairing = false,
-                message = error.message ?: error.toString(),
-            )
+            _state.update {
+                it.copy(
+                    restoringPairing = false,
+                    message = SAVED_PAIRING_UNAVAILABLE_MESSAGE,
+                )
+            }
         }
     }
 
@@ -286,7 +367,6 @@ class FieldworkViewModel internal constructor(
                         applySessions(sessions)
                         resolvePendingPushTarget(sessions)
                     }
-                    return@launch
                 } catch (error: Throwable) {
                     if (error is CancellationException) {
                         throw error
@@ -294,8 +374,11 @@ class FieldworkViewModel internal constructor(
                     if (!_state.value.unlocked || !_state.value.paired) {
                         return@launch
                     }
-                    delay(sessionSubscriptionRetryDelayMillis)
                 }
+                if (!_state.value.unlocked || !_state.value.paired) {
+                    return@launch
+                }
+                delay(sessionSubscriptionRetryDelayMillis)
             }
         }
     }
@@ -306,13 +389,16 @@ class FieldworkViewModel internal constructor(
     }
 
     private suspend fun runLoading(block: suspend () -> Unit) {
-        _state.value = _state.value.copy(loading = true, message = null)
+        _state.update { it.copy(loading = true, message = null) }
         try {
             block()
         } catch (error: Throwable) {
-            _state.value = _state.value.copy(message = error.message ?: error.toString())
+            if (error is CancellationException) {
+                throw error
+            }
+            _state.update { it.copy(message = SESSIONS_UNAVAILABLE_MESSAGE) }
         } finally {
-            _state.value = _state.value.copy(loading = false)
+            _state.update { it.copy(loading = false) }
         }
     }
 
@@ -320,23 +406,23 @@ class FieldworkViewModel internal constructor(
         val hash = pendingPushSessionIdHash ?: return
         val session = sessions.firstOrNull { sha256Hex(it.id) == hash } ?: return
         pendingPushSessionIdHash = null
-        _state.value = _state.value.copy(targetSession = session)
+        _state.update { it.copy(targetSession = session) }
     }
 
     private fun applySessions(sessions: List<MobileSession>) {
-        val activeSessionId = _state.value.activeTerminalSessionId
-        val retainedActiveSessionId = activeSessionId?.takeIf { id ->
-            sessions.any { it.id == id }
+        _state.update { state ->
+            state.copy(
+                sessions = sessions,
+                activeTerminalSessionId = state.activeTerminalSessionId?.takeIf { id ->
+                    sessions.any { it.id == id }
+                },
+            )
         }
-        _state.value = _state.value.copy(
-            sessions = sessions,
-            activeTerminalSessionId = retainedActiveSessionId,
-        )
     }
 
     private fun recordTelemetryExperience() {
         if (MobileTelemetry.shouldShowConsentPrompt(appContext)) {
-            _state.value = _state.value.copy(telemetryConsentPromptVisible = true)
+            _state.update { it.copy(telemetryConsentPromptVisible = true) }
         }
     }
 }
@@ -353,3 +439,6 @@ private fun sha256Hex(value: String): String {
 }
 
 private val HEX = "0123456789abcdef".toCharArray()
+private const val PAIRING_FAILED_MESSAGE = "Pairing failed"
+private const val SAVED_PAIRING_UNAVAILABLE_MESSAGE = "Saved pairing unavailable"
+private const val SESSIONS_UNAVAILABLE_MESSAGE = "Sessions unavailable"

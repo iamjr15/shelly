@@ -24,9 +24,30 @@ use serde::{Serialize, de::DeserializeOwned};
 use std::path::Path;
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::sync::{Mutex, watch};
+use tokio::sync::{Mutex, broadcast, watch};
 use tokio::time::{Duration, sleep};
 use tracing::{error, info, warn};
+
+const AUTO_SESSION_NAMES: &[&str] = &[
+    "waffle",
+    "pickle",
+    "noodle",
+    "bagel",
+    "nacho",
+    "spatula",
+    "kazoo",
+    "widget",
+    "pancake",
+    "sprocket",
+    "marble",
+    "boomerang",
+    "muffin",
+    "donut",
+    "toaster",
+    "sprinkle",
+    "gizmo",
+    "jellybean",
+];
 
 pub struct AppState {
     pub(crate) sessions: DashMap<SessionId, Arc<Session>>,
@@ -240,6 +261,27 @@ impl AppState {
         Ok(true)
     }
 
+    pub(crate) fn clear_device_push(
+        &self,
+        device_node_id: &str,
+        platform: PushPlatform,
+        token: String,
+    ) -> Result<bool> {
+        let Some(mut device) = self.devices.get_mut(device_node_id) else {
+            return Ok(false);
+        };
+        let token_matches = device.push_platform == Some(platform)
+            && device.push_token.as_deref() == Some(token.as_str());
+        if token_matches {
+            device.clear_push_token();
+            if let Some(persistence) = &self.persistence {
+                persistence.save_device(&device)?;
+            }
+            self.push.unregister_token(token);
+        }
+        Ok(true)
+    }
+
     pub(crate) fn mark_device_seen(&self, device_node_id: &str) -> Result<bool> {
         let Some(mut device) = self.devices.get_mut(device_node_id) else {
             return Ok(false);
@@ -392,17 +434,21 @@ where
                     write_forbidden(&writer, "mobile clients cannot create sessions").await?;
                     continue;
                 }
-                if state.summaries().iter().any(|session| session.name == name) {
-                    write_msg(
-                        &writer,
-                        &ServerToClientMsg::Error {
-                            code: ErrorCode::InvalidRequest,
-                            message: format!("session name already exists: {name}"),
-                        },
-                    )
-                    .await?;
-                    continue;
-                }
+                let summaries = state.summaries();
+                let name = match resolve_new_session_name(name, &summaries) {
+                    Ok(name) => name,
+                    Err(error) => {
+                        write_msg(
+                            &writer,
+                            &ServerToClientMsg::Error {
+                                code: ErrorCode::InvalidRequest,
+                                message: error.to_string(),
+                            },
+                        )
+                        .await?;
+                        continue;
+                    }
+                };
 
                 match Session::spawn(
                     name,
@@ -569,10 +615,15 @@ where
                 state.publish_session_list();
             }
             ClientToServerMsg::Input { session_id, bytes } => {
-                let error = state
+                let Some(session) = state
                     .sessions
                     .get(&session_id)
-                    .and_then(|session| session.write_input(&bytes).err());
+                    .map(|entry| Arc::clone(&entry))
+                else {
+                    write_session_not_found(&writer, session_id).await?;
+                    continue;
+                };
+                let error = session.write_input(&bytes).err();
                 if let Some(error) = error {
                     write_msg(
                         &writer,
@@ -585,10 +636,15 @@ where
                 }
             }
             ClientToServerMsg::Resize { session_id, size } => {
-                let error = state
+                let Some(session) = state
                     .sessions
                     .get(&session_id)
-                    .and_then(|session| session.update_client_size(client_id, size).err());
+                    .map(|entry| Arc::clone(&entry))
+                else {
+                    write_session_not_found(&writer, session_id).await?;
+                    continue;
+                };
+                let error = session.update_client_size(client_id, size).err();
                 if let Some(error) = error {
                     write_msg(
                         &writer,
@@ -783,12 +839,13 @@ where
                     }
                 }
             }
-            ClientToServerMsg::RegisterPushToken { .. } => {
+            ClientToServerMsg::RegisterPushToken { .. }
+            | ClientToServerMsg::UnregisterPushToken { .. } => {
                 write_msg(
                     &writer,
                     &ServerToClientMsg::Error {
                         code: ErrorCode::InvalidRequest,
-                        message: "push registration is accepted from paired iroh devices only"
+                        message: "push token updates are accepted from paired iroh devices only"
                             .to_string(),
                     },
                 )
@@ -831,14 +888,7 @@ where
                         }
                     }
                 } else {
-                    write_msg(
-                        &writer,
-                        &ServerToClientMsg::Error {
-                            code: ErrorCode::NotFound,
-                            message: format!("session not found: {session_id}"),
-                        },
-                    )
-                    .await?;
+                    write_session_not_found(&writer, session_id).await?;
                 }
             }
         }
@@ -854,16 +904,67 @@ where
 }
 
 fn spawn_session_list_forwarder(state: Arc<AppState>, session: Arc<Session>) {
+    let mut rx = session.subscribe();
+    drop(session);
     tokio::spawn(async move {
-        let mut rx = session.subscribe();
-        while let Ok(event) = rx.recv().await {
-            match event {
-                ServerToClientMsg::AgentStateChanged { .. }
-                | ServerToClientMsg::SessionExited { .. } => state.publish_session_list(),
-                _ => {}
+        loop {
+            match rx.recv().await {
+                Ok(ServerToClientMsg::AgentStateChanged { .. }) => state.publish_session_list(),
+                Ok(ServerToClientMsg::SessionExited { .. }) => {
+                    state.publish_session_list();
+                    break;
+                }
+                Ok(_) => {}
+                Err(broadcast::error::RecvError::Lagged(_)) => state.publish_session_list(),
+                Err(broadcast::error::RecvError::Closed) => break,
             }
         }
     });
+}
+
+fn resolve_new_session_name(
+    requested: String,
+    existing: &[fieldwork_protocol::SessionSummary],
+) -> Result<String> {
+    let name = requested.trim().to_string();
+    if name.chars().any(char::is_control) {
+        anyhow::bail!("session name cannot contain control characters");
+    }
+
+    let name = if name.is_empty() {
+        auto_session_name(existing)
+    } else {
+        name
+    };
+
+    if existing.iter().any(|session| session.name == name) {
+        anyhow::bail!("session name already exists: {name}");
+    }
+
+    Ok(name)
+}
+
+fn auto_session_name(existing: &[fieldwork_protocol::SessionSummary]) -> String {
+    let start = auto_name_start_index();
+    for offset in 0..AUTO_SESSION_NAMES.len() {
+        let name = AUTO_SESSION_NAMES[(start + offset) % AUTO_SESSION_NAMES.len()];
+        if existing.iter().all(|session| session.name != name) {
+            return name.to_string();
+        }
+    }
+
+    let base = AUTO_SESSION_NAMES[start % AUTO_SESSION_NAMES.len()];
+    for suffix in 2.. {
+        let candidate = format!("{base}{suffix}");
+        if existing.iter().all(|session| session.name != candidate) {
+            return candidate;
+        }
+    }
+    unreachable!("unbounded suffix search always returns")
+}
+
+fn auto_name_start_index() -> usize {
+    (SessionId::new().0.as_u128() as usize) % AUTO_SESSION_NAMES.len()
 }
 
 async fn write_forbidden<W>(writer: &Arc<Mutex<W>>, message: &str) -> Result<()>
@@ -875,6 +976,20 @@ where
         &ServerToClientMsg::Error {
             code: ErrorCode::Forbidden,
             message: message.to_string(),
+        },
+    )
+    .await
+}
+
+async fn write_session_not_found<W>(writer: &Arc<Mutex<W>>, session_id: SessionId) -> Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    write_msg(
+        writer,
+        &ServerToClientMsg::Error {
+            code: ErrorCode::NotFound,
+            message: format!("session not found: {session_id}"),
         },
     )
     .await
@@ -972,6 +1087,20 @@ mod tests {
             None,
         )
         .expect("spawn stdin session")
+    }
+
+    fn test_summary(name: &str) -> SessionSummary {
+        SessionSummary {
+            id: SessionId::new(),
+            name: name.to_string(),
+            command: vec!["bash".to_string()],
+            cwd: std::env::current_dir().expect("current dir"),
+            created_at: 1,
+            last_activity: 1,
+            state: AgentState::Idle,
+            last_line: None,
+            model: None,
+        }
     }
 
     fn write_sleeping_agent_stub(dir: &Path, name: &str) -> std::path::PathBuf {
@@ -1112,6 +1241,83 @@ mod tests {
         assert_ipc_forbids_create_and_kill(ClientKind::AndroidApp).await;
     }
 
+    async fn assert_ipc_reports_missing_session_for_input_and_resize(client_kind: ClientKind) {
+        let (client, server) = tokio::io::duplex(8192);
+        let (server_reader, server_writer) = tokio::io::split(server);
+        let server_task =
+            tokio::spawn(handle_client_io(test_state(), server_reader, server_writer));
+        let (mut client_reader, client_writer) = tokio::io::split(client);
+        let client_writer = Arc::new(Mutex::new(client_writer));
+
+        write_msg(
+            &client_writer,
+            &ClientToServerMsg::Hello {
+                client_kind,
+                client_version: "test".to_string(),
+                protocol_version: CONTRACT_VERSION,
+            },
+        )
+        .await
+        .unwrap();
+        let welcome: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
+        assert!(matches!(welcome, ServerToClientMsg::Welcome { .. }));
+
+        let input_session_id = SessionId::new();
+        write_msg(
+            &client_writer,
+            &ClientToServerMsg::Input {
+                session_id: input_session_id,
+                bytes: b"lost input\r".to_vec(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            read_msg::<_, ServerToClientMsg>(&mut client_reader)
+                .await
+                .unwrap(),
+            ServerToClientMsg::Error {
+                code: ErrorCode::NotFound,
+                message: format!("session not found: {input_session_id}"),
+            }
+        );
+
+        let resize_session_id = SessionId::new();
+        write_msg(
+            &client_writer,
+            &ClientToServerMsg::Resize {
+                session_id: resize_session_id,
+                size: ClientSize { rows: 24, cols: 80 },
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            read_msg::<_, ServerToClientMsg>(&mut client_reader)
+                .await
+                .unwrap(),
+            ServerToClientMsg::Error {
+                code: ErrorCode::NotFound,
+                message: format!("session not found: {resize_session_id}"),
+            }
+        );
+
+        drop(client_writer);
+        drop(client_reader);
+        timeout(Duration::from_secs(1), server_task)
+            .await
+            .expect("IPC handler did not exit")
+            .expect("IPC handler panicked")
+            .expect("IPC handler failed");
+    }
+
+    #[tokio::test]
+    async fn ipc_handler_reports_missing_session_for_input_and_resize() {
+        assert_ipc_reports_missing_session_for_input_and_resize(ClientKind::LocalCli).await;
+        assert_ipc_reports_missing_session_for_input_and_resize(ClientKind::IosApp).await;
+        assert_ipc_reports_missing_session_for_input_and_resize(ClientKind::AndroidApp).await;
+    }
+
     #[tokio::test]
     async fn ipc_handler_rejects_duplicate_session_names() {
         let (client, server) = tokio::io::duplex(8192);
@@ -1171,6 +1377,112 @@ mod tests {
             }
         }
 
+        drop(client_writer);
+        drop(client_reader);
+        timeout(Duration::from_secs(1), server_task)
+            .await
+            .expect("IPC handler did not exit")
+            .expect("IPC handler panicked")
+            .expect("IPC handler failed");
+    }
+
+    #[test]
+    fn daemon_session_name_resolution_generates_trims_and_validates() {
+        let generated = resolve_new_session_name(" \t ".to_string(), &[]).unwrap();
+        assert!(AUTO_SESSION_NAMES.contains(&generated.as_str()));
+        assert!(
+            generated
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+        );
+
+        assert_eq!(
+            resolve_new_session_name(" refactoringjob ".to_string(), &[]).unwrap(),
+            "refactoringjob"
+        );
+
+        let existing = vec![test_summary("refactoringjob")];
+        let duplicate = resolve_new_session_name("refactoringjob".to_string(), &existing)
+            .expect_err("duplicate names should be rejected");
+        assert!(
+            duplicate
+                .to_string()
+                .contains("session name already exists: refactoringjob")
+        );
+
+        let control = resolve_new_session_name("line\nbreak".to_string(), &[])
+            .expect_err("control characters should be rejected");
+        assert!(
+            control
+                .to_string()
+                .contains("session name cannot contain control characters")
+        );
+    }
+
+    #[tokio::test]
+    async fn ipc_handler_generates_daemon_session_name_for_empty_local_create() {
+        let state = test_state();
+        let (client, server) = tokio::io::duplex(8192);
+        let (server_reader, server_writer) = tokio::io::split(server);
+        let server_task = tokio::spawn(handle_client_io(
+            Arc::clone(&state),
+            server_reader,
+            server_writer,
+        ));
+        let (mut client_reader, client_writer) = tokio::io::split(client);
+        let client_writer = Arc::new(Mutex::new(client_writer));
+
+        write_msg(
+            &client_writer,
+            &ClientToServerMsg::Hello {
+                client_kind: ClientKind::LocalCli,
+                client_version: "test".to_string(),
+                protocol_version: CONTRACT_VERSION,
+            },
+        )
+        .await
+        .unwrap();
+        let welcome: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
+        assert!(matches!(welcome, ServerToClientMsg::Welcome { .. }));
+
+        write_msg(
+            &client_writer,
+            &ClientToServerMsg::CreateSession {
+                name: " \t ".to_string(),
+                command: vec![
+                    "/bin/sh".to_string(),
+                    "-c".to_string(),
+                    "while IFS= read -r _line; do sleep 1; done".to_string(),
+                ],
+                cwd: std::env::current_dir().expect("current dir"),
+                env: HashMap::new(),
+                size: ClientSize { rows: 24, cols: 80 },
+            },
+        )
+        .await
+        .unwrap();
+
+        let response: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
+        let ServerToClientMsg::SessionCreated {
+            session_id,
+            summary,
+        } = response
+        else {
+            panic!("expected session creation, got {response:?}");
+        };
+        assert!(AUTO_SESSION_NAMES.contains(&summary.name.as_str()));
+        assert_eq!(
+            summary.command,
+            vec![
+                "/bin/sh",
+                "-c",
+                "while IFS= read -r _line; do sleep 1; done"
+            ]
+        );
+
+        if let Some((_, session)) = state.sessions.remove(&session_id) {
+            let _ = session.kill();
+        }
         drop(client_writer);
         drop(client_reader);
         timeout(Duration::from_secs(1), server_task)
@@ -1476,5 +1788,78 @@ mod tests {
             }
             _ => panic!("expected unregister token command"),
         }
+    }
+
+    #[tokio::test]
+    async fn clearing_matching_device_push_token_enqueues_relay_unregistration() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let state = test_state_with_push(PushDispatcher::from_test_sender(tx));
+        let mut device = StoredDevice::new("Smoke Phone".to_string(), "device-node-a".to_string());
+        device.set_push_token(PushPlatform::Fcm, "fcm-token".to_string());
+        state.save_device(device).unwrap();
+
+        assert!(
+            state
+                .clear_device_push("device-node-a", PushPlatform::Fcm, "fcm-token".to_string())
+                .unwrap()
+        );
+
+        {
+            let device = state
+                .devices
+                .get("device-node-a")
+                .expect("device still paired");
+            assert_eq!(device.push_platform, None);
+            assert_eq!(device.push_token, None);
+        }
+        let command = timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("matching token clear should enqueue relay unregistration")
+            .expect("push command");
+        match command {
+            PushCommand::UnregisterToken { token } => assert_eq!(token, "fcm-token"),
+            _ => panic!("expected unregister token command"),
+        }
+    }
+
+    #[tokio::test]
+    async fn clearing_stale_device_push_token_is_idempotent_without_relay_unregistration() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let state = test_state_with_push(PushDispatcher::from_test_sender(tx));
+        let mut device = StoredDevice::new("Smoke Phone".to_string(), "device-node-a".to_string());
+        device.set_push_token(PushPlatform::Fcm, "current-token".to_string());
+        state.save_device(device).unwrap();
+
+        assert!(
+            state
+                .clear_device_push("device-node-a", PushPlatform::Fcm, "old-token".to_string())
+                .unwrap()
+        );
+
+        {
+            let device = state
+                .devices
+                .get("device-node-a")
+                .expect("device still paired");
+            assert_eq!(device.push_platform, Some(PushPlatform::Fcm));
+            assert_eq!(device.push_token.as_deref(), Some("current-token"));
+        }
+        assert!(
+            timeout(Duration::from_millis(100), rx.recv())
+                .await
+                .is_err(),
+            "stale token clear must not enqueue relay unregistration"
+        );
+    }
+
+    #[test]
+    fn clearing_missing_device_push_token_is_unauthorized() {
+        let state = test_state();
+
+        assert!(
+            !state
+                .clear_device_push("missing-device", PushPlatform::Fcm, "fcm-token".to_string())
+                .unwrap()
+        );
     }
 }

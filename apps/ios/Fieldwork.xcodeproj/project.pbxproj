@@ -270,7 +270,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"${FIELDWORK_SKIP_RUST_BUILD:-}\" != \"1\" ]; then\n  /bin/bash \"${SRCROOT}/scripts/build-rust.sh\"\nfi\n";
+			shellScript = "if [ \"${FIELDWORK_SKIP_RUST_BUILD:-}\" = \"1\" ]; then\n  exit 0\nfi\nif [ ! -f \"${SRCROOT}/scripts/build-rust.sh\" ]; then\n  echo \"error: iOS is deferred for v1 and apps/ios/scripts/build-rust.sh is not present; set FIELDWORK_SKIP_RUST_BUILD=1 to build without regenerating Rust outputs.\" >&2\n  exit 1\nfi\n/bin/bash \"${SRCROOT}/scripts/build-rust.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

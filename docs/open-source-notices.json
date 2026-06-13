@@ -5,16 +5,6 @@
     "url": "https://github.com/fieldwork-app/fieldwork"
   },
   {
-    "name": "Fieldwork App Store Distribution Notice",
-    "license": "AGPL-3.0-or-later additional permission",
-    "url": "https://github.com/fieldwork-app/fieldwork/blob/main/NOTICE"
-  },
-  {
-    "name": "SwiftTerm",
-    "license": "MIT",
-    "url": "https://github.com/migueldeicaza/SwiftTerm"
-  },
-  {
     "name": "AndroidX",
     "license": "Apache-2.0",
     "url": "https://developer.android.com/jetpack/androidx"
@@ -33,6 +23,16 @@
     "name": "ML Kit Barcode Scanning",
     "license": "Apache-2.0",
     "url": "https://developers.google.com/ml-kit/vision/barcode-scanning"
+  },
+  {
+    "name": "Java Native Access (JNA)",
+    "license": "Apache-2.0 OR LGPL-2.1-or-later",
+    "url": "https://github.com/java-native-access/jna"
+  },
+  {
+    "name": "kotlinx.coroutines",
+    "license": "Apache-2.0",
+    "url": "https://github.com/Kotlin/kotlinx.coroutines"
   },
   {
     "name": "ConnectBot termlib",

@@ -153,7 +153,7 @@ pub struct PairingTicket {
     pub relay_url: Option<String>,
     /// Direct socket addresses advertised for local-network connection attempts.
     pub addrs: Vec<String>,
-    /// UTC expiry time in milliseconds since the Unix epoch.
+    /// UTC deadline in milliseconds after which the code and QR are invalid.
     pub expires_at: u64,
 }
 

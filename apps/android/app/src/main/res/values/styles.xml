@@ -2,5 +2,6 @@
     <style name="Theme.Fieldwork" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:navigationBarColor">#111111</item>
+        <item name="android:windowBackground">#FFFAFAF7</item>
     </style>
 </resources>

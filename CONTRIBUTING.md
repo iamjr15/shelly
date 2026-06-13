@@ -11,7 +11,6 @@ AGPL-3.0-or-later and the Apple App Store distribution additional permission in
 ```sh
 cargo build --workspace
 cargo test --workspace
-node scripts/verify-npm-packages.mjs
 node scripts/test-npm-dispatcher.mjs
 ```
 
@@ -22,16 +21,18 @@ cargo fmt --check
 cargo clippy --workspace -- -D warnings
 cargo nextest run --workspace
 cargo test --workspace --doc
-node scripts/verify-secret-boundaries.mjs
-node scripts/verify-v1-boundary.mjs
 ```
 
-Run the focused verifier for the area you touched as well, for example
-`node scripts/verify-npm-packages.mjs` for npm packaging, `node
-scripts/verify-mobile-privacy.mjs` for mobile privacy changes, or `node
-scripts/verify-release-audit.mjs` for release-gate/documentation changes.
+Run the focused build or smoke command for the area you touched as well, for
+example `node scripts/test-npm-artifact-pack.mjs` for npm packaging,
+`scripts/smoke-local-handoff.sh` for daemon/CLI handoff behavior, `pnpm
+test:android-unit` for Android UI/core changes, or `pnpm check:site` for site
+changes.
 `cargo deny check` and `cargo audit` are CI supply-chain gates when the tools
 are installed.
+
+For release-milestone readiness, use the `Required Local Checks` section in
+`PLAN.md`; it is intentionally broader than the day-to-day PR checklist above.
 
 ## Design Constraints
 

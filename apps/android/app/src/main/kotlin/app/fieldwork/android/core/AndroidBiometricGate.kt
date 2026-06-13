@@ -11,6 +11,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 class AndroidBiometricGate(private val activity: FragmentActivity) {
     companion object {
         private const val FRESH_MILLIS = 5 * 60 * 1000L
+        private const val UNLOCK_UNAVAILABLE_MESSAGE =
+            "To unlock Fieldwork, set up a screen lock (PIN, pattern, or password) or biometrics in Settings."
+        private val ALLOWED_AUTHENTICATORS =
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
         private var nowMillis: () -> Long = { System.currentTimeMillis() }
         private var lastUnlockMillis: Long = 0
         private var backgroundedMillis: Long = 0
@@ -63,6 +67,18 @@ class AndroidBiometricGate(private val activity: FragmentActivity) {
     val shouldLockOnResume: Boolean
         get() = shouldLockOnResumeNow()
 
+    fun unlockUnavailableMessage(): String? {
+        if (debugBiometricBypassEnabled()) {
+            return null
+        }
+        val manager = BiometricManager.from(activity)
+        return if (manager.canAuthenticate(ALLOWED_AUTHENTICATORS) == BiometricManager.BIOMETRIC_SUCCESS) {
+            null
+        } else {
+            UNLOCK_UNAVAILABLE_MESSAGE
+        }
+    }
+
     suspend fun unlock(reason: String): Boolean {
         if (isFresh) return true
         if (debugBiometricBypassEnabled()) {
@@ -70,9 +86,8 @@ class AndroidBiometricGate(private val activity: FragmentActivity) {
             return true
         }
 
-        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG
         val manager = BiometricManager.from(activity)
-        if (manager.canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
+        if (manager.canAuthenticate(ALLOWED_AUTHENTICATORS) != BiometricManager.BIOMETRIC_SUCCESS) {
             return false
         }
 
@@ -96,8 +111,7 @@ class AndroidBiometricGate(private val activity: FragmentActivity) {
             val info = BiometricPrompt.PromptInfo.Builder()
                 .setTitle("Unlock Fieldwork")
                 .setSubtitle(reason)
-                .setNegativeButtonText("Cancel")
-                .setAllowedAuthenticators(authenticators)
+                .setAllowedAuthenticators(ALLOWED_AUTHENTICATORS)
                 .build()
             continuation.invokeOnCancellation { prompt.cancelAuthentication() }
             prompt.authenticate(info)

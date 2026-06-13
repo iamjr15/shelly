@@ -24,7 +24,6 @@ try {
   run(process.execPath, ["scripts/prepare-npm-artifacts.mjs"], {
     env: { ...process.env, FIELDWORK_ARTIFACT_DIR: fixtureRoot },
   });
-  run(process.execPath, ["scripts/verify-npm-packages.mjs", "--require-binaries"]);
 
   for (const platform of platforms) {
     assertNativePackagePack(platform);

@@ -25,12 +25,12 @@ private data class LicenseNotice(
 
 private val licenseNotices = listOf(
     LicenseNotice("Fieldwork", "AGPL-3.0-or-later", "https://github.com/fieldwork-app/fieldwork"),
-    LicenseNotice("Fieldwork App Store Distribution Notice", "AGPL-3.0-or-later additional permission", "https://github.com/fieldwork-app/fieldwork/blob/main/NOTICE"),
-    LicenseNotice("SwiftTerm", "MIT", "https://github.com/migueldeicaza/SwiftTerm"),
     LicenseNotice("AndroidX", "Apache-2.0", "https://developer.android.com/jetpack/androidx"),
     LicenseNotice("Firebase Android SDK", "Apache-2.0", "https://github.com/firebase/firebase-android-sdk"),
     LicenseNotice("CameraX", "Apache-2.0", "https://developer.android.com/media/camera/camerax"),
     LicenseNotice("ML Kit Barcode Scanning", "Apache-2.0", "https://developers.google.com/ml-kit/vision/barcode-scanning"),
+    LicenseNotice("Java Native Access (JNA)", "Apache-2.0 OR LGPL-2.1-or-later", "https://github.com/java-native-access/jna"),
+    LicenseNotice("kotlinx.coroutines", "Apache-2.0", "https://github.com/Kotlin/kotlinx.coroutines"),
     LicenseNotice("ConnectBot termlib", "Apache-2.0", "https://github.com/connectbot/termlib"),
     LicenseNotice("iroh", "MIT OR Apache-2.0", "https://github.com/n0-computer/iroh"),
     LicenseNotice("tokio", "MIT", "https://github.com/tokio-rs/tokio"),
@@ -63,7 +63,7 @@ fun OpenSourceLicensesScreen(padding: PaddingValues, onBack: () -> Unit) {
                 ListItem(
                     headlineContent = { Text("Fieldwork is open source.") },
                     supportingContent = {
-                        Text("This screen lists the primary open-source projects used by the Fieldwork mobile apps and shared Rust core.")
+                        Text("This screen lists the primary open-source projects used by the Fieldwork Android app and shared Rust core.")
                     },
                 )
             }

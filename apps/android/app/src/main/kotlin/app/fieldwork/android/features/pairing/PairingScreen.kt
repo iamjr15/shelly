@@ -17,18 +17,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -37,29 +41,27 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
 import app.fieldwork.android.BuildConfig
 import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 
-/** Crockford base32 alphabet shared with the daemon/protocol (no I/L/O/U confusables). */
-private const val CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-private const val CODE_LEN = 5
-
 private enum class PairMethod { SCAN, CODE }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun PairingScreen(
     padding: PaddingValues,
@@ -68,6 +70,8 @@ fun PairingScreen(
     onPairWithCode: (String) -> Unit,
 ) {
     val context = LocalContext.current
+    val codeFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     // A debug code preselects the Enter-code tab so manual smoke runs skip the camera.
     val debugCode = remember { debugPairingCode() }
     var method by remember {
@@ -86,6 +90,16 @@ fun PairingScreen(
 
     LaunchedEffect(method) {
         if (method == PairMethod.SCAN && !cameraGranted) launcher.launch(Manifest.permission.CAMERA)
+        if (method == PairMethod.CODE) {
+            codeFocusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
+
+    val submitCode = {
+        if (isCompletePairingCode(code) && !pairing) {
+            onPairWithCode(code)
+        }
     }
 
     Scaffold(
@@ -129,17 +143,28 @@ fun PairingScreen(
                             onPayload = { if (!pairing) onPair(it.trim()) },
                         )
                     } else {
-                        Text("Camera permission is required to scan the pairing QR.")
+                        Text(
+                            text = PAIRING_CAMERA_DENIED_BODY,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(onClick = { method = PairMethod.CODE }) {
+                            Icon(Icons.Default.Keyboard, contentDescription = null)
+                            Text(PAIRING_CAMERA_DENIED_ACTION)
+                        }
                     }
                 }
                 PairMethod.CODE -> {
                     OutlinedTextField(
                         value = code,
-                        onValueChange = { code = normalizeCodeInput(it) },
-                        modifier = Modifier.fillMaxWidth(),
+                        onValueChange = { code = normalizePairingCodeInput(it) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(codeFocusRequester),
                         singleLine = true,
                         label = { Text("Pairing code") },
-                        supportingText = { Text("$CODE_LEN characters from the desktop") },
+                        supportingText = { Text("$PAIRING_CODE_LENGTH characters from the desktop") },
+                        keyboardActions = KeyboardActions(onDone = { submitCode() }),
                         keyboardOptions = KeyboardOptions(
                             capitalization = KeyboardCapitalization.Characters,
                             keyboardType = KeyboardType.Ascii,
@@ -148,8 +173,8 @@ fun PairingScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
-                        onClick = { onPairWithCode(code) },
-                        enabled = code.length == CODE_LEN && !pairing,
+                        onClick = { submitCode() },
+                        enabled = isCompletePairingCode(code) && !pairing,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Icon(Icons.Default.Keyboard, contentDescription = null)
@@ -161,32 +186,23 @@ fun PairingScreen(
     }
 }
 
-/** Uppercases, applies Crockford aliases (I/L->1, O->0), drops non-alphabet chars, caps at CODE_LEN. */
-private fun normalizeCodeInput(input: String): String {
-    val builder = StringBuilder(CODE_LEN)
-    for (raw in input) {
-        if (builder.length >= CODE_LEN) break
-        val ch = when (raw.uppercaseChar()) {
-            'I', 'L' -> '1'
-            'O' -> '0'
-            else -> raw.uppercaseChar()
-        }
-        if (ch in CODE_ALPHABET) builder.append(ch)
-    }
-    return builder.toString()
-}
-
 private fun debugPairingCode(): String =
-    if (BuildConfig.DEBUG) normalizeCodeInput(BuildConfig.FIELDWORK_DEBUG_PAIRING_CODE) else ""
+    if (BuildConfig.DEBUG) normalizePairingCodeInput(BuildConfig.FIELDWORK_DEBUG_PAIRING_CODE) else ""
 
 @Composable
 private fun QrCamera(modifier: Modifier = Modifier, onPayload: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
+    val disposed = remember { booleanArrayOf(false) }
+    val providerRef = remember { arrayOfNulls<ProcessCameraProvider>(1) }
 
     DisposableEffect(Unit) {
-        onDispose { executor.shutdown() }
+        onDispose {
+            disposed[0] = true
+            providerRef[0]?.unbindAll()
+            executor.shutdown()
+        }
     }
 
     AndroidView(
@@ -197,6 +213,8 @@ private fun QrCamera(modifier: Modifier = Modifier, onPayload: (String) -> Unit)
             providerFuture.addListener(
                 {
                     val provider = providerFuture.get()
+                    if (disposed[0]) return@addListener
+                    providerRef[0] = provider
                     val preview = androidx.camera.core.Preview.Builder().build().also {
                         it.setSurfaceProvider(previewView.surfaceProvider)
                     }
@@ -233,7 +251,7 @@ private class QrAnalyzer(private val onPayload: (String) -> Unit) : ImageAnalysi
         val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
         scanner.process(image)
             .addOnSuccessListener { codes ->
-                val value = codes.firstOrNull { it.valueType == Barcode.TYPE_TEXT }?.rawValue
+                val value = codes.firstNotNullOfOrNull { it.rawValue?.takeIf(String::isNotBlank) }
                 if (!value.isNullOrBlank()) {
                     emitted = true
                     onPayload(value)

@@ -4,7 +4,7 @@ expression: cases
 ---
 - name: hello
   frame_len: 29
-  decoded: "Hello { client_kind: LocalCli, client_version: \"0.1.0\", protocol_version: 2 }"
+  decoded: "Hello { client_kind: LocalCli, client_version: \"0.1.0\", protocol_version: 3 }"
 - name: list_sessions
   frame_len: 8
   decoded: ListSessions
@@ -53,3 +53,6 @@ expression: cases
 - name: subscribe_sessions
   frame_len: 8
   decoded: SubscribeSessions
+- name: unregister_push_token
+  frame_len: 32
+  decoded: "UnregisterPushToken { platform: Apns, token: \"opaque-token\" }"

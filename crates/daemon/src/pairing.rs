@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Duration, timeout};
 
-const PAIR_TOKEN_TTL_MS: u64 = 10 * 60 * 1000;
+const PAIR_TOKEN_TTL_MS: u64 = 5 * 60 * 1000;
 /// Wrong in-band code attempts tolerated before an active code is invalidated.
 const MAX_CODE_ATTEMPTS: u8 = 5;
 
@@ -45,17 +45,19 @@ impl PairingManager {
         let expires_at = now_ms().saturating_add(PAIR_TOKEN_TTL_MS);
         let (request_tx, request_rx) = mpsc::unbounded_channel();
 
-        self.codes
+        let mut codes = self
+            .codes
             .lock()
-            .map_err(|_| anyhow!("pair code lock poisoned"))?
-            .insert(
-                code.clone(),
-                PendingPairCode {
-                    expires_at,
-                    attempts: 0,
-                    request_tx,
-                },
-            );
+            .map_err(|_| anyhow!("pair code lock poisoned"))?;
+        codes.clear();
+        codes.insert(
+            code.clone(),
+            PendingPairCode {
+                expires_at,
+                attempts: 0,
+                request_tx,
+            },
+        );
 
         Ok((code, expires_at, request_rx))
     }
@@ -91,7 +93,8 @@ impl PairingManager {
             }
         };
 
-        if now_ms() > pending.expires_at {
+        let remaining_ms = pending.expires_at.saturating_sub(now_ms());
+        if remaining_ms == 0 {
             bail!("pair code expired");
         }
 
@@ -118,7 +121,7 @@ impl PairingManager {
             bail!("desktop pairing approval prompt is no longer active");
         }
 
-        match timeout(Duration::from_millis(PAIR_TOKEN_TTL_MS), approval_rx).await {
+        match timeout(Duration::from_millis(remaining_ms), approval_rx).await {
             Ok(Ok(approved)) => Ok(approved),
             Ok(Err(_)) => Ok(false),
             Err(_) => {
@@ -187,7 +190,7 @@ mod tests {
     }
 
     #[test]
-    fn pair_codes_expire_after_ten_minutes() {
+    fn pair_codes_expire_after_five_minutes() {
         let manager = PairingManager::new();
         let before = now_ms();
         let (_, expires_at, _rx) = manager.begin_pairing().unwrap();
@@ -217,6 +220,31 @@ mod tests {
         assert!(second.is_err());
         manager.approve(event.request_id, false).unwrap();
         assert!(!first.await.unwrap().unwrap());
+    }
+
+    #[tokio::test]
+    async fn starting_new_pairing_invalidates_previous_code() {
+        let manager = Arc::new(PairingManager::new());
+        let (first_code, _, _first_rx) = manager.begin_pairing().unwrap();
+        let (second_code, _, mut second_rx) = manager.begin_pairing().unwrap();
+
+        assert_ne!(first_code, second_code);
+        assert!(
+            manager
+                .request_approval(&first_code, "phone".to_string(), "node-a".to_string())
+                .await
+                .is_err()
+        );
+
+        let approval_manager = Arc::clone(&manager);
+        let request = tokio::spawn(async move {
+            approval_manager
+                .request_approval(&second_code, "phone".to_string(), "node-a".to_string())
+                .await
+        });
+        let event = second_rx.recv().await.expect("pair approval request");
+        manager.approve(event.request_id, true).unwrap();
+        assert!(request.await.unwrap().unwrap());
     }
 
     #[tokio::test]

@@ -11,8 +11,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       <p class="eyebrow">Architecture</p>
       <h1>Daemon-owned PTYs with native mobile views.</h1>
       <p class="lede">
-        The host daemon owns every session. Desktop CLI, iOS, and Android are views into
-        the same PTY, connected through local IPC or authenticated iroh streams.
+        The host daemon owns every session. Desktop CLI and Android are views into
+        the same PTY: desktop uses local IPC, while paired mobile clients use authenticated iroh streams.
       </p>
     </div>
 
@@ -23,7 +23,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       </article>
       <article class="tile">
         <h3>Transport</h3>
-        <p>Local desktop clients use length-prefixed bincode over a hardened Unix socket. Paired mobile clients use length-prefixed MessagePack over iroh QUIC.</p>
+        <p>Local desktop clients use length-prefixed bincode over a hardened Unix socket. Paired mobile clients use length-prefixed MessagePack over iroh QUIC, and iroh rejects desktop CLI client kinds during handshake.</p>
       </article>
       <article class="tile">
         <h3>Persistence</h3>
@@ -31,7 +31,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       </article>
       <article class="tile">
         <h3>Relay</h3>
-        <p>The relay handles iroh fallback and privacy-preserving push. APNs `.p8`, FCM service-account JSON, and Honeycomb credentials live only on the relay.</p>
+        <p>The relay handles iroh fallback and privacy-preserving push. FCM service-account JSON and Honeycomb credentials live only on the relay; APNs is deferred with iOS.</p>
       </article>
     </div>
   </section>

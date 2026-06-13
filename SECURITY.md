@@ -15,11 +15,13 @@ The current implementation enforces:
 - Unix socket file mode `0600`.
 - `CreateSession` and `KillSession` authorization restricted to `LocalCli`.
 - Arbitrary PTY commands stream raw bytes through the daemon; mobile clients can attach/input/resize/detach but cannot launch or kill commands.
-- Pair tokens are 32 random bytes, base32 encoded, 10-minute TTL, single-use, and require explicit desktop approval.
+- Pairing uses one active 5-character Crockford code plus a compact `fw1`
+  `PairingTicket`; the code has a 5-minute TTL, is invalidated after 5 wrong
+  attempts, and still requires explicit desktop approval.
 - Paired device records, push tokens, session summaries, and scrollback are persisted in encrypted `redb` stores with OS-keychain-held keys.
 - Long-lived iroh and relay-signing keys are stored in the OS keychain.
 - iroh clients are authorized by their paired node identity.
-- iOS and Android app sources gate resume and stale input through LocalAuthentication/BiometricPrompt.
+- The Android app gates resume and stale input through BiometricPrompt. The parked iOS source does the same through LocalAuthentication.
 - Relay push requests are schema-validated, Ed25519-signed, nonce-protected, clock-skew checked, token-ownership checked, and rate-limited.
 - Relay push payloads reject terminal content fields and only carry opaque hashes plus fixed event enums.
 
@@ -27,8 +29,14 @@ The current implementation enforces:
 
 The v1 release still requires real-device and hosted-infrastructure verification:
 
-- APNs `.p8` and FCM service-account JSON must live only on the relay.
-- Actual APNs/FCM payloads must be inspected to confirm generic lock-screen content and no terminal data.
-- Device revocation must be verified against real iOS and Android clients after `fieldwork devices remove`.
-- macOS daemon signing/notarization, iOS signing, Android release signing, npm provenance, and relay deployment must pass in CI with production secrets.
-- `cargo deny`, `cargo audit`, and full mobile builds must run in CI before a v1 tag.
+- FCM service-account JSON must live only on the relay. The same boundary
+  applies to the APNs `.p8` when the deferred iOS client resumes.
+- Actual FCM payloads must be inspected to confirm generic lock-screen content
+  and no terminal data; APNs payload inspection is deferred with iOS.
+- Device revocation must be verified against real Android clients after
+  `fieldwork devices remove` (and against iOS clients when iOS resumes).
+- macOS npm trust/ad-hoc-signing checks, Android release signing, npm
+  provenance, and relay deployment must pass in CI with production secrets.
+  iOS signing is deferred with the iOS client.
+- `cargo deny`, `cargo audit`, and the full Android build must run in CI before
+  a v1 tag.
