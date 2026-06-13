@@ -9,6 +9,7 @@ import process from "node:process";
 const root = process.cwd();
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-bun-install-"));
+const backupRoot = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-bun-install-bin-backup-"));
 const cases = [
   { platform: "darwin", arch: "arm64", key: "darwin-arm64" },
   { platform: "darwin", arch: "x64", key: "darwin-x64" },
@@ -17,8 +18,11 @@ const cases = [
 ];
 
 let exitCode = 0;
+let usingFixtureBins = false;
 
 try {
+  ensurePlatformBins();
+
   const version = run("bun", ["--version"], { cwd: tempRoot }).stdout.trim();
   if (!version) {
     fail("bun --version returned an empty version");
@@ -43,10 +47,56 @@ try {
   console.error(error.message);
   exitCode = 1;
 } finally {
+  restorePlatformBins();
+  fs.rmSync(backupRoot, { recursive: true, force: true });
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }
 
 process.exitCode = exitCode;
+
+function ensurePlatformBins() {
+  const missingBins = cases.some(({ key }) => {
+    const binDir = path.join(root, "packages", `cli-${key}`, "bin");
+    return !fs.existsSync(path.join(binDir, "shelly")) || !fs.existsSync(path.join(binDir, "shellyd"));
+  });
+  if (!missingBins) {
+    return;
+  }
+
+  usingFixtureBins = true;
+  for (const { key } of cases) {
+    const binDir = path.join(root, "packages", `cli-${key}`, "bin");
+    if (fs.existsSync(binDir)) {
+      const backupDir = path.join(backupRoot, key, "bin");
+      fs.mkdirSync(path.dirname(backupDir), { recursive: true });
+      fs.cpSync(binDir, backupDir, { recursive: true });
+      fs.rmSync(binDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(binDir, { recursive: true });
+    writeExecutable(path.join(binDir, "shelly"), `#!/bin/sh\necho shelly-${key}\n`);
+    writeExecutable(
+      path.join(binDir, "shellyd"),
+      `#!/bin/sh\nif [ "$1" = "--help" ]; then echo "Usage: shellyd"; else echo shellyd-${key}; fi\n`,
+    );
+  }
+}
+
+function restorePlatformBins() {
+  if (!usingFixtureBins) {
+    return;
+  }
+
+  for (const { key } of cases) {
+    const binDir = path.join(root, "packages", `cli-${key}`, "bin");
+    fs.rmSync(binDir, { recursive: true, force: true });
+
+    const backupDir = path.join(backupRoot, key, "bin");
+    if (fs.existsSync(backupDir)) {
+      fs.mkdirSync(path.dirname(binDir), { recursive: true });
+      fs.cpSync(backupDir, binDir, { recursive: true });
+    }
+  }
+}
 
 function runCase({ platform, arch, key }, metaPack, platformPack) {
   const caseDir = path.join(tempRoot, key);
@@ -106,16 +156,29 @@ function runCase({ platform, arch, key }, metaPack, platformPack) {
   requireExecutable(path.join(binDir, "shellyd"));
 
   if (process.platform === platform && process.arch === arch) {
-    assertIncludes(
-      run(path.join(binDir, "shelly"), ["version"], { cwd: caseDir, env }).stdout,
-      "shelly",
-      `${key} shelly version`,
-    );
-    assertIncludes(
-      run(path.join(binDir, "shellyd"), ["--help"], { cwd: caseDir, env }).stdout,
-      "Usage:",
-      `${key} shellyd help`,
-    );
+    if (usingFixtureBins) {
+      assertIncludes(
+        run(path.join(binDir, "shelly"), [], { cwd: caseDir, env }).stdout,
+        `shelly-${key}`,
+        `${key} shelly fixture`,
+      );
+      assertIncludes(
+        run(path.join(binDir, "shellyd"), [], { cwd: caseDir, env }).stdout,
+        `shellyd-${key}`,
+        `${key} shellyd fixture`,
+      );
+    } else {
+      assertIncludes(
+        run(path.join(binDir, "shelly"), ["version"], { cwd: caseDir, env }).stdout,
+        "shelly",
+        `${key} shelly version`,
+      );
+      assertIncludes(
+        run(path.join(binDir, "shellyd"), ["--help"], { cwd: caseDir, env }).stdout,
+        "Usage:",
+        `${key} shellyd help`,
+      );
+    }
   }
 }
 
@@ -221,6 +284,15 @@ function assertDispatcherCanResolvePlatformPackage(dispatcher, { platform, arch,
 }
 
 function assertSelectedPlatformBinary(actual, expected, { platform, arch }, label) {
+  if (usingFixtureBins) {
+    const actualBytes = fs.readFileSync(actual);
+    const expectedBytes = fs.readFileSync(expected);
+    if (!actualBytes.equals(expectedBytes)) {
+      fail(`${label} did not match selected platform package fixture`);
+    }
+    return;
+  }
+
   if (platform !== "darwin") {
     const actualBytes = fs.readFileSync(actual);
     const expectedBytes = fs.readFileSync(expected);
@@ -240,6 +312,11 @@ function assertMachOArch(file, expectedArch, label) {
   if (!result.stdout.includes("Mach-O") || !result.stdout.includes(expectedArch)) {
     fail(`${label} must be a Mach-O ${expectedArch} binary, got:\n${result.stdout}`);
   }
+}
+
+function writeExecutable(file, contents) {
+  fs.writeFileSync(file, contents);
+  fs.chmodSync(file, 0o755);
 }
 
 function run(command, args, options) {

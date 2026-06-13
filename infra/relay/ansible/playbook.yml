@@ -13,6 +13,49 @@
         fail_msg: "Pass -e shelly_relay_binary=/path/to/shelly-relay"
 
   tasks:
+    - name: Stop legacy Fieldwork relay services
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop:
+        - fieldwork-control-plane.service
+        - fieldwork-iroh-relay.service
+      failed_when: false
+
+    - name: Remove legacy Fieldwork relay service files and binary
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/fieldwork-control-plane.service
+        - /etc/systemd/system/fieldwork-control-plane.service.d
+        - /etc/systemd/system/fieldwork-iroh-relay.service
+        - /etc/systemd/system/fieldwork-iroh-relay.service.d
+        - "{{ shelly_relay_bin_dir }}/fieldwork-relay"
+
+    - name: Reload systemd after legacy cleanup
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Remove legacy Fieldwork data directory
+      ansible.builtin.file:
+        path: /var/lib/fieldwork
+        state: absent
+
+    - name: Remove legacy Fieldwork relay user
+      ansible.builtin.user:
+        name: fieldwork-relay
+        state: absent
+        remove: true
+      failed_when: false
+
+    - name: Remove legacy Fieldwork relay group
+      ansible.builtin.group:
+        name: fieldwork-relay
+        state: absent
+      failed_when: false
+
     - name: Create relay group
       ansible.builtin.group:
         name: "{{ shelly_relay_group }}"
