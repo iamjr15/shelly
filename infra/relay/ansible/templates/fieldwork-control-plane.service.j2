@@ -9,11 +9,13 @@ User={{ fieldwork_relay_user }}
 Group={{ fieldwork_relay_group }}
 WorkingDirectory={{ fieldwork_relay_data_dir }}
 Environment=FIELDWORK_RELAY_ADDR={{ fieldwork_relay_control_addr }}
-Environment=FIELDWORK_RELAY_REQUIRE_TLS=true
+Environment=FIELDWORK_RELAY_REQUIRE_TLS={{ fieldwork_relay_control_require_tls }}
 Environment=FIELDWORK_RELAY_DB_PATH={{ fieldwork_relay_db_path }}
 Environment=FIELDWORK_RELAY_METRICS_ADDR={{ fieldwork_relay_metrics_addr }}
+{% if fieldwork_relay_otlp_endpoint | length > 0 %}
 Environment=FIELDWORK_RELAY_OTLP_ENDPOINT={{ fieldwork_relay_otlp_endpoint }}
 Environment=FIELDWORK_RELAY_OTLP_SAMPLE_RATE={{ fieldwork_relay_otlp_sample_rate }}
+{% endif %}
 {% if fieldwork_relay_honeycomb_dataset | length > 0 %}
 Environment=FIELDWORK_RELAY_HONEYCOMB_DATASET={{ fieldwork_relay_honeycomb_dataset }}
 {% endif %}
@@ -27,10 +29,16 @@ Environment=FIELDWORK_FCM_ENDPOINT={{ fieldwork_relay_fcm_endpoint }}
 {% if fieldwork_relay_apns_team_id | length > 0 %}
 LoadCredential=apns.p8:{{ fieldwork_relay_apns_credential }}
 {% endif %}
+{% if fieldwork_relay_fcm_credential | length > 0 %}
 LoadCredential=fcm-service-account.json:{{ fieldwork_relay_fcm_credential }}
+{% endif %}
+{% if fieldwork_relay_honeycomb_credential | length > 0 %}
 LoadCredential=honeycomb-api-key:{{ fieldwork_relay_honeycomb_credential }}
+{% endif %}
+{% if fieldwork_relay_control_tls_cert | length > 0 and fieldwork_relay_control_tls_key | length > 0 %}
 LoadCredential=control-plane.crt:{{ fieldwork_relay_control_tls_cert }}
 LoadCredential=control-plane.key:{{ fieldwork_relay_control_tls_key }}
+{% endif %}
 ExecStart={{ fieldwork_relay_bin_dir }}/fieldwork-relay
 Restart=on-failure
 RestartSec=5

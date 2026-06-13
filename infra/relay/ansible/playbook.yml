@@ -44,10 +44,14 @@
         mode: "0755"
       notify: Restart fieldwork relay
 
-    - name: Allow relay to bind privileged ports
-      ansible.builtin.command:
-        cmd: "setcap cap_net_bind_service+ep {{ fieldwork_relay_bin_dir }}/fieldwork-relay"
-      changed_when: true
+    - name: Remove unmanaged relay service drop-ins
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/fieldwork-control-plane.service.d
+        - /etc/systemd/system/fieldwork-iroh-relay.service.d
+      notify: Restart fieldwork relay
 
     - name: Install HTTP control-plane service
       ansible.builtin.template:
@@ -67,11 +71,27 @@
         mode: "0644"
       notify: Restart fieldwork relay
 
-    - name: Enable services
+    - name: Enable and start services
       ansible.builtin.systemd_service:
         name: "{{ item }}"
         enabled: true
+        state: started
         daemon_reload: true
+      loop:
+        - fieldwork-control-plane.service
+        - fieldwork-iroh-relay.service
+
+    - name: Flush relay restarts
+      ansible.builtin.meta: flush_handlers
+
+    - name: Verify relay services are active
+      ansible.builtin.command: "systemctl is-active {{ item }}"
+      register: relay_service_active
+      changed_when: false
+      failed_when: relay_service_active.stdout != "active"
+      retries: 6
+      delay: 5
+      until: relay_service_active.stdout == "active"
       loop:
         - fieldwork-control-plane.service
         - fieldwork-iroh-relay.service

@@ -1,40 +1,44 @@
 locals {
-  public_ports = concat(
-    [
-      {
-        from_port = 80
-        to_port   = 80
-        protocol  = "tcp"
-        cidrs     = ["0.0.0.0/0"]
-      },
-      {
-        from_port = 443
-        to_port   = 443
-        protocol  = "tcp"
-        cidrs     = ["0.0.0.0/0"]
-      },
-      {
-        from_port = 8443
-        to_port   = 8443
-        protocol  = "tcp"
-        cidrs     = ["0.0.0.0/0"]
-      },
-      {
-        from_port = 7842
-        to_port   = 7842
-        protocol  = "udp"
-        cidrs     = ["0.0.0.0/0"]
-      }
-    ],
-    length(var.ssh_allowed_cidrs) == 0 ? [] : [
-      {
-        from_port = 22
-        to_port   = 22
-        protocol  = "tcp"
-        cidrs     = var.ssh_allowed_cidrs
-      }
-    ],
-  )
+  base_public_ports = [
+    {
+      from_port = 80
+      to_port   = 80
+      protocol  = "tcp"
+      cidrs     = ["0.0.0.0/0"]
+    },
+    {
+      from_port = 8443
+      to_port   = 8443
+      protocol  = "tcp"
+      cidrs     = ["0.0.0.0/0"]
+    }
+  ]
+
+  iroh_tls_public_ports = var.enable_iroh_tls_ports ? [
+    {
+      from_port = 443
+      to_port   = 443
+      protocol  = "tcp"
+      cidrs     = ["0.0.0.0/0"]
+    },
+    {
+      from_port = 7842
+      to_port   = 7842
+      protocol  = "udp"
+      cidrs     = ["0.0.0.0/0"]
+    }
+  ] : []
+
+  ssh_public_ports = length(var.ssh_allowed_cidrs) == 0 ? [] : [
+    {
+      from_port = 22
+      to_port   = 22
+      protocol  = "tcp"
+      cidrs     = var.ssh_allowed_cidrs
+    }
+  ]
+
+  public_ports = concat(local.base_public_ports, local.iroh_tls_public_ports, local.ssh_public_ports)
 }
 
 resource "aws_lightsail_instance" "relay" {

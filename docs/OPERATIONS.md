@@ -33,6 +33,16 @@ The relay infrastructure scaffold lives under `infra/lightsail` and
 `dock-relay` with static IP `3.7.138.203`. Production relay deployment still
 needs operator-owned DNS/TLS and relay-only credentials.
 
+The committed Ansible defaults run the host in a pre-production posture:
+
+- iroh relay is HTTP-only on port 80 until DNS points at `dock-relay` and ACME
+  can issue certificates.
+- the control plane listens on port 8443 without mandatory TLS credentials until
+  `fieldwork_relay_control_require_tls` and the cert/key credential paths are
+  set.
+- FCM, APNs, and Honeycomb credentials are optional; missing files disable those
+  integrations instead of preventing the relay from starting.
+
 `.github/workflows/deploy-relay.yml` deploys the relay automatically from
 `main` when relay code or relay infrastructure files change. It builds
 `fieldwork-relay` on an Ubuntu x64 runner, temporarily opens Lightsail SSH to
@@ -75,6 +85,14 @@ Relay-only secrets must stay on the relay host:
 
 Do not commit those files or copy them into CLI, daemon, npm package, mobile, or
 site directories.
+
+When DNS is cut over to `dock-relay`, switch
+`fieldwork_iroh_relay_http_only` to `false`, set
+`fieldwork_iroh_relay_hostname` and `fieldwork_iroh_relay_contact_email`, and
+enable Terraform's `enable_iroh_tls_ports` variable before opening 443/tcp and
+7842/udp. For the control plane, install the TLS cert/key under
+`/etc/fieldwork/secrets/`, set their Ansible paths, and set
+`fieldwork_relay_control_require_tls` to `true`.
 
 APNs credentials and environment are only configured when the deferred iOS
 client resumes; Ansible omits the APNs env vars and `apns.p8` credential while
