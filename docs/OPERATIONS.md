@@ -33,11 +33,26 @@ The relay infrastructure scaffold lives under `infra/lightsail` and
 `dock-relay` with static IP `3.7.138.203`. Production relay deployment still
 needs operator-owned DNS/TLS and relay-only credentials.
 
-`.github/workflows/deploy-relay.yml` expects these GitHub Secrets:
+`.github/workflows/deploy-relay.yml` deploys the relay automatically from
+`main` when relay code or relay infrastructure files change. It builds
+`fieldwork-relay` on an Ubuntu x64 runner, temporarily opens Lightsail SSH to
+that runner's public IPv4 address, runs the Ansible playbook, and closes the
+temporary SSH rule in an `always()` cleanup step.
+
+The workflow expects this GitHub repository variable:
+
+- `RELAY_AWS_ROLE_ARN` (`arn:aws:iam::526867055655:role/GitHubActionsDockRelayDeploy`)
+
+The workflow expects these GitHub Secrets:
 
 - `RELAY_SSH_KEY`
 - `RELAY_KNOWN_HOSTS` (ssh-keyscan output for the relay hosts; generate with
   `ssh-keyscan -H <relay-host> 2>/dev/null`)
+
+`RELAY_SSH_KEY` is a dedicated deploy key installed in `ubuntu`'s
+`authorized_keys` on `dock-relay`; it is not a personal operator SSH key. The
+AWS role is assumed through GitHub OIDC and is limited to reading Lightsail
+instance state plus opening/closing the temporary SSH ingress rule.
 
 Lightsail host creation is direct Terraform. Run `terraform init` and
 `terraform apply` in `infra/lightsail/terraform` with a local, ignored tfvars

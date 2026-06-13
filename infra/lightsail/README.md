@@ -71,12 +71,20 @@ The current inventory line is committed in
 dock-relay ansible_host=3.7.138.203 ansible_user=ubuntu
 ```
 
-The deploy workflow requires `RELAY_SSH_KEY` and `RELAY_KNOWN_HOSTS`. Generate
-known hosts with:
+The deploy workflow requires:
+
+- GitHub repository variable `RELAY_AWS_ROLE_ARN`.
+- GitHub secret `RELAY_SSH_KEY`, containing the dedicated deploy private key.
+- GitHub secret `RELAY_KNOWN_HOSTS`.
+
+Generate known hosts with:
 
 ```sh
 ssh-keyscan -H 3.7.138.203 2>/dev/null
 ```
+
+The GitHub OIDC role opens SSH only for the current runner IP during deploy and
+closes that temporary ingress rule afterward.
 
 Provider push secrets stay on the relay host under `/etc/fieldwork/secrets/`
 and are installed/rotated by the operations runbook, not Terraform.

@@ -1,74 +1,107 @@
 name: Deploy Relay
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-relay.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/protocol/**"
+      - "crates/relay/**"
+      - "infra/lightsail/**"
+      - "infra/relay/**"
+      - "rust-toolchain.toml"
+      - "scripts/check-infra-terraform.sh"
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag containing fieldwork-relay artifact"
-        required: true
 
 permissions:
   contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-relay
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+  LIGHTSAIL_INSTANCE: dock-relay
 
 jobs:
   deploy:
-    name: Deploy relay fleet
+    name: Deploy dock relay
     runs-on: ubuntu-24.04
     environment: relay-production
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: relay-linux-x64
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.RELAY_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: fieldwork-dock-relay-deploy
+
       - name: Install Ansible
         run: python3 -m pip install --user ansible
+
       - name: Verify relay deploy prerequisites
         env:
           RELAY_SSH_KEY: ${{ secrets.RELAY_SSH_KEY }}
           RELAY_KNOWN_HOSTS: ${{ secrets.RELAY_KNOWN_HOSTS }}
+          RELAY_AWS_ROLE_ARN: ${{ vars.RELAY_AWS_ROLE_ARN }}
         run: |
+          if [ -z "$RELAY_AWS_ROLE_ARN" ]; then
+            echo "RELAY_AWS_ROLE_ARN repository variable is required to manage the temporary Lightsail SSH allowlist."
+            exit 1
+          fi
           if [ -z "$RELAY_SSH_KEY" ]; then
-            echo "RELAY_SSH_KEY is required to deploy the relay fleet."
+            echo "RELAY_SSH_KEY is required to deploy the relay."
             exit 1
           fi
           if [ -z "$RELAY_KNOWN_HOSTS" ]; then
-            echo "RELAY_KNOWN_HOSTS (ssh-keyscan output for the relay hosts) is required so strict host-key checking can pass on a fresh runner."
+            echo "RELAY_KNOWN_HOSTS (ssh-keyscan output for dock-relay) is required so strict host-key checking can pass on a fresh runner."
             exit 1
           fi
           if ! grep -Ev '^\s*(#|$|\[)' infra/relay/ansible/inventory.ini | grep -q .; then
             echo "infra/relay/ansible/inventory.ini must contain at least one relay host before deployment."
             exit 1
           fi
-      - name: Download relay artifact
-        env:
-          GH_TOKEN: ${{ github.token }}
+
+      - name: Build relay
+        run: cargo build --release -p fieldwork-relay
+
+      - name: Capture runner IP
         run: |
-          mkdir -p artifacts
-          gh release download "${{ inputs.tag }}" \
-            --pattern 'fieldwork-linux-arm64.tar.gz' \
-            --pattern 'fieldwork-linux-arm64.tar.gz.sha256' \
-            --pattern 'fieldwork-linux-arm64.tar.gz.bundle' \
-            --dir artifacts
-          (cd artifacts && shasum -a 256 -c fieldwork-linux-arm64.tar.gz.sha256)
-          cosign verify-blob-attestation \
-            --bundle artifacts/fieldwork-linux-arm64.tar.gz.bundle \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity-regexp '^https://github\.com/fieldwork-app/fieldwork/\.github/workflows/release-rust\.yml@' \
-            --type slsaprovenance1 \
-            artifacts/fieldwork-linux-arm64.tar.gz
-          tar -xzf artifacts/fieldwork-linux-arm64.tar.gz -C artifacts
-          test -x artifacts/fieldwork-linux-arm64/fieldwork-relay
+          runner_ip="$(curl -fsS --max-time 10 https://checkip.amazonaws.com | tr -d '\n')"
+          if ! printf '%s\n' "$runner_ip" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
+            echo "Could not determine a valid IPv4 address for this runner: $runner_ip"
+            exit 1
+          fi
+          echo "RUNNER_CIDR=$runner_ip/32" >> "$GITHUB_ENV"
+
+      - name: Open relay SSH for this runner
+        run: |
+          aws lightsail open-instance-public-ports \
+            --region "$AWS_REGION" \
+            --instance-name "$LIGHTSAIL_INSTANCE" \
+            --port-info "{\"fromPort\":22,\"toPort\":22,\"protocol\":\"tcp\",\"cidrs\":[\"$RUNNER_CIDR\"]}"
+
       - name: Write SSH key and known hosts
         env:
           RELAY_SSH_KEY: ${{ secrets.RELAY_SSH_KEY }}
           RELAY_KNOWN_HOSTS: ${{ secrets.RELAY_KNOWN_HOSTS }}
         run: |
-          if [ -z "$RELAY_SSH_KEY" ]; then
-            echo "RELAY_SSH_KEY is required to deploy the relay fleet."
-            exit 1
-          fi
           install -m 700 -d ~/.ssh
           echo "$RELAY_SSH_KEY" > ~/.ssh/fieldwork-relay
           chmod 600 ~/.ssh/fieldwork-relay
           echo "$RELAY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
       - name: Deploy with Ansible
         env:
           ANSIBLE_HOST_KEY_CHECKING: "true"
@@ -77,7 +110,16 @@ jobs:
             -i infra/relay/ansible/inventory.ini \
             --private-key ~/.ssh/fieldwork-relay \
             infra/relay/ansible/playbook.yml \
-            -e fieldwork_relay_binary="$PWD/artifacts/fieldwork-linux-arm64/fieldwork-relay"
+            -e fieldwork_relay_binary="$PWD/target/release/fieldwork-relay"
+
+      - name: Close relay SSH for this runner
+        if: always() && env.RUNNER_CIDR != ''
+        run: |
+          aws lightsail close-instance-public-ports \
+            --region "$AWS_REGION" \
+            --instance-name "$LIGHTSAIL_INSTANCE" \
+            --port-info "{\"fromPort\":22,\"toPort\":22,\"protocol\":\"tcp\",\"cidrs\":[\"$RUNNER_CIDR\"]}" || true
+
       - name: Clean relay SSH key
         if: always()
         run: rm -f ~/.ssh/fieldwork-relay
