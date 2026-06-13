@@ -37,7 +37,7 @@ interprocess = { version = "2.2", features = ["tokio"] }
 iroh = { version = "=1.0.0-rc.0", features = ["platform-verifier"] }
 iroh-relay = { version = "=1.0.0-rc.0", features = ["server", "platform-verifier"] }
 jni = "0.22.4"
-keyring = { version = "=3.6.2", features = ["apple-native", "linux-native-sync-persistent", "vendored"] }
+keyring = { version = "=3.6.3", features = ["apple-native", "linux-native-sync-persistent", "vendored"] }
 libc = "0.2"
 insta = { version = "1", features = ["yaml"] }
 moka = { version = "0.12", features = ["sync"] }
