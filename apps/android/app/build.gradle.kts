@@ -120,7 +120,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
-    implementation("androidx.navigation:navigation-compose:2.9.7")
+    implementation("androidx.navigation:navigation-compose:2.9.8")
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("androidx.biometric:biometric-ktx:1.4.0-alpha02")
     implementation(platform("com.google.firebase:firebase-bom:34.13.0"))
