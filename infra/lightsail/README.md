@@ -1,7 +1,7 @@
 # AWS Lightsail Relay Provisioning
 
 This scaffold is the production-facing AWS Lightsail relay host model for
-Fieldwork.
+Shelly.
 
 The active Mumbai relay currently runs as:
 
@@ -26,7 +26,7 @@ surface.
 
 ## Prerequisites
 
-- AWS credentials for the Fieldwork AWS account.
+- AWS credentials for the Shelly AWS account.
 - AWS region `ap-south-1`.
 - A Lightsail SSH key pair already present in the region. The current host uses
   `LightsailDefaultKeyPair`.
@@ -90,5 +90,5 @@ ssh-keyscan -H 3.7.138.203 2>/dev/null
 The GitHub OIDC role opens SSH only for the current runner IP during deploy and
 closes that temporary ingress rule afterward.
 
-Provider push secrets stay on the relay host under `/etc/fieldwork/secrets/`
+Provider push secrets stay on the relay host under `/etc/shelly/secrets/`
 and are installed/rotated by the operations runbook, not Terraform.

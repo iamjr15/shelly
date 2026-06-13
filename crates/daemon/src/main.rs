@@ -78,16 +78,16 @@ fn handle_cli_args(args: impl IntoIterator<Item = String>) -> Result<bool> {
             Ok(true)
         }
         [flag] if flag == "-V" || flag == "--version" => {
-            println!("fieldworkd {}", env!("CARGO_PKG_VERSION"));
+            println!("shellyd {}", env!("CARGO_PKG_VERSION"));
             Ok(true)
         }
-        [arg, ..] => anyhow::bail!("unexpected argument {arg:?}; run fieldworkd --help"),
+        [arg, ..] => anyhow::bail!("unexpected argument {arg:?}; run shellyd --help"),
     }
 }
 
 fn print_help() {
     println!(
-        "Fieldwork host daemon.\n\nUsage: fieldworkd [OPTIONS]\n\nOptions:\n  -h, --help       Print help\n  -V, --version    Print version"
+        "Shelly host daemon.\n\nUsage: shellyd [OPTIONS]\n\nOptions:\n  -h, --help       Print help\n  -V, --version    Print version"
     );
 }
 

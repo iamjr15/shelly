@@ -21,7 +21,7 @@ pub fn init(config: &Config) -> Result<LoggingGuard> {
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_writer(writer)
         .with_ansi(false);
-    let env_filter = EnvFilter::from_default_env().add_directive("fieldwork_daemon=info".parse()?);
+    let env_filter = EnvFilter::from_default_env().add_directive("shelly_daemon=info".parse()?);
     tracing_subscriber::registry()
         .with(env_filter)
         .with(fmt_layer)
@@ -37,14 +37,14 @@ fn default_log_dir() -> PathBuf {
         .unwrap_or_else(std::env::temp_dir);
 
     if cfg!(target_os = "macos") {
-        return home.join("Library").join("Logs").join("app.fieldwork");
+        return home.join("Library").join("Logs").join("app.shelly");
     }
 
     if let Some(state_home) = std::env::var_os("XDG_STATE_HOME") {
-        return PathBuf::from(state_home).join("fieldwork");
+        return PathBuf::from(state_home).join("shelly");
     }
 
-    home.join(".local").join("state").join("fieldwork")
+    home.join(".local").join("state").join("shelly")
 }
 
 fn prune_old_log_files(log_dir: &Path, now: SystemTime) -> Result<()> {

@@ -10,8 +10,8 @@ private struct LicenseNotice: Identifiable {
 }
 
 private let licenseNotices = [
-    LicenseNotice(name: "Fieldwork", license: "AGPL-3.0-or-later", url: "https://github.com/fieldwork-app/fieldwork"),
-    LicenseNotice(name: "Fieldwork App Store Distribution Notice", license: "AGPL-3.0-or-later additional permission", url: "https://github.com/fieldwork-app/fieldwork/blob/main/NOTICE"),
+    LicenseNotice(name: "Shelly", license: "AGPL-3.0-or-later", url: "https://github.com/shelly-app/shelly"),
+    LicenseNotice(name: "Shelly App Store Distribution Notice", license: "AGPL-3.0-or-later additional permission", url: "https://github.com/shelly-app/shelly/blob/main/NOTICE"),
     LicenseNotice(name: "SwiftTerm", license: "MIT", url: "https://github.com/migueldeicaza/SwiftTerm"),
     LicenseNotice(name: "AndroidX", license: "Apache-2.0", url: "https://developer.android.com/jetpack/androidx"),
     LicenseNotice(name: "Firebase Android SDK", license: "Apache-2.0", url: "https://github.com/firebase/firebase-android-sdk"),
@@ -32,7 +32,7 @@ struct OpenSourceLicensesView: View {
     var body: some View {
         List {
             Section {
-                Text("Fieldwork is open source. This screen lists the primary open-source projects used by the Fieldwork mobile apps and shared Rust core.")
+                Text("Shelly is open source. This screen lists the primary open-source projects used by the Shelly mobile apps and shared Rust core.")
                     .foregroundStyle(.secondary)
             }
 

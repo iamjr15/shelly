@@ -1,13 +1,13 @@
 [package]
-name = "fieldwork-daemon"
+name = "shelly-daemon"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Fieldwork host daemon."
+description = "Shelly host daemon."
 
 [[bin]]
-name = "fieldworkd"
+name = "shellyd"
 path = "src/main.rs"
 
 [dependencies]
@@ -19,7 +19,7 @@ dashmap.workspace = true
 data-encoding.workspace = true
 ed25519-dalek.workspace = true
 figment.workspace = true
-fieldwork-protocol = { path = "../protocol" }
+shelly-protocol = { path = "../protocol" }
 interprocess.workspace = true
 iroh.workspace = true
 keyring.workspace = true

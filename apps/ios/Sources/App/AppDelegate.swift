@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(requestRemoteNotificationRegistration),
-            name: .fieldworkShouldRegisterForRemoteNotifications,
+            name: .shellyShouldRegisterForRemoteNotifications,
             object: nil
         )
         return true
@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
-        NotificationCenter.default.post(name: .fieldworkDidRegisterApnsToken, object: deviceToken)
+        NotificationCenter.default.post(name: .shellyDidRegisterApnsToken, object: deviceToken)
     }
 
     func userNotificationCenter(
@@ -50,12 +50,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         guard let sessionIdHash = userInfo["session_id_hash"] as? String else {
             return
         }
-        NotificationCenter.default.post(name: .fieldworkDidReceivePushSessionHash, object: sessionIdHash)
+        NotificationCenter.default.post(name: .shellyDidReceivePushSessionHash, object: sessionIdHash)
     }
 }
 
 extension Notification.Name {
-    static let fieldworkShouldRegisterForRemoteNotifications = Notification.Name("fieldworkShouldRegisterForRemoteNotifications")
-    static let fieldworkDidRegisterApnsToken = Notification.Name("fieldworkDidRegisterApnsToken")
-    static let fieldworkDidReceivePushSessionHash = Notification.Name("fieldworkDidReceivePushSessionHash")
+    static let shellyShouldRegisterForRemoteNotifications = Notification.Name("shellyShouldRegisterForRemoteNotifications")
+    static let shellyDidRegisterApnsToken = Notification.Name("shellyDidRegisterApnsToken")
+    static let shellyDidReceivePushSessionHash = Notification.Name("shellyDidReceivePushSessionHash")
 }

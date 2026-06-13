@@ -61,8 +61,8 @@ pub fn scrollback_encryption_status() -> Result<ScrollbackEncryptionStatus> {
 }
 
 pub fn scrollback_encryption_env_override() -> Result<Option<bool>> {
-    env_var("FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED")
-        .map(|value| parse_bool_with_name(&value, "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED"))
+    env_var("SHELLY_SCROLLBACK_ENCRYPTION_ENABLED")
+        .map(|value| parse_bool_with_name(&value, "SHELLY_SCROLLBACK_ENCRYPTION_ENABLED"))
         .transpose()
 }
 
@@ -194,14 +194,14 @@ pub(crate) fn default_config_dir() -> PathBuf {
         return home
             .join("Library")
             .join("Application Support")
-            .join("app.fieldwork");
+            .join("app.shelly");
     }
 
     if let Some(config_home) = std::env::var_os("XDG_CONFIG_HOME") {
-        return PathBuf::from(config_home).join("fieldwork");
+        return PathBuf::from(config_home).join("shelly");
     }
 
-    home.join(".config").join("fieldwork")
+    home.join(".config").join("shelly")
 }
 
 fn default_config_path() -> PathBuf {
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn env_var_treats_empty_and_whitespace_values_as_unset() {
-        let name = "FIELDWORK_TEST_EMPTY_ENV";
+        let name = "SHELLY_TEST_EMPTY_ENV";
         unsafe {
             std::env::set_var(name, "");
         }
@@ -254,17 +254,17 @@ mod tests {
             assert!(!parse_bool_with_name(value, "TEST").unwrap());
         }
 
-        let error = parse_bool_with_name("maybe", "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED")
+        let error = parse_bool_with_name("maybe", "SHELLY_SCROLLBACK_ENCRYPTION_ENABLED")
             .unwrap_err()
             .to_string();
-        assert!(error.contains("FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED"));
+        assert!(error.contains("SHELLY_SCROLLBACK_ENCRYPTION_ENABLED"));
         assert!(error.contains("maybe"));
     }
 
     #[test]
     fn telemetry_on_writes_private_config() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("fieldwork").join("config.toml");
+        let path = tmp.path().join("shelly").join("config.toml");
 
         let status = set_telemetry_at_path(&path, true).unwrap();
 

@@ -7,7 +7,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-const SERVICE_LABEL: &str = "app.fieldwork.daemon";
+const SERVICE_LABEL: &str = "app.shelly.daemon";
 
 pub fn install() -> Result<()> {
     let manager = user_service_manager()?;
@@ -17,10 +17,10 @@ pub fn install() -> Result<()> {
 fn install_with_manager(manager: &dyn ServiceManager, ctx: ServiceInstallCtx) -> Result<()> {
     manager
         .install(ctx)
-        .context("install fieldworkd user service")?;
+        .context("install shellyd user service")?;
     if let Err(error) = manager.start(start_ctx()) {
         let _ = manager.uninstall(uninstall_ctx());
-        return Err(error).context("start fieldworkd user service");
+        return Err(error).context("start shellyd user service");
     }
     Ok(())
 }
@@ -30,7 +30,7 @@ pub fn uninstall() -> Result<()> {
     let _ = manager.stop(stop_ctx());
     manager
         .uninstall(uninstall_ctx())
-        .context("uninstall fieldworkd user service")?;
+        .context("uninstall shellyd user service")?;
     Ok(())
 }
 
@@ -41,14 +41,14 @@ pub fn restart() -> Result<()> {
     let _ = manager.stop(stop_ctx());
     manager
         .start(start_ctx())
-        .context("start fieldworkd user service")?;
+        .context("start shellyd user service")?;
     Ok(())
 }
 
 pub fn status() -> Result<ServiceStatus> {
     user_service_manager()?
         .status(status_ctx())
-        .context("query fieldworkd user service")
+        .context("query shellyd user service")
 }
 
 fn user_service_manager() -> Result<Box<dyn ServiceManager>> {
@@ -64,7 +64,7 @@ fn user_service_manager() -> Result<Box<dyn ServiceManager>> {
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
-        bail!("fieldworkd service install is supported on macOS and Linux only in v1")
+        bail!("shellyd service install is supported on macOS and Linux only in v1")
     }
 }
 
@@ -107,11 +107,11 @@ fn service_environment() -> Option<Vec<(String, String)>> {
         "XDG_RUNTIME_DIR",
         "XDG_CONFIG_HOME",
         "XDG_STATE_HOME",
-        "FIELDWORK_LOG_DIR",
-        "FIELDWORK_RELAY_CONTROL_URL",
-        "FIELDWORK_IROH_RELAY_URL",
-        "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED",
-        "FIELDWORK_TELEMETRY_OPT_IN",
+        "SHELLY_LOG_DIR",
+        "SHELLY_RELAY_CONTROL_URL",
+        "SHELLY_IROH_RELAY_URL",
+        "SHELLY_SCROLLBACK_ENCRYPTION_ENABLED",
+        "SHELLY_TELEMETRY_OPT_IN",
     ];
 
     let values = PASSTHROUGH
@@ -139,7 +139,7 @@ fn launchd_plist(program: &Path, environment: Option<&[(String, String)]>) -> St
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>app.fieldwork.daemon</string>
+  <string>app.shelly.daemon</string>
   <key>ProgramArguments</key>
   <array>
     <string>"#,
@@ -222,17 +222,14 @@ pub fn daemon_path() -> Result<PathBuf> {
 fn daemon_path_from_cli_path(cli_path: &Path) -> Result<PathBuf> {
     let daemon = cli_path
         .parent()
-        .context("fieldwork binary has no parent directory")?
-        .join("fieldworkd");
+        .context("shelly binary has no parent directory")?
+        .join("shellyd");
     if !daemon.exists() {
-        bail!(
-            "fieldworkd not found next to fieldwork at {}",
-            daemon.display()
-        );
+        bail!("shellyd not found next to shelly at {}", daemon.display());
     }
     if !daemon.is_file() {
         bail!(
-            "fieldworkd path next to fieldwork is not a file: {}",
+            "shellyd path next to shelly is not a file: {}",
             daemon.display()
         );
     }
@@ -245,12 +242,12 @@ fn ensure_executable(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
     let mode = std::fs::metadata(path)
-        .with_context(|| format!("stat fieldworkd at {}", path.display()))?
+        .with_context(|| format!("stat shellyd at {}", path.display()))?
         .permissions()
         .mode();
     if mode & 0o111 == 0 {
         bail!(
-            "fieldworkd next to fieldwork is not executable: {}",
+            "shellyd next to shelly is not executable: {}",
             path.display()
         );
     }
@@ -275,9 +272,9 @@ fn ensure_service_launch_allowed(path: &Path) -> Result<()> {
     if !signature.status.success() {
         let detail = command_output_detail(&signature, "codesign");
         bail!(
-            "macOS launchd preflight rejected fieldworkd: code signature verification failed for {}\n\
-             Install the npm Fieldwork package or repair the local binary with `codesign --force --sign - {}` \
-             after verifying its origin, then rerun `fieldwork daemon install`.\n\
+            "macOS launchd preflight rejected shellyd: code signature verification failed for {}\n\
+             Install the npm Shelly package or repair the local binary with `codesign --force --sign - {}` \
+             after verifying its origin, then rerun `shelly daemon install`.\n\
              codesign output: {detail}",
             path.display(),
             path.display(),
@@ -296,8 +293,8 @@ fn ensure_service_launch_allowed(path: &Path) -> Result<()> {
             .to_string();
         if !value.is_empty() {
             bail!(
-                "macOS launchd preflight rejected fieldworkd: {} has com.apple.quarantine set.\n\
-                 Install through npm or remove quarantine only from this verified Fieldwork binary with \
+                "macOS launchd preflight rejected shellyd: {} has com.apple.quarantine set.\n\
+                 Install through npm or remove quarantine only from this verified Shelly binary with \
                  `xattr -d com.apple.quarantine {}`.\n\
                  quarantine xattr: {value}",
                 path.display(),
@@ -371,7 +368,7 @@ mod tests {
     #[test]
     fn builds_hardened_user_service_install_context() {
         let temp = tempfile::tempdir().unwrap();
-        let daemon = temp.path().join("fieldworkd");
+        let daemon = temp.path().join("shellyd");
         fs::write(&daemon, b"daemon").unwrap();
         make_executable(&daemon);
 
@@ -417,31 +414,31 @@ mod tests {
         fs::create_dir(&state).unwrap();
         let _env = EnvOverride::new(&[
             ("HOME", home.as_os_str().to_os_string()),
-            ("PATH", OsString::from("/opt/fieldwork-test/bin:/usr/bin")),
+            ("PATH", OsString::from("/opt/shelly-test/bin:/usr/bin")),
             ("XDG_RUNTIME_DIR", runtime.as_os_str().to_os_string()),
             ("XDG_CONFIG_HOME", config.as_os_str().to_os_string()),
             ("XDG_STATE_HOME", state.as_os_str().to_os_string()),
             (
-                "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED",
+                "SHELLY_SCROLLBACK_ENCRYPTION_ENABLED",
                 OsString::from("false"),
             ),
             (
-                "FIELDWORK_IROH_SECRET_KEY_B64",
+                "SHELLY_IROH_SECRET_KEY_B64",
                 OsString::from("secret-must-not-be-persisted"),
             ),
             (
-                "FIELDWORK_RELAY_SIGNING_KEY_B64",
+                "SHELLY_RELAY_SIGNING_KEY_B64",
                 OsString::from("secret-must-not-be-persisted"),
             ),
         ]);
 
-        let ctx = install_ctx_for(temp.path().join("fieldworkd")).unwrap();
+        let ctx = install_ctx_for(temp.path().join("shellyd")).unwrap();
         let environment = ctx.environment.expect("service env should be captured");
 
         assert!(environment.contains(&("HOME".to_string(), home.display().to_string())));
         assert!(environment.contains(&(
             "PATH".to_string(),
-            "/opt/fieldwork-test/bin:/usr/bin".to_string()
+            "/opt/shelly-test/bin:/usr/bin".to_string()
         )));
         assert!(
             environment.contains(&("XDG_RUNTIME_DIR".to_string(), runtime.display().to_string()))
@@ -451,7 +448,7 @@ mod tests {
         );
         assert!(environment.contains(&("XDG_STATE_HOME".to_string(), state.display().to_string())));
         assert!(environment.contains(&(
-            "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED".to_string(),
+            "SHELLY_SCROLLBACK_ENCRYPTION_ENABLED".to_string(),
             "false".to_string()
         )));
         assert!(
@@ -472,7 +469,7 @@ mod tests {
     #[test]
     fn rolls_back_service_install_when_start_fails() {
         let temp = tempfile::tempdir().unwrap();
-        let daemon = temp.path().join("fieldworkd");
+        let daemon = temp.path().join("shellyd");
         fs::write(&daemon, b"daemon").unwrap();
         make_executable(&daemon);
         let manager = FakeServiceManager::fail_start();
@@ -480,13 +477,13 @@ mod tests {
         let error = super::install_with_manager(&manager, install_ctx_for(daemon).unwrap())
             .expect_err("start failure should fail install");
 
-        assert!(error.to_string().contains("start fieldworkd user service"));
+        assert!(error.to_string().contains("start shellyd user service"));
         assert_eq!(
             manager.calls(),
             [
-                "install:app.fieldwork.daemon",
-                "start:app.fieldwork.daemon",
-                "uninstall:app.fieldwork.daemon"
+                "install:app.shelly.daemon",
+                "start:app.shelly.daemon",
+                "uninstall:app.shelly.daemon"
             ]
         );
     }
@@ -496,11 +493,11 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let bin = temp.path().join("bin");
         fs::create_dir(&bin).unwrap();
-        let daemon = bin.join("fieldworkd");
+        let daemon = bin.join("shellyd");
         fs::write(&daemon, b"daemon").unwrap();
         make_executable(&daemon);
 
-        let resolved = daemon_path_from_cli_path(&bin.join("fieldwork")).unwrap();
+        let resolved = daemon_path_from_cli_path(&bin.join("shelly")).unwrap();
 
         assert_eq!(resolved, daemon);
     }
@@ -510,16 +507,16 @@ mod tests {
     fn rejects_service_install_when_colocated_daemon_fails_macos_signature_check() {
         let _tools = FakeMacTrustTools::new(false, false);
         let temp = tempfile::tempdir().unwrap();
-        let daemon = temp.path().join("fieldworkd");
+        let daemon = temp.path().join("shellyd");
         fs::write(&daemon, b"daemon").unwrap();
         make_executable(&daemon);
 
         let error = ensure_service_launch_allowed(&daemon).unwrap_err();
 
         let message = error.to_string();
-        assert!(message.contains("macOS launchd preflight rejected fieldworkd"));
+        assert!(message.contains("macOS launchd preflight rejected shellyd"));
         assert!(message.contains("codesign --force --sign -"));
-        assert!(message.contains("codesign output: fieldworkd: code object is not signed"));
+        assert!(message.contains("codesign output: shellyd: code object is not signed"));
     }
 
     #[cfg(target_os = "macos")]
@@ -527,7 +524,7 @@ mod tests {
     fn rejects_service_install_when_colocated_daemon_is_quarantined() {
         let _tools = FakeMacTrustTools::new(true, true);
         let temp = tempfile::tempdir().unwrap();
-        let daemon = temp.path().join("fieldworkd");
+        let daemon = temp.path().join("shellyd");
         fs::write(&daemon, b"daemon").unwrap();
         make_executable(&daemon);
 
@@ -541,14 +538,14 @@ mod tests {
     #[test]
     fn rejects_service_install_when_colocated_daemon_is_absent() {
         let temp = tempfile::tempdir().unwrap();
-        let cli = temp.path().join("fieldwork");
+        let cli = temp.path().join("shelly");
 
         let error = daemon_path_from_cli_path(&cli).unwrap_err();
 
         assert!(
             error
                 .to_string()
-                .contains("fieldworkd not found next to fieldwork")
+                .contains("shellyd not found next to shelly")
         );
     }
 
@@ -557,14 +554,14 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let bin = temp.path().join("bin");
         fs::create_dir(&bin).unwrap();
-        fs::create_dir(bin.join("fieldworkd")).unwrap();
+        fs::create_dir(bin.join("shellyd")).unwrap();
 
-        let error = daemon_path_from_cli_path(&bin.join("fieldwork")).unwrap_err();
+        let error = daemon_path_from_cli_path(&bin.join("shelly")).unwrap_err();
 
         assert!(
             error
                 .to_string()
-                .contains("fieldworkd path next to fieldwork is not a file")
+                .contains("shellyd path next to shelly is not a file")
         );
     }
 
@@ -574,16 +571,16 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let bin = temp.path().join("bin");
         fs::create_dir(&bin).unwrap();
-        let daemon = bin.join("fieldworkd");
+        let daemon = bin.join("shellyd");
         fs::write(&daemon, b"daemon").unwrap();
         fs::set_permissions(&daemon, fs::Permissions::from_mode(0o600)).unwrap();
 
-        let error = daemon_path_from_cli_path(&bin.join("fieldwork")).unwrap_err();
+        let error = daemon_path_from_cli_path(&bin.join("shelly")).unwrap_err();
 
         assert!(
             error
                 .to_string()
-                .contains("fieldworkd next to fieldwork is not executable")
+                .contains("shellyd next to shelly is not executable")
         );
     }
 
@@ -604,7 +601,7 @@ mod tests {
             ("PATH", path_with_prefix(&fake_bin)),
             ("XDG_RUNTIME_DIR", runtime.as_os_str().to_os_string()),
         ]);
-        let daemon = temp.path().join("fieldworkd");
+        let daemon = temp.path().join("shellyd");
         fs::write(&daemon, b"daemon").unwrap();
         make_executable(&daemon);
 
@@ -615,10 +612,10 @@ mod tests {
         let plist_path = home
             .join("Library")
             .join("LaunchAgents")
-            .join("app.fieldwork.daemon.plist");
+            .join("app.shelly.daemon.plist");
         let plist = fs::read_to_string(&plist_path).unwrap();
         assert!(plist.contains("<key>Label</key>"));
-        assert!(plist.contains("<string>app.fieldwork.daemon</string>"));
+        assert!(plist.contains("<string>app.shelly.daemon</string>"));
         assert!(plist.contains(&format!("<string>{}</string>", daemon.display())));
         assert!(plist.contains("<key>RunAtLoad</key>"));
         assert!(plist.contains("<true/>"));
@@ -659,7 +656,7 @@ mod tests {
             ("XDG_CONFIG_HOME", config.as_os_str().to_os_string()),
             ("PATH", path_with_prefix(&fake_bin)),
         ]);
-        let daemon = temp.path().join("fieldworkd");
+        let daemon = temp.path().join("shellyd");
         fs::write(&daemon, b"daemon").unwrap();
         make_executable(&daemon);
 
@@ -670,7 +667,7 @@ mod tests {
         let unit_path = config
             .join("systemd")
             .join("user")
-            .join("fieldwork-daemon.service");
+            .join("shelly-daemon.service");
         let unit = fs::read_to_string(&unit_path).unwrap();
         assert!(unit.contains("[Service]"));
         assert!(unit.contains(&format!("ExecStart={} ", daemon.display())));
@@ -791,7 +788,7 @@ mod tests {
                 "#!/bin/sh\n\
                  printf 'codesign %s\\n' \"$*\" >> \"$(dirname \"$0\")/calls.log\"\n\
                  if [ {exit_code} -ne 0 ]; then\n\
-                 printf 'fieldworkd: code object is not signed\\n' >&2\n\
+                 printf 'shellyd: code object is not signed\\n' >&2\n\
                  fi\n\
                  exit {exit_code}\n",
                 exit_code = exit_code
@@ -810,7 +807,7 @@ mod tests {
                 "#!/bin/sh\n\
                  printf 'xattr %s\\n' \"$*\" >> \"$(dirname \"$0\")/calls.log\"\n\
                  if [ {exit_code} -eq 0 ]; then\n\
-                 printf '0081;fieldwork quarantine\\n'\n\
+                 printf '0081;shelly quarantine\\n'\n\
                  fi\n\
                  exit {exit_code}\n",
                 exit_code = exit_code

@@ -19,10 +19,10 @@ if (keystorePropertiesFile.exists()) {
 }
 fun escapedBuildConfigString(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"")
 
-val debugBiometricBypass = System.getenv("FIELDWORK_ANDROID_BIOMETRIC_BYPASS") == "true"
-val debugPairingCode = escapedBuildConfigString(System.getenv("FIELDWORK_ANDROID_PAIRING_CODE").orEmpty())
-val relayControlUrl = escapedBuildConfigString(System.getenv("FIELDWORK_RELAY_CONTROL_URL").orEmpty())
-val fieldworkAbiFilter = providers.gradleProperty("fieldwork.android.abiFilter").orNull?.trim().orEmpty()
+val debugBiometricBypass = System.getenv("SHELLY_ANDROID_BIOMETRIC_BYPASS") == "true"
+val debugPairingCode = escapedBuildConfigString(System.getenv("SHELLY_ANDROID_PAIRING_CODE").orEmpty())
+val relayControlUrl = escapedBuildConfigString(System.getenv("SHELLY_RELAY_CONTROL_URL").orEmpty())
+val shellyAbiFilter = providers.gradleProperty("shelly.android.abiFilter").orNull?.trim().orEmpty()
 val repoRoot = rootProject.projectDir.parentFile.parentFile
 val buildRustMobileCore = tasks.register<Exec>("buildRustMobileCore") {
     group = "build"
@@ -38,21 +38,21 @@ val buildRustMobileCore = tasks.register<Exec>("buildRustMobileCore") {
 }
 
 android {
-    namespace = "app.fieldwork.android"
+    namespace = "app.shelly.android"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.fieldwork.android"
+        applicationId = "app.shelly.android"
         minSdk = 30
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-        buildConfigField("boolean", "FIELDWORK_BIOMETRIC_BYPASS", "false")
-        buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_CODE", "\"\"")
-        buildConfigField("String", "FIELDWORK_RELAY_CONTROL_URL", "\"$relayControlUrl\"")
-        if (fieldworkAbiFilter.isNotEmpty()) {
+        buildConfigField("boolean", "SHELLY_BIOMETRIC_BYPASS", "false")
+        buildConfigField("String", "SHELLY_DEBUG_PAIRING_CODE", "\"\"")
+        buildConfigField("String", "SHELLY_RELAY_CONTROL_URL", "\"$relayControlUrl\"")
+        if (shellyAbiFilter.isNotEmpty()) {
             ndk {
-                abiFilters += fieldworkAbiFilter
+                abiFilters += shellyAbiFilter
             }
         }
     }
@@ -92,12 +92,12 @@ android {
 
     buildTypes {
         getByName("debug") {
-            buildConfigField("boolean", "FIELDWORK_BIOMETRIC_BYPASS", debugBiometricBypass.toString())
-            buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_CODE", "\"$debugPairingCode\"")
+            buildConfigField("boolean", "SHELLY_BIOMETRIC_BYPASS", debugBiometricBypass.toString())
+            buildConfigField("String", "SHELLY_DEBUG_PAIRING_CODE", "\"$debugPairingCode\"")
         }
         getByName("release") {
-            buildConfigField("boolean", "FIELDWORK_BIOMETRIC_BYPASS", "false")
-            buildConfigField("String", "FIELDWORK_DEBUG_PAIRING_CODE", "\"\"")
+            buildConfigField("boolean", "SHELLY_BIOMETRIC_BYPASS", "false")
+            buildConfigField("String", "SHELLY_DEBUG_PAIRING_CODE", "\"\"")
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }

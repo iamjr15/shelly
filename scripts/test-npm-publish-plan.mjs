@@ -8,11 +8,11 @@ import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const expected = [
-  ["fieldwork-darwin-arm64", "packages/cli-darwin-arm64"],
-  ["fieldwork-darwin-x64", "packages/cli-darwin-x64"],
-  ["fieldwork-linux-arm64", "packages/cli-linux-arm64"],
-  ["fieldwork-linux-x64", "packages/cli-linux-x64"],
-  ["fieldwork", "packages/cli"],
+  ["shellykit-darwin-arm64", "packages/cli-darwin-arm64"],
+  ["shellykit-darwin-x64", "packages/cli-darwin-x64"],
+  ["shellykit-linux-arm64", "packages/cli-linux-arm64"],
+  ["shellykit-linux-x64", "packages/cli-linux-x64"],
+  ["shellykit", "packages/cli"],
 ];
 
 const env = { ...process.env };
@@ -56,7 +56,7 @@ for (let index = 0; index < expected.length; index += 1) {
 console.log("npm publish plan ok: children first, provenance enabled, public access");
 
 function assertMissingTokenFailsBeforeNpm() {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-no-token-publish-"));
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-no-token-publish-"));
   const fakeNpm = path.join(temp, process.platform === "win32" ? "npm.cmd" : "npm");
   const marker = path.join(temp, "npm-invoked");
 

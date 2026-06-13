@@ -83,27 +83,27 @@ export XDG_CONFIG_HOME="$tmp/config"
 export XDG_STATE_HOME="$tmp/state"
 export CARGO_HOME="$host_cargo_home"
 export RUSTUP_HOME="$host_rustup_home"
-export FIELDWORK_IROH_SECRET_KEY_B64="BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU"
+export SHELLY_IROH_SECRET_KEY_B64="BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU"
 export PATH="$tmp/bin:$PATH"
 
 # Local relay rendezvous for the typed-code pairing path. The daemon publishes
-# code -> reachability blob here on `fieldwork pair`, and the phone simulator
+# code -> reachability blob here on `shelly pair`, and the phone simulator
 # resolves it back via `pair-test --code`. Loopback HTTP, no TLS, temp sqlite.
 relay_port=18443
 relay_metrics_port=19090
 relay_control_url="http://127.0.0.1:$relay_port"
 relay_metrics_url="http://127.0.0.1:$relay_metrics_port"
-export FIELDWORK_RELAY_CONTROL_URL="$relay_control_url"
+export SHELLY_RELAY_CONTROL_URL="$relay_control_url"
 
 # The daemon's relay signing key normally lives in the OS keychain, which is
 # unavailable in this isolated temp HOME (and in headless CI). Provide a fixed
 # test key via the same env override path the iroh secret key uses so the
 # daemon can sign its relay publish and the typed-code path is exercisable.
-export FIELDWORK_RELAY_SIGNING_KEY_B64="BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc"
+export SHELLY_RELAY_SIGNING_KEY_B64="BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc"
 
 # This is a local smoke substitute for machines without keychain access in an
 # isolated temp HOME. Release verification must still cover encrypted-at-rest.
-export FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED=false
+export SHELLY_SCROLLBACK_ENCRYPTION_ENABLED=false
 
 cargo_target_dir="${CARGO_TARGET_DIR:-$repo_root/target}"
 
@@ -116,16 +116,16 @@ done
 EOF
 chmod +x "$tmp/bin/claude"
 
-cargo build -q -p fieldwork-cli -p fieldwork-daemon -p fieldwork-relay --features fieldwork-cli/test-client
+cargo build -q -p shelly-cli -p shelly-daemon -p shelly-relay --features shelly-cli/test-client
 
-fieldwork="$cargo_target_dir/debug/fieldwork"
-fieldworkd="$cargo_target_dir/debug/fieldworkd"
-relay_bin="$cargo_target_dir/debug/fieldwork-relay"
+shelly="$cargo_target_dir/debug/shelly"
+shellyd="$cargo_target_dir/debug/shellyd"
+relay_bin="$cargo_target_dir/debug/shelly-relay"
 
 start_relay() {
-  FIELDWORK_RELAY_ADDR="127.0.0.1:$relay_port" \
-  FIELDWORK_RELAY_METRICS_ADDR="127.0.0.1:$relay_metrics_port" \
-  FIELDWORK_RELAY_DB_PATH="$tmp/relay.db" \
+  SHELLY_RELAY_ADDR="127.0.0.1:$relay_port" \
+  SHELLY_RELAY_METRICS_ADDR="127.0.0.1:$relay_metrics_port" \
+  SHELLY_RELAY_DB_PATH="$tmp/relay.db" \
     "$relay_bin" >"$tmp/relay.log" 2>&1 &
   relay_pid=$!
   for _ in $(seq 1 100); do
@@ -133,19 +133,19 @@ start_relay() {
       return 0
     fi
     if ! kill -0 "$relay_pid" 2>/dev/null; then
-      echo "fieldwork-relay exited before becoming healthy" >&2
+      echo "shelly-relay exited before becoming healthy" >&2
       cat "$tmp/relay.log" >&2 || true
       exit 1
     fi
     sleep 0.1
   done
-  echo "fieldwork-relay did not become healthy at $relay_control_url" >&2
+  echo "shelly-relay did not become healthy at $relay_control_url" >&2
   cat "$tmp/relay.log" >&2 || true
   exit 1
 }
 
 # Resolves a published pairing code through the relay rendezvous endpoint,
-# returning the opaque "fw1..." ticket blob. The hit is single-use, so each code
+# returning the opaque "sh1..." ticket blob. The hit is single-use, so each code
 # may be resolved at most once.
 resolve_ticket_blob() {
   local code="$1"
@@ -158,7 +158,7 @@ resolve_ticket_blob() {
 # typed-code path wait for the daemon's async publish to land before resolving.
 relay_publish_count() {
   curl -fsS "$relay_metrics_url/metrics" 2>/dev/null \
-    | awk '/^fieldwork_relay_pairing_code_publishes_total /{print $2; found=1} END{if(!found) print 0}'
+    | awk '/^shelly_relay_pairing_code_publishes_total /{print $2; found=1} END{if(!found) print 0}'
 }
 
 # Blocks until the relay publish counter advances past a recorded baseline.
@@ -173,7 +173,7 @@ wait_for_publish_after() {
   return 1
 }
 
-# Captures the human pairing code printed by `fieldwork pair`. The command emits
+# Captures the human pairing code printed by `shelly pair`. The command emits
 # a QR (unparseable unicode blocks) plus a grouped code line ("    AB C12"); we
 # squeeze it back to the 5-char Crockford code the daemon generated.
 capture_pair_code() {
@@ -197,11 +197,11 @@ capture_pair_code() {
 
 start_relay
 
-run_fieldwork_new() {
+run_shelly_new() {
   local log_path="$1"
   shift
-  if ! "$fieldwork" new "$@" >"$log_path" 2>&1; then
-    echo "fieldwork new failed: $*" >&2
+  if ! "$shelly" new "$@" >"$log_path" 2>&1; then
+    echo "shelly new failed: $*" >&2
     cat "$log_path" >&2 || true
     exit 1
   fi
@@ -209,7 +209,7 @@ run_fieldwork_new() {
 
 wait_for_socket() {
   for _ in $(seq 1 80); do
-    if [[ -S "$XDG_RUNTIME_DIR/fieldwork/control.sock" ]]; then
+    if [[ -S "$XDG_RUNTIME_DIR/shelly/control.sock" ]]; then
       return 0
     fi
     sleep 0.1
@@ -219,14 +219,14 @@ wait_for_socket() {
 
 start_daemon() {
   local log_path="$1"
-  "$fieldworkd" >"$log_path" 2>&1 &
+  "$shellyd" >"$log_path" 2>&1 &
   if [[ -z "$daemon_pid" ]]; then
     daemon_pid=$!
   else
     daemon_pid2=$!
   fi
   if ! wait_for_socket; then
-    echo "fieldworkd did not create its control socket" >&2
+    echo "shellyd did not create its control socket" >&2
     tail -100 "$log_path" >&2 || true
     exit 1
   fi
@@ -243,29 +243,29 @@ else
   exit 1
 fi
 
-run_fieldwork_new "$tmp/new-claude.log" --dir "$tmp/home" claude
+run_shelly_new "$tmp/new-claude.log" --dir "$tmp/home" claude
 claude_created="$(cat "$tmp/new-claude.log")"
 claude_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-claude.log")"
 
-run_fieldwork_new "$tmp/new-bash.log" bash
+run_shelly_new "$tmp/new-bash.log" bash
 bash_created="$(cat "$tmp/new-bash.log")"
 bash_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-bash.log")"
 
-run_fieldwork_new "$tmp/new-tui.log" "${tui_command[@]}"
+run_shelly_new "$tmp/new-tui.log" "${tui_command[@]}"
 tui_created="$(cat "$tmp/new-tui.log")"
 tui_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-tui.log")"
 
-"$fieldwork" hook claude-stop \
+"$shelly" hook claude-stop \
   --session "$claude_id" \
   --last-line "smoke approval requested" \
   >"$tmp/hook-claude.log" 2>&1
-"$fieldwork" ls >"$tmp/hook-list.log"
+"$shelly" ls >"$tmp/hook-list.log"
 if ! awk -F '\t' -v id="$claude_id" '$1 == id && $3 == "AwaitingInput" { found = 1 } END { exit(found ? 0 : 1) }' "$tmp/hook-list.log"; then
   echo "Claude hook did not update the matching session state" >&2
   cat "$tmp/hook-claude.log" "$tmp/hook-list.log" >&2 || true
   exit 1
 fi
-if printf '{"type":"approval_requested"}\n' | "$fieldwork" hook codex-event --session "$claude_id" >"$tmp/hook-mismatch.log" 2>&1; then
+if printf '{"type":"approval_requested"}\n' | "$shelly" hook codex-event --session "$claude_id" >"$tmp/hook-mismatch.log" 2>&1; then
   echo "mismatched Codex hook unexpectedly succeeded for Claude session" >&2
   cat "$tmp/hook-mismatch.log" >&2 || true
   exit 1
@@ -280,18 +280,18 @@ pair_start_s="$(date +%s)"
 publish_baseline_qr="$(relay_publish_count)"
 mkfifo "$tmp/pair.in"
 exec 3<>"$tmp/pair.in"
-"$fieldwork" pair <"$tmp/pair.in" >"$tmp/pair.log" 2>&1 &
+"$shelly" pair <"$tmp/pair.in" >"$tmp/pair.log" 2>&1 &
 pair_pid=$!
 
-# The v2 `fieldwork pair` prints a compact QR plus a human pairing CODE; the raw
-# "fw1..." ticket never appears in plaintext. Capture the code, then resolve it
+# The v2 `shelly pair` prints a compact QR plus a human pairing CODE; the raw
+# "sh1..." ticket never appears in plaintext. Capture the code, then resolve it
 # once through the relay rendezvous to recover the exact ticket the QR encodes.
 # The relay resolve is single-use AND per-client rate limited, so wait for the
 # daemon's async publish to land via the non-consuming publish counter, then
 # resolve exactly once.
 pair_code="$(capture_pair_code "$tmp/pair.log" || true)"
 if [[ -z "$pair_code" ]]; then
-  echo "fieldwork pair did not print a pairing code" >&2
+  echo "shelly pair did not print a pairing code" >&2
   cat "$tmp/pair.log" >&2 || true
   exit 1
 fi
@@ -308,12 +308,12 @@ if [[ -z "$payload" ]]; then
   cat "$tmp/pair.log" "$tmp/relay.log" >&2 || true
   exit 1
 fi
-if [[ "$payload" != fw1* ]]; then
-  echo "resolved pairing ticket is not a compact fw1 ticket: $payload" >&2
+if [[ "$payload" != sh1* ]]; then
+  echo "resolved pairing ticket is not a compact sh1 ticket: $payload" >&2
   exit 1
 fi
 
-if ! "$fieldwork" pair-test \
+if ! "$shelly" pair-test \
   --payload "$payload" \
   --expect-protocol-mismatch \
   >"$tmp/protocol-mismatch.log" 2>&1; then
@@ -328,7 +328,7 @@ if ! grep -q '^protocol mismatch as expected:' "$tmp/protocol-mismatch.log"; the
   exit 1
 fi
 
-if ! "$fieldwork" pair-test \
+if ! "$shelly" pair-test \
   --payload "$payload" \
   --expect-local-cli-forbidden \
   >"$tmp/local-cli-forbidden.log" 2>&1; then
@@ -343,7 +343,7 @@ if ! grep -q '^LocalCli Hello forbidden as expected:' "$tmp/local-cli-forbidden.
   exit 1
 fi
 
-"$fieldwork" pair-test \
+"$shelly" pair-test \
   --payload "$payload" \
   --name "Smoke Phone" \
   --secret-key-path "$tmp/phone.key" \
@@ -360,7 +360,7 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 if ! grep -q 'approve?' "$tmp/pair.log"; then
-  echo "fieldwork pair did not request desktop approval" >&2
+  echo "shelly pair did not request desktop approval" >&2
   cat "$tmp/pair.log" >&2 || true
   cat "$tmp/pairtest.log" >&2 || true
   exit 1
@@ -389,7 +389,7 @@ if ! grep -q '^attached ' "$tmp/pairtest.log"; then
   exit 1
 fi
 
-# Typed-code path: a second `fieldwork pair` mints a fresh code (the daemon keeps
+# Typed-code path: a second `shelly pair` mints a fresh code (the daemon keeps
 # multiple active codes), the daemon publishes it to the relay, and the phone
 # simulator resolves reachability purely from the typed code via the relay
 # rendezvous — never touching the QR/ticket. This exercises the relay-hosted leg
@@ -397,12 +397,12 @@ fi
 publish_baseline="$(relay_publish_count)"
 mkfifo "$tmp/pair-code.in"
 exec 4<>"$tmp/pair-code.in"
-"$fieldwork" pair <"$tmp/pair-code.in" >"$tmp/pair-code.log" 2>&1 &
+"$shelly" pair <"$tmp/pair-code.in" >"$tmp/pair-code.log" 2>&1 &
 pair_code_pid=$!
 
 typed_code="$(capture_pair_code "$tmp/pair-code.log" || true)"
 if [[ -z "$typed_code" ]]; then
-  echo "second fieldwork pair did not print a pairing code for the typed-code path" >&2
+  echo "second shelly pair did not print a pairing code for the typed-code path" >&2
   cat "$tmp/pair-code.log" >&2 || true
   exit 1
 fi
@@ -415,7 +415,7 @@ if ! wait_for_publish_after "$publish_baseline"; then
   exit 1
 fi
 
-"$fieldwork" pair-test \
+"$shelly" pair-test \
   --code "$typed_code" \
   --relay-control-url "$relay_control_url" \
   --name "Smoke Typed Phone" \
@@ -433,7 +433,7 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 if ! grep -q 'approve?' "$tmp/pair-code.log"; then
-  echo "typed-code fieldwork pair did not request desktop approval" >&2
+  echo "typed-code shelly pair did not request desktop approval" >&2
   cat "$tmp/pair-code.log" >&2 || true
   cat "$tmp/pairtest-code.log" >&2 || true
   exit 1
@@ -456,9 +456,9 @@ fi
 
 # Remove the typed-code device so the later revoke probe stays unambiguous about
 # which simulated identity it expects to be rejected.
-"$fieldwork" devices remove "Smoke Typed Phone" >"$tmp/remove-typed.log" 2>&1
+"$shelly" devices remove "Smoke Typed Phone" >"$tmp/remove-typed.log" 2>&1
 
-"$fieldwork" pair-test \
+"$shelly" pair-test \
   --payload "$payload" \
   --secret-key-path "$tmp/phone.key" \
   --connect-only \
@@ -467,11 +467,11 @@ fi
 subscribe_pid=$!
 
 sleep 0.2
-run_fieldwork_new "$tmp/new-subscribe.log" --name FW_SUBSCRIBE_SESSION_READY -- bash -lc 'printf "FW_SUBSCRIBE_SESSION_READY\n"; while IFS= read -r line; do printf "late: %s\n" "$line"; done'
+run_shelly_new "$tmp/new-subscribe.log" --name FW_SUBSCRIBE_SESSION_READY -- bash -lc 'printf "FW_SUBSCRIBE_SESSION_READY\n"; while IFS= read -r line; do printf "late: %s\n" "$line"; done'
 subscribe_created="$(cat "$tmp/new-subscribe.log")"
 subscribe_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-subscribe.log")"
 
-run_fieldwork_new "$tmp/new-reconnect.log" --name FW_RECONNECT_READY -- bash -lc 'printf "FW_RECONNECT_READY\n"; sleep 5; for i in $(seq 1 50); do printf "FW_RECONNECT_LINE_%02d\n" "$i"; done; sleep 10'
+run_shelly_new "$tmp/new-reconnect.log" --name FW_RECONNECT_READY -- bash -lc 'printf "FW_RECONNECT_READY\n"; sleep 5; for i in $(seq 1 50); do printf "FW_RECONNECT_LINE_%02d\n" "$i"; done; sleep 10'
 reconnect_created="$(cat "$tmp/new-reconnect.log")"
 reconnect_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-reconnect.log")"
 
@@ -482,7 +482,7 @@ if ! grep -q '^subscription saw session: FW_SUBSCRIBE_SESSION_READY' "$tmp/subsc
   exit 1
 fi
 
-"$fieldwork" pair-test \
+"$shelly" pair-test \
   --payload "$payload" \
   --secret-key-path "$tmp/phone.key" \
   --connect-only \
@@ -503,7 +503,7 @@ if ! grep -q '^saw expected output: stub: hello from mobile' "$tmp/attach-claude
   exit 1
 fi
 
-"$fieldwork" pair-test \
+"$shelly" pair-test \
   --payload "$payload" \
   --secret-key-path "$tmp/phone.key" \
   --connect-only \
@@ -525,7 +525,7 @@ if ! grep -q '^saw expected output: late: phone late' "$tmp/attach-subscribe.log
   exit 1
 fi
 
-"$fieldwork" pair-test \
+"$shelly" pair-test \
   --payload "$payload" \
   --secret-key-path "$tmp/phone.key" \
   --connect-only \
@@ -547,7 +547,7 @@ if ! grep -q '^reconnected ' "$tmp/reconnect.log"; then
   exit 1
 fi
 
-"$fieldwork" pair-test \
+"$shelly" pair-test \
   --payload "$payload" \
   --secret-key-path "$tmp/phone.key" \
   --connect-only \
@@ -563,7 +563,7 @@ if ! grep -q '^attached ' "$tmp/attach-tui.log"; then
   exit 1
 fi
 
-"$fieldwork" pair-test \
+"$shelly" pair-test \
   --payload "$payload" \
   --secret-key-path "$tmp/phone.key" \
   --connect-only \
@@ -588,8 +588,8 @@ if ! grep -q '^AgentStateEvent forbidden as expected:' "$tmp/mobile-forbidden.lo
   exit 1
 fi
 
-"$fieldwork" devices remove "Smoke Phone" >"$tmp/remove.log" 2>&1
-"$fieldwork" pair-test \
+"$shelly" devices remove "Smoke Phone" >"$tmp/remove.log" 2>&1
+"$shelly" pair-test \
   --payload "$payload" \
   --secret-key-path "$tmp/phone.key" \
   --connect-only \
@@ -602,14 +602,14 @@ if ! grep -q '^unauthorized as expected:' "$tmp/unauth.log"; then
   exit 1
 fi
 
-before_restart="$("$fieldwork" ls)"
+before_restart="$("$shelly" ls)"
 kill "$daemon_pid"
 wait "$daemon_pid" 2>/dev/null || true
 daemon_pid=""
-rm -f "$XDG_RUNTIME_DIR/fieldwork/control.sock"
+rm -f "$XDG_RUNTIME_DIR/shelly/control.sock"
 
 start_daemon "$tmp/daemon2.log"
-after_restart="$("$fieldwork" ls)"
+after_restart="$("$shelly" ls)"
 if ! printf '%s' "$after_restart" | grep -q 'bash'; then
   echo "restored session list did not include the bash session" >&2
   printf 'before restart: %s\n' "$before_restart" >&2

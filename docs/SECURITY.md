@@ -5,10 +5,10 @@ reporting, use the root [`SECURITY.md`](../SECURITY.md).
 
 ## Trust Boundaries
 
-Fieldwork v1 has four trust zones:
+Shelly v1 has four trust zones:
 
 - **Local desktop CLI**: trusted to create and kill sessions because it runs as
-  the same user as `fieldworkd` over the hardened Unix socket.
+  the same user as `shellyd` over the hardened Unix socket.
 - **Daemon**: owns PTYs, device registry, scrollback, pairing approval, local
   state inference, relay-signing keys, and push-token registration dispatch.
 - **Paired mobile devices**: authenticated by long-lived Ed25519/iroh identity
@@ -48,7 +48,7 @@ Pairing is intentionally two-step:
 - A QR scan or correct code is not enough: the desktop must explicitly approve
   the request.
 - Approved devices authenticate with long-lived Ed25519/iroh keys.
-- Lost devices are revoked through `fieldwork devices remove`; there is no
+- Lost devices are revoked through `shelly devices remove`; there is no
   password fallback.
 
 ## At-Rest Storage
@@ -61,7 +61,7 @@ terminal output, keystrokes, commands, paths, session names, and push tokens are
 not stored there. The explicit opt-out is:
 
 ```sh
-fieldwork settings scrollback-encryption off
+shelly settings scrollback-encryption off
 ```
 
 The opt-out applies after daemon restart and makes future local persistence
@@ -97,7 +97,7 @@ Relay telemetry is aggregate-only. Honeycomb credentials are loaded only by the
 relay service through credential paths and are redacted from debug output. The
 relay OTLP exporter uses OpenTelemetry's Reqwest rustls native-root feature so
 Honeycomb TLS follows the host OS trust store; relay OTLP loopback coverage
-guards the Fieldwork-owned telemetry path against leaking terminal, session, or
+guards the Shelly-owned telemetry path against leaking terminal, session, or
 token sentinels.
 
 NPM publish credentials (`NPM_TOKEN` / `NODE_AUTH_TOKEN`) live only in the
@@ -109,7 +109,7 @@ service-account JSON, or Honeycomb API keys.
 
 Android gates app resume and stale terminal input with biometric-only policies.
 Android emulator QA can compile a local bypass only with
-`FIELDWORK_ANDROID_BIOMETRIC_BYPASS=true`; the runtime check still requires
+`SHELLY_ANDROID_BIOMETRIC_BYPASS=true`; the runtime check still requires
 `BuildConfig.DEBUG`, and release builds hardcode the bypass off. Release
 verification still requires physical devices for biometric prompt behavior,
 notification tap-through, foreground/background reconnect, network-change

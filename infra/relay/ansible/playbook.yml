@@ -1,6 +1,6 @@
 ---
-- name: Deploy Fieldwork relay
-  hosts: fieldwork_relays
+- name: Deploy Shelly relay
+  hosts: shelly_relays
   become: true
   vars_files:
     - group_vars/all/main.yml
@@ -9,67 +9,67 @@
     - name: Require relay binary path
       ansible.builtin.assert:
         that:
-          - fieldwork_relay_binary | length > 0
-        fail_msg: "Pass -e fieldwork_relay_binary=/path/to/fieldwork-relay"
+          - shelly_relay_binary | length > 0
+        fail_msg: "Pass -e shelly_relay_binary=/path/to/shelly-relay"
 
   tasks:
     - name: Create relay group
       ansible.builtin.group:
-        name: "{{ fieldwork_relay_group }}"
+        name: "{{ shelly_relay_group }}"
         system: true
 
     - name: Create relay user
       ansible.builtin.user:
-        name: "{{ fieldwork_relay_user }}"
-        group: "{{ fieldwork_relay_group }}"
+        name: "{{ shelly_relay_user }}"
+        group: "{{ shelly_relay_group }}"
         shell: /usr/sbin/nologin
-        home: "{{ fieldwork_relay_data_dir }}"
+        home: "{{ shelly_relay_data_dir }}"
         create_home: false
         system: true
 
     - name: Create relay data directory
       ansible.builtin.file:
-        path: "{{ fieldwork_relay_data_dir }}"
+        path: "{{ shelly_relay_data_dir }}"
         state: directory
-        owner: "{{ fieldwork_relay_user }}"
-        group: "{{ fieldwork_relay_group }}"
+        owner: "{{ shelly_relay_user }}"
+        group: "{{ shelly_relay_group }}"
         mode: "0700"
 
     - name: Install relay binary
       ansible.builtin.copy:
-        src: "{{ fieldwork_relay_binary }}"
-        dest: "{{ fieldwork_relay_bin_dir }}/fieldwork-relay"
+        src: "{{ shelly_relay_binary }}"
+        dest: "{{ shelly_relay_bin_dir }}/shelly-relay"
         owner: root
         group: root
         mode: "0755"
-      notify: Restart fieldwork relay
+      notify: Restart shelly relay
 
     - name: Remove unmanaged relay service drop-ins
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
       loop:
-        - /etc/systemd/system/fieldwork-control-plane.service.d
-        - /etc/systemd/system/fieldwork-iroh-relay.service.d
-      notify: Restart fieldwork relay
+        - /etc/systemd/system/shelly-control-plane.service.d
+        - /etc/systemd/system/shelly-iroh-relay.service.d
+      notify: Restart shelly relay
 
     - name: Install HTTP control-plane service
       ansible.builtin.template:
-        src: fieldwork-control-plane.service.j2
-        dest: /etc/systemd/system/fieldwork-control-plane.service
+        src: shelly-control-plane.service.j2
+        dest: /etc/systemd/system/shelly-control-plane.service
         owner: root
         group: root
         mode: "0644"
-      notify: Restart fieldwork relay
+      notify: Restart shelly relay
 
     - name: Install iroh relay service
       ansible.builtin.template:
-        src: fieldwork-iroh-relay.service.j2
-        dest: /etc/systemd/system/fieldwork-iroh-relay.service
+        src: shelly-iroh-relay.service.j2
+        dest: /etc/systemd/system/shelly-iroh-relay.service
         owner: root
         group: root
         mode: "0644"
-      notify: Restart fieldwork relay
+      notify: Restart shelly relay
 
     - name: Enable and start services
       ansible.builtin.systemd_service:
@@ -78,8 +78,8 @@
         state: started
         daemon_reload: true
       loop:
-        - fieldwork-control-plane.service
-        - fieldwork-iroh-relay.service
+        - shelly-control-plane.service
+        - shelly-iroh-relay.service
 
     - name: Flush relay restarts
       ansible.builtin.meta: flush_handlers
@@ -93,15 +93,15 @@
       delay: 5
       until: relay_service_active.stdout == "active"
       loop:
-        - fieldwork-control-plane.service
-        - fieldwork-iroh-relay.service
+        - shelly-control-plane.service
+        - shelly-iroh-relay.service
 
   handlers:
-    - name: Restart fieldwork relay
+    - name: Restart shelly relay
       ansible.builtin.systemd_service:
         name: "{{ item }}"
         state: restarted
         daemon_reload: true
       loop:
-        - fieldwork-control-plane.service
-        - fieldwork-iroh-relay.service
+        - shelly-control-plane.service
+        - shelly-iroh-relay.service

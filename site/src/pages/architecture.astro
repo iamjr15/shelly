@@ -4,7 +4,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 
 <BaseLayout
   title="Architecture"
-  description="Fieldwork architecture overview: daemon-owned PTYs, raw byte streaming, iroh transport, encrypted persistence, and relay push."
+  description="Shelly architecture overview: daemon-owned PTYs, raw byte streaming, iroh transport, encrypted persistence, and relay push."
 >
   <section class="page">
     <div class="page-copy">
@@ -19,7 +19,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     <div class="doc-list">
       <article class="tile">
         <h3>PTY model</h3>
-        <p>Fieldwork streams raw PTY bytes. The daemon keeps a 256 KB byte ring with monotonic sequence numbers and a `wezterm-term` terminal model for synthetic ANSI snapshots.</p>
+        <p>Shelly streams raw PTY bytes. The daemon keeps a 256 KB byte ring with monotonic sequence numbers and a `wezterm-term` terminal model for synthetic ANSI snapshots.</p>
       </article>
       <article class="tile">
         <h3>Transport</h3>

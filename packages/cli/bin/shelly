@@ -1,0 +1,52 @@
+#!/usr/bin/env node
+
+const { spawn } = require("node:child_process");
+const path = require("node:path");
+
+const platform = process.env.SHELLY_NPM_PLATFORM || process.platform;
+const arch = process.env.SHELLY_NPM_ARCH || process.arch;
+const key = `${platform}-${arch}`;
+const supported = new Set(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"]);
+
+if (!supported.has(key)) {
+  console.error(`shelly: no native host binary for ${key}`);
+  if (platform === "win32") {
+    console.error("Windows host support is not part of v1. Use WSL2 with the linux-x64 package.");
+  } else {
+    console.error("Supported v1 hosts: darwin-arm64, darwin-x64, linux-arm64, linux-x64.");
+  }
+  process.exit(1);
+}
+
+let binPath;
+try {
+  binPath = require.resolve(`shellykit-${key}/bin/shelly`);
+} catch {
+  console.error(`shelly: optional platform package shellykit-${key} is not installed.`);
+  console.error("If you installed with --omit=optional, reinstall without that flag.");
+  console.error("Windows host support is not part of v1; use WSL2 with the linux-x64 package.");
+  process.exit(1);
+}
+
+const invokedName = path.basename(process.argv[1] || "shelly") || "shelly";
+const child = spawn(binPath, process.argv.slice(2), {
+  stdio: "inherit",
+  argv0: invokedName,
+  env: { ...process.env, SHELLY_CLI_BIN_NAME: invokedName },
+});
+
+process.on("SIGINT", () => child.kill("SIGINT"));
+process.on("SIGTERM", () => child.kill("SIGTERM"));
+
+child.on("error", (err) => {
+  console.error(`shelly: failed to start native binary at ${binPath}: ${err.message}`);
+  process.exit(1);
+});
+
+child.on("exit", (code, signal) => {
+  if (signal) {
+    process.kill(process.pid, signal);
+    return;
+  }
+  process.exit(code ?? 1);
+});

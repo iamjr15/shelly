@@ -7,7 +7,7 @@ terraform_dir="$repo_root/infra/lightsail/terraform"
 
 if [[ -z "${TF_PLUGIN_CACHE_DIR:-}" ]]; then
   cache_base="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}"
-  export TF_PLUGIN_CACHE_DIR="$cache_base/fieldwork/terraform-plugin-cache"
+  export TF_PLUGIN_CACHE_DIR="$cache_base/shelly/terraform-plugin-cache"
 fi
 mkdir -p "$TF_PLUGIN_CACHE_DIR"
 

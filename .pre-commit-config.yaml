@@ -19,13 +19,13 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-      - id: fieldwork-npm-dispatcher
+      - id: shelly-npm-dispatcher
         name: node scripts/test-npm-dispatcher.mjs
         entry: node scripts/test-npm-dispatcher.mjs
         language: system
         pass_filenames: false
         always_run: true
-      - id: fieldwork-npm-publish-plan
+      - id: shelly-npm-publish-plan
         name: node scripts/test-npm-publish-plan.mjs
         entry: node scripts/test-npm-publish-plan.mjs
         language: system

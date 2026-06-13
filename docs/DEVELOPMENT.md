@@ -15,13 +15,13 @@ cargo test --workspace --doc
 
 The workspace crates are:
 
-- `fieldwork-protocol`
-- `fieldwork-daemon`
-- `fieldwork-cli`
-- `fieldwork-relay`
-- `fieldwork-mobile-core`
+- `shelly-protocol`
+- `shelly-daemon`
+- `shelly-cli`
+- `shelly-relay`
+- `shelly-mobile-core`
 
-`fieldworkd` owns PTY sessions and local persistence. `fieldwork` talks to the
+`shellyd` owns PTY sessions and local persistence. `shelly` talks to the
 daemon over the hardened local socket. Mobile clients use the UniFFI-backed
 mobile core and MessagePack protocol over iroh.
 
@@ -49,9 +49,9 @@ session create/kill attempts, removes the device, and verifies daemon restart
 restore.
 
 The simulated mobile client is intentionally feature-gated. The smoke builds
-`fieldwork-cli` with `fieldwork-cli/test-client`; production CLI builds leave
+`shelly-cli` with `shelly-cli/test-client`; production CLI builds leave
 that feature disabled, so the internal `pair-test` command is not present in
-the shipped `fieldwork`/`fw` binary.
+the shipped `shelly` binary.
 
 ## npm Packages
 
@@ -63,14 +63,14 @@ node scripts/test-bun-install.mjs
 npm pack ./packages/cli --dry-run --json
 ```
 
-The root `fieldwork` package is the meta package. It exposes `fieldwork`, `fw`,
-and `fieldworkd`; platform packages provide native `fieldwork` and `fieldworkd`
+The root `shellykit` package is the meta package. It exposes `shelly` and
+`shellyd`; platform packages provide native `shelly` and `shellyd`
 for:
 
-- `fieldwork-darwin-arm64`
-- `fieldwork-darwin-x64`
-- `fieldwork-linux-arm64`
-- `fieldwork-linux-x64`
+- `shellykit-darwin-arm64`
+- `shellykit-darwin-x64`
+- `shellykit-linux-arm64`
+- `shellykit-linux-x64`
 
 `scripts/prepare-npm-artifacts.mjs` stages native binaries from release archive
 extracts into the platform packages and copies `LICENSE`/`NOTICE`. `scripts/publish-npm-packages.mjs`
@@ -93,7 +93,7 @@ node scripts/smoke-npm-local-install.mjs
 ```
 
 It packs the meta package plus the matching platform package, installs them into
-an isolated project, verifies `fieldwork`, `fw`, and `fieldworkd` entrypoints,
+an isolated project, verifies `shelly` and `shellyd` entrypoints,
 and checks that Darwin binaries remain signed and unquarantined.
 
 ## Relay
@@ -112,7 +112,7 @@ The hosted relay rendezvous smoke is operator-only because it needs a live relay
 control URL:
 
 ```sh
-FIELDWORK_HOSTED_RELAY_CONTROL_URL=https://relay.example.com scripts/smoke-hosted-relay-rendezvous.sh
+SHELLY_HOSTED_RELAY_CONTROL_URL=https://relay.example.com scripts/smoke-hosted-relay-rendezvous.sh
 ```
 
 ## Android

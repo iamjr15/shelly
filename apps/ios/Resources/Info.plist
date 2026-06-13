@@ -11,21 +11,21 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Fieldwork</string>
+	<string>Shelly</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<key>FieldworkRelayControlURL</key>
-	<string>$(FIELDWORK_RELAY_CONTROL_URL)</string>
+	<key>ShellyRelayControlURL</key>
+	<string>$(SHELLY_RELAY_CONTROL_URL)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Fieldwork scans the pairing QR shown by your desktop daemon.</string>
+	<string>Shelly scans the pairing QR shown by your desktop daemon.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Fieldwork requires biometric unlock before showing or sending terminal data.</string>
+	<string>Shelly requires biometric unlock before showing or sending terminal data.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

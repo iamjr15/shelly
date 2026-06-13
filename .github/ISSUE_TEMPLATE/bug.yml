@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible Fieldwork bug
+description: Report a reproducible Shelly bug
 title: "bug: "
 labels: ["bug"]
 body:

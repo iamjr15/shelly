@@ -68,7 +68,7 @@ variable "tags" {
   description = "Tags applied to Lightsail resources."
   type        = map(string)
   default = {
-    Project     = "fieldwork"
+    Project     = "shelly"
     Environment = "production"
     Role        = "relay"
   }

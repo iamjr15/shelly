@@ -19,11 +19,11 @@ const publishOrder = [
 ];
 
 const expectedNames = [
-  "fieldwork-darwin-arm64",
-  "fieldwork-darwin-x64",
-  "fieldwork-linux-arm64",
-  "fieldwork-linux-x64",
-  "fieldwork",
+  "shellykit-darwin-arm64",
+  "shellykit-darwin-x64",
+  "shellykit-linux-arm64",
+  "shellykit-linux-x64",
+  "shellykit",
 ];
 
 if (!dryRun && !checkReady && !printPublishPlanJson && !process.env.NODE_AUTH_TOKEN) {
@@ -58,7 +58,7 @@ console.log(`npm publish order ${dryRun ? "dry-run " : ""}ok: ${expectedNames.jo
 
 function verifyPackageGraph() {
   const meta = readJson("packages/cli/package.json");
-  assert(meta.name === "fieldwork", "meta package name must be fieldwork");
+  assert(meta.name === "shellykit", "meta package name must be shellykit");
 
   const optional = meta.optionalDependencies || {};
   for (let index = 0; index < publishOrder.length; index += 1) {
@@ -69,9 +69,9 @@ function verifyPackageGraph() {
     assert(manifest.publishConfig?.access === "public", `${expectedName} must publish with public access`);
     assert(manifest.license === "AGPL-3.0-or-later", `${expectedName} must be AGPL-3.0-or-later`);
 
-    if (expectedName !== "fieldwork") {
-      assert(optional[expectedName] === meta.version, `${expectedName} must be an optionalDependency of fieldwork`);
-      assert(manifest.version === meta.version, `${expectedName} version must match fieldwork`);
+    if (expectedName !== "shellykit") {
+      assert(optional[expectedName] === meta.version, `${expectedName} must be an optionalDependency of shellykit`);
+      assert(manifest.version === meta.version, `${expectedName} version must match shellykit`);
     }
   }
 }
@@ -82,14 +82,14 @@ function dryRunPack(packageDir) {
   const files = new Map((packs[0]?.files || []).map((file) => [file.path, file]));
   const packageName = readJson(path.join(packageDir, "package.json")).name;
 
-  if (packageName === "fieldwork") {
-    assertExecutablePackFile(files, "bin/fieldwork", packageName);
-    assertExecutablePackFile(files, "bin/fieldworkd", packageName);
+  if (packageName === "shellykit") {
+    assertExecutablePackFile(files, "bin/shelly", packageName);
+    assertExecutablePackFile(files, "bin/shellyd", packageName);
     assert(files.has("install.js"), `${packageName} pack is missing install.js`);
     assert(files.has("README.md"), `${packageName} pack is missing README.md`);
   } else {
-    assertExecutablePackFile(files, "bin/fieldwork", packageName);
-    assertExecutablePackFile(files, "bin/fieldworkd", packageName);
+    assertExecutablePackFile(files, "bin/shelly", packageName);
+    assertExecutablePackFile(files, "bin/shellyd", packageName);
   }
 }
 
@@ -97,12 +97,12 @@ function assertPublishReady(packageDir) {
   dryRunPack(packageDir);
 
   const packageName = readJson(path.join(packageDir, "package.json")).name;
-  if (packageName === "fieldwork") {
+  if (packageName === "shellykit") {
     return;
   }
 
-  assertNativeBinary(path.join(packageDir, "bin", "fieldwork"), packageName);
-  assertNativeBinary(path.join(packageDir, "bin", "fieldworkd"), packageName);
+  assertNativeBinary(path.join(packageDir, "bin", "shelly"), packageName);
+  assertNativeBinary(path.join(packageDir, "bin", "shellyd"), packageName);
 }
 
 function assertNativeBinary(filePath, packageName) {

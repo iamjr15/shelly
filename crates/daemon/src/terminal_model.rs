@@ -1,4 +1,4 @@
-use fieldwork_protocol::ClientSize;
+use shelly_protocol::ClientSize;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use wezterm_term::{
@@ -7,9 +7,9 @@ use wezterm_term::{
 };
 
 #[derive(Debug)]
-struct FieldworkTermConfig;
+struct ShellyTermConfig;
 
-impl TerminalConfiguration for FieldworkTermConfig {
+impl TerminalConfiguration for ShellyTermConfig {
     fn color_palette(&self) -> ColorPalette {
         ColorPalette::default()
     }
@@ -122,8 +122,8 @@ impl TerminalModel {
                 pixel_height: 0,
                 dpi: 0,
             },
-            Arc::new(FieldworkTermConfig),
-            "Fieldwork",
+            Arc::new(ShellyTermConfig),
+            "Shelly",
             env!("CARGO_PKG_VERSION"),
             Box::new(response_writer.clone()),
         );
@@ -353,7 +353,7 @@ fn push_color_param(params: &mut Vec<String>, color: ColorAttribute, foreground:
 #[cfg(test)]
 mod tests {
     use super::TerminalModel;
-    use fieldwork_protocol::ClientSize;
+    use shelly_protocol::ClientSize;
     use std::io::{self, Write};
     use std::sync::{Arc, Mutex};
 

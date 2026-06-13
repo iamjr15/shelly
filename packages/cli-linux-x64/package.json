@@ -1,17 +1,17 @@
 {
-  "name": "fieldwork-linux-x64",
+  "name": "shellykit-linux-x64",
   "version": "1.0.0",
-  "description": "Fieldwork CLI and daemon binaries for Linux x64.",
+  "description": "Shelly CLI and daemon binaries for Linux x64.",
   "os": ["linux"],
   "cpu": ["x64"],
-  "files": ["bin/fieldwork", "bin/fieldworkd", "LICENSE", "NOTICE"],
+  "files": ["bin/shelly", "bin/shellyd", "LICENSE", "NOTICE"],
   "license": "AGPL-3.0-or-later",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fieldwork-app/fieldwork.git",
+    "url": "git+https://github.com/shelly-app/shelly.git",
     "directory": "packages/cli-linux-x64"
   },
   "preferUnplugged": true

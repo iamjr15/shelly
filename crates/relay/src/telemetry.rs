@@ -42,7 +42,7 @@ impl TelemetryGuard {
             .context("build relay OTLP HTTP span exporter")?;
 
         let resource = Resource::builder()
-            .with_service_name("fieldwork-relay")
+            .with_service_name("shelly-relay")
             .with_attribute(KeyValue::new("service.version", env!("CARGO_PKG_VERSION")))
             .build();
         let provider = SdkTracerProvider::builder()
@@ -62,7 +62,7 @@ impl TelemetryGuard {
         &self,
     ) -> Option<OpenTelemetryLayer<Registry, opentelemetry_sdk::trace::SdkTracer>> {
         let provider = self.provider.as_ref()?;
-        Some(tracing_opentelemetry::layer().with_tracer(provider.tracer("fieldwork-relay")))
+        Some(tracing_opentelemetry::layer().with_tracer(provider.tracer("shelly-relay")))
     }
 
     pub(crate) fn sample_rate(&self) -> f64 {
@@ -93,7 +93,7 @@ struct TelemetryConfig {
 
 impl TelemetryConfig {
     fn from_env() -> Result<Option<Self>> {
-        let endpoint = trimmed_env("FIELDWORK_RELAY_OTLP_ENDPOINT");
+        let endpoint = trimmed_env("SHELLY_RELAY_OTLP_ENDPOINT");
         let honeycomb_api_key = honeycomb_api_key()?;
 
         if endpoint.is_none() && honeycomb_api_key.is_none() {
@@ -104,13 +104,13 @@ impl TelemetryConfig {
         if let Some(api_key) = honeycomb_api_key {
             headers.insert("x-honeycomb-team".to_string(), api_key);
         }
-        if let Some(dataset) = trimmed_env("FIELDWORK_RELAY_HONEYCOMB_DATASET") {
+        if let Some(dataset) = trimmed_env("SHELLY_RELAY_HONEYCOMB_DATASET") {
             headers.insert("x-honeycomb-dataset".to_string(), dataset);
         }
 
         Ok(Some(Self {
             endpoint: endpoint.unwrap_or_else(|| DEFAULT_HONEYCOMB_TRACES_ENDPOINT.to_string()),
-            sample_rate: parse_sample_rate(trimmed_env("FIELDWORK_RELAY_OTLP_SAMPLE_RATE"))?,
+            sample_rate: parse_sample_rate(trimmed_env("SHELLY_RELAY_OTLP_SAMPLE_RATE"))?,
             headers,
         }))
     }
@@ -148,15 +148,15 @@ fn parse_sample_rate(value: Option<String>) -> Result<f64> {
     };
     let parsed = value
         .parse::<f64>()
-        .with_context(|| format!("parse FIELDWORK_RELAY_OTLP_SAMPLE_RATE={value:?}"))?;
+        .with_context(|| format!("parse SHELLY_RELAY_OTLP_SAMPLE_RATE={value:?}"))?;
     if !parsed.is_finite() || !(0.0..=1.0).contains(&parsed) {
-        bail!("FIELDWORK_RELAY_OTLP_SAMPLE_RATE must be between 0.0 and 1.0");
+        bail!("SHELLY_RELAY_OTLP_SAMPLE_RATE must be between 0.0 and 1.0");
     }
     Ok(parsed)
 }
 
 fn honeycomb_api_key() -> Result<Option<String>> {
-    if let Some(path) = trimmed_env("FIELDWORK_RELAY_HONEYCOMB_API_KEY_PATH") {
+    if let Some(path) = trimmed_env("SHELLY_RELAY_HONEYCOMB_API_KEY_PATH") {
         return read_secret(Path::new(&path)).map(Some);
     }
     if let Some(path) = systemd_credential_path(HONEYCOMB_CREDENTIAL_NAME)

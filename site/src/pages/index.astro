@@ -1,18 +1,18 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import cliFlow from "../../../docs/assets/fieldwork-cli-flow.svg?url";
-import pairingFlow from "../../../docs/assets/fieldwork-pairing.svg?url";
-import mobileSession from "../../../docs/assets/fieldwork-mobile-session.svg?url";
+import cliFlow from "../../../docs/assets/shelly-cli-flow.svg?url";
+import pairingFlow from "../../../docs/assets/shelly-pairing.svg?url";
+import mobileSession from "../../../docs/assets/shelly-mobile-session.svg?url";
 ---
 
 <BaseLayout
-  title="Fieldwork"
+  title="Shelly"
   description="Open-source terminal handoff for any CLI: keep one PTY session alive on your laptop and continue it from Android."
 >
   <section class="hero">
     <div>
       <p class="eyebrow">Universal terminal handoff</p>
-      <h1>Fieldwork</h1>
+      <h1>Shelly</h1>
       <p class="lede">
         Run any CLI on your laptop, leave the desk, and attach to that same live PTY
         session from Android. Shells, TUIs, REPLs, Claude Code, and Codex all
@@ -24,16 +24,16 @@ import mobileSession from "../../../docs/assets/fieldwork-mobile-session.svg?url
       </div>
     </div>
 
-    <div class="terminal-scene" aria-label="Fieldwork session handoff preview">
+    <div class="terminal-scene" aria-label="Shelly session handoff preview">
       <div class="terminal-window">
         <div class="terminal-bar" aria-hidden="true"><span></span><span></span><span></span></div>
-        <pre class="terminal-body"><code><span class="prompt">$</span> fw new --dir ~/projects/api claude
+        <pre class="terminal-body"><code><span class="prompt">$</span> shelly new --dir ~/projects/api claude
 created 018f1e...  claude · api
 
-<span class="prompt">$</span> fw ls
+<span class="prompt">$</span> shelly ls
 SESSION                         STATUS
 claude · api                    Working
-bash · fieldwork                Idle
+bash · shelly                Idle
 vim · docs                      Attached
 
 <span class="dim">phone attached over iroh</span>
@@ -50,7 +50,7 @@ Continue with the release notes?
           <span>Awaiting input</span>
         </div>
         <div class="session-row">
-          <strong>bash · fieldwork</strong>
+          <strong>bash · shelly</strong>
           <span>Idle</span>
         </div>
         <div class="session-row">
@@ -91,8 +91,8 @@ Continue with the release notes?
         <h2>Pair once, then attach anywhere.</h2>
       </div>
       <ol class="flow">
-        <li><span>Install `fieldwork`, then start the user daemon.</span></li>
-        <li><span>Run `fw pair`, scan the QR code, and approve the device on desktop.</span></li>
+        <li><span>Install `shelly`, then start the user daemon.</span></li>
+        <li><span>Run `shelly pair`, scan the QR code, and approve the device on desktop.</span></li>
         <li><span>Create sessions from the laptop. Mobile can list, attach, send input, resize, detach, and register push tokens.</span></li>
         <li><span>Push payloads contain only fixed text and opaque hashes; terminal content is fetched over the paired iroh channel after unlock.</span></li>
       </ol>
@@ -110,9 +110,9 @@ Continue with the release notes?
         </p>
       </div>
       <div class="doc-list">
-        <img class="shot" src={cliFlow} alt="Fieldwork CLI install and session list" />
-        <img class="shot" src={pairingFlow} alt="Fieldwork QR pairing with desktop approval" />
-        <img class="shot" src={mobileSession} alt="Fieldwork mobile sessions and terminal attach" />
+        <img class="shot" src={cliFlow} alt="Shelly CLI install and session list" />
+        <img class="shot" src={pairingFlow} alt="Shelly QR pairing with desktop approval" />
+        <img class="shot" src={mobileSession} alt="Shelly mobile sessions and terminal attach" />
       </div>
     </div>
   </section>

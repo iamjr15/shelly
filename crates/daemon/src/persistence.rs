@@ -4,18 +4,18 @@ use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
     aead::{Aead, KeyInit, OsRng, rand_core::RngCore},
 };
-use fieldwork_protocol::{
-    DeviceSummary, PushPlatform, SessionId, SessionSummary, decode_bincode, encode_bincode, now_ms,
-};
 use redb::{Database, DatabaseError, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use shelly_protocol::{
+    DeviceSummary, PushPlatform, SessionId, SessionSummary, decode_bincode, encode_bincode, now_ms,
+};
 use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-const SERVICE: &str = "app.fieldwork";
+const SERVICE: &str = "app.shelly";
 const ACCOUNT: &str = "scrollback-key-v1";
 const SESSIONS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("sessions_v1");
 const DEVICES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("devices_v1");
@@ -399,7 +399,7 @@ impl Persistence {
                 if let Ok(encrypted) = decode_bincode::<EncryptedBlob>(payload) {
                     return decrypt(key, &encrypted);
                 }
-                anyhow::bail!("stored payload is neither encrypted nor Fieldwork plaintext");
+                anyhow::bail!("stored payload is neither encrypted nor Shelly plaintext");
             }
             PersistenceMode::Plaintext { legacy_key } => {
                 if let Some(key) = legacy_key {
@@ -496,17 +496,17 @@ fn default_sessions_db_path() -> Result<PathBuf> {
         return Ok(home
             .join("Library")
             .join("Caches")
-            .join("app.fieldwork")
+            .join("app.shelly")
             .join("sessions.redb"));
     }
 
     if let Some(cache_home) = std::env::var_os("XDG_CACHE_HOME") {
         return Ok(PathBuf::from(cache_home)
-            .join("fieldwork")
+            .join("shelly")
             .join("sessions.redb"));
     }
 
-    Ok(home.join(".cache").join("fieldwork").join("sessions.redb"))
+    Ok(home.join(".cache").join("shelly").join("sessions.redb"))
 }
 
 fn default_devices_db_path() -> Result<PathBuf> {
@@ -518,27 +518,25 @@ fn default_devices_db_path() -> Result<PathBuf> {
         return Ok(home
             .join("Library")
             .join("Application Support")
-            .join("app.fieldwork")
+            .join("app.shelly")
             .join("devices.redb"));
     }
 
     if let Some(data_home) = std::env::var_os("XDG_DATA_HOME") {
-        return Ok(PathBuf::from(data_home)
-            .join("fieldwork")
-            .join("devices.redb"));
+        return Ok(PathBuf::from(data_home).join("shelly").join("devices.redb"));
     }
 
     Ok(home
         .join(".local")
         .join("share")
-        .join("fieldwork")
+        .join("shelly")
         .join("devices.redb"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{DEVICES_TABLE, Persistence, SESSIONS_TABLE, StoredDevice, StoredSession};
-    use fieldwork_protocol::{AgentState, SessionId, SessionSummary, now_ms};
+    use shelly_protocol::{AgentState, SessionId, SessionSummary, now_ms};
     use std::fs;
     use std::os::unix::fs::{PermissionsExt, symlink};
     use std::path::PathBuf;
@@ -665,7 +663,7 @@ mod tests {
                 .expect("open persistence with separate databases");
         let mut device = StoredDevice::new("Alice Phone".to_string(), "node-secret".to_string());
         device.set_push_token(
-            fieldwork_protocol::PushPlatform::Fcm,
+            shelly_protocol::PushPlatform::Fcm,
             "secret-fcm-token".to_string(),
         );
 

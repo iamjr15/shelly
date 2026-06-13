@@ -1,10 +1,10 @@
 [package]
-name = "fieldwork-protocol"
+name = "shelly-protocol"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Fieldwork v1 wire protocol types and framing."
+description = "Shelly v1 wire protocol types and framing."
 
 [dependencies]
 bincode.workspace = true

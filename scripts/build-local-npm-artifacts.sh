@@ -38,15 +38,15 @@ case "$target_root" in
 esac
 
 echo "==> building host release binaries"
-cargo build --release -p fieldwork-cli -p fieldwork-daemon -p fieldwork-relay
+cargo build --release -p shelly-cli -p shelly-daemon -p shelly-relay
 
 echo "==> building Darwin npm platform binaries"
-cargo build --release --target aarch64-apple-darwin -p fieldwork-cli -p fieldwork-daemon
-cargo build --release --target x86_64-apple-darwin -p fieldwork-cli -p fieldwork-daemon
+cargo build --release --target aarch64-apple-darwin -p shelly-cli -p shelly-daemon
+cargo build --release --target x86_64-apple-darwin -p shelly-cli -p shelly-daemon
 
 echo "==> building Linux npm platform binaries"
-cargo zigbuild --release --target x86_64-unknown-linux-gnu -p fieldwork-cli -p fieldwork-daemon
-cargo zigbuild --release --target aarch64-unknown-linux-gnu -p fieldwork-cli -p fieldwork-daemon
+cargo zigbuild --release --target x86_64-unknown-linux-gnu -p shelly-cli -p shelly-daemon
+cargo zigbuild --release --target aarch64-unknown-linux-gnu -p shelly-cli -p shelly-daemon
 
 copy_platform() {
   local target="$1"
@@ -54,15 +54,15 @@ copy_platform() {
   local src="$target_root_abs/$target/release"
   local out="$root/packages/cli-$package/bin"
 
-  if [[ ! -x "$src/fieldwork" || ! -x "$src/fieldworkd" ]]; then
+  if [[ ! -x "$src/shelly" || ! -x "$src/shellyd" ]]; then
     echo "missing built binaries for $target under $src" >&2
     exit 1
   fi
 
   mkdir -p "$out"
-  cp "$src/fieldwork" "$out/fieldwork"
-  cp "$src/fieldworkd" "$out/fieldworkd"
-  chmod 755 "$out/fieldwork" "$out/fieldworkd"
+  cp "$src/shelly" "$out/shelly"
+  cp "$src/shellyd" "$out/shellyd"
+  chmod 755 "$out/shelly" "$out/shellyd"
 }
 
 copy_platform aarch64-apple-darwin darwin-arm64
@@ -79,55 +79,55 @@ prepare_darwin_trust() {
   local package="$1"
   local out="$root/packages/cli-$package/bin"
 
-  codesign --force --sign - "$out/fieldwork" >/dev/null
-  codesign --force --sign - "$out/fieldworkd" >/dev/null
-  codesign --verify --verbose=2 "$out/fieldwork"
-  codesign --verify --verbose=2 "$out/fieldworkd"
-  xattr -d com.apple.quarantine "$out/fieldwork" "$out/fieldworkd" 2>/dev/null || true
+  codesign --force --sign - "$out/shelly" >/dev/null
+  codesign --force --sign - "$out/shellyd" >/dev/null
+  codesign --verify --verbose=2 "$out/shelly"
+  codesign --verify --verbose=2 "$out/shellyd"
+  xattr -d com.apple.quarantine "$out/shelly" "$out/shellyd" 2>/dev/null || true
 }
 
 prepare_darwin_trust darwin-arm64
 prepare_darwin_trust darwin-x64
 
-archive_root="${FIELDWORK_LOCAL_NPM_ARCHIVE_DIR:-$target_root_abs/local-npm-artifacts}"
+archive_root="${SHELLY_LOCAL_NPM_ARCHIVE_DIR:-$target_root_abs/local-npm-artifacts}"
 mkdir -p "$archive_root"
 rm -f \
-  "$archive_root"/fieldwork-darwin-arm64.tar.gz \
-  "$archive_root"/fieldwork-darwin-x64.tar.gz \
-  "$archive_root"/fieldwork-linux-arm64.tar.gz \
-  "$archive_root"/fieldwork-linux-x64.tar.gz \
-  "$archive_root"/fieldwork-darwin-arm64.tar.gz.sha256.local \
-  "$archive_root"/fieldwork-darwin-x64.tar.gz.sha256.local \
-  "$archive_root"/fieldwork-linux-arm64.tar.gz.sha256.local \
-  "$archive_root"/fieldwork-linux-x64.tar.gz.sha256.local
+  "$archive_root"/shelly-darwin-arm64.tar.gz \
+  "$archive_root"/shelly-darwin-x64.tar.gz \
+  "$archive_root"/shelly-linux-arm64.tar.gz \
+  "$archive_root"/shelly-linux-x64.tar.gz \
+  "$archive_root"/shelly-darwin-arm64.tar.gz.sha256.local \
+  "$archive_root"/shelly-darwin-x64.tar.gz.sha256.local \
+  "$archive_root"/shelly-linux-arm64.tar.gz.sha256.local \
+  "$archive_root"/shelly-linux-x64.tar.gz.sha256.local
 
-archive_tmp="$(mktemp -d "${TMPDIR:-/tmp}/fieldwork-local-npm-artifacts.XXXXXX")"
+archive_tmp="$(mktemp -d "${TMPDIR:-/tmp}/shelly-local-npm-artifacts.XXXXXX")"
 trap 'rm -rf "$archive_tmp"' EXIT
 
 archive_platform_package() {
   local package="$1"
   local package_dir="$root/packages/cli-$package"
-  local stage="$archive_tmp/fieldwork-$package"
-  local archive="$archive_root/fieldwork-$package.tar.gz"
+  local stage="$archive_tmp/shelly-$package"
+  local archive="$archive_root/shelly-$package.tar.gz"
 
   rm -rf "$stage"
   mkdir -p "$stage"
-  cp "$package_dir/bin/fieldwork" "$stage/fieldwork"
-  cp "$package_dir/bin/fieldworkd" "$stage/fieldworkd"
+  cp "$package_dir/bin/shelly" "$stage/shelly"
+  cp "$package_dir/bin/shellyd" "$stage/shellyd"
   cp "$package_dir/LICENSE" "$stage/LICENSE"
   cp "$package_dir/NOTICE" "$stage/NOTICE"
-  chmod 755 "$stage/fieldwork" "$stage/fieldworkd"
+  chmod 755 "$stage/shelly" "$stage/shellyd"
 
-  (cd "$archive_tmp" && LC_ALL=C LANG=C COPYFILE_DISABLE=1 tar -czf "$archive" "fieldwork-$package")
+  (cd "$archive_tmp" && LC_ALL=C LANG=C COPYFILE_DISABLE=1 tar -czf "$archive" "shelly-$package")
   LC_ALL=C LANG=C shasum -a 256 "$archive" >"$archive.sha256.local"
 
   if [[ "$package" == darwin-* ]]; then
-    tmp_extract="$(mktemp -d "${TMPDIR:-/tmp}/fieldwork-local-npm-archive.XXXXXX")"
+    tmp_extract="$(mktemp -d "${TMPDIR:-/tmp}/shelly-local-npm-archive.XXXXXX")"
     (
       trap 'rm -rf "$tmp_extract"' EXIT
       tar -xzf "$archive" -C "$tmp_extract"
-      codesign --verify --verbose=2 "$tmp_extract/fieldwork-$package/fieldwork"
-      codesign --verify --verbose=2 "$tmp_extract/fieldwork-$package/fieldworkd"
+      codesign --verify --verbose=2 "$tmp_extract/shelly-$package/shelly"
+      codesign --verify --verbose=2 "$tmp_extract/shelly-$package/shellyd"
     )
   fi
 }

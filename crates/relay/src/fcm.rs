@@ -133,7 +133,7 @@ impl FcmCredentials {
             .token_uri
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "https://oauth2.googleapis.com/token".to_string());
-        let endpoint = std::env::var("FIELDWORK_FCM_ENDPOINT")
+        let endpoint = std::env::var("SHELLY_FCM_ENDPOINT")
             .unwrap_or_else(|_| DEFAULT_FCM_ENDPOINT.to_string());
 
         Ok(Some(Self {
@@ -281,8 +281,8 @@ impl FcmClient {
                 android: FcmAndroidConfig {
                     priority: "HIGH",
                     notification: FcmAndroidNotification {
-                        channel_id: "fieldwork-agent-state",
-                        click_action: "FIELDWORK_OPEN_SESSION",
+                        channel_id: "shelly-agent-state",
+                        click_action: "SHELLY_OPEN_SESSION",
                     },
                 },
             },
@@ -371,7 +371,7 @@ fn pkcs8_der_from_pem(pem: &str) -> Result<Vec<u8>> {
 }
 
 fn fcm_service_account_path() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("FIELDWORK_FCM_SERVICE_ACCOUNT_PATH") {
+    if let Some(path) = std::env::var_os("SHELLY_FCM_SERVICE_ACCOUNT_PATH") {
         return Some(path.into());
     }
     let credentials_dir = std::env::var_os("CREDENTIALS_DIRECTORY")?;
@@ -474,7 +474,7 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
         crate::DeliveredPush {
             platform: crate::PushPlatform::Fcm,
             recipient_token: "fcm-token-for-device".to_string(),
-            title: "Fieldwork".to_string(),
+            title: "Shelly".to_string(),
             body: "A session is waiting for you.".to_string(),
             thread_id: "session.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                 .to_string(),
@@ -489,7 +489,7 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
     #[test]
     fn fcm_service_account_jwt_contains_expected_claims() {
         let cache = FcmTokenCache::new(
-            "fieldwork@example.iam.gserviceaccount.com".to_string(),
+            "shelly@example.iam.gserviceaccount.com".to_string(),
             Some("private-key-id".to_string()),
             TEST_RSA_KEY.as_bytes().to_vec(),
         )
@@ -502,7 +502,7 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
         assert_eq!(header["alg"], "RS256");
         assert_eq!(header["kid"], "private-key-id");
         let claims = decode_segment::<serde_json::Value>(&jwt, 1);
-        assert_eq!(claims["iss"], "fieldwork@example.iam.gserviceaccount.com");
+        assert_eq!(claims["iss"], "shelly@example.iam.gserviceaccount.com");
         assert_eq!(claims["scope"], FCM_SCOPE);
         assert_eq!(claims["aud"], "https://oauth2.googleapis.com/token");
         assert_eq!(claims["iat"], 1_700_000_000);
@@ -547,7 +547,7 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
         );
         assert_eq!(message["token"], "fcm-token-for-device");
         assert_eq!(object_keys(&message["notification"]), vec!["body", "title"]);
-        assert_eq!(message["notification"]["title"], "Fieldwork");
+        assert_eq!(message["notification"]["title"], "Shelly");
         assert_eq!(
             message["notification"]["body"],
             "A session is waiting for you."
@@ -571,11 +571,11 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
         );
         assert_eq!(
             message["android"]["notification"]["channel_id"],
-            "fieldwork-agent-state"
+            "shelly-agent-state"
         );
         assert_eq!(
             message["android"]["notification"]["click_action"],
-            "FIELDWORK_OPEN_SESSION"
+            "SHELLY_OPEN_SESSION"
         );
 
         let serialized = serde_json::to_string(payload).unwrap();
@@ -619,7 +619,7 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
     fn fcm_client(endpoint: &str, token_uri: &str) -> FcmClient {
         FcmClient::new(FcmCredentials {
             project_id: "test-project".to_string(),
-            client_email: "fieldwork@example.iam.gserviceaccount.com".to_string(),
+            client_email: "shelly@example.iam.gserviceaccount.com".to_string(),
             private_key_id: Some("private-key-id".to_string()),
             private_key_pem: TEST_RSA_KEY.as_bytes().to_vec(),
             token_uri: token_uri.to_string(),

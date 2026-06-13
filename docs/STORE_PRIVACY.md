@@ -11,17 +11,17 @@ Sources:
 
 - No ads, ad tracking, broker sharing, cross-app tracking, account system, billing, contacts import, location permission, microphone permission, photo-library permission, clipboard telemetry, or webview browsing.
 - QR camera frames are processed on device for pairing only.
-- BiometricPrompt is OS-mediated. Fieldwork never receives or stores biometric material.
-- Terminal content, commands, paths, and session names are not sent to Fieldwork-operated analytics or push providers. Live terminal bytes travel only between the user's paired devices over encrypted iroh connections.
+- BiometricPrompt is OS-mediated. Shelly never receives or stores biometric material.
+- Terminal content, commands, paths, and session names are not sent to Shelly-operated analytics or push providers. Live terminal bytes travel only between the user's paired devices over encrypted iroh connections.
 - Push payloads contain only fixed enum-derived copy plus opaque lowercase 64-character hex session hashes. The app rejects malformed hashes and fetches actual terminal content from the paired daemon after unlock.
 - Mobile product diagnostics sharing is off by default. No mobile crash-reporting SDK is bundled in v1.
-- Android Firebase Messaging auto-init and Firebase Analytics collection are disabled in the manifest. FCM token generation is enabled only after pairing, biometric unlock, and only when `google-services.json` is present. Refreshed Android FCM tokens are queued in app-private `fieldwork_push_tokens.xml`, excluded from backup/transfer, and sent only after pairing plus biometric unlock.
+- Android Firebase Messaging auto-init and Firebase Analytics collection are disabled in the manifest. FCM token generation is enabled only after pairing, biometric unlock, and only when `google-services.json` is present. Refreshed Android FCM tokens are queued in app-private `shelly_push_tokens.xml`, excluded from backup/transfer, and sent only after pairing plus biometric unlock.
 
 ## Google Play Data Safety
 
 Does the app collect or share user data? Yes, because FCM push tokens / Firebase installation identifiers can be transmitted off device.
 
-Data shared with third parties: No, assuming FCM is documented as a service provider processing data for Fieldwork under the published privacy policy and applicable agreements. If that legal posture changes, mark the relevant rows as shared.
+Data shared with third parties: No, assuming FCM is documented as a service provider processing data for Shelly under the published privacy policy and applicable agreements. If that legal posture changes, mark the relevant rows as shared.
 
 Security practices:
 
@@ -38,7 +38,7 @@ Data types:
 
 Not declared as collected:
 
-- Terminal content and keystrokes because they are end-to-end encrypted between user-controlled endpoints and are unreadable to Fieldwork infrastructure.
+- Terminal content and keystrokes because they are end-to-end encrypted between user-controlled endpoints and are unreadable to Shelly infrastructure.
 - QR camera frames because they are processed only on device.
 - Biometric data because Android does not expose it to the app.
 - Location, contacts, messages, files/docs, photos/videos, audio, calendar, web browsing history, installed apps, purchases, financial info, health/fitness, and personal info.

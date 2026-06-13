@@ -10,7 +10,7 @@ const root = path.resolve(new URL("..", import.meta.url).pathname);
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const supportedHosts = new Set(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"]);
 const hostKey = `${process.platform}-${process.arch}`;
-const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-npm-local-install-"));
+const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-npm-local-install-"));
 
 try {
   if (!supportedHosts.has(hostKey)) {
@@ -19,8 +19,8 @@ try {
 
   const platformDir = path.join(root, "packages", `cli-${hostKey}`);
   const metaDir = path.join(root, "packages", "cli");
-  requireExecutable(path.join(platformDir, "bin", "fieldwork"));
-  requireExecutable(path.join(platformDir, "bin", "fieldworkd"));
+  requireExecutable(path.join(platformDir, "bin", "shelly"));
+  requireExecutable(path.join(platformDir, "bin", "shellyd"));
 
   const packDir = path.join(tempRoot, "packs");
   const projectDir = path.join(tempRoot, "project");
@@ -51,33 +51,30 @@ try {
     { cwd: projectDir, env: isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) },
   );
 
-  const installedBinDir = path.join(projectDir, "node_modules", "fieldwork", "bin");
-  const installedFieldwork = path.join(installedBinDir, "fieldwork");
-  const installedDaemon = path.join(installedBinDir, "fieldworkd");
-  requireExecutable(installedFieldwork);
+  const installedBinDir = path.join(projectDir, "node_modules", "shellykit", "bin");
+  const installedShelly = path.join(installedBinDir, "shelly");
+  const installedDaemon = path.join(installedBinDir, "shellyd");
+  requireExecutable(installedShelly);
   requireExecutable(installedDaemon);
-  rejectJsFallback(installedFieldwork);
+  rejectJsFallback(installedShelly);
   rejectJsFallback(installedDaemon);
 
   const binDir = path.join(projectDir, "node_modules", ".bin");
-  const fieldworkBin = path.join(binDir, "fieldwork");
-  const fwBin = path.join(binDir, "fw");
-  const daemonBin = path.join(binDir, "fieldworkd");
-  requireExecutable(fieldworkBin);
-  requireExecutable(fwBin);
+  const shellyBin = path.join(binDir, "shelly");
+  const daemonBin = path.join(binDir, "shellyd");
+  requireExecutable(shellyBin);
   requireExecutable(daemonBin);
 
-  assertIncludes(run(fieldworkBin, ["version"], { cwd: projectDir, env: isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) }).stdout, "fieldwork", "fieldwork version output");
-  assertIncludes(run(fieldworkBin, ["doctor", "--help"], { cwd: projectDir, env: isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) }).stdout, "Usage: fieldwork doctor", "fieldwork doctor help");
-  assertIncludes(run(fwBin, ["--help"], { cwd: projectDir, env: isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) }).stdout, "Usage: fw", "fw alias help");
-  assertIncludes(run(daemonBin, ["--help"], { cwd: projectDir, env: isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) }).stdout, "Usage:", "fieldworkd help");
+  assertIncludes(run(shellyBin, ["version"], { cwd: projectDir, env: isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) }).stdout, "shelly", "shelly version output");
+  assertIncludes(run(shellyBin, ["doctor", "--help"], { cwd: projectDir, env: isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) }).stdout, "Usage: shelly doctor", "shelly doctor help");
+  assertIncludes(run(daemonBin, ["--help"], { cwd: projectDir, env: isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) }).stdout, "Usage:", "shellyd help");
 
   if (process.platform === "darwin") {
-    assertDarwinTrust(installedFieldwork);
+    assertDarwinTrust(installedShelly);
     assertDarwinTrust(installedDaemon);
   }
 
-  console.log(`npm local install smoke ok: fieldwork + fieldwork-${hostKey}`);
+  console.log(`npm local install smoke ok: shellykit + shellykit-${hostKey}`);
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }
@@ -111,7 +108,7 @@ function isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) {
     XDG_RUNTIME_DIR: runtimeDir,
     XDG_CONFIG_HOME: configDir,
     XDG_STATE_HOME: stateDir,
-    FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED: "false",
+    SHELLY_SCROLLBACK_ENCRYPTION_ENABLED: "false",
   });
 }
 

@@ -1,8 +1,8 @@
 [
   {
-    "name": "Fieldwork",
+    "name": "Shelly",
     "license": "AGPL-3.0-or-later",
-    "url": "https://github.com/fieldwork-app/fieldwork"
+    "url": "https://github.com/shelly-app/shelly"
   },
   {
     "name": "AndroidX",

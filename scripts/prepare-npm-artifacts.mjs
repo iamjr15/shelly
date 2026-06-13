@@ -5,7 +5,7 @@ import path from "node:path";
 import process from "node:process";
 
 const root = process.cwd();
-const artifactDir = path.resolve(root, process.env.FIELDWORK_ARTIFACT_DIR || "artifacts");
+const artifactDir = path.resolve(root, process.env.SHELLY_ARTIFACT_DIR || "artifacts");
 const mappings = [
   { key: "darwin-arm64", target: "aarch64-apple-darwin" },
   { key: "darwin-x64", target: "x86_64-apple-darwin" },
@@ -30,13 +30,13 @@ for (const mapping of mappings) {
   }
   const pair = findExecutablePair(candidates);
   if (!pair) {
-    fail(`missing fieldwork/fieldworkd artifacts for ${mapping.key}`);
+    fail(`missing shelly/shellyd artifacts for ${mapping.key}`);
   }
 
   const outDir = path.join(root, "packages", `cli-${mapping.key}`, "bin");
   fs.mkdirSync(outDir, { recursive: true });
-  copyExecutable(pair.fieldwork, path.join(outDir, "fieldwork"));
-  copyExecutable(pair.fieldworkd, path.join(outDir, "fieldworkd"));
+  copyExecutable(pair.shelly, path.join(outDir, "shelly"));
+  copyExecutable(pair.shellyd, path.join(outDir, "shellyd"));
   console.log(`prepared ${mapping.key}`);
 }
 
@@ -63,10 +63,10 @@ function findCandidateRoots(rootDir, mapping) {
 
 function findExecutablePair(roots) {
   for (const rootDir of roots) {
-    const fieldwork = findFile([rootDir], "fieldwork");
-    const fieldworkd = findFile([rootDir], "fieldworkd");
-    if (fieldwork && fieldworkd) {
-      return { fieldwork, fieldworkd };
+    const shelly = findFile([rootDir], "shelly");
+    const shellyd = findFile([rootDir], "shellyd");
+    if (shelly && shellyd) {
+      return { shelly, shellyd };
     }
   }
   return null;

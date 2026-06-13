@@ -2,11 +2,11 @@ import Foundation
 import Security
 
 struct KeychainStore {
-    private let service = "app.fieldwork.ios"
+    private let service = "app.shelly.ios"
     private let account = "paired-daemon"
 
     func save<T: Encodable>(_ value: T) throws {
-        let data = try JSONEncoder.fieldwork.encode(value)
+        let data = try JSONEncoder.shelly.encode(value)
         let query = baseQuery
         let attributes: [String: Any] = [
             kSecValueData as String: data,
@@ -42,7 +42,7 @@ struct KeychainStore {
         guard let data = result as? Data else {
             throw KeychainError.invalidData
         }
-        return try JSONDecoder.fieldwork.decode(T.self, from: data)
+        return try JSONDecoder.shelly.decode(T.self, from: data)
     }
 
     func delete() throws {
@@ -78,7 +78,7 @@ enum KeychainError: LocalizedError {
 }
 
 extension JSONEncoder {
-    static var fieldwork: JSONEncoder {
+    static var shelly: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         return encoder
@@ -86,7 +86,7 @@ extension JSONEncoder {
 }
 
 extension JSONDecoder {
-    static var fieldwork: JSONDecoder {
+    static var shelly: JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder

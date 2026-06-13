@@ -1,13 +1,13 @@
 [package]
-name = "fieldwork-relay"
+name = "shelly-relay"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Fieldwork relay and push gateway."
+description = "Shelly relay and push gateway."
 
 [[bin]]
-name = "fieldwork-relay"
+name = "shelly-relay"
 path = "src/main.rs"
 
 [dependencies]
@@ -16,7 +16,7 @@ axum.workspace = true
 axum-server.workspace = true
 base64.workspace = true
 ed25519-dalek.workspace = true
-fieldwork-protocol = { path = "../protocol" }
+shelly-protocol = { path = "../protocol" }
 garde.workspace = true
 iroh-relay.workspace = true
 moka.workspace = true

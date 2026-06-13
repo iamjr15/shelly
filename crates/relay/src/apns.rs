@@ -88,10 +88,10 @@ impl ApnsCredentials {
             return Ok(None);
         }
 
-        let team_id = required_env("FIELDWORK_APNS_TEAM_ID")?;
-        let key_id = required_env("FIELDWORK_APNS_KEY_ID")?;
-        let topic = required_env("FIELDWORK_APNS_TOPIC")?;
-        let endpoint = std::env::var("FIELDWORK_APNS_ENDPOINT")
+        let team_id = required_env("SHELLY_APNS_TEAM_ID")?;
+        let key_id = required_env("SHELLY_APNS_KEY_ID")?;
+        let topic = required_env("SHELLY_APNS_TOPIC")?;
+        let endpoint = std::env::var("SHELLY_APNS_ENDPOINT")
             .unwrap_or_else(|_| DEFAULT_APNS_ENDPOINT.to_string());
         let private_key_pem = std::fs::read(&key_path)
             .with_context(|| format!("read APNs .p8 key from {}", key_path.display()))?;
@@ -244,7 +244,7 @@ fn b64_json<T: Serialize>(value: &T) -> Result<String> {
 }
 
 fn apns_key_path() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("FIELDWORK_APNS_P8_PATH") {
+    if let Some(path) = std::env::var_os("SHELLY_APNS_P8_PATH") {
         return Some(path.into());
     }
     let credentials_dir = std::env::var_os("CREDENTIALS_DIRECTORY")?;
@@ -317,7 +317,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         crate::DeliveredPush {
             platform: crate::PushPlatform::Apns,
             recipient_token: "device-token".to_string(),
-            title: "Fieldwork".to_string(),
+            title: "Shelly".to_string(),
             body: "A session is waiting for you.".to_string(),
             thread_id: "session.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                 .to_string(),
@@ -362,7 +362,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         let client = ApnsClient::new(ApnsCredentials {
             team_id: "TEAMID1234".to_string(),
             key_id: "KEYID1234".to_string(),
-            topic: "app.fieldwork.ios".to_string(),
+            topic: "app.shelly.ios".to_string(),
             private_key_pem: TEST_P8.as_bytes().to_vec(),
             endpoint: DEFAULT_APNS_ENDPOINT.to_string(),
         })
@@ -380,7 +380,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         );
         assert_eq!(object_keys(&payload["aps"]), vec!["alert", "thread-id"]);
         assert_eq!(object_keys(&payload["aps"]["alert"]), vec!["body", "title"]);
-        assert_eq!(payload["aps"]["alert"]["title"], "Fieldwork");
+        assert_eq!(payload["aps"]["alert"]["title"], "Shelly");
         assert_eq!(
             payload["aps"]["alert"]["body"],
             "A session is waiting for you."
@@ -425,7 +425,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         let client = ApnsClient::new(ApnsCredentials {
             team_id: "TEAMID1234".to_string(),
             key_id: "KEYID1234".to_string(),
-            topic: "app.fieldwork.ios".to_string(),
+            topic: "app.shelly.ios".to_string(),
             private_key_pem: TEST_P8.as_bytes().to_vec(),
             endpoint: format!("http://{addr}"),
         })
@@ -441,7 +441,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
                 .as_deref()
                 .is_some_and(|value| value.starts_with("bearer "))
         );
-        assert_eq!(requests[0].topic.as_deref(), Some("app.fieldwork.ios"));
+        assert_eq!(requests[0].topic.as_deref(), Some("app.shelly.ios"));
         assert_eq!(requests[0].push_type.as_deref(), Some("alert"));
         assert_eq!(requests[0].priority.as_deref(), Some("10"));
         let payload: serde_json::Value = serde_json::from_str(&requests[0].body).unwrap();
@@ -471,7 +471,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         let client = ApnsClient::new(ApnsCredentials {
             team_id: "TEAMID1234".to_string(),
             key_id: "KEYID1234".to_string(),
-            topic: "app.fieldwork.ios".to_string(),
+            topic: "app.shelly.ios".to_string(),
             private_key_pem: TEST_P8.as_bytes().to_vec(),
             endpoint: format!("http://{addr}"),
         })

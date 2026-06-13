@@ -7,8 +7,8 @@ import SwiftTerm
 struct TerminalRenderer: UIViewRepresentable {
     @ObservedObject var controller: TerminalSessionController
 
-    func makeUIView(context: Context) -> FieldworkTerminalView {
-        let view = FieldworkTerminalView()
+    func makeUIView(context: Context) -> ShellyTerminalView {
+        let view = ShellyTerminalView()
         view.onInput = { data in
             Task {
                 await controller.send(data)
@@ -20,14 +20,14 @@ struct TerminalRenderer: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: FieldworkTerminalView, context: Context) {
+    func updateUIView(_ uiView: ShellyTerminalView, context: Context) {
         for chunk in controller.drainPendingOutput() {
             uiView.feed(data: chunk)
         }
     }
 }
 
-final class FieldworkTerminalView: TerminalView, TerminalViewDelegate {
+final class ShellyTerminalView: TerminalView, TerminalViewDelegate {
     var onInput: (Data) -> Void = { _ in }
     var onResize: (Int, Int) -> Void = { _, _ in }
 

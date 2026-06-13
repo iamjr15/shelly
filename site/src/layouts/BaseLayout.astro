@@ -7,7 +7,7 @@ interface Props {
 }
 
 const { title, description } = Astro.props;
-const pageTitle = title === "Fieldwork" ? title : `${title} · Fieldwork`;
+const pageTitle = title === "Shelly" ? title : `${title} · Shelly`;
 ---
 
 <!doctype html>
@@ -24,9 +24,9 @@ const pageTitle = title === "Fieldwork" ? title : `${title} · Fieldwork`;
   </head>
   <body>
     <header class="site-header">
-      <a class="brand" href="/" aria-label="Fieldwork home">
+      <a class="brand" href="/" aria-label="Shelly home">
         <span class="brand-mark" aria-hidden="true"></span>
-        <span>Fieldwork</span>
+        <span>Shelly</span>
       </a>
       <nav aria-label="Primary navigation">
         <a href="/install/">Install</a>
@@ -41,7 +41,7 @@ const pageTitle = title === "Fieldwork" ? title : `${title} · Fieldwork`;
     <footer class="site-footer">
       <span>Your terminal sessions, from anywhere.</span>
       <span>
-        <a href="https://github.com/fieldwork-app/fieldwork">GitHub</a>
+        <a href="https://github.com/shelly-app/shelly">GitHub</a>
         <a href="/privacy/">Privacy</a>
       </span>
     </footer>

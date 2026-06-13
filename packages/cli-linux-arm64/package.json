@@ -1,17 +1,17 @@
 {
-  "name": "fieldwork-linux-arm64",
+  "name": "shellykit-linux-arm64",
   "version": "1.0.0",
-  "description": "Fieldwork CLI and daemon binaries for Linux arm64.",
+  "description": "Shelly CLI and daemon binaries for Linux arm64.",
   "os": ["linux"],
   "cpu": ["arm64"],
-  "files": ["bin/fieldwork", "bin/fieldworkd", "LICENSE", "NOTICE"],
+  "files": ["bin/shelly", "bin/shellyd", "LICENSE", "NOTICE"],
   "license": "AGPL-3.0-or-later",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fieldwork-app/fieldwork.git",
+    "url": "git+https://github.com/shelly-app/shelly.git",
     "directory": "packages/cli-linux-arm64"
   },
   "preferUnplugged": true

@@ -17,11 +17,11 @@ The publish flow is npm-only for desktop.
 
 The publish script always publishes in dependency order:
 
-1. `fieldwork-darwin-arm64`
-2. `fieldwork-darwin-x64`
-3. `fieldwork-linux-arm64`
-4. `fieldwork-linux-x64`
-5. `fieldwork`
+1. `shellykit-darwin-arm64`
+2. `shellykit-darwin-x64`
+3. `shellykit-linux-arm64`
+4. `shellykit-linux-x64`
+5. `shellykit`
 
 Use npm registry UI/API checks after publish to confirm the latest dist-tags and
 provenance visibility.
@@ -38,14 +38,14 @@ The committed Ansible defaults run the host in a pre-production posture:
 - iroh relay is HTTP-only on port 80 until DNS points at `dock-relay` and ACME
   can issue certificates.
 - the control plane listens on port 8443 without mandatory TLS credentials until
-  `fieldwork_relay_control_require_tls` and the cert/key credential paths are
+  `shelly_relay_control_require_tls` and the cert/key credential paths are
   set.
 - FCM, APNs, and Honeycomb credentials are optional; missing files disable those
   integrations instead of preventing the relay from starting.
 
 `.github/workflows/deploy-relay.yml` deploys the relay automatically from
 `main` when relay code or relay infrastructure files change. It builds
-`fieldwork-relay` on an Ubuntu x64 runner, temporarily opens Lightsail SSH to
+`shelly-relay` on an Ubuntu x64 runner, temporarily opens Lightsail SSH to
 that runner's public IPv4 address, runs the Ansible playbook, and closes the
 temporary SSH rule in an `always()` cleanup step.
 
@@ -93,18 +93,18 @@ Do not commit those files or copy them into CLI, daemon, npm package, mobile, or
 site directories.
 
 When DNS is cut over to `dock-relay`, switch
-`fieldwork_iroh_relay_http_only` to `false`, set
-`fieldwork_iroh_relay_hostname` and `fieldwork_iroh_relay_contact_email`, and
+`shelly_iroh_relay_http_only` to `false`, set
+`shelly_iroh_relay_hostname` and `shelly_iroh_relay_contact_email`, and
 enable Terraform's `enable_iroh_tls_ports` variable before opening 443/tcp and
 7842/udp. For the control plane, install the TLS cert/key under
-`/etc/fieldwork/secrets/`, set their Ansible paths, and set
-`fieldwork_relay_control_require_tls` to `true`.
+`/etc/shelly/secrets/`, set their Ansible paths, and set
+`shelly_relay_control_require_tls` to `true`.
 
 APNs credentials and environment are only configured when the deferred iOS
 client resumes; Ansible omits the APNs env vars and `apns.p8` credential while
-`fieldwork_relay_apns_team_id` is empty.
+`shelly_relay_apns_team_id` is empty.
 
-`FIELDWORK_RELAY_TRUST_FORWARDED_FOR` is off by default, so rate-limit identity
+`SHELLY_RELAY_TRUST_FORWARDED_FOR` is off by default, so rate-limit identity
 uses the socket peer address. Set it only when the relay sits behind a trusted
 proxy that overwrites `X-Forwarded-For`.
 
@@ -115,7 +115,7 @@ proxy that overwrites `X-Forwarded-For`.
 - `ANDROID_GOOGLE_SERVICES_JSON`
 - `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_KEYSTORE_PROPERTIES`
-- `FIELDWORK_RELAY_CONTROL_URL`
+- `SHELLY_RELAY_CONTROL_URL`
 - `PLAY_SERVICE_ACCOUNT_JSON`
 
 The workflow builds mobile Rust libraries, decodes Firebase/signing config,

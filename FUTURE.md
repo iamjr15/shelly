@@ -1,4 +1,4 @@
-# Fieldwork — Future Roadmap
+# Shelly — Future Roadmap
 
 **Companion to**: `PLAN.md` (the v1 build plan)
 **Last updated**: 2026-05-17
@@ -26,7 +26,7 @@ The split exists so `PLAN.md` stays focused on what's actually being implemented
 - **Aider state-inference module**. Four agents with first-class push total (Claude Code + Codex from v1; OpenCode from v1.1; Aider added here). All four were *runnable* since v1 — these later versions just add the push integration per agent.
 - **Generic ACP (Agent Client Protocol) adapter** — instead of writing a state-inference module per agent, support the open ACP protocol so any ACP-compliant agent gets push for free (Goose, Pi, Droid, future agents).
 - **Live Activities (iOS)** for active sessions — visible in Dynamic Island. Glanceable session state without unlocking the phone.
-- **Self-hostable relay Docker image** — one-line `docker run fieldwork/relay` for users who don't want their NodeID/IP touching our infrastructure. Includes Terraform module for Oracle ARM A1 / Hetzner / Fly.io quickstart.
+- **Self-hostable relay Docker image** — one-line `docker run shelly/relay` for users who don't want their NodeID/IP touching our infrastructure. Includes a provider-neutral Terraform module and quickstart for low-cost VPS hosts.
 
 ## 3. v1.3 (target: +12 weeks post-v1)
 
@@ -51,7 +51,7 @@ The split exists so `PLAN.md` stays focused on what's actually being implemented
 ## 6. Explicitly out of scope (now and forever, unless re-litigated)
 
 - **Native desktop GUI apps on macOS, Linux, or Windows.** The CLI + TUI is the desktop story. Phone is the GUI story. Adding a Mac/Linux/Windows GUI app would triple the maintained surface area without addressing a real user pain — desktop users already have their terminal. (Note: the **CLI** itself runs on all three desktop platforms; this is specifically about a SwiftUI/GTK/libcosmic/WinUI **GUI** app.)
-- **IDE or editor-overlay surfaces.** Fieldwork v1 is a universal terminal handoff product, not an IDE or editor overlay. Any IDE-specific surface would be a separate product decision after the terminal contract has real-device mileage.
+- **IDE or editor-overlay surfaces.** Shelly v1 is a universal terminal handoff product, not an IDE or editor overlay. Any IDE-specific surface would be a separate product decision after the terminal contract has real-device mileage.
 - **Homebrew tap, `curl | sh`, `cargo install`, `winget`, `scoop`, `apt` distribution.** npm-only by design. Discovery is solved via content marketing and integrations, not registry SEO.
 - **Mac Catalyst** for any future Mac surface. If a Mac GUI is ever built (which is out of scope per above), it would be fully native SwiftUI, not Catalyst.
 - **Zulip community** — Discord has the bigger indie-dev reach.

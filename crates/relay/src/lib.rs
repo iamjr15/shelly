@@ -1,5 +1,5 @@
 #![warn(missing_docs)]
-//! HTTP control plane, push gateway, and metrics surface for Fieldwork relay.
+//! HTTP control plane, push gateway, and metrics surface for Shelly relay.
 
 mod apns;
 mod fcm;
@@ -16,11 +16,11 @@ use axum_server::tls_rustls::RustlsConfig;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use fieldwork_protocol::{CONTRACT_VERSION, is_valid_code, normalize_code};
 use garde::Validate;
 use moka::sync::Cache;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use shelly_protocol::{CONTRACT_VERSION, is_valid_code, normalize_code};
 use std::{
     collections::{HashMap, HashSet},
     net::SocketAddr,
@@ -32,7 +32,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-const SIGNATURE_HEADER: &str = "x-fieldwork-signature";
+const SIGNATURE_HEADER: &str = "x-shelly-signature";
 const FORWARDED_FOR_HEADER: &str = "x-forwarded-for";
 const CLOCK_SKEW_MS: i64 = 5 * 60 * 1000;
 const RATE_LIMIT_PER_MINUTE: u32 = 50;
@@ -432,8 +432,8 @@ impl RelayState {
     /// Builds relay state from production environment variables.
     pub fn from_env() -> anyhow::Result<Self> {
         let trust_forwarded_for = trust_forwarded_for_from_env()?;
-        let path = std::env::var("FIELDWORK_RELAY_DB_PATH")
-            .unwrap_or_else(|_| "/var/lib/fieldwork/relay.db".to_string());
+        let path = std::env::var("SHELLY_RELAY_DB_PATH")
+            .unwrap_or_else(|_| "/var/lib/shelly/relay.db".to_string());
         if path.trim().is_empty() || path == "off" {
             return Ok(Self {
                 trust_forwarded_for,
@@ -447,13 +447,13 @@ impl RelayState {
 }
 
 fn trust_forwarded_for_from_env() -> anyhow::Result<bool> {
-    let Some(value) = std::env::var_os("FIELDWORK_RELAY_TRUST_FORWARDED_FOR") else {
+    let Some(value) = std::env::var_os("SHELLY_RELAY_TRUST_FORWARDED_FOR") else {
         return Ok(false);
     };
     match value.to_string_lossy().trim().to_ascii_lowercase().as_str() {
         "" | "0" | "false" | "no" | "off" => Ok(false),
         "1" | "true" | "yes" | "on" => Ok(true),
-        _ => anyhow::bail!("FIELDWORK_RELAY_TRUST_FORWARDED_FOR must be true or false"),
+        _ => anyhow::bail!("SHELLY_RELAY_TRUST_FORWARDED_FOR must be true or false"),
     }
 }
 
@@ -951,7 +951,7 @@ pub async fn serve_with_metrics(addr: &str, metrics_addr: Option<&str>) -> anyho
     serve_metrics_if_configured(&state, metrics_addr).await?;
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!(%addr, "fieldwork relay listening");
+    tracing::info!(%addr, "shelly relay listening");
     axum::serve(
         listener,
         app(state).into_make_service_with_connect_info::<SocketAddr>(),
@@ -973,7 +973,7 @@ pub async fn serve_tls_with_metrics(
 
     let tls_config = RustlsConfig::from_pem_file(cert_path, key_path).await?;
     let addr: SocketAddr = addr.parse()?;
-    tracing::info!(%addr, "fieldwork relay TLS control plane listening");
+    tracing::info!(%addr, "shelly relay TLS control plane listening");
     axum_server::bind_rustls(addr, tls_config)
         .serve(app(state).into_make_service_with_connect_info::<SocketAddr>())
         .await?;
@@ -995,10 +995,10 @@ async fn serve_metrics_if_configured(
     };
     let metrics_listener = tokio::net::TcpListener::bind(metrics_addr).await?;
     let metrics_state = state.clone();
-    tracing::info!(addr = %metrics_addr, "fieldwork relay metrics listening");
+    tracing::info!(addr = %metrics_addr, "shelly relay metrics listening");
     tokio::spawn(async move {
         if let Err(error) = axum::serve(metrics_listener, metrics_app(metrics_state)).await {
-            tracing::error!(%error, "fieldwork relay metrics listener stopped");
+            tracing::error!(%error, "shelly relay metrics listener stopped");
         }
     });
     Ok(())
@@ -1196,7 +1196,7 @@ async fn push(
     let delivery = DeliveredPush {
         platform: request.platform,
         recipient_token: request.recipient_token,
-        title: "Fieldwork".to_string(),
+        title: "Shelly".to_string(),
         body: "A session is waiting for you.".to_string(),
         thread_id: format!("session.{}", request.session_id_hash),
         session_id_hash: request.session_id_hash,
@@ -1264,7 +1264,7 @@ async fn publish_pairing_code(
     let code = normalize_code(&request.code);
 
     // A daemon advertises a single active code at a time; supersede any prior
-    // code it published so stale entries cannot linger in the resolve oracle.
+    // code it published so stale entries cannot linger in the resolve lookup.
     let superseded = evict_codes_for_daemon(&state, &request.daemon_node_id, &code);
 
     if let Some(store) = &state.store {
@@ -1314,7 +1314,7 @@ async fn resolve_pairing_code(
     headers: HeaderMap,
     AxumPath(code): AxumPath<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    // Brute force on this oracle is mitigated in layers: per-client throttling
+    // Brute force on this lookup path is mitigated in layers: per-client throttling
     // here, 5-minute single-use codes, a uniform 404 for format and lookup
     // misses, the daemon-side 5-wrong-attempt cap, and explicit desktop
     // approval. A per-code lockout was rejected because it would let an
@@ -1413,7 +1413,7 @@ fn forget_pairing_code(state: &RelayState, code: &str) {
 
 /// Derives the rate-limit bucket for an unauthenticated caller. The connecting
 /// socket address is authoritative; the first `x-forwarded-for` hop is honored
-/// only when `FIELDWORK_RELAY_TRUST_FORWARDED_FOR` marks the deployment as
+/// only when `SHELLY_RELAY_TRUST_FORWARDED_FOR` marks the deployment as
 /// sitting behind a trusted reverse proxy, since the header is forgeable.
 fn client_identifier(peer: SocketAddr, headers: &HeaderMap, trust_forwarded_for: bool) -> String {
     if trust_forwarded_for
@@ -1521,7 +1521,7 @@ fn verify_signed_request(
         .headers
         .get(SIGNATURE_HEADER)
         .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| ApiError::unauthorized("missing fieldwork signature"))?;
+        .ok_or_else(|| ApiError::unauthorized("missing shelly signature"))?;
     let signature = decode_signature(signature)?;
 
     let canonical = canonical_request(
@@ -1537,7 +1537,7 @@ fn verify_signed_request(
         .get(request.daemon_node_id)
         .ok_or_else(|| ApiError::unauthorized("unknown daemon"))?;
     key.verify(canonical.as_bytes(), &signature)
-        .map_err(|_| ApiError::unauthorized("invalid fieldwork signature"))?;
+        .map_err(|_| ApiError::unauthorized("invalid shelly signature"))?;
 
     let seen_key = (
         request.daemon_node_id.to_string(),
@@ -1617,30 +1617,30 @@ impl RelayState {
 
         let base_metrics = format!(
             concat!(
-                "# HELP fieldwork_relay_daemon_registrations_total Daemon public-key registrations accepted by the relay.\n",
-                "# TYPE fieldwork_relay_daemon_registrations_total counter\n",
-                "fieldwork_relay_daemon_registrations_total {}\n",
-                "# HELP fieldwork_relay_push_token_registrations_total Push tokens registered by paired daemons.\n",
-                "# TYPE fieldwork_relay_push_token_registrations_total counter\n",
-                "fieldwork_relay_push_token_registrations_total {}\n",
-                "# HELP fieldwork_relay_push_token_unregistrations_total Push tokens removed by paired daemons.\n",
-                "# TYPE fieldwork_relay_push_token_unregistrations_total counter\n",
-                "fieldwork_relay_push_token_unregistrations_total {}\n",
-                "# HELP fieldwork_relay_push_accepts_total Privacy-preserving push requests accepted for provider delivery.\n",
-                "# TYPE fieldwork_relay_push_accepts_total counter\n",
-                "fieldwork_relay_push_accepts_total {}\n",
-                "# HELP fieldwork_relay_pairing_code_publishes_total Pairing codes published by paired daemons.\n",
-                "# TYPE fieldwork_relay_pairing_code_publishes_total counter\n",
-                "fieldwork_relay_pairing_code_publishes_total {}\n",
-                "# HELP fieldwork_relay_pairing_code_resolves_total Pairing codes successfully resolved to reachability tickets.\n",
-                "# TYPE fieldwork_relay_pairing_code_resolves_total counter\n",
-                "fieldwork_relay_pairing_code_resolves_total {}\n",
-                "# HELP fieldwork_relay_active_daemons Active daemon public keys retained in relay memory.\n",
-                "# TYPE fieldwork_relay_active_daemons gauge\n",
-                "fieldwork_relay_active_daemons {}\n",
-                "# HELP fieldwork_relay_registered_push_tokens Active push tokens retained in relay memory.\n",
-                "# TYPE fieldwork_relay_registered_push_tokens gauge\n",
-                "fieldwork_relay_registered_push_tokens {}\n",
+                "# HELP shelly_relay_daemon_registrations_total Daemon public-key registrations accepted by the relay.\n",
+                "# TYPE shelly_relay_daemon_registrations_total counter\n",
+                "shelly_relay_daemon_registrations_total {}\n",
+                "# HELP shelly_relay_push_token_registrations_total Push tokens registered by paired daemons.\n",
+                "# TYPE shelly_relay_push_token_registrations_total counter\n",
+                "shelly_relay_push_token_registrations_total {}\n",
+                "# HELP shelly_relay_push_token_unregistrations_total Push tokens removed by paired daemons.\n",
+                "# TYPE shelly_relay_push_token_unregistrations_total counter\n",
+                "shelly_relay_push_token_unregistrations_total {}\n",
+                "# HELP shelly_relay_push_accepts_total Privacy-preserving push requests accepted for provider delivery.\n",
+                "# TYPE shelly_relay_push_accepts_total counter\n",
+                "shelly_relay_push_accepts_total {}\n",
+                "# HELP shelly_relay_pairing_code_publishes_total Pairing codes published by paired daemons.\n",
+                "# TYPE shelly_relay_pairing_code_publishes_total counter\n",
+                "shelly_relay_pairing_code_publishes_total {}\n",
+                "# HELP shelly_relay_pairing_code_resolves_total Pairing codes successfully resolved to reachability tickets.\n",
+                "# TYPE shelly_relay_pairing_code_resolves_total counter\n",
+                "shelly_relay_pairing_code_resolves_total {}\n",
+                "# HELP shelly_relay_active_daemons Active daemon public keys retained in relay memory.\n",
+                "# TYPE shelly_relay_active_daemons gauge\n",
+                "shelly_relay_active_daemons {}\n",
+                "# HELP shelly_relay_registered_push_tokens Active push tokens retained in relay memory.\n",
+                "# TYPE shelly_relay_registered_push_tokens gauge\n",
+                "shelly_relay_registered_push_tokens {}\n",
             ),
             daemon_registrations,
             token_registrations,
@@ -1660,9 +1660,9 @@ impl RelayState {
             };
             metrics.push_str(&format!(
                 concat!(
-                    "# HELP fieldwork_relay_buffered_deliveries Generic local delivery records retained only in test builds.\n",
-                    "# TYPE fieldwork_relay_buffered_deliveries gauge\n",
-                    "fieldwork_relay_buffered_deliveries {}\n",
+                    "# HELP shelly_relay_buffered_deliveries Generic local delivery records retained only in test builds.\n",
+                    "# TYPE shelly_relay_buffered_deliveries gauge\n",
+                    "shelly_relay_buffered_deliveries {}\n",
                 ),
                 buffered_deliveries,
             ));
@@ -1726,7 +1726,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
 
         let delivered = state.delivered();
         assert_eq!(delivered.len(), 1);
-        assert_eq!(delivered[0].title, "Fieldwork");
+        assert_eq!(delivered[0].title, "Shelly");
         assert_eq!(delivered[0].body, "A session is waiting for you.");
         assert!(!delivered[0].body.contains("secret"));
         assert_eq!(delivered[0].thread_id, format!("session.{HASH_A}"));
@@ -1969,9 +1969,9 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = response_text(response).await;
-        assert!(body.contains("fieldwork_relay_daemon_registrations_total 1"));
-        assert!(body.contains("fieldwork_relay_push_token_registrations_total 1"));
-        assert!(body.contains("fieldwork_relay_push_accepts_total 1"));
+        assert!(body.contains("shelly_relay_daemon_registrations_total 1"));
+        assert!(body.contains("shelly_relay_push_token_registrations_total 1"));
+        assert!(body.contains("shelly_relay_push_accepts_total 1"));
         assert!(!body.contains(DAEMON_A));
         assert!(!body.contains(TOKEN));
         assert!(!body.contains(HASH_A));
@@ -2088,7 +2088,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         assert!(
             state
                 .metrics_text()
-                .contains("fieldwork_relay_push_token_unregistrations_total 1")
+                .contains("shelly_relay_push_token_unregistrations_total 1")
         );
     }
 
@@ -2164,7 +2164,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
                 apns::ApnsClient::new(apns::ApnsCredentials {
                     team_id: "TEAMID1234".to_string(),
                     key_id: "KEYID1234".to_string(),
-                    topic: "app.fieldwork.ios".to_string(),
+                    topic: "app.shelly.ios".to_string(),
                     private_key_pem: TEST_P8.as_bytes().to_vec(),
                     endpoint: format!("http://{addr}"),
                 })
@@ -2194,7 +2194,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         assert!(
             state
                 .metrics_text()
-                .contains("fieldwork_relay_push_token_unregistrations_total 1")
+                .contains("shelly_relay_push_token_unregistrations_total 1")
         );
 
         drop(state);
@@ -2235,7 +2235,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
                     apns::ApnsClient::new(apns::ApnsCredentials {
                         team_id: "TEAMID1234".to_string(),
                         key_id: "KEYID1234".to_string(),
-                        topic: "app.fieldwork.ios".to_string(),
+                        topic: "app.shelly.ios".to_string(),
                         private_key_pem: TEST_P8.as_bytes().to_vec(),
                         endpoint: format!("http://{addr}"),
                     })
@@ -2311,7 +2311,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
     }
 
     const CODE: &str = "A1B2C";
-    const TICKET_BLOB: &str = "fw1abcdefghijklmnopqrstuvwxyz234567";
+    const TICKET_BLOB: &str = "sh1abcdefghijklmnopqrstuvwxyz234567";
 
     fn publish_body(code: &str, expires_at_ms: u64, nonce: &str, ts_ms: u64) -> Vec<u8> {
         serde_json::to_vec(&PublishPairingCodeRequest {
@@ -2554,8 +2554,8 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         assert_eq!(resolve(&state, CODE).await.status(), StatusCode::OK);
 
         let metrics = state.metrics_text();
-        assert!(metrics.contains("fieldwork_relay_pairing_code_publishes_total 1"));
-        assert!(metrics.contains("fieldwork_relay_pairing_code_resolves_total 1"));
+        assert!(metrics.contains("shelly_relay_pairing_code_publishes_total 1"));
+        assert!(metrics.contains("shelly_relay_pairing_code_resolves_total 1"));
         assert!(!metrics.contains(CODE));
         assert!(!metrics.contains(TICKET_BLOB));
     }

@@ -8,7 +8,7 @@ import process from "node:process";
 
 const root = process.cwd();
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-bun-install-"));
+const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-bun-install-"));
 const cases = [
   { platform: "darwin", arch: "arm64", key: "darwin-arm64" },
   { platform: "darwin", arch: "x64", key: "darwin-x64" },
@@ -38,7 +38,7 @@ try {
     runCase(testCase, metaPack, platformPacks.get(testCase.key));
   }
 
-  console.log(`bun Fieldwork package install ok (${cases.length} platform cases, bun ${version})`);
+  console.log(`bun Shelly package install ok (${cases.length} platform cases, bun ${version})`);
 } catch (error) {
   console.error(error.message);
   exitCode = 1;
@@ -77,50 +77,44 @@ function runCase({ platform, arch, key }, metaPack, platformPack) {
     { cwd: caseDir, env },
   );
 
-  const platformBinDir = path.join(caseDir, "node_modules", `fieldwork-${key}`, "bin");
-  const metaBinDir = path.join(caseDir, "node_modules", "fieldwork", "bin");
-  const expectedFieldwork = path.join(platformBinDir, "fieldwork");
-  const expectedDaemon = path.join(platformBinDir, "fieldworkd");
-  const installedFieldwork = path.join(metaBinDir, "fieldwork");
-  const installedDaemon = path.join(metaBinDir, "fieldworkd");
+  const platformBinDir = path.join(caseDir, "node_modules", `shellykit-${key}`, "bin");
+  const metaBinDir = path.join(caseDir, "node_modules", "shellykit", "bin");
+  const expectedShelly = path.join(platformBinDir, "shelly");
+  const expectedDaemon = path.join(platformBinDir, "shellyd");
+  const installedShelly = path.join(metaBinDir, "shelly");
+  const installedDaemon = path.join(metaBinDir, "shellyd");
 
-  requireExecutable(expectedFieldwork);
+  requireExecutable(expectedShelly);
   requireExecutable(expectedDaemon);
-  requireExecutable(installedFieldwork);
+  requireExecutable(installedShelly);
   requireExecutable(installedDaemon);
   assertInstallPath(
-    installedFieldwork,
-    expectedFieldwork,
+    installedShelly,
+    expectedShelly,
     { platform, arch, key },
-    `${key} fieldwork install path`,
+    `${key} shelly install path`,
   );
   assertInstallPath(
     installedDaemon,
     expectedDaemon,
     { platform, arch, key },
-    `${key} fieldworkd install path`,
+    `${key} shellyd install path`,
   );
 
   const binDir = path.join(caseDir, "node_modules", ".bin");
-  requireExecutable(path.join(binDir, "fieldwork"));
-  requireExecutable(path.join(binDir, "fw"));
-  requireExecutable(path.join(binDir, "fieldworkd"));
+  requireExecutable(path.join(binDir, "shelly"));
+  requireExecutable(path.join(binDir, "shellyd"));
 
   if (process.platform === platform && process.arch === arch) {
     assertIncludes(
-      run(path.join(binDir, "fieldwork"), ["version"], { cwd: caseDir, env }).stdout,
-      "fieldwork",
-      `${key} fieldwork version`,
+      run(path.join(binDir, "shelly"), ["version"], { cwd: caseDir, env }).stdout,
+      "shelly",
+      `${key} shelly version`,
     );
     assertIncludes(
-      run(path.join(binDir, "fw"), ["--help"], { cwd: caseDir, env }).stdout,
-      "Usage: fw",
-      `${key} fw alias help`,
-    );
-    assertIncludes(
-      run(path.join(binDir, "fieldworkd"), ["--help"], { cwd: caseDir, env }).stdout,
+      run(path.join(binDir, "shellyd"), ["--help"], { cwd: caseDir, env }).stdout,
       "Usage:",
-      `${key} fieldworkd help`,
+      `${key} shellyd help`,
     );
   }
 }
@@ -154,10 +148,10 @@ function isolatedEnv({ platform, arch, homeDir, runtimeDir, configDir, stateDir 
     XDG_RUNTIME_DIR: runtimeDir,
     XDG_CONFIG_HOME: configDir,
     XDG_STATE_HOME: stateDir,
-    FIELDWORK_DISABLE_UPDATE_CHECK: "1",
-    FIELDWORK_NPM_PLATFORM: platform,
-    FIELDWORK_NPM_ARCH: arch,
-    FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED: "false",
+    SHELLY_DISABLE_UPDATE_CHECK: "1",
+    SHELLY_NPM_PLATFORM: platform,
+    SHELLY_NPM_ARCH: arch,
+    SHELLY_SCROLLBACK_ENCRYPTION_ENABLED: "false",
   });
 }
 
@@ -204,9 +198,9 @@ function assertInstallPath(actual, expected, platformCase, label) {
 function assertDispatcherCanResolvePlatformPackage(dispatcher, { platform, arch, key }, label) {
   const binaryName = path.basename(dispatcher);
   const script = `
-    process.env.FIELDWORK_NPM_PLATFORM = ${JSON.stringify(platform)};
-    process.env.FIELDWORK_NPM_ARCH = ${JSON.stringify(arch)};
-    process.stdout.write(require.resolve(${JSON.stringify(`fieldwork-${key}/bin/${binaryName}`)}));
+    process.env.SHELLY_NPM_PLATFORM = ${JSON.stringify(platform)};
+    process.env.SHELLY_NPM_ARCH = ${JSON.stringify(arch)};
+    process.stdout.write(require.resolve(${JSON.stringify(`shellykit-${key}/bin/${binaryName}`)}));
   `;
   const result = spawnSync(process.execPath, ["-e", script], {
     cwd: path.dirname(path.dirname(dispatcher)),
@@ -218,10 +212,10 @@ function assertDispatcherCanResolvePlatformPackage(dispatcher, { platform, arch,
   }
   if (result.status !== 0) {
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
-    fail(`${label} dispatcher could not resolve selected platform package fieldwork-${key}:\n${output}`);
+    fail(`${label} dispatcher could not resolve selected platform package shellykit-${key}:\n${output}`);
   }
   const resolved = result.stdout.trim();
-  if (!resolved.includes(`fieldwork-${key}`) || !fs.existsSync(resolved)) {
+  if (!resolved.includes(`shellykit-${key}`) || !fs.existsSync(resolved)) {
     fail(`${label} resolved unexpected platform binary: ${resolved}`);
   }
 }

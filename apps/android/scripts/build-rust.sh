@@ -43,11 +43,11 @@ cargo ndk \
   -t armeabi-v7a \
   -t x86_64 \
   -o "$repo_root/apps/android/app/src/main/jniLibs" \
-  build -p fieldwork-mobile-core --release
+  build -p shelly-mobile-core --release
 
 rm -rf "$out_dir"
 mkdir -p "$out_dir"
-cargo run -p fieldwork-mobile-core --bin uniffi-bindgen -- generate \
-  --library "$cargo_target_dir/aarch64-linux-android/release/libfieldwork_mobile_core.so" \
+cargo run -p shelly-mobile-core --bin uniffi-bindgen -- generate \
+  --library "$cargo_target_dir/aarch64-linux-android/release/libshelly_mobile_core.so" \
   --language kotlin \
   --out-dir "$out_dir"

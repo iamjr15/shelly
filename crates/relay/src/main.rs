@@ -36,22 +36,22 @@ fn handle_cli_args(args: impl IntoIterator<Item = String>) -> Result<bool> {
             Ok(true)
         }
         [flag] if flag == "-V" || flag == "--version" => {
-            println!("fieldwork-relay {}", env!("CARGO_PKG_VERSION"));
+            println!("shelly-relay {}", env!("CARGO_PKG_VERSION"));
             Ok(true)
         }
-        [arg, ..] => anyhow::bail!("unexpected argument {arg:?}; run fieldwork-relay --help"),
+        [arg, ..] => anyhow::bail!("unexpected argument {arg:?}; run shelly-relay --help"),
     }
 }
 
 fn print_help() {
     println!(
-        "Fieldwork relay and push gateway.\n\nUsage: fieldwork-relay [OPTIONS]\n\nOptions:\n  -h, --help       Print help\n  -V, --version    Print version"
+        "Shelly relay and push gateway.\n\nUsage: shelly-relay [OPTIONS]\n\nOptions:\n  -h, --help       Print help\n  -V, --version    Print version"
     );
 }
 
 fn init_tracing() -> Result<telemetry::TelemetryGuard> {
     let telemetry = telemetry::TelemetryGuard::from_env()?;
-    let filter = EnvFilter::from_default_env().add_directive("fieldwork_relay=info".parse()?);
+    let filter = EnvFilter::from_default_env().add_directive("shelly_relay=info".parse()?);
 
     if let Some(telemetry_layer) = telemetry.layer() {
         tracing_subscriber::registry()
@@ -63,7 +63,7 @@ fn init_tracing() -> Result<telemetry::TelemetryGuard> {
         tracing::info!(
             sample_rate = telemetry.sample_rate(),
             endpoint = %telemetry.endpoint().unwrap_or(""),
-            "fieldwork relay OTLP tracing enabled"
+            "shelly relay OTLP tracing enabled"
         );
     } else {
         tracing_subscriber::registry()
@@ -77,9 +77,9 @@ fn init_tracing() -> Result<telemetry::TelemetryGuard> {
 }
 
 async fn serve_control_plane() -> Result<()> {
-    let addr = std::env::var("FIELDWORK_RELAY_ADDR").unwrap_or_else(|_| "127.0.0.1:8443".into());
+    let addr = std::env::var("SHELLY_RELAY_ADDR").unwrap_or_else(|_| "127.0.0.1:8443".into());
     let metrics_addr =
-        std::env::var("FIELDWORK_RELAY_METRICS_ADDR").unwrap_or_else(|_| "127.0.0.1:9090".into());
+        std::env::var("SHELLY_RELAY_METRICS_ADDR").unwrap_or_else(|_| "127.0.0.1:9090".into());
     let metrics_addr = if metrics_addr.trim().is_empty() || metrics_addr == "off" {
         None
     } else {
@@ -87,15 +87,10 @@ async fn serve_control_plane() -> Result<()> {
     };
     match relay_tls_files()? {
         Some(tls) => {
-            fieldwork_relay::serve_tls_with_metrics(
-                &addr,
-                metrics_addr,
-                tls.cert_path,
-                tls.key_path,
-            )
-            .await
+            shelly_relay::serve_tls_with_metrics(&addr, metrics_addr, tls.cert_path, tls.key_path)
+                .await
         }
-        None => fieldwork_relay::serve_with_metrics(&addr, metrics_addr).await,
+        None => shelly_relay::serve_with_metrics(&addr, metrics_addr).await,
     }
 }
 
@@ -106,11 +101,11 @@ struct RelayTlsFiles {
 }
 
 fn relay_tls_files() -> Result<Option<RelayTlsFiles>> {
-    let require_tls = parse_bool_env("FIELDWORK_RELAY_REQUIRE_TLS")?;
-    let cert_path = std::env::var_os("FIELDWORK_RELAY_TLS_CERT_PATH")
+    let require_tls = parse_bool_env("SHELLY_RELAY_REQUIRE_TLS")?;
+    let cert_path = std::env::var_os("SHELLY_RELAY_TLS_CERT_PATH")
         .map(PathBuf::from)
         .or_else(|| credential_path("control-plane.crt"));
-    let key_path = std::env::var_os("FIELDWORK_RELAY_TLS_KEY_PATH")
+    let key_path = std::env::var_os("SHELLY_RELAY_TLS_KEY_PATH")
         .map(PathBuf::from)
         .or_else(|| credential_path("control-plane.key"));
     relay_tls_files_from_paths(require_tls, cert_path, key_path)
@@ -127,10 +122,10 @@ fn relay_tls_files_from_paths(
             key_path,
         })),
         (None, None) if require_tls => {
-            bail!("FIELDWORK_RELAY_REQUIRE_TLS is set but control-plane TLS cert/key are missing")
+            bail!("SHELLY_RELAY_REQUIRE_TLS is set but control-plane TLS cert/key are missing")
         }
         (None, None) => Ok(None),
-        _ => bail!("set both FIELDWORK_RELAY_TLS_CERT_PATH and FIELDWORK_RELAY_TLS_KEY_PATH"),
+        _ => bail!("set both SHELLY_RELAY_TLS_CERT_PATH and SHELLY_RELAY_TLS_KEY_PATH"),
     }
 }
 
@@ -156,15 +151,15 @@ fn parse_bool_value(name: &str, value: Option<std::ffi::OsString>) -> Result<boo
 }
 
 fn relay_mode() -> Result<RelayMode> {
-    let value = std::env::var("FIELDWORK_RELAY_MODE").unwrap_or_else(|_| "control-plane".into());
-    parse_relay_mode(&value).with_context(|| format!("parse FIELDWORK_RELAY_MODE={value:?}"))
+    let value = std::env::var("SHELLY_RELAY_MODE").unwrap_or_else(|_| "control-plane".into());
+    parse_relay_mode(&value).with_context(|| format!("parse SHELLY_RELAY_MODE={value:?}"))
 }
 
 fn parse_relay_mode(value: &str) -> Result<RelayMode> {
     match value.trim().to_ascii_lowercase().as_str() {
         "" | "control" | "control-plane" | "push" => Ok(RelayMode::ControlPlane),
         "iroh" | "iroh-relay" | "fallback" => Ok(RelayMode::IrohRelay),
-        _ => bail!("FIELDWORK_RELAY_MODE must be control-plane or iroh-relay"),
+        _ => bail!("SHELLY_RELAY_MODE must be control-plane or iroh-relay"),
     }
 }
 
@@ -191,12 +186,12 @@ mod tests {
 
     #[test]
     fn parse_bool_value_accepts_common_values() {
-        assert!(parse_bool_value("FIELDWORK_TEST_BOOL", Some("yes".into())).unwrap());
-        assert!(parse_bool_value("FIELDWORK_TEST_BOOL", Some("1".into())).unwrap());
-        assert!(!parse_bool_value("FIELDWORK_TEST_BOOL", Some("off".into())).unwrap());
-        assert!(!parse_bool_value("FIELDWORK_TEST_BOOL", Some("0".into())).unwrap());
-        assert!(!parse_bool_value("FIELDWORK_TEST_BOOL", None).unwrap());
-        assert!(parse_bool_value("FIELDWORK_TEST_BOOL", Some("maybe".into())).is_err());
+        assert!(parse_bool_value("SHELLY_TEST_BOOL", Some("yes".into())).unwrap());
+        assert!(parse_bool_value("SHELLY_TEST_BOOL", Some("1".into())).unwrap());
+        assert!(!parse_bool_value("SHELLY_TEST_BOOL", Some("off".into())).unwrap());
+        assert!(!parse_bool_value("SHELLY_TEST_BOOL", Some("0".into())).unwrap());
+        assert!(!parse_bool_value("SHELLY_TEST_BOOL", None).unwrap());
+        assert!(parse_bool_value("SHELLY_TEST_BOOL", Some("maybe".into())).is_err());
     }
 
     #[test]

@@ -1,5 +1,5 @@
-use fieldwork_protocol::AgentState;
 use serde::Deserialize;
+use shelly_protocol::AgentState;
 
 pub fn infer_from_structured_event(event_name: &str) -> Option<AgentState> {
     match event_name.trim().to_ascii_lowercase().as_str() {
@@ -37,7 +37,7 @@ struct CodexEvent {
 #[cfg(test)]
 mod tests {
     use super::infer_from_json_line;
-    use fieldwork_protocol::AgentState;
+    use shelly_protocol::AgentState;
 
     #[test]
     fn detects_state_sequence_from_remote_control_fixture() {

@@ -4,40 +4,40 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 
 <BaseLayout
   title="Install"
-  description="Install Fieldwork with the npm-only desktop distribution path and run the local development flow from source."
+  description="Install Shelly with the npm-only desktop distribution path and run the local development flow from source."
 >
   <section class="page">
     <div class="page-copy">
       <p class="eyebrow">Install</p>
       <h1>Desktop first, phone second.</h1>
       <p class="lede">
-        Fieldwork v1 distributes the desktop CLI and daemon through npm only.
+        Shelly v1 distributes the desktop CLI and daemon through npm only.
         Mobile apps attach to sessions created on the desktop; they do not create sessions
         or choose commands.
       </p>
 
       <h2>npm install</h2>
-      <pre class="install-block"><code>npm i -g fieldwork
-fw daemon install
-fw pair
-fw
-fw refactoringjob
-fw new --name shell bash</code></pre>
+      <pre class="install-block"><code>npm i -g shellykit
+shelly daemon install
+shelly pair
+shelly
+shelly refactoringjob
+shelly new --name shell bash</code></pre>
       <p>
-        `fw` with no subcommand creates and attaches a default `claude` session
+        `shelly` with no subcommand creates and attaches a default `claude` session
         with a generated one-word name, even when other sessions already exist.
-        `fw refactoringjob` attaches that named session if it exists, or creates
+        `shelly refactoringjob` attaches that named session if it exists, or creates
         it as a default `claude` PTY. Mobile shows the same daemon session names
         in its dashboard.
       </p>
 
       <h2>Source build</h2>
       <pre class="install-block"><code>cargo build --workspace
-target/debug/fieldwork
-target/debug/fieldwork refactoringjob
-target/debug/fieldwork new --name shell bash
-target/debug/fieldwork ls
-target/debug/fieldwork attach &lt;session-id&gt;</code></pre>
+target/debug/shelly
+target/debug/shelly refactoringjob
+target/debug/shelly new --name shell bash
+target/debug/shelly ls
+target/debug/shelly attach &lt;session-id&gt;</code></pre>
 
       <h2>Mobile builds</h2>
       <p>

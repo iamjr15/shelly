@@ -27,9 +27,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y vim
       - run: cargo fmt --check
       - run: cargo clippy --workspace -- -D warnings
-      - run: cargo clippy -p fieldwork-cli --features test-client -- -D warnings
+      - run: cargo clippy -p shelly-cli --features test-client -- -D warnings
       - run: cargo nextest run --workspace
-      - run: cargo test -p fieldwork-cli --features test-client
+      - run: cargo test -p shelly-cli --features test-client
       - run: cargo test --workspace --doc
 
   supply-chain:

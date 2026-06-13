@@ -23,34 +23,34 @@ pub(crate) struct IrohRelayConfig {
 impl IrohRelayConfig {
     pub(crate) fn from_env() -> Result<Self> {
         let http_addr = socket_env(
-            "FIELDWORK_IROH_RELAY_HTTP_ADDR",
+            "SHELLY_IROH_RELAY_HTTP_ADDR",
             (Ipv6Addr::UNSPECIFIED, 80).into(),
         )?;
         let https_addr = socket_env(
-            "FIELDWORK_IROH_RELAY_HTTPS_ADDR",
+            "SHELLY_IROH_RELAY_HTTPS_ADDR",
             (Ipv6Addr::UNSPECIFIED, 443).into(),
         )?;
         let quic_addr = socket_env(
-            "FIELDWORK_IROH_RELAY_QUIC_ADDR",
+            "SHELLY_IROH_RELAY_QUIC_ADDR",
             (Ipv6Addr::UNSPECIFIED, 7842).into(),
         )?;
         let metrics_addr = optional_socket_env(
-            "FIELDWORK_IROH_RELAY_METRICS_ADDR",
+            "SHELLY_IROH_RELAY_METRICS_ADDR",
             Some(SocketAddr::from(([127, 0, 0, 1], 9091))),
         )?;
-        let cert_dir = std::env::var("FIELDWORK_IROH_RELAY_CERT_DIR")
+        let cert_dir = std::env::var("SHELLY_IROH_RELAY_CERT_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/var/lib/fieldwork/acme"));
+            .unwrap_or_else(|_| PathBuf::from("/var/lib/shelly/acme"));
         Ok(Self {
             http_addr,
             https_addr,
             quic_addr,
             metrics_addr,
-            hostname: non_empty_env("FIELDWORK_IROH_RELAY_HOSTNAME"),
-            contact_email: non_empty_env("FIELDWORK_IROH_RELAY_CONTACT_EMAIL"),
+            hostname: non_empty_env("SHELLY_IROH_RELAY_HOSTNAME"),
+            contact_email: non_empty_env("SHELLY_IROH_RELAY_CONTACT_EMAIL"),
             cert_dir,
-            use_staging_acme: bool_env("FIELDWORK_IROH_RELAY_STAGING", false)?,
-            http_only: bool_env("FIELDWORK_IROH_RELAY_HTTP_ONLY", false)?,
+            use_staging_acme: bool_env("SHELLY_IROH_RELAY_STAGING", false)?,
+            http_only: bool_env("SHELLY_IROH_RELAY_HTTP_ONLY", false)?,
         })
     }
 }
@@ -109,10 +109,11 @@ fn lets_encrypt_cert_config(config: &IrohRelayConfig) -> Result<CertConfig> {
     let hostname = config
         .hostname
         .clone()
-        .context("FIELDWORK_IROH_RELAY_HOSTNAME is required unless HTTP-only mode is enabled")?;
-    let contact_email = config.contact_email.clone().context(
-        "FIELDWORK_IROH_RELAY_CONTACT_EMAIL is required unless HTTP-only mode is enabled",
-    )?;
+        .context("SHELLY_IROH_RELAY_HOSTNAME is required unless HTTP-only mode is enabled")?;
+    let contact_email = config
+        .contact_email
+        .clone()
+        .context("SHELLY_IROH_RELAY_CONTACT_EMAIL is required unless HTTP-only mode is enabled")?;
 
     let _ = rustls::crypto::ring::default_provider().install_default();
     let server_config_builder = rustls::ServerConfig::builder_with_provider(Arc::new(
@@ -214,7 +215,7 @@ mod tests {
         };
 
         let error = build_server_config(&config).unwrap_err().to_string();
-        assert!(error.contains("FIELDWORK_IROH_RELAY_HOSTNAME"));
+        assert!(error.contains("SHELLY_IROH_RELAY_HOSTNAME"));
     }
 
     #[test]
@@ -224,8 +225,8 @@ mod tests {
             https_addr: SocketAddr::from(([127, 0, 0, 1], 443)),
             quic_addr: SocketAddr::from(([127, 0, 0, 1], 7842)),
             metrics_addr: Some(SocketAddr::from(([127, 0, 0, 1], 9091))),
-            hostname: Some("relay.fieldwork.dev".to_string()),
-            contact_email: Some("ops@fieldwork.dev".to_string()),
+            hostname: Some("relay.shelly.dev".to_string()),
+            contact_email: Some("ops@shelly.dev".to_string()),
             cert_dir: PathBuf::from("/tmp/acme"),
             use_staging_acme: true,
             http_only: false,
@@ -238,7 +239,7 @@ mod tests {
 
     #[test]
     fn bool_env_rejects_ambiguous_values() {
-        let name = "FIELDWORK_TEST_BAD_BOOL";
+        let name = "SHELLY_TEST_BAD_BOOL";
         let error = parse_bool_env(name, "maybe", false)
             .unwrap_err()
             .to_string();

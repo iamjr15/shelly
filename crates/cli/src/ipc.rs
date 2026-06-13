@@ -1,12 +1,12 @@
 use crate::service;
 use anyhow::{Context, Result, bail};
-use fieldwork_protocol::{
-    CONTRACT_VERSION, Capabilities, ClientKind, ClientToServerMsg, ServerToClientMsg,
-    decode_bincode, encode_bincode, max_frame_len,
-};
 use interprocess::local_socket::traits::tokio::Stream as _;
 use interprocess::local_socket::{GenericFilePath, prelude::*, tokio::Stream};
 use serde::{Serialize, de::DeserializeOwned};
+use shelly_protocol::{
+    CONTRACT_VERSION, Capabilities, ClientKind, ClientToServerMsg, ServerToClientMsg,
+    decode_bincode, encode_bincode, max_frame_len,
+};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -15,12 +15,12 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub fn control_socket_path() -> PathBuf {
     if let Some(value) = std::env::var_os("XDG_RUNTIME_DIR") {
-        return PathBuf::from(value).join("fieldwork").join("control.sock");
+        return PathBuf::from(value).join("shelly").join("control.sock");
     }
 
     let uid = unsafe { libc::geteuid() };
     std::env::temp_dir()
-        .join(format!("fieldwork-{uid}"))
+        .join(format!("shelly-{uid}"))
         .join("control.sock")
 }
 
@@ -53,7 +53,7 @@ pub async fn wait_for_existing_daemon() -> Result<()> {
         .map(|error| error.to_string())
         .unwrap_or_else(|| "no connection attempt made".to_string());
     bail!(
-        "fieldworkd service did not become reachable at {}: {detail}",
+        "shellyd service did not become reachable at {}: {detail}",
         socket_path.display()
     )
 }
@@ -75,7 +75,7 @@ async fn wait_for_daemon() -> Result<Stream> {
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    bail!("fieldworkd did not create its control socket in time");
+    bail!("shellyd did not create its control socket in time");
 }
 
 fn spawn_daemon() -> Result<()> {

@@ -1,6 +1,6 @@
 # Code of Conduct
 
-Fieldwork uses the Contributor Covenant Code of Conduct, version 2.1.
+Shelly uses the Contributor Covenant Code of Conduct, version 2.1.
 
 ## Our Pledge
 

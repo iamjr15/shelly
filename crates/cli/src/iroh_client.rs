@@ -1,12 +1,12 @@
 use anyhow::{Context, Result, bail};
-use fieldwork_protocol::{
+use iroh::endpoint::{RecvStream, SendStream, presets};
+use iroh::{Endpoint, EndpointAddr, RelayMode, RelayUrl, SecretKey, TransportAddr};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use shelly_protocol::{
     AgentSource, AgentState, CONTRACT_VERSION, ClientKind, ClientSize, ClientToServerMsg,
     ErrorCode, PairingTicket, ServerToClientMsg, SessionId, SessionSummary, max_frame_len,
     normalize_code,
 };
-use iroh::endpoint::{RecvStream, SendStream, presets};
-use iroh::{Endpoint, EndpointAddr, RelayMode, RelayUrl, SecretKey, TransportAddr};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
@@ -14,7 +14,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-const FIELDWORK_ALPN: &[u8] = b"fieldwork/1";
+const SHELLY_ALPN: &[u8] = b"shelly/1";
 
 pub(crate) struct PairTestOptions {
     pub(crate) payload: Option<String>,
@@ -298,7 +298,7 @@ async fn open_stream(
 ) -> Result<(SendStream, RecvStream)> {
     let addr = endpoint_addr(ticket)?;
     let conn = endpoint
-        .connect(addr, FIELDWORK_ALPN)
+        .connect(addr, SHELLY_ALPN)
         .await
         .context("connect to daemon iroh endpoint")?;
     conn.open_bi().await.context("open iroh stream")
@@ -738,7 +738,7 @@ where
 /// Relay rendezvous response carrying the opaque encoded [`PairingTicket`].
 #[derive(Deserialize)]
 struct ResolvePairingResponse {
-    /// `fw1`-prefixed ticket string published by the daemon under the code.
+    /// `sh1`-prefixed ticket string published by the daemon under the code.
     ticket_blob: String,
 }
 
@@ -746,14 +746,14 @@ struct ResolvePairingResponse {
 ///
 /// Mirrors mobile-core's `pair_with_code`: normalize the code, then exchange it
 /// for the daemon's ticket through the relay rendezvous endpoint. Requires a
-/// relay control URL from `--relay-control-url` or `FIELDWORK_RELAY_CONTROL_URL`.
+/// relay control URL from `--relay-control-url` or `SHELLY_RELAY_CONTROL_URL`.
 async fn resolve_code_ticket(code: &str, relay_control_url: Option<&str>) -> Result<PairingTicket> {
     let code = normalize_code(code);
     let relay_control_url = relay_control_url
         .map(str::to_string)
-        .or_else(|| std::env::var("FIELDWORK_RELAY_CONTROL_URL").ok())
+        .or_else(|| std::env::var("SHELLY_RELAY_CONTROL_URL").ok())
         .context(
-            "--code requires a relay control URL via --relay-control-url or FIELDWORK_RELAY_CONTROL_URL",
+            "--code requires a relay control URL via --relay-control-url or SHELLY_RELAY_CONTROL_URL",
         )?;
     let relay_control_url = relay_control_url.trim_end_matches('/');
     let url = format!("{relay_control_url}/v1/pair/resolve/{code}");
@@ -779,7 +779,7 @@ async fn resolve_code_ticket(code: &str, relay_control_url: Option<&str>) -> Res
 #[cfg(test)]
 mod tests {
     use super::load_or_create_secret_key_at;
-    use fieldwork_protocol::PairingTicket;
+    use shelly_protocol::PairingTicket;
 
     #[test]
     fn decodes_pair_ticket_string_with_surrounding_whitespace() {

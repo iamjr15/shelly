@@ -1,0 +1,52 @@
+[Unit]
+Description=Shelly relay HTTP control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ shelly_relay_user }}
+Group={{ shelly_relay_group }}
+WorkingDirectory={{ shelly_relay_data_dir }}
+Environment=SHELLY_RELAY_ADDR={{ shelly_relay_control_addr }}
+Environment=SHELLY_RELAY_REQUIRE_TLS={{ shelly_relay_control_require_tls }}
+Environment=SHELLY_RELAY_DB_PATH={{ shelly_relay_db_path }}
+Environment=SHELLY_RELAY_METRICS_ADDR={{ shelly_relay_metrics_addr }}
+{% if shelly_relay_otlp_endpoint | length > 0 %}
+Environment=SHELLY_RELAY_OTLP_ENDPOINT={{ shelly_relay_otlp_endpoint }}
+Environment=SHELLY_RELAY_OTLP_SAMPLE_RATE={{ shelly_relay_otlp_sample_rate }}
+{% endif %}
+{% if shelly_relay_honeycomb_dataset | length > 0 %}
+Environment=SHELLY_RELAY_HONEYCOMB_DATASET={{ shelly_relay_honeycomb_dataset }}
+{% endif %}
+{% if shelly_relay_apns_team_id | length > 0 %}
+Environment=SHELLY_APNS_TEAM_ID={{ shelly_relay_apns_team_id }}
+Environment=SHELLY_APNS_KEY_ID={{ shelly_relay_apns_key_id }}
+Environment=SHELLY_APNS_TOPIC={{ shelly_relay_apns_topic }}
+Environment=SHELLY_APNS_ENDPOINT={{ shelly_relay_apns_endpoint }}
+{% endif %}
+Environment=SHELLY_FCM_ENDPOINT={{ shelly_relay_fcm_endpoint }}
+{% if shelly_relay_apns_team_id | length > 0 %}
+LoadCredential=apns.p8:{{ shelly_relay_apns_credential }}
+{% endif %}
+{% if shelly_relay_fcm_credential | length > 0 %}
+LoadCredential=fcm-service-account.json:{{ shelly_relay_fcm_credential }}
+{% endif %}
+{% if shelly_relay_honeycomb_credential | length > 0 %}
+LoadCredential=honeycomb-api-key:{{ shelly_relay_honeycomb_credential }}
+{% endif %}
+{% if shelly_relay_control_tls_cert | length > 0 and shelly_relay_control_tls_key | length > 0 %}
+LoadCredential=control-plane.crt:{{ shelly_relay_control_tls_cert }}
+LoadCredential=control-plane.key:{{ shelly_relay_control_tls_key }}
+{% endif %}
+ExecStart={{ shelly_relay_bin_dir }}/shelly-relay
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ shelly_relay_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

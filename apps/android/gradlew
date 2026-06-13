@@ -4,7 +4,7 @@ set -euo pipefail
 android_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 gradle_version="8.14.3"
 gradle_sha256="bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531"
-cache_root="${FIELDWORK_GRADLE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/fieldwork/gradle}"
+cache_root="${SHELLY_GRADLE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/shelly/gradle}"
 gradle_dir="$cache_root/gradle-$gradle_version"
 gradle_zip="$cache_root/gradle-$gradle_version-bin.zip"
 gradle_url="https://services.gradle.org/distributions/gradle-$gradle_version-bin.zip"

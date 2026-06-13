@@ -45,7 +45,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.RELAY_AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: fieldwork-dock-relay-deploy
+          role-session-name: shelly-dock-relay-deploy
 
       - name: Install Ansible
         run: python3 -m pip install --user ansible
@@ -74,7 +74,7 @@ jobs:
           fi
 
       - name: Build relay
-        run: cargo build --release -p fieldwork-relay
+        run: cargo build --release -p shelly-relay
 
       - name: Capture runner IP
         run: |
@@ -98,8 +98,8 @@ jobs:
           RELAY_KNOWN_HOSTS: ${{ secrets.RELAY_KNOWN_HOSTS }}
         run: |
           install -m 700 -d ~/.ssh
-          echo "$RELAY_SSH_KEY" > ~/.ssh/fieldwork-relay
-          chmod 600 ~/.ssh/fieldwork-relay
+          echo "$RELAY_SSH_KEY" > ~/.ssh/shelly-relay
+          chmod 600 ~/.ssh/shelly-relay
           echo "$RELAY_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
       - name: Deploy with Ansible
@@ -108,9 +108,9 @@ jobs:
         run: |
           ansible-playbook \
             -i infra/relay/ansible/inventory.ini \
-            --private-key ~/.ssh/fieldwork-relay \
+            --private-key ~/.ssh/shelly-relay \
             infra/relay/ansible/playbook.yml \
-            -e fieldwork_relay_binary="$PWD/target/release/fieldwork-relay"
+            -e shelly_relay_binary="$PWD/target/release/shelly-relay"
 
       - name: Close relay SSH for this runner
         if: always() && env.RUNNER_CIDR != ''
@@ -122,4 +122,4 @@ jobs:
 
       - name: Clean relay SSH key
         if: always()
-        run: rm -f ~/.ssh/fieldwork-relay
+        run: rm -f ~/.ssh/shelly-relay

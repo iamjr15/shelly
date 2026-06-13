@@ -48,13 +48,13 @@ struct PairingView: View {
         .aspectRatio(1, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(alignment: .bottom) {
-            Text("Scan Fieldwork QR")
+            Text("Scan Shelly QR")
                 .font(.headline)
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity)
                 .background(.thinMaterial)
         }
-        .accessibilityLabel("Scan Fieldwork QR")
+        .accessibilityLabel("Scan Shelly QR")
     }
 
     private var codeSection: some View {

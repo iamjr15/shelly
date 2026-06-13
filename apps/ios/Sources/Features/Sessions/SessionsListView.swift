@@ -57,7 +57,7 @@ struct SessionsListView: View {
             selectedSession = target
             model.consumeTargetSession()
         }
-        .alert("Fieldwork", isPresented: statusBinding) {
+        .alert("Shelly", isPresented: statusBinding) {
             Button("OK", role: .cancel) {
                 model.statusMessage = nil
             }
@@ -122,10 +122,10 @@ private struct EmptySessionsView: View {
                 .foregroundStyle(.secondary)
             Text("No Sessions")
                 .font(.headline)
-            Text("Create one on your laptop with `fieldwork new`; it will appear here automatically.")
+            Text("Create one on your laptop with `shelly new`; it will appear here automatically.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
-        .fieldworkPanel()
+        .shellyPanel()
     }
 }

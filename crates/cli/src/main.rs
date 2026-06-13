@@ -9,11 +9,11 @@ use anyhow::{Context, Result, bail};
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use clap_complete::Shell;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use fieldwork_protocol::{
+use qrcode::{QrCode, render::unicode};
+use shelly_protocol::{
     AgentSource, AgentState, CONTRACT_VERSION, ClientSize, ClientToServerMsg, ServerToClientMsg,
     SessionId, SessionSummary, now_ms,
 };
-use qrcode::{QrCode, render::unicode};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
@@ -24,7 +24,7 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Parser)]
-#[command(name = "fieldwork")]
+#[command(name = "shelly")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "Continue terminal sessions from anywhere")]
 struct Cli {
@@ -45,7 +45,7 @@ enum Command {
         code: Option<String>,
         #[arg(long)]
         relay_control_url: Option<String>,
-        #[arg(long, default_value = "Fieldwork Test Client")]
+        #[arg(long, default_value = "Shelly Test Client")]
         name: String,
         #[arg(long)]
         attach: Option<String>,
@@ -109,9 +109,9 @@ enum Command {
         #[command(subcommand)]
         command: Option<DaemonCommand>,
     },
-    #[command(about = "Check local Fieldwork CLI and daemon health")]
+    #[command(about = "Check local Shelly CLI and daemon health")]
     Doctor {
-        #[arg(long, help = "Do not auto-start fieldworkd while checking the socket")]
+        #[arg(long, help = "Do not auto-start shellyd while checking the socket")]
         no_start: bool,
     },
     Hook {
@@ -261,20 +261,21 @@ async fn main() -> Result<()> {
                     service::install()?;
                     if let Err(error) = ipc::wait_for_existing_daemon().await {
                         let _ = service::uninstall();
-                        return Err(error
-                            .context("started fieldworkd user service but health check failed"));
+                        return Err(
+                            error.context("started shellyd user service but health check failed")
+                        );
                     }
-                    println!("installed and started fieldworkd user service");
+                    println!("installed and started shellyd user service");
                 }
                 DaemonCommand::Uninstall => {
                     service::uninstall()?;
-                    println!("uninstalled fieldworkd user service");
+                    println!("uninstalled shellyd user service");
                 }
                 DaemonCommand::Status => daemon_status().await?,
                 DaemonCommand::Start => {
                     let _ = ipc::connect_local().await?;
                     println!(
-                        "fieldworkd is running at {}",
+                        "shellyd is running at {}",
                         ipc::control_socket_path().display()
                     );
                 }
@@ -282,8 +283,8 @@ async fn main() -> Result<()> {
                     service::restart()?;
                     ipc::wait_for_existing_daemon()
                         .await
-                        .context("restarted fieldworkd user service but health check failed")?;
-                    println!("restarted fieldworkd user service");
+                        .context("restarted shellyd user service but health check failed")?;
+                    println!("restarted shellyd user service");
                 }
                 DaemonCommand::Logs { tail } => print_daemon_logs(tail)?,
             }
@@ -296,7 +297,7 @@ async fn main() -> Result<()> {
             Ok(())
         }
         Some(Command::Version) => {
-            println!("fieldwork {}", env!("CARGO_PKG_VERSION"));
+            println!("shelly {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         Some(Command::Named(args)) => open_named_session(args).await,
@@ -320,8 +321,7 @@ fn cli_command_with_bin_name(bin_name: String) -> clap::Command {
 
 fn static_cli_bin_name(bin_name: String) -> &'static str {
     match bin_name.as_str() {
-        "fieldwork" => "fieldwork",
-        "fw" => "fw",
+        "shelly" => "shelly",
         _ => {
             // clap stores command names as static strings; unusual symlink aliases are parsed once per process.
             let bin_name: &'static str = Box::leak(bin_name.into_boxed_str());
@@ -352,7 +352,7 @@ fn print_completion(shell: Shell) {
 
 fn invoked_cli_bin_name() -> String {
     completion_bin_name_with_override(
-        std::env::var_os("FIELDWORK_CLI_BIN_NAME"),
+        std::env::var_os("SHELLY_CLI_BIN_NAME"),
         std::env::args_os().next(),
     )
 }
@@ -367,7 +367,7 @@ fn completion_bin_name_with_override(
         .and_then(|arg0| std::path::Path::new(arg0).file_name())
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
-        .unwrap_or("fieldwork")
+        .unwrap_or("shelly")
         .to_string()
 }
 
@@ -382,7 +382,7 @@ fn run_settings(command: SettingsCommand) -> Result<()> {
             };
             print_telemetry_status(&status);
             if changed {
-                println!("restart fieldworkd for this setting to affect the running daemon");
+                println!("restart shellyd for this setting to affect the running daemon");
             }
         }
         SettingsCommand::ScrollbackEncryption { command } => {
@@ -394,7 +394,7 @@ fn run_settings(command: SettingsCommand) -> Result<()> {
             };
             print_scrollback_encryption_status(&status);
             if changed {
-                println!("restart fieldworkd for this setting to affect the running daemon");
+                println!("restart shellyd for this setting to affect the running daemon");
                 if !status.enabled {
                     println!(
                         "warning: future local scrollback and device registry writes will be plaintext"
@@ -455,7 +455,7 @@ async fn pair_device() -> Result<()> {
     let terminal = terminal_size();
     let use_ansi = ansi_output_enabled();
 
-    println!("{}", style_bold("Fieldwork pairing", use_ansi));
+    println!("{}", style_bold("Shelly pairing", use_ansi));
     println!();
     if let Some(image) = render_pairing_qr_for_terminal(&qr, terminal, use_ansi) {
         println!("{image}");
@@ -466,7 +466,7 @@ async fn pair_device() -> Result<()> {
             "{}",
             style_dim(
                 &format!(
-                    "QR hidden for this pane. It needs {cols}x{rows}; widen the terminal and run `fw pair` again."
+                    "QR hidden for this pane. It needs {cols}x{rows}; widen the terminal and run `shelly pair` again."
                 ),
                 use_ansi
             )
@@ -476,7 +476,7 @@ async fn pair_device() -> Result<()> {
     println!(
         "{}",
         style_dim(
-            "Scan the QR with the Fieldwork app — or enter this code:",
+            "Scan the QR with the Shelly app — or enter this code:",
             use_ansi
         )
     );
@@ -489,7 +489,7 @@ async fn pair_device() -> Result<()> {
         if inline_countdown {
             println!();
         }
-        bail!("pairing code expired. Run `fw pair` again.");
+        bail!("pairing code expired. Run `shelly pair` again.");
     }
     let mut countdown = tokio::time::interval(Duration::from_secs(1));
     countdown.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -506,7 +506,7 @@ async fn pair_device() -> Result<()> {
                             if inline_countdown {
                                 println!();
                             }
-                            bail!("pairing code expired. Run `fw pair` again.");
+                            bail!("pairing code expired. Run `shelly pair` again.");
                         }
                     }
                 }
@@ -646,7 +646,7 @@ fn print_pairing_countdown(
     let text = if active {
         format!("Expires in {}.", format_pairing_countdown(remaining_secs))
     } else {
-        "Expired. Run `fw pair` again.".to_string()
+        "Expired. Run `shelly pair` again.".to_string()
     };
 
     if inline {
@@ -792,8 +792,8 @@ async fn emit_agent_state_event(
 
 fn hook_session_id(session: Option<String>) -> Result<SessionId> {
     let value = session
-        .or_else(|| std::env::var("FIELDWORK_SESSION_ID").ok())
-        .context("hook requires --session or FIELDWORK_SESSION_ID")?;
+        .or_else(|| std::env::var("SHELLY_SESSION_ID").ok())
+        .context("hook requires --session or SHELLY_SESSION_ID")?;
     value
         .parse()
         .with_context(|| format!("parse session id {value}"))
@@ -846,7 +846,7 @@ async fn list_sessions() -> Result<()> {
 
 async fn run_default() -> Result<()> {
     let summary = create_session_summary(PathBuf::from("."), None, Vec::new()).await?;
-    eprintln!("fieldwork session started {}\t{}", summary.id, summary.name);
+    eprintln!("shelly session started {}\t{}", summary.id, summary.name);
     attach_session(summary.id.to_string()).await
 }
 
@@ -859,7 +859,7 @@ async fn open_named_session(args: Vec<OsString>) -> Result<()> {
     }
 
     let summary = create_session_summary(PathBuf::from("."), Some(name), Vec::new()).await?;
-    eprintln!("fieldwork session started {}\t{}", summary.id, summary.name);
+    eprintln!("shelly session started {}\t{}", summary.id, summary.name);
     attach_session(summary.id.to_string()).await
 }
 
@@ -999,7 +999,7 @@ async fn attach_session(session_ref: String) -> Result<()> {
                 }
                 ServerToClientMsg::Lag { skipped_bytes, .. } => {
                     let note = format!(
-                        "\r\n[fieldwork: lagged {skipped_bytes} messages; re-run attach to resync]\r\n"
+                        "\r\n[shelly: lagged {skipped_bytes} messages; re-run attach to resync]\r\n"
                     );
                     stdout.write_all(note.as_bytes()).await?;
                     stdout.flush().await?;
@@ -1007,14 +1007,14 @@ async fn attach_session(session_ref: String) -> Result<()> {
                     std::process::exit(2);
                 }
                 ServerToClientMsg::SessionExited { exit_code, .. } => {
-                    let note = format!("\r\n[fieldwork: session exited {exit_code}]\r\n");
+                    let note = format!("\r\n[shelly: session exited {exit_code}]\r\n");
                     stdout.write_all(note.as_bytes()).await?;
                     stdout.flush().await?;
                     let _ = disable_raw_mode();
                     std::process::exit(exit_code);
                 }
                 ServerToClientMsg::Error { message, .. } => {
-                    let note = format!("\r\n[fieldwork error: {message}]\r\n");
+                    let note = format!("\r\n[shelly error: {message}]\r\n");
                     stdout.write_all(note.as_bytes()).await?;
                     stdout.flush().await?;
                     let _ = disable_raw_mode();
@@ -1164,7 +1164,7 @@ async fn wait_for_sessions_removed(ids: &[SessionId]) -> Result<()> {
 async fn run_doctor(no_start: bool) -> Result<()> {
     let mut ok = true;
 
-    println!("Fieldwork doctor");
+    println!("Shelly doctor");
     println!("version: {}", env!("CARGO_PKG_VERSION"));
 
     let cli_path = match std::env::current_exe() {
@@ -1201,7 +1201,7 @@ async fn run_doctor(no_start: bool) -> Result<()> {
             &mut ok,
             "macOS trust",
             false,
-            "requires colocated fieldwork and fieldworkd paths",
+            "requires colocated shelly and shellyd paths",
         ),
     }
 
@@ -1323,7 +1323,7 @@ async fn run_doctor(no_start: bool) -> Result<()> {
         println!("summary: ok");
         Ok(())
     } else {
-        bail!("fieldwork doctor found issues")
+        bail!("shelly doctor found issues")
     }
 }
 
@@ -1390,15 +1390,15 @@ enum MacosSignatureKind {
 
 #[cfg(target_os = "macos")]
 fn doctor_macos_trust_status(cli_path: &Path, daemon_path: &Path) -> Result<String> {
-    let cli_signature = doctor_macos_binary_trust(cli_path, "fieldwork")?;
-    let daemon_signature = doctor_macos_binary_trust(daemon_path, "fieldworkd")?;
+    let cli_signature = doctor_macos_binary_trust(cli_path, "shelly")?;
+    let daemon_signature = doctor_macos_binary_trust(daemon_path, "shellyd")?;
     if cli_signature == MacosSignatureKind::DeveloperId {
-        doctor_macos_notarization_status(cli_path, "fieldwork")?;
-        doctor_macos_notarization_status(daemon_path, "fieldworkd")?;
+        doctor_macos_notarization_status(cli_path, "shelly")?;
+        doctor_macos_notarization_status(daemon_path, "shellyd")?;
     }
     let mode = macos_trust_mode_from_signature_kinds(cli_signature, daemon_signature)?;
     Ok(format!(
-        "{mode} (fieldwork and fieldworkd signed, executable, no quarantine)"
+        "{mode} (shelly and shellyd signed, executable, no quarantine)"
     ))
 }
 
@@ -1522,7 +1522,7 @@ fn macos_trust_mode_from_signature_kinds(
             Ok("Developer ID/notarized")
         }
         (cli_signature, daemon_signature) => bail!(
-            "fieldwork and fieldworkd must use the same macOS trust mode, got {cli_signature:?} and {daemon_signature:?}"
+            "shelly and shellyd must use the same macOS trust mode, got {cli_signature:?} and {daemon_signature:?}"
         ),
     }
 }
@@ -1658,14 +1658,14 @@ fn default_daemon_log_dir() -> PathBuf {
         .unwrap_or_else(std::env::temp_dir);
 
     if cfg!(target_os = "macos") {
-        return home.join("Library").join("Logs").join("app.fieldwork");
+        return home.join("Library").join("Logs").join("app.shelly");
     }
 
     if let Some(state_home) = std::env::var_os("XDG_STATE_HOME") {
-        return PathBuf::from(state_home).join("fieldwork");
+        return PathBuf::from(state_home).join("shelly");
     }
 
-    home.join(".local").join("state").join("fieldwork")
+    home.join(".local").join("state").join("shelly")
 }
 
 struct RawMode;
@@ -1696,7 +1696,7 @@ mod tests {
     };
     use clap::Parser;
     use clap_complete::Shell;
-    use fieldwork_protocol::AgentState;
+    use shelly_protocol::AgentState;
     use std::ffi::OsString;
     use std::fs;
     use std::os::unix::fs::{PermissionsExt, symlink};
@@ -1790,7 +1790,7 @@ mod tests {
 
     #[test]
     fn no_args_parse_to_no_args_fast_path() {
-        let cli = Cli::try_parse_from(["fieldwork"]).expect("no-arg CLI parses");
+        let cli = Cli::try_parse_from(["shelly"]).expect("no-arg CLI parses");
         assert!(cli.command.is_none());
     }
 
@@ -1808,60 +1808,44 @@ mod tests {
     }
 
     #[test]
-    fn completion_bin_name_follows_invoked_alias() {
+    fn completion_bin_name_follows_invoked_binary() {
         assert_eq!(
-            completion_bin_name_with_override(None, Some(OsString::from("/usr/local/bin/fw"))),
-            "fw"
+            completion_bin_name_with_override(None, Some(OsString::from("shelly"))),
+            "shelly"
         );
-        assert_eq!(
-            completion_bin_name_with_override(None, Some(OsString::from("fieldwork"))),
-            "fieldwork"
-        );
-        assert_eq!(completion_bin_name_with_override(None, None), "fieldwork");
+        assert_eq!(completion_bin_name_with_override(None, None), "shelly");
     }
 
     #[test]
-    fn completion_bin_name_prefers_npm_dispatcher_alias() {
+    fn completion_bin_name_prefers_npm_dispatcher_override() {
         assert_eq!(
             completion_bin_name_with_override(
-                Some(OsString::from("fw")),
-                Some(OsString::from("/package/bin/fieldwork"))
+                Some(OsString::from("shelly")),
+                Some(OsString::from("/package/bin/shelly"))
             ),
-            "fw"
+            "shelly"
         );
     }
 
     #[test]
-    fn help_usage_follows_invoked_alias() {
-        let mut fw_command = cli_command_with_bin_name("fw".to_string());
-        let fw_help = fw_command.render_help().to_string();
-        assert!(fw_help.contains("Usage: fw [COMMAND]"));
-        assert!(!fw_help.contains("Usage: fieldwork [COMMAND]"));
-
-        let mut fieldwork_command = cli_command_with_bin_name("fieldwork".to_string());
-        let fieldwork_help = fieldwork_command.render_help().to_string();
-        assert!(fieldwork_help.contains("Usage: fieldwork [COMMAND]"));
+    fn help_usage_uses_shelly_binary() {
+        let mut shelly_command = cli_command_with_bin_name("shelly".to_string());
+        let shelly_help = shelly_command.render_help().to_string();
+        assert!(shelly_help.contains("Usage: shelly [COMMAND]"));
     }
 
     #[test]
-    fn version_flag_follows_invoked_alias() {
-        let fw_command = cli_command_with_bin_name("fw".to_string());
+    fn version_flag_uses_shelly_binary() {
+        let shelly_command = cli_command_with_bin_name("shelly".to_string());
         assert_eq!(
-            fw_command.render_version().to_string(),
-            format!("fw {}\n", env!("CARGO_PKG_VERSION"))
-        );
-
-        let fieldwork_command = cli_command_with_bin_name("fieldwork".to_string());
-        assert_eq!(
-            fieldwork_command.render_version().to_string(),
-            format!("fieldwork {}\n", env!("CARGO_PKG_VERSION"))
+            shelly_command.render_version().to_string(),
+            format!("shelly {}\n", env!("CARGO_PKG_VERSION"))
         );
     }
 
     #[test]
     fn unknown_subcommand_parses_to_named_shortcut() {
-        let cli =
-            Cli::try_parse_from(["fieldwork", "refactoringjob"]).expect("named shortcut parses");
+        let cli = Cli::try_parse_from(["shelly", "refactoringjob"]).expect("named shortcut parses");
         let Some(Command::Named(args)) = cli.command else {
             panic!("expected named shortcut command");
         };
@@ -1872,17 +1856,16 @@ mod tests {
     fn named_shortcut_command_error_follows_invoked_alias() {
         let error = parse_named_shortcut_args(
             vec![OsString::from("refactoringjob"), OsString::from("bash")],
-            "fw",
+            "shelly",
         )
         .expect_err("extra named-shortcut argument should fail");
         let message = error.to_string();
-        assert!(message.contains("use `fw new --name <name> -- <cmd...>`"));
-        assert!(!message.contains("use `fieldwork new"));
+        assert!(message.contains("use `shelly new --name <name> -- <cmd...>`"));
     }
 
     #[test]
     fn doctor_parses_with_no_start_flag() {
-        let cli = Cli::try_parse_from(["fw", "doctor", "--no-start"]).expect("doctor parses");
+        let cli = Cli::try_parse_from(["shelly", "doctor", "--no-start"]).expect("doctor parses");
         let Some(Command::Doctor { no_start }) = cli.command else {
             panic!("expected doctor command");
         };
@@ -1891,7 +1874,7 @@ mod tests {
 
     #[test]
     fn kill_all_parses_as_top_level_command() {
-        let cli = Cli::try_parse_from(["fw", "kill-all"]).expect("kill-all parses");
+        let cli = Cli::try_parse_from(["shelly", "kill-all"]).expect("kill-all parses");
         assert!(matches!(cli.command, Some(Command::KillAll)));
     }
 
@@ -1899,14 +1882,14 @@ mod tests {
     fn doctor_parses_macos_trust_signature_modes() {
         assert_eq!(
             parse_macos_signature_kind(
-                "Executable=/tmp/fieldwork\nIdentifier=fieldwork\nSignature=adhoc"
+                "Executable=/tmp/shelly\nIdentifier=shelly\nSignature=adhoc"
             )
             .unwrap(),
             MacosSignatureKind::AdHoc
         );
         assert_eq!(
             parse_macos_signature_kind(
-                "Authority=Developer ID Application: Fieldwork Project (ABCDE12345)\nTeamIdentifier=ABCDE12345"
+                "Authority=Developer ID Application: Shelly Project (ABCDE12345)\nTeamIdentifier=ABCDE12345"
             )
             .unwrap(),
             MacosSignatureKind::DeveloperId
@@ -2012,7 +1995,7 @@ mod tests {
 
     #[test]
     fn new_accepts_explicit_name() {
-        let cli = Cli::try_parse_from(["fieldwork", "new", "--name", "refactoringjob", "bash"])
+        let cli = Cli::try_parse_from(["shelly", "new", "--name", "refactoringjob", "bash"])
             .expect("named new parses");
         let Some(Command::New { name, command, .. }) = cli.command else {
             panic!("expected new command");
@@ -2024,15 +2007,15 @@ mod tests {
     #[test]
     fn named_shortcut_requires_exactly_one_valid_name() {
         assert_eq!(
-            parse_named_shortcut_args(vec![OsString::from("  refactoringjob  ")], "fieldwork")
+            parse_named_shortcut_args(vec![OsString::from("  refactoringjob  ")], "shelly")
                 .expect("valid shortcut"),
             "refactoringjob"
         );
-        assert!(parse_named_shortcut_args(Vec::new(), "fieldwork").is_err());
+        assert!(parse_named_shortcut_args(Vec::new(), "shelly").is_err());
         assert!(
             parse_named_shortcut_args(
                 vec![OsString::from("refactoringjob"), OsString::from("bash")],
-                "fieldwork"
+                "shelly"
             )
             .is_err()
         );

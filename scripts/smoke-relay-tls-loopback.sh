@@ -13,19 +13,19 @@ command -v curl >/dev/null || {
   exit 1
 }
 
-relay_binary="${FIELDWORK_RELAY_BINARY:-}"
+relay_binary="${SHELLY_RELAY_BINARY:-}"
 if [[ -n "$relay_binary" ]]; then
   if [[ ! -x "$relay_binary" ]]; then
-    echo "FIELDWORK_RELAY_BINARY is not executable: $relay_binary" >&2
+    echo "SHELLY_RELAY_BINARY is not executable: $relay_binary" >&2
     exit 1
   fi
-elif [[ -x target/release/fieldwork-relay ]]; then
-  relay_binary="target/release/fieldwork-relay"
-elif [[ -x target/debug/fieldwork-relay ]]; then
-  relay_binary="target/debug/fieldwork-relay"
+elif [[ -x target/release/shelly-relay ]]; then
+  relay_binary="target/release/shelly-relay"
+elif [[ -x target/debug/shelly-relay ]]; then
+  relay_binary="target/debug/shelly-relay"
 else
-  cargo build -p fieldwork-relay
-  relay_binary="target/debug/fieldwork-relay"
+  cargo build -p shelly-relay
+  relay_binary="target/debug/shelly-relay"
 fi
 
 tmp="$(mktemp -d)"
@@ -51,12 +51,12 @@ openssl req \
   -out "$tmp/control-plane.crt" \
   >/dev/null 2>&1
 
-FIELDWORK_RELAY_ADDR="127.0.0.1:$port" \
-FIELDWORK_RELAY_METRICS_ADDR=off \
-FIELDWORK_RELAY_DB_PATH=off \
-FIELDWORK_RELAY_REQUIRE_TLS=true \
-FIELDWORK_RELAY_TLS_CERT_PATH="$tmp/control-plane.crt" \
-FIELDWORK_RELAY_TLS_KEY_PATH="$tmp/control-plane.key" \
+SHELLY_RELAY_ADDR="127.0.0.1:$port" \
+SHELLY_RELAY_METRICS_ADDR=off \
+SHELLY_RELAY_DB_PATH=off \
+SHELLY_RELAY_REQUIRE_TLS=true \
+SHELLY_RELAY_TLS_CERT_PATH="$tmp/control-plane.crt" \
+SHELLY_RELAY_TLS_KEY_PATH="$tmp/control-plane.key" \
   "$relay_binary" >"$tmp/relay.log" 2>&1 &
 pid="$!"
 

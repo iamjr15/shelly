@@ -1,8 +1,8 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@2/schema.json",
-  "changelog": ["@changesets/changelog-github", { "repo": "fieldwork-app/fieldwork" }],
+  "changelog": ["@changesets/changelog-github", { "repo": "shelly-app/shelly" }],
   "commit": false,
-  "fixed": [["fieldwork", "fieldwork-*"]],
+  "fixed": [["shellykit", "shellykit-*"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",

@@ -8,7 +8,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-const NPM_LATEST_URL: &str = "https://registry.npmjs.org/fieldwork/latest";
+const NPM_LATEST_URL: &str = "https://registry.npmjs.org/shellykit/latest";
 const CHECK_INTERVAL_MS: u64 = 24 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT: Duration = Duration::from_millis(750);
 
@@ -79,7 +79,7 @@ where
 async fn fetch_latest_version() -> Result<String> {
     let client = reqwest::Client::builder()
         .timeout(REQUEST_TIMEOUT)
-        .user_agent(concat!("fieldwork/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("shelly/", env!("CARGO_PKG_VERSION")))
         .build()
         .context("build npm update-check client")?;
     let response = client
@@ -100,7 +100,7 @@ fn notice_for_latest(current_version: &str, latest_version: &str) -> Option<Stri
     let latest = Version::parse(latest_version).ok()?;
     if latest > current {
         Some(format!(
-            "fieldwork {latest} available - run `npm update -g fieldwork`"
+            "shelly {latest} available - run `npm update -g shellykit`"
         ))
     } else {
         None
@@ -139,7 +139,7 @@ fn default_cache_path() -> PathBuf {
 }
 
 fn update_check_disabled() -> bool {
-    std::env::var("FIELDWORK_DISABLE_UPDATE_CHECK")
+    std::env::var("SHELLY_DISABLE_UPDATE_CHECK")
         .ok()
         .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
 }
@@ -165,7 +165,7 @@ mod tests {
     fn newer_version_formats_notice() {
         assert_eq!(
             notice_for_latest("0.1.0", "0.2.0").as_deref(),
-            Some("fieldwork 0.2.0 available - run `npm update -g fieldwork`")
+            Some("shelly 0.2.0 available - run `npm update -g shellykit`")
         );
     }
 
@@ -179,7 +179,7 @@ mod tests {
     #[tokio::test]
     async fn fresh_cache_uses_cached_latest_without_fetching() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("fieldwork").join("update-check.json");
+        let path = tmp.path().join("shelly").join("update-check.json");
         write_cache(
             &path,
             &UpdateCache {
@@ -200,7 +200,7 @@ mod tests {
 
         assert_eq!(
             notice.as_deref(),
-            Some("fieldwork 0.3.0 available - run `npm update -g fieldwork`")
+            Some("shelly 0.3.0 available - run `npm update -g shellykit`")
         );
         assert!(!fetched.load(Ordering::Relaxed));
     }
@@ -208,7 +208,7 @@ mod tests {
     #[tokio::test]
     async fn stale_cache_fetches_and_writes_private_cache() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("fieldwork").join("update-check.json");
+        let path = tmp.path().join("shelly").join("update-check.json");
         let notice = check_for_update_with(&path, "0.2.0", CHECK_INTERVAL_MS + 1, || async {
             Ok("0.4.0".to_string())
         })
@@ -217,7 +217,7 @@ mod tests {
 
         assert_eq!(
             notice.as_deref(),
-            Some("fieldwork 0.4.0 available - run `npm update -g fieldwork`")
+            Some("shelly 0.4.0 available - run `npm update -g shellykit`")
         );
         let cache = read_cache(&path).unwrap().unwrap();
         assert_eq!(cache.checked_at_ms, CHECK_INTERVAL_MS + 1);
@@ -239,7 +239,7 @@ mod tests {
     #[tokio::test]
     async fn fetch_failure_is_cached_without_notice() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("fieldwork").join("update-check.json");
+        let path = tmp.path().join("shelly").join("update-check.json");
         let notice =
             check_for_update_with(&path, "0.2.0", 42, || async { anyhow::bail!("offline") })
                 .await

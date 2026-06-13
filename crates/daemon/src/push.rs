@@ -8,22 +8,22 @@ use base64::{
 use chacha20poly1305::aead::{OsRng, rand_core::RngCore};
 use dashmap::DashMap;
 use ed25519_dalek::{Signer, SigningKey};
-use fieldwork_protocol::{PushPlatform, SessionId, now_ms};
 use reqwest::StatusCode;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use shelly_protocol::{PushPlatform, SessionId, now_ms};
 use std::{error::Error as StdError, fmt, future::Future, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 use tokio::time::{Instant, sleep, timeout_at};
 use tracing::{debug, warn};
 
-const SERVICE: &str = "app.fieldwork";
+const SERVICE: &str = "app.shelly";
 const RELAY_SIGNING_ACCOUNT: &str = "relay-signing-key-v1";
-const RELAY_CONTROL_URL_ENV: &str = "FIELDWORK_RELAY_CONTROL_URL";
+const RELAY_CONTROL_URL_ENV: &str = "SHELLY_RELAY_CONTROL_URL";
 /// Optional base64 (no-pad) override for the relay signing key, mirroring
-/// `FIELDWORK_IROH_SECRET_KEY_B64`. Lets hermetic e2e harnesses without OS
+/// `SHELLY_IROH_SECRET_KEY_B64`. Lets hermetic e2e harnesses without OS
 /// keychain access (CI, isolated temp HOME) exercise the relay publish path.
-const RELAY_SIGNING_KEY_ENV: &str = "FIELDWORK_RELAY_SIGNING_KEY_B64";
+const RELAY_SIGNING_KEY_ENV: &str = "SHELLY_RELAY_SIGNING_KEY_B64";
 const RELAY_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const RELAY_RETRY_MIN_DELAY: Duration = Duration::from_secs(1);
 const RELAY_RETRY_MAX_DELAY: Duration = Duration::from_secs(8);
@@ -425,7 +425,7 @@ impl PushWorker {
             .client
             .post(self.url(path))
             .header("content-type", "application/json")
-            .header("x-fieldwork-signature", signature)
+            .header("x-shelly-signature", signature)
             .body(body)
             .send()
             .await?;
@@ -1041,7 +1041,7 @@ mod tests {
             .push(CapturedRequest {
                 path: path.clone(),
                 signature: headers
-                    .get("x-fieldwork-signature")
+                    .get("x-shelly-signature")
                     .and_then(|value| value.to_str().ok())
                     .map(str::to_string),
                 body,
@@ -1071,7 +1071,7 @@ mod tests {
             .push(CapturedRequest {
                 path: path.clone(),
                 signature: headers
-                    .get("x-fieldwork-signature")
+                    .get("x-shelly-signature")
                     .and_then(|value| value.to_str().ok())
                     .map(str::to_string),
                 body,

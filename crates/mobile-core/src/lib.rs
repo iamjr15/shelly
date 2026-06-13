@@ -5,14 +5,14 @@
 //! push-token registration/unregistration. It does not expose session creation, command
 //! selection, or session termination, preserving the v1 mobile security boundary.
 
-use fieldwork_protocol::{
+use iroh::endpoint::{RecvStream, SendStream, presets};
+use iroh::{Endpoint, EndpointAddr, RelayConfig, RelayUrl, SecretKey, TransportAddr};
+use serde::{Serialize, de::DeserializeOwned};
+use shelly_protocol::{
     AgentState as ProtocolAgentState, CONTRACT_VERSION, ClientKind, ClientSize, ClientToServerMsg,
     ErrorCode, PairingTicket, PushPlatform as ProtocolPushPlatform, ServerToClientMsg, SessionId,
     SessionSummary as ProtocolSessionSummary, max_frame_len, normalize_code,
 };
-use iroh::endpoint::{RecvStream, SendStream, presets};
-use iroh::{Endpoint, EndpointAddr, RelayConfig, RelayUrl, SecretKey, TransportAddr};
-use serde::{Serialize, de::DeserializeOwned};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -20,10 +20,10 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::time::{Duration, timeout};
 
-const FIELDWORK_ALPN: &[u8] = b"fieldwork/1";
+const SHELLY_ALPN: &[u8] = b"shelly/1";
 
 #[derive(Clone, Debug, uniffi::Record)]
-/// Configuration used to construct a mobile Fieldwork client.
+/// Configuration used to construct a mobile Shelly client.
 pub struct ClientConfig {
     /// User-facing device name shown in the desktop approval prompt.
     pub device_name: String,
@@ -35,9 +35,9 @@ pub struct ClientConfig {
     pub paired_daemon: Option<DaemonConfig>,
     /// Relay control URL used to resolve a typed pairing code to a ticket.
     ///
-    /// Injected from the `FIELDWORK_RELAY_CONTROL_URL` environment value via the
-    /// iOS `FieldworkRelayControlURL` Info.plist key and the Android
-    /// `FIELDWORK_RELAY_CONTROL_URL` BuildConfig field. Absent when no relay is
+    /// Injected from the `SHELLY_RELAY_CONTROL_URL` environment value via the
+    /// iOS `ShellyRelayControlURL` Info.plist key and the Android
+    /// `SHELLY_RELAY_CONTROL_URL` BuildConfig field. Absent when no relay is
     /// hosted, in which case the typed-code path is unavailable but QR still works.
     pub relay_control_url: Option<String>,
 }
@@ -125,7 +125,7 @@ pub struct SessionSummaryFfi {
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 #[uniffi(flat_error)]
 /// Error type mapped across Swift and Kotlin bindings.
-pub enum FieldworkError {
+pub enum ShellyError {
     /// Client configuration or caller input is invalid.
     #[error("invalid config: {0}")]
     InvalidConfig(String),
@@ -176,7 +176,7 @@ pub trait ByteStreamSink: Send + Sync {
 
 #[derive(uniffi::Object)]
 /// Mobile client object that owns the device iroh identity.
-pub struct FieldworkClient {
+pub struct ShellyClient {
     config: ClientConfig,
     secret_key: SecretKey,
     daemon: Mutex<Option<DaemonTarget>>,
@@ -192,13 +192,13 @@ struct DaemonTarget {
 }
 
 #[uniffi::export(async_runtime = "tokio")]
-impl FieldworkClient {
+impl ShellyClient {
     #[uniffi::constructor]
     /// Creates a client, generating a device key when no persisted key is supplied.
-    pub fn new(config: ClientConfig) -> Result<Arc<Self>, FieldworkError> {
+    pub fn new(config: ClientConfig) -> Result<Arc<Self>, ShellyError> {
         let secret_key = match &config.device_secret_key {
             Some(bytes) => SecretKey::from_bytes(&bytes.as_slice().try_into().map_err(|_| {
-                FieldworkError::InvalidConfig("device_secret_key must be 32 bytes".to_string())
+                ShellyError::InvalidConfig("device_secret_key must be 32 bytes".to_string())
             })?),
             None => SecretKey::generate(),
         };
@@ -216,14 +216,14 @@ impl FieldworkClient {
 
     /// Pairs with a daemon using the compact ticket embedded in the desktop QR.
     ///
-    /// The scanned string is a `fw1`-prefixed [`PairingTicket`] carrying both the
+    /// The scanned string is a `sh1`-prefixed [`PairingTicket`] carrying both the
     /// daemon's reachability and the short code, so a scan needs no typing.
     pub async fn pair_with_qr(
         self: Arc<Self>,
         qr_payload: String,
-    ) -> Result<DaemonInfo, FieldworkError> {
+    ) -> Result<DaemonInfo, ShellyError> {
         let ticket = PairingTicket::decode(qr_payload.trim())
-            .map_err(|error| FieldworkError::Protocol(error.to_string()))?;
+            .map_err(|error| ShellyError::Protocol(error.to_string()))?;
         self.pair_with_ticket(ticket).await
     }
 
@@ -232,17 +232,14 @@ impl FieldworkClient {
     /// The code is normalized, then exchanged for the daemon's [`PairingTicket`]
     /// via the relay rendezvous endpoint. Requires a configured relay control
     /// URL; the typed-code path is unavailable when no relay is hosted.
-    pub async fn pair_with_code(
-        self: Arc<Self>,
-        code: String,
-    ) -> Result<DaemonInfo, FieldworkError> {
+    pub async fn pair_with_code(self: Arc<Self>, code: String) -> Result<DaemonInfo, ShellyError> {
         let code = normalize_code(&code);
         let relay_control_url = self
             .config
             .relay_control_url
             .as_deref()
             .ok_or_else(|| {
-                FieldworkError::InvalidConfig("relay control URL not configured".to_string())
+                ShellyError::InvalidConfig("relay control URL not configured".to_string())
             })?
             .trim_end_matches('/');
         let url = format!("{relay_control_url}/v1/pair/resolve/{code}");
@@ -251,14 +248,14 @@ impl FieldworkClient {
             .get(&url)
             .send()
             .await
-            .map_err(|error| FieldworkError::Transport(error.to_string()))?;
+            .map_err(|error| ShellyError::Transport(error.to_string()))?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
-            return Err(FieldworkError::NotFound(
+            return Err(ShellyError::NotFound(
                 "code not found or expired".to_string(),
             ));
         }
         if !response.status().is_success() {
-            return Err(FieldworkError::Protocol(format!(
+            return Err(ShellyError::Protocol(format!(
                 "relay resolve returned {}",
                 response.status()
             )));
@@ -266,14 +263,14 @@ impl FieldworkClient {
         let resolved: ResolvePairingResponse = response
             .json()
             .await
-            .map_err(|error| FieldworkError::Protocol(error.to_string()))?;
+            .map_err(|error| ShellyError::Protocol(error.to_string()))?;
         let ticket = PairingTicket::decode(resolved.ticket_blob.trim())
-            .map_err(|error| FieldworkError::Protocol(error.to_string()))?;
+            .map_err(|error| ShellyError::Protocol(error.to_string()))?;
         self.pair_with_ticket(ticket).await
     }
 
     /// Connects to a previously paired daemon and verifies authorization with a ping.
-    pub async fn connect(self: Arc<Self>) -> Result<(), FieldworkError> {
+    pub async fn connect(self: Arc<Self>) -> Result<(), ShellyError> {
         let endpoint = self.endpoint().await?;
         let target = self.daemon_target().await?;
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
@@ -286,20 +283,20 @@ impl FieldworkClient {
                 Ok(())
             }
             ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
-            other => Err(FieldworkError::Protocol(format!(
+            other => Err(ShellyError::Protocol(format!(
                 "unexpected daemon response during connect: {other:?}"
             ))),
         }
     }
 
     /// Marks the client disconnected locally; active attach streams are closed by their owners.
-    pub async fn disconnect(self: Arc<Self>) -> Result<(), FieldworkError> {
+    pub async fn disconnect(self: Arc<Self>) -> Result<(), ShellyError> {
         *self.connected.lock().await = false;
         Ok(())
     }
 
     /// Fetches the current session list from the paired daemon.
-    pub async fn list_sessions(self: Arc<Self>) -> Result<Vec<SessionSummaryFfi>, FieldworkError> {
+    pub async fn list_sessions(self: Arc<Self>) -> Result<Vec<SessionSummaryFfi>, ShellyError> {
         let (mut send, mut recv) = self.open_authenticated_stream().await?;
         write_msg(&mut send, &ClientToServerMsg::ListSessions).await?;
         match read_msg::<ServerToClientMsg>(&mut recv).await? {
@@ -307,7 +304,7 @@ impl FieldworkClient {
                 Ok(sessions.into_iter().map(Into::into).collect())
             }
             ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
-            other => Err(FieldworkError::Protocol(format!(
+            other => Err(ShellyError::Protocol(format!(
                 "unexpected daemon response to ListSessions: {other:?}"
             ))),
         }
@@ -317,7 +314,7 @@ impl FieldworkClient {
     pub async fn attach_session(
         self: Arc<Self>,
         id: String,
-    ) -> Result<Arc<AttachedSession>, FieldworkError> {
+    ) -> Result<Arc<AttachedSession>, ShellyError> {
         self.attach_session_from(id, None).await
     }
 
@@ -326,10 +323,10 @@ impl FieldworkClient {
         self: Arc<Self>,
         id: String,
         last_seen_seq: Option<u64>,
-    ) -> Result<Arc<AttachedSession>, FieldworkError> {
+    ) -> Result<Arc<AttachedSession>, ShellyError> {
         let session_id = id
             .parse::<SessionId>()
-            .map_err(|error| FieldworkError::InvalidConfig(error.to_string()))?;
+            .map_err(|error| ShellyError::InvalidConfig(error.to_string()))?;
         let (mut send, mut recv) = self.open_authenticated_stream().await?;
         write_msg(
             &mut send,
@@ -352,7 +349,7 @@ impl FieldworkClient {
                 last_seen_seq: AtomicU64::new(seq),
             })),
             ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
-            other => Err(FieldworkError::Protocol(format!(
+            other => Err(ShellyError::Protocol(format!(
                 "unexpected daemon response to AttachSession: {other:?}"
             ))),
         }
@@ -362,7 +359,7 @@ impl FieldworkClient {
     pub async fn subscribe_sessions(
         self: Arc<Self>,
         sink: Box<dyn SessionListSink>,
-    ) -> Result<(), FieldworkError> {
+    ) -> Result<(), ShellyError> {
         let (mut send, mut recv) = self.open_authenticated_stream().await?;
         write_msg(&mut send, &ClientToServerMsg::SubscribeSessions).await?;
         loop {
@@ -374,7 +371,7 @@ impl FieldworkClient {
                     return Err(error_from_server(code, message));
                 }
                 other => {
-                    return Err(FieldworkError::Protocol(format!(
+                    return Err(ShellyError::Protocol(format!(
                         "unexpected daemon response to SubscribeSessions: {other:?}"
                     )));
                 }
@@ -387,7 +384,7 @@ impl FieldworkClient {
         self: Arc<Self>,
         platform: PushPlatform,
         token: String,
-    ) -> Result<(), FieldworkError> {
+    ) -> Result<(), ShellyError> {
         let (mut send, mut recv) = self.open_authenticated_stream().await?;
         write_msg(
             &mut send,
@@ -400,7 +397,7 @@ impl FieldworkClient {
         match read_msg::<ServerToClientMsg>(&mut recv).await? {
             ServerToClientMsg::Pong { .. } => Ok(()),
             ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
-            other => Err(FieldworkError::Protocol(format!(
+            other => Err(ShellyError::Protocol(format!(
                 "unexpected daemon response to RegisterPushToken: {other:?}"
             ))),
         }
@@ -411,7 +408,7 @@ impl FieldworkClient {
         self: Arc<Self>,
         platform: PushPlatform,
         token: String,
-    ) -> Result<(), FieldworkError> {
+    ) -> Result<(), ShellyError> {
         let (mut send, mut recv) = self.open_authenticated_stream().await?;
         write_msg(
             &mut send,
@@ -424,16 +421,16 @@ impl FieldworkClient {
         match read_msg::<ServerToClientMsg>(&mut recv).await? {
             ServerToClientMsg::Pong { .. } => Ok(()),
             ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
-            other => Err(FieldworkError::Protocol(format!(
+            other => Err(ShellyError::Protocol(format!(
                 "unexpected daemon response to UnregisterPushToken: {other:?}"
             ))),
         }
     }
 }
 
-impl FieldworkClient {
+impl ShellyClient {
     /// Shared dial-and-pair path for both the QR and typed-code flows.
-    async fn pair_with_ticket(&self, ticket: PairingTicket) -> Result<DaemonInfo, FieldworkError> {
+    async fn pair_with_ticket(&self, ticket: PairingTicket) -> Result<DaemonInfo, ShellyError> {
         let target = DaemonTarget::from_ticket(&ticket);
         let endpoint = self.endpoint().await?;
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
@@ -463,21 +460,21 @@ impl FieldworkClient {
                 })
             }
             ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
-            other => Err(FieldworkError::Protocol(format!(
+            other => Err(ShellyError::Protocol(format!(
                 "unexpected daemon response during pairing: {other:?}"
             ))),
         }
     }
 
-    async fn daemon_target(&self) -> Result<DaemonTarget, FieldworkError> {
+    async fn daemon_target(&self) -> Result<DaemonTarget, ShellyError> {
         self.daemon
             .lock()
             .await
             .clone()
-            .ok_or_else(|| FieldworkError::InvalidConfig("client is not paired".to_string()))
+            .ok_or_else(|| ShellyError::InvalidConfig("client is not paired".to_string()))
     }
 
-    async fn open_authenticated_stream(&self) -> Result<(SendStream, RecvStream), FieldworkError> {
+    async fn open_authenticated_stream(&self) -> Result<(SendStream, RecvStream), ShellyError> {
         let endpoint = self.endpoint().await?;
         let target = self.daemon_target().await?;
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
@@ -486,7 +483,7 @@ impl FieldworkClient {
         Ok((send, recv))
     }
 
-    async fn endpoint(&self) -> Result<Endpoint, FieldworkError> {
+    async fn endpoint(&self) -> Result<Endpoint, ShellyError> {
         let mut endpoint = self.endpoint.lock().await;
         if let Some(endpoint) = endpoint.as_ref() {
             return Ok(endpoint.clone());
@@ -519,7 +516,7 @@ enum StreamDecision {
 #[uniffi::export(async_runtime = "tokio")]
 impl AttachedSession {
     /// Sends raw input bytes to the attached PTY.
-    pub async fn send_input(self: Arc<Self>, bytes: Vec<u8>) -> Result<(), FieldworkError> {
+    pub async fn send_input(self: Arc<Self>, bytes: Vec<u8>) -> Result<(), ShellyError> {
         self.write_to_send_stream(&ClientToServerMsg::Input {
             session_id: self.session_id,
             bytes,
@@ -528,7 +525,7 @@ impl AttachedSession {
     }
 
     /// Updates this mobile client's terminal viewport.
-    pub async fn resize(self: Arc<Self>, cols: u16, rows: u16) -> Result<(), FieldworkError> {
+    pub async fn resize(self: Arc<Self>, cols: u16, rows: u16) -> Result<(), ShellyError> {
         self.write_to_send_stream(&ClientToServerMsg::Resize {
             session_id: self.session_id,
             size: ClientSize { cols, rows },
@@ -540,7 +537,7 @@ impl AttachedSession {
     pub async fn subscribe(
         self: Arc<Self>,
         sink: Box<dyn ByteStreamSink>,
-    ) -> Result<(), FieldworkError> {
+    ) -> Result<(), ShellyError> {
         if let Some(bytes) = self.initial_bytes.lock().await.take() {
             sink.on_initial_bytes(bytes);
         }
@@ -562,11 +559,11 @@ impl AttachedSession {
     }
 
     /// Detaches this client without killing the desktop session.
-    pub async fn detach(self: Arc<Self>) -> Result<(), FieldworkError> {
+    pub async fn detach(self: Arc<Self>) -> Result<(), ShellyError> {
         let mut guard = self.send.lock().await;
         let send = guard
             .as_mut()
-            .ok_or_else(|| FieldworkError::Protocol("send stream closed".to_string()))?;
+            .ok_or_else(|| ShellyError::Protocol("send stream closed".to_string()))?;
         if let Err(error) = write_msg(send, &ClientToServerMsg::DetachSession).await {
             guard.take();
             return Err(error);
@@ -591,7 +588,7 @@ impl AttachedSession {
         &self,
         message: ServerToClientMsg,
         sink: &dyn ByteStreamSink,
-    ) -> Result<StreamDecision, FieldworkError> {
+    ) -> Result<StreamDecision, ShellyError> {
         match message {
             ServerToClientMsg::Output { seq, bytes, .. } => {
                 self.last_seen_seq.store(seq, Ordering::Release);
@@ -615,14 +612,11 @@ impl AttachedSession {
         }
     }
 
-    async fn write_to_send_stream(
-        &self,
-        message: &ClientToServerMsg,
-    ) -> Result<(), FieldworkError> {
+    async fn write_to_send_stream(&self, message: &ClientToServerMsg) -> Result<(), ShellyError> {
         let mut guard = self.send.lock().await;
         let send = guard
             .as_mut()
-            .ok_or_else(|| FieldworkError::Protocol("send stream closed".to_string()))?;
+            .ok_or_else(|| ShellyError::Protocol("send stream closed".to_string()))?;
         if let Err(error) = write_msg(send, message).await {
             guard.take();
             return Err(error);
@@ -630,12 +624,12 @@ impl AttachedSession {
         Ok(())
     }
 
-    async fn take_recv(&self) -> Result<RecvStream, FieldworkError> {
+    async fn take_recv(&self) -> Result<RecvStream, ShellyError> {
         self.recv
             .lock()
             .await
             .take()
-            .ok_or_else(|| FieldworkError::Protocol("receive stream is already in use".to_string()))
+            .ok_or_else(|| ShellyError::Protocol("receive stream is already in use".to_string()))
     }
 
     async fn replace_recv(&self, recv: RecvStream) {
@@ -660,24 +654,24 @@ impl DaemonTarget {
         }
     }
 
-    fn endpoint_addr(&self) -> Result<EndpointAddr, FieldworkError> {
+    fn endpoint_addr(&self) -> Result<EndpointAddr, ShellyError> {
         let endpoint_id = self
             .node_id
             .parse()
-            .map_err(|error: iroh::KeyParsingError| FieldworkError::Protocol(error.to_string()))?;
+            .map_err(|error: iroh::KeyParsingError| ShellyError::Protocol(error.to_string()))?;
         let mut addrs = Vec::new();
         if let Some(relay_url) = &self.relay_url {
             let relay_url: RelayUrl =
                 relay_url
                     .parse()
                     .map_err(|error: iroh::RelayUrlParseError| {
-                        FieldworkError::Protocol(error.to_string())
+                        ShellyError::Protocol(error.to_string())
                     })?;
             addrs.push(TransportAddr::Relay(relay_url));
         }
         for addr in &self.addrs {
             let addr: SocketAddr = addr.parse().map_err(|error: std::net::AddrParseError| {
-                FieldworkError::Protocol(error.to_string())
+                ShellyError::Protocol(error.to_string())
             })?;
             addrs.push(TransportAddr::Ip(addr));
         }
@@ -685,45 +679,39 @@ impl DaemonTarget {
     }
 }
 
-async fn endpoint_for_secret(secret_key: &SecretKey) -> Result<Endpoint, FieldworkError> {
+async fn endpoint_for_secret(secret_key: &SecretKey) -> Result<Endpoint, ShellyError> {
     Endpoint::builder(presets::N0)
         .secret_key(secret_key.clone())
         .bind()
         .await
-        .map_err(|error| FieldworkError::Transport(error.to_string()))
+        .map_err(|error| ShellyError::Transport(error.to_string()))
 }
 
 async fn open_stream(
     endpoint: &Endpoint,
     target: &DaemonTarget,
-) -> Result<(SendStream, RecvStream), FieldworkError> {
+) -> Result<(SendStream, RecvStream), ShellyError> {
     if let Some(relay_url) = &target.relay_url {
-        let relay_url: RelayUrl =
-            relay_url
-                .parse()
-                .map_err(|error: iroh::RelayUrlParseError| {
-                    FieldworkError::Protocol(error.to_string())
-                })?;
+        let relay_url: RelayUrl = relay_url
+            .parse()
+            .map_err(|error: iroh::RelayUrlParseError| ShellyError::Protocol(error.to_string()))?;
         endpoint
             .insert_relay(relay_url.clone(), Arc::new(RelayConfig::from(relay_url)))
             .await;
     }
     let conn = timeout(
         Duration::from_secs(15),
-        endpoint.connect(target.endpoint_addr()?, FIELDWORK_ALPN),
+        endpoint.connect(target.endpoint_addr()?, SHELLY_ALPN),
     )
     .await
-    .map_err(|_| FieldworkError::Transport("timed out connecting to daemon".to_string()))?
-    .map_err(|error| FieldworkError::Transport(error.to_string()))?;
+    .map_err(|_| ShellyError::Transport("timed out connecting to daemon".to_string()))?
+    .map_err(|error| ShellyError::Transport(error.to_string()))?;
     conn.open_bi()
         .await
-        .map_err(|error| FieldworkError::Transport(error.to_string()))
+        .map_err(|error| ShellyError::Transport(error.to_string()))
 }
 
-async fn write_hello(
-    send: &mut SendStream,
-    platform: MobilePlatform,
-) -> Result<(), FieldworkError> {
+async fn write_hello(send: &mut SendStream, platform: MobilePlatform) -> Result<(), ShellyError> {
     write_msg(
         send,
         &ClientToServerMsg::Hello {
@@ -735,24 +723,24 @@ async fn write_hello(
     .await
 }
 
-async fn expect_welcome(recv: &mut RecvStream) -> Result<(), FieldworkError> {
+async fn expect_welcome(recv: &mut RecvStream) -> Result<(), ShellyError> {
     match read_msg::<ServerToClientMsg>(recv).await? {
         ServerToClientMsg::Welcome { .. } => Ok(()),
         ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
-        other => Err(FieldworkError::Protocol(format!(
+        other => Err(ShellyError::Protocol(format!(
             "unexpected daemon response during handshake: {other:?}"
         ))),
     }
 }
 
-async fn read_msg<T>(reader: &mut RecvStream) -> Result<T, FieldworkError>
+async fn read_msg<T>(reader: &mut RecvStream) -> Result<T, ShellyError>
 where
     T: DeserializeOwned,
 {
     read_msg_from(reader).await
 }
 
-async fn read_msg_from<T, R>(reader: &mut R) -> Result<T, FieldworkError>
+async fn read_msg_from<T, R>(reader: &mut R) -> Result<T, ShellyError>
 where
     T: DeserializeOwned,
     R: AsyncRead + Unpin,
@@ -761,35 +749,35 @@ where
     reader
         .read_exact(&mut len_bytes)
         .await
-        .map_err(|error| FieldworkError::Transport(error.to_string()))?;
+        .map_err(|error| ShellyError::Transport(error.to_string()))?;
     let len = u32::from_be_bytes(len_bytes) as usize;
     if len > max_frame_len() {
-        return Err(FieldworkError::Protocol(format!("frame too large: {len}")));
+        return Err(ShellyError::Protocol(format!("frame too large: {len}")));
     }
     let mut payload = vec![0; len];
     reader
         .read_exact(&mut payload)
         .await
-        .map_err(|error| FieldworkError::Transport(error.to_string()))?;
-    rmp_serde::from_slice(&payload).map_err(|error| FieldworkError::Protocol(error.to_string()))
+        .map_err(|error| ShellyError::Transport(error.to_string()))?;
+    rmp_serde::from_slice(&payload).map_err(|error| ShellyError::Protocol(error.to_string()))
 }
 
-async fn write_msg<T>(writer: &mut SendStream, message: &T) -> Result<(), FieldworkError>
+async fn write_msg<T>(writer: &mut SendStream, message: &T) -> Result<(), ShellyError>
 where
     T: Serialize,
 {
     write_msg_to(writer, message).await
 }
 
-async fn write_msg_to<T, W>(writer: &mut W, message: &T) -> Result<(), FieldworkError>
+async fn write_msg_to<T, W>(writer: &mut W, message: &T) -> Result<(), ShellyError>
 where
     T: Serialize,
     W: AsyncWrite + Unpin,
 {
     let payload = rmp_serde::to_vec_named(message)
-        .map_err(|error| FieldworkError::Protocol(error.to_string()))?;
+        .map_err(|error| ShellyError::Protocol(error.to_string()))?;
     if payload.len() > max_frame_len() {
-        return Err(FieldworkError::Protocol(format!(
+        return Err(ShellyError::Protocol(format!(
             "frame too large: {}",
             payload.len()
         )));
@@ -797,30 +785,28 @@ where
     writer
         .write_all(&(payload.len() as u32).to_be_bytes())
         .await
-        .map_err(|error| FieldworkError::Transport(error.to_string()))?;
+        .map_err(|error| ShellyError::Transport(error.to_string()))?;
     writer
         .write_all(&payload)
         .await
-        .map_err(|error| FieldworkError::Transport(error.to_string()))?;
+        .map_err(|error| ShellyError::Transport(error.to_string()))?;
     Ok(())
 }
 
 #[derive(serde::Deserialize)]
 /// Relay rendezvous response carrying the opaque encoded [`PairingTicket`].
 struct ResolvePairingResponse {
-    /// `fw1`-prefixed ticket string published by the daemon under this code.
+    /// `sh1`-prefixed ticket string published by the daemon under this code.
     ticket_blob: String,
 }
 
-fn error_from_server(code: ErrorCode, message: String) -> FieldworkError {
+fn error_from_server(code: ErrorCode, message: String) -> ShellyError {
     match code {
-        ErrorCode::ProtocolMismatch | ErrorCode::InvalidRequest => {
-            FieldworkError::Protocol(message)
-        }
-        ErrorCode::Unauthorized => FieldworkError::Unauthorized(message),
-        ErrorCode::Forbidden => FieldworkError::Forbidden(message),
-        ErrorCode::NotFound => FieldworkError::NotFound(message),
-        ErrorCode::Internal => FieldworkError::Internal(message),
+        ErrorCode::ProtocolMismatch | ErrorCode::InvalidRequest => ShellyError::Protocol(message),
+        ErrorCode::Unauthorized => ShellyError::Unauthorized(message),
+        ErrorCode::Forbidden => ShellyError::Forbidden(message),
+        ErrorCode::NotFound => ShellyError::NotFound(message),
+        ErrorCode::Internal => ShellyError::Internal(message),
     }
 }
 
@@ -834,7 +820,7 @@ mod android_context {
     static ANDROID_CONTEXT_INIT: OnceLock<Result<(), String>> = OnceLock::new();
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_app_fieldwork_android_core_FieldworkNative_installAndroidContext<
+    pub extern "system" fn Java_app_shelly_android_core_ShellyNative_installAndroidContext<
         'local,
     >(
         mut env: EnvUnowned<'local>,
@@ -869,7 +855,7 @@ mod android_context {
     }
 
     fn throw_java_runtime_exception(env: &mut EnvUnowned<'_>, message: &str) {
-        let message = format!("Fieldwork Android context initialization failed: {message}");
+        let message = format!("Shelly Android context initialization failed: {message}");
         let _ = env
             .with_env(|env| -> jni::errors::Result<()> {
                 let _ = env.throw(message);
@@ -1001,7 +987,7 @@ mod tests {
     fn pairing_ticket_round_trips_through_qr_string() {
         let ticket = sample_ticket();
         let encoded = ticket.encode().expect("encode ticket");
-        assert!(encoded.starts_with("fw1"));
+        assert!(encoded.starts_with("sh1"));
         assert_eq!(PairingTicket::decode(&encoded).unwrap(), ticket);
     }
 
@@ -1017,7 +1003,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_device_secret_key() {
-        let result = FieldworkClient::new(ClientConfig {
+        let result = ShellyClient::new(ClientConfig {
             device_name: "phone".to_string(),
             platform: MobilePlatform::Ios,
             device_secret_key: Some(vec![1, 2, 3]),
@@ -1025,7 +1011,7 @@ mod tests {
             relay_control_url: None,
         });
 
-        assert!(matches!(result, Err(FieldworkError::InvalidConfig(_))));
+        assert!(matches!(result, Err(ShellyError::InvalidConfig(_))));
     }
 
     #[tokio::test]
@@ -1056,7 +1042,7 @@ mod tests {
             .unwrap_err();
 
         assert!(
-            matches!(error, FieldworkError::Protocol(message) if message.contains("frame too large"))
+            matches!(error, ShellyError::Protocol(message) if message.contains("frame too large"))
         );
     }
 
@@ -1071,7 +1057,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(matches!(error, FieldworkError::Transport(_)));
+        assert!(matches!(error, ShellyError::Transport(_)));
     }
 
     #[test]

@@ -13,18 +13,18 @@ final class AppModel: ObservableObject {
 
     let securityGate = SecurityGate()
 
-    private let service: FieldworkCoreService
+    private let service: ShellyCoreService
     private var lastApnsToken: Data?
     private var pendingPushSessionIdHash: String?
     private var sessionSubscriptionTask: Task<Void, Never>?
 
-    init(service: FieldworkCoreService = FieldworkCoreService()) {
+    init(service: ShellyCoreService = ShellyCoreService()) {
         self.service = service
     }
 
     func bootstrap() async {
         isPaired = service.restoreSavedPairing()
-        await unlock(reason: "Unlock Fieldwork")
+        await unlock(reason: "Unlock Shelly")
     }
 
     @discardableResult
@@ -53,7 +53,7 @@ final class AppModel: ObservableObject {
     }
 
     func pair(qrPayload: String) async {
-        guard await ensureUnlocked(reason: "Pair Fieldwork with this daemon") else {
+        guard await ensureUnlocked(reason: "Pair Shelly with this daemon") else {
             return
         }
         do {
@@ -67,7 +67,7 @@ final class AppModel: ObservableObject {
     }
 
     func pair(code: String) async {
-        guard await ensureUnlocked(reason: "Pair Fieldwork with this daemon") else {
+        guard await ensureUnlocked(reason: "Pair Shelly with this daemon") else {
             return
         }
         do {
@@ -194,7 +194,7 @@ final class AppModel: ObservableObject {
     }
 
     private func requestPushTokenRegistration() {
-        NotificationCenter.default.post(name: .fieldworkShouldRegisterForRemoteNotifications, object: nil)
+        NotificationCenter.default.post(name: .shellyShouldRegisterForRemoteNotifications, object: nil)
     }
 
     private func activatePairedSessionServices() async {

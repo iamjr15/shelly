@@ -5,15 +5,15 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const root = path.resolve(new URL("..", import.meta.url).pathname);
-const output = path.resolve(root, process.argv[2] ?? "docs/assets/fieldwork-demo-v1.mp4");
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-demo-"));
+const output = path.resolve(root, process.argv[2] ?? "docs/assets/shelly-demo-v1.mp4");
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-demo-"));
 
 const slides = [
   {
     kind: "slate",
     name: "01-title",
     duration: 8,
-    eyebrow: "FIELDWORK V1.0",
+    eyebrow: "SHELLY V1.0",
     title: "Universal terminal handoff",
     lines: [
       "Run any CLI on your laptop.",
@@ -25,19 +25,19 @@ const slides = [
     kind: "asset",
     name: "02-cli",
     duration: 10,
-    source: "docs/assets/fieldwork-cli-flow.svg",
+    source: "docs/assets/shelly-cli-flow.svg",
   },
   {
     kind: "asset",
     name: "03-pairing",
     duration: 10,
-    source: "docs/assets/fieldwork-pairing.svg",
+    source: "docs/assets/shelly-pairing.svg",
   },
   {
     kind: "asset",
     name: "04-mobile",
     duration: 10,
-    source: "docs/assets/fieldwork-mobile-session.svg",
+    source: "docs/assets/shelly-mobile-session.svg",
   },
   {
     kind: "slate",
@@ -46,7 +46,7 @@ const slides = [
     eyebrow: "RAW PTY BYTES",
     title: "No tmux, no SSH keys, no cell-grid protocol",
     lines: [
-      "fieldworkd owns the PTY and streams bytes over length-prefixed frames.",
+      "shellyd owns the PTY and streams bytes over length-prefixed frames.",
       "Warm reconnect replays from the byte ring.",
       "Stale attach uses a synthetic ANSI snapshot from daemon terminal state.",
     ],
@@ -111,7 +111,7 @@ try {
     "-movflags",
     "+faststart",
     "-metadata",
-    "title=Fieldwork v1.0 demo",
+    "title=Shelly v1.0 demo",
     output,
   ]);
 
@@ -145,7 +145,7 @@ function writeSlate(slide) {
   <text x="184" y="262" class="eyebrow">${xml(slide.eyebrow)}</text>
   <text x="184" y="428" class="title">${xml(slide.title)}</text>
   ${lines}
-  <text x="184" y="892" class="meta">fieldwork.dev · npm i -g fieldwork · AGPL-3.0</text>
+  <text x="184" y="892" class="meta">shelly.dev · npm i -g shellykit · AGPL-3.0</text>
 </svg>
 `);
   return file;

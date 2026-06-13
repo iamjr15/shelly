@@ -9,11 +9,6 @@ use crate::session::Session;
 use crate::transport_iroh;
 use anyhow::{Context, Result};
 use dashmap::DashMap;
-use fieldwork_protocol::{
-    CONTRACT_VERSION, Capabilities, ClientId, ClientKind, ClientToServerMsg, ErrorCode,
-    PairingTicket, PushPlatform, ServerToClientMsg, SessionId, decode_bincode, encode_bincode,
-    max_frame_len, normalize_code,
-};
 use interprocess::local_socket::traits::tokio::Listener as _;
 use interprocess::local_socket::{
     GenericFilePath, ListenerOptions,
@@ -21,6 +16,11 @@ use interprocess::local_socket::{
     tokio::{Listener, Stream},
 };
 use serde::{Serialize, de::DeserializeOwned};
+use shelly_protocol::{
+    CONTRACT_VERSION, Capabilities, ClientId, ClientKind, ClientToServerMsg, ErrorCode,
+    PairingTicket, PushPlatform, ServerToClientMsg, SessionId, decode_bincode, encode_bincode,
+    max_frame_len, normalize_code,
+};
 use std::path::Path;
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -56,7 +56,7 @@ pub struct AppState {
     pub(crate) persistence: Option<Arc<Persistence>>,
     pub(crate) pairing: PairingManager,
     pub(crate) push: PushDispatcher,
-    session_list_tx: watch::Sender<Vec<fieldwork_protocol::SessionSummary>>,
+    session_list_tx: watch::Sender<Vec<shelly_protocol::SessionSummary>>,
     iroh_endpoint: StdMutex<Option<IrohEndpointInfo>>,
 }
 
@@ -120,7 +120,7 @@ impl AppState {
         Capabilities::v1(self.push.is_enabled())
     }
 
-    pub(crate) fn summaries(&self) -> Vec<fieldwork_protocol::SessionSummary> {
+    pub(crate) fn summaries(&self) -> Vec<shelly_protocol::SessionSummary> {
         let mut sessions: Vec<_> = self.sessions.iter().map(|entry| entry.summary()).collect();
         sessions.extend(
             self.restored
@@ -134,15 +134,15 @@ impl AppState {
 
     pub(crate) fn subscribe_session_list(
         &self,
-    ) -> watch::Receiver<Vec<fieldwork_protocol::SessionSummary>> {
+    ) -> watch::Receiver<Vec<shelly_protocol::SessionSummary>> {
         self.session_list_tx.subscribe()
     }
 
     pub(crate) fn subscribe_session_list_with_initial(
         &self,
     ) -> (
-        Vec<fieldwork_protocol::SessionSummary>,
-        watch::Receiver<Vec<fieldwork_protocol::SessionSummary>>,
+        Vec<shelly_protocol::SessionSummary>,
+        watch::Receiver<Vec<shelly_protocol::SessionSummary>>,
     ) {
         let mut rx = self.subscribe_session_list();
         let initial = rx.borrow_and_update().clone();
@@ -199,7 +199,7 @@ impl AppState {
             .and_then(|info| info.as_ref().map(|info| info.node_id.clone()))
     }
 
-    pub(crate) fn device_summaries(&self) -> Vec<fieldwork_protocol::DeviceSummary> {
+    pub(crate) fn device_summaries(&self) -> Vec<shelly_protocol::DeviceSummary> {
         let mut devices: Vec<_> = self.devices.iter().map(|entry| entry.summary()).collect();
         devices.sort_by_key(|device| device.paired_at);
         devices
@@ -303,7 +303,7 @@ pub async fn serve(config: Config) -> Result<()> {
     let listener: Listener = ListenerOptions::new()
         .name(name)
         .create_tokio()
-        .context("bind fieldwork control socket")?;
+        .context("bind shelly control socket")?;
     set_control_socket_permissions(&socket_path)?;
 
     {
@@ -314,7 +314,7 @@ pub async fn serve(config: Config) -> Result<()> {
             }
         });
     }
-    info!(path = %socket_path.display(), "fieldworkd listening");
+    info!(path = %socket_path.display(), "shellyd listening");
 
     loop {
         let conn = listener
@@ -924,7 +924,7 @@ fn spawn_session_list_forwarder(state: Arc<AppState>, session: Arc<Session>) {
 
 fn resolve_new_session_name(
     requested: String,
-    existing: &[fieldwork_protocol::SessionSummary],
+    existing: &[shelly_protocol::SessionSummary],
 ) -> Result<String> {
     let name = requested.trim().to_string();
     if name.chars().any(char::is_control) {
@@ -944,7 +944,7 @@ fn resolve_new_session_name(
     Ok(name)
 }
 
-fn auto_session_name(existing: &[fieldwork_protocol::SessionSummary]) -> String {
+fn auto_session_name(existing: &[shelly_protocol::SessionSummary]) -> String {
     let start = auto_name_start_index();
     for offset in 0..AUTO_SESSION_NAMES.len() {
         let name = AUTO_SESSION_NAMES[(start + offset) % AUTO_SESSION_NAMES.len()];
@@ -1038,7 +1038,7 @@ where
 mod tests {
     use super::*;
     use crate::push::PushCommand;
-    use fieldwork_protocol::{AgentSource, AgentState, ClientSize, SessionSummary};
+    use shelly_protocol::{AgentSource, AgentState, ClientSize, SessionSummary};
     use std::collections::HashMap;
     use tokio::time::timeout;
 

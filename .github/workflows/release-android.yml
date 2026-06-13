@@ -20,21 +20,21 @@ jobs:
           ANDROID_GOOGLE_SERVICES_JSON: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PROPERTIES: ${{ secrets.ANDROID_KEYSTORE_PROPERTIES }}
-          FIELDWORK_RELAY_CONTROL_URL: ${{ secrets.FIELDWORK_RELAY_CONTROL_URL }}
+          SHELLY_RELAY_CONTROL_URL: ${{ secrets.SHELLY_RELAY_CONTROL_URL }}
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           if [ -z "$ANDROID_GOOGLE_SERVICES_JSON" ] || \
              [ -z "$ANDROID_KEYSTORE_BASE64" ] || \
              [ -z "$ANDROID_KEYSTORE_PROPERTIES" ] || \
-             [ -z "$FIELDWORK_RELAY_CONTROL_URL" ] || \
+             [ -z "$SHELLY_RELAY_CONTROL_URL" ] || \
              [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
             echo "Firebase, Android signing, relay control URL, and Play upload secrets are required before building the Android release."
             exit 1
           fi
-          case "$FIELDWORK_RELAY_CONTROL_URL" in
+          case "$SHELLY_RELAY_CONTROL_URL" in
             https://*) ;;
             *)
-              echo "FIELDWORK_RELAY_CONTROL_URL must be an https:// relay control endpoint for Android typed-code pairing."
+              echo "SHELLY_RELAY_CONTROL_URL must be an https:// relay control endpoint for Android typed-code pairing."
               exit 1
               ;;
           esac
@@ -77,13 +77,13 @@ jobs:
           chmod 600 apps/android/app/release.keystore apps/android/keystore.properties
       - name: Assemble release AAB
         env:
-          FIELDWORK_RELAY_CONTROL_URL: ${{ secrets.FIELDWORK_RELAY_CONTROL_URL }}
+          SHELLY_RELAY_CONTROL_URL: ${{ secrets.SHELLY_RELAY_CONTROL_URL }}
         run: apps/android/gradlew --no-daemon bundleRelease
       - name: Verify release AAB signature
         run: |
           set -euo pipefail
-          jarsigner -verify -certs apps/android/app/build/outputs/bundle/release/app-release.aab | tee /tmp/fieldwork-aab-jarsigner.txt
-          grep -q "jar verified" /tmp/fieldwork-aab-jarsigner.txt
+          jarsigner -verify -certs apps/android/app/build/outputs/bundle/release/app-release.aab | tee /tmp/shelly-aab-jarsigner.txt
+          grep -q "jar verified" /tmp/shelly-aab-jarsigner.txt
       - name: Verify Play upload credentials
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
@@ -98,7 +98,7 @@ jobs:
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1
         with:
           serviceAccountJsonPlainText: ${{ env.PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: app.fieldwork.android
+          packageName: app.shelly.android
           releaseFiles: apps/android/app/build/outputs/bundle/release/app-release.aab
           track: internal
       - name: Clean Android release secrets

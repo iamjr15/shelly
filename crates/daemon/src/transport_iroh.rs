@@ -3,30 +3,30 @@ use crate::ipc::{AppState, IrohEndpointInfo};
 use crate::persistence::StoredDevice;
 use anyhow::{Context, Result, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
-use fieldwork_protocol::{
-    CONTRACT_VERSION, ClientId, ClientKind, ClientToServerMsg, ErrorCode, ServerToClientMsg,
-    SessionId, max_frame_len, normalize_code,
-};
 use iroh::endpoint::{Connection, RecvStream, SendStream, presets};
 use iroh::{Endpoint, RelayMode, RelayUrl, SecretKey};
 use serde::{Serialize, de::DeserializeOwned};
+use shelly_protocol::{
+    CONTRACT_VERSION, ClientId, ClientKind, ClientToServerMsg, ErrorCode, ServerToClientMsg,
+    SessionId, max_frame_len, normalize_code,
+};
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::time::{Duration, timeout};
 use tracing::{debug, error, info, warn};
 
-pub(crate) const FIELDWORK_ALPN: &[u8] = b"fieldwork/1";
+pub(crate) const SHELLY_ALPN: &[u8] = b"shelly/1";
 
-const SERVICE: &str = "app.fieldwork";
+const SERVICE: &str = "app.shelly";
 const IROH_SECRET_ACCOUNT: &str = "iroh-secret-key-v1";
-const IROH_SECRET_KEY_ENV: &str = "FIELDWORK_IROH_SECRET_KEY_B64";
+const IROH_SECRET_KEY_ENV: &str = "SHELLY_IROH_SECRET_KEY_B64";
 
 pub(crate) async fn serve(state: Arc<AppState>) -> Result<()> {
     let secret_key = load_or_create_secret_key().context("load iroh endpoint secret")?;
     let mut builder = Endpoint::builder(presets::N0)
         .secret_key(secret_key)
-        .alpns(vec![FIELDWORK_ALPN.to_vec()]);
+        .alpns(vec![SHELLY_ALPN.to_vec()]);
 
     if let Some(relay_url) = configured_relay_url()? {
         builder = builder.relay_mode(RelayMode::custom([relay_url]));
@@ -555,7 +555,7 @@ mod peer_identity_tests {
     use super::{
         forbidden_iroh_operation_message, iroh_client_kind_error, pairing_peer_identity_error,
     };
-    use fieldwork_protocol::{ClientKind, ErrorCode, ServerToClientMsg};
+    use shelly_protocol::{ClientKind, ErrorCode, ServerToClientMsg};
 
     #[test]
     fn pairing_peer_identity_match_is_allowed() {
@@ -661,16 +661,14 @@ where
 }
 
 fn configured_relay_url() -> Result<Option<RelayUrl>> {
-    let Some(value) = std::env::var_os("FIELDWORK_IROH_RELAY_URL") else {
+    let Some(value) = std::env::var_os("SHELLY_IROH_RELAY_URL") else {
         return Ok(None);
     };
     let value = value.to_string_lossy();
     if value.trim().is_empty() {
         return Ok(None);
     }
-    Ok(Some(
-        value.parse().context("parse FIELDWORK_IROH_RELAY_URL")?,
-    ))
+    Ok(Some(value.parse().context("parse SHELLY_IROH_RELAY_URL")?))
 }
 
 fn load_or_create_secret_key() -> Result<SecretKey> {
@@ -722,7 +720,7 @@ fn secret_key_from_env() -> Result<Option<SecretKey>> {
 mod tests {
     use super::{IROH_SECRET_KEY_ENV, read_msg_from, secret_key_from_env, write_msg_to};
     use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
-    use fieldwork_protocol::{ServerToClientMsg, max_frame_len};
+    use shelly_protocol::{ServerToClientMsg, max_frame_len};
     use std::ffi::OsString;
     use std::sync::Mutex;
     use tokio::io::{AsyncWriteExt as _, duplex};
@@ -775,7 +773,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("FIELDWORK_IROH_SECRET_KEY_B64 must decode to 32 bytes")
+                .contains("SHELLY_IROH_SECRET_KEY_B64 must decode to 32 bytes")
         );
     }
 

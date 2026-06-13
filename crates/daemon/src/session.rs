@@ -4,11 +4,11 @@ use crate::ring::PtyRingBuffer;
 use crate::state_infer::{self, CommandKind};
 use crate::terminal_model::{PtyResponseWriter, TerminalModel};
 use anyhow::{Context, Result, anyhow, bail};
-use fieldwork_protocol::{
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use shelly_protocol::{
     AgentSource, AgentState, ClientId, ClientSize, ServerToClientMsg, SessionId, SessionSummary,
     now_ms,
 };
-use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -79,7 +79,7 @@ impl Session {
         builder.cwd(&cwd);
         builder.env("TERM", "xterm-256color");
         builder.env("COLORTERM", "truecolor");
-        builder.env("FIELDWORK_SESSION_ID", id.to_string());
+        builder.env("SHELLY_SESSION_ID", id.to_string());
         for (key, value) in env {
             builder.env(key, value);
         }
@@ -301,7 +301,7 @@ impl Session {
 
     fn start_reader(session: Arc<Self>, mut reader: Box<dyn Read + Send>) -> Result<()> {
         std::thread::Builder::new()
-            .name(format!("fieldwork-pty-{}", session.id))
+            .name(format!("shelly-pty-{}", session.id))
             .spawn(move || {
                 let mut buf = [0_u8; 8192];
                 loop {
@@ -344,7 +344,7 @@ impl Session {
 
     fn start_idle_loop(session: Arc<Self>) -> Result<()> {
         std::thread::Builder::new()
-            .name(format!("fieldwork-idle-{}", session.id))
+            .name(format!("shelly-idle-{}", session.id))
             .spawn(move || {
                 loop {
                     std::thread::sleep(Duration::from_millis(500));
@@ -376,7 +376,7 @@ impl Session {
         }
 
         std::thread::Builder::new()
-            .name(format!("fieldwork-persist-{}", session.id))
+            .name(format!("shelly-persist-{}", session.id))
             .spawn(move || {
                 loop {
                     std::thread::sleep(Duration::from_secs(30));
@@ -394,7 +394,7 @@ impl Session {
 
     fn start_resize_loop(session: Arc<Self>, rx: mpsc::Receiver<()>) -> Result<()> {
         std::thread::Builder::new()
-            .name(format!("fieldwork-resize-{}", session.id))
+            .name(format!("shelly-resize-{}", session.id))
             .spawn(move || {
                 loop {
                     match rx.recv_timeout(Duration::from_millis(500)) {
@@ -581,7 +581,7 @@ fn min_client_size(sizes: impl IntoIterator<Item = ClientSize>) -> Option<Client
 #[cfg(test)]
 mod handoff_tests {
     use super::Session;
-    use fieldwork_protocol::{AgentSource, AgentState, ClientId, ClientSize, ServerToClientMsg};
+    use shelly_protocol::{AgentSource, AgentState, ClientId, ClientSize, ServerToClientMsg};
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -598,7 +598,7 @@ mod handoff_tests {
             vec![
                 "sh".to_string(),
                 "-c".to_string(),
-                "while IFS= read -r line; do printf 'fieldwork:%s\\n' \"$line\"; done".to_string(),
+                "while IFS= read -r line; do printf 'shelly:%s\\n' \"$line\"; done".to_string(),
             ],
             cwd.path().to_path_buf(),
             HashMap::new(),
@@ -628,8 +628,8 @@ mod handoff_tests {
             .write_input(b"shared-input\n")
             .expect("write input through attached session");
 
-        let first_output = collect_until_marker(&mut first_rx, b"fieldwork:shared-input").await;
-        let second_output = collect_until_marker(&mut second_rx, b"fieldwork:shared-input").await;
+        let first_output = collect_until_marker(&mut first_rx, b"shelly:shared-input").await;
+        let second_output = collect_until_marker(&mut second_rx, b"shelly:shared-input").await;
         assert!(
             first_output
                 .windows(b"shared-input".len())
@@ -683,7 +683,7 @@ mod handoff_tests {
     }
 
     #[tokio::test]
-    async fn generic_fieldwork_session_accepts_local_agent_hook_state() {
+    async fn generic_shelly_session_accepts_local_agent_hook_state() {
         let cwd = tempfile::tempdir().expect("tempdir");
         let command = write_sleeping_stub(cwd.path(), "bash");
         let size = ClientSize { cols: 80, rows: 24 };
@@ -900,7 +900,7 @@ mod handoff_tests {
 #[cfg(test)]
 mod viewport_tests {
     use super::min_client_size;
-    use fieldwork_protocol::ClientSize;
+    use shelly_protocol::ClientSize;
 
     #[test]
     fn chooses_smallest_attached_viewport() {
@@ -944,7 +944,7 @@ mod viewport_tests {
 mod snapshot_tests {
     use super::Session;
     use crate::terminal_model::TerminalModel;
-    use fieldwork_protocol::ClientSize;
+    use shelly_protocol::ClientSize;
     use std::collections::HashMap;
     use std::process::{Command, Stdio};
     use std::sync::{Arc, Mutex, MutexGuard};

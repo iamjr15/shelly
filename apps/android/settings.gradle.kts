@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "FieldworkAndroid"
+rootProject.name = "ShellyAndroid"
 include(":app")

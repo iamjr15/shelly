@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chacha20poly1305::aead::{OsRng, rand_core::RngCore};
-use fieldwork_protocol::{CODE_ALPHABET, CODE_LEN, ClientId, now_ms};
+use shelly_protocol::{CODE_ALPHABET, CODE_LEN, ClientId, now_ms};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use tokio::sync::{mpsc, oneshot};
@@ -176,7 +176,7 @@ fn generate_code() -> String {
 #[cfg(test)]
 mod tests {
     use super::{MAX_CODE_ATTEMPTS, PAIR_TOKEN_TTL_MS, PairingManager};
-    use fieldwork_protocol::{CODE_ALPHABET, CODE_LEN, is_valid_code, now_ms};
+    use shelly_protocol::{CODE_ALPHABET, CODE_LEN, is_valid_code, now_ms};
     use std::sync::Arc;
 
     #[test]

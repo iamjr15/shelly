@@ -15,14 +15,14 @@ const platforms = [
   "linux-x64",
 ];
 
-const backupRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-native-package-backup-"));
-const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-native-package-fixture-"));
+const backupRoot = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-native-package-backup-"));
+const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-native-package-fixture-"));
 
 try {
   backupNativeBins();
   createFixtureArtifacts();
   run(process.execPath, ["scripts/prepare-npm-artifacts.mjs"], {
-    env: { ...process.env, FIELDWORK_ARTIFACT_DIR: fixtureRoot },
+    env: { ...process.env, SHELLY_ARTIFACT_DIR: fixtureRoot },
   });
 
   for (const platform of platforms) {
@@ -38,11 +38,11 @@ try {
     "must be a native Mach-O or ELF binary before publish",
   );
 
-  const missingPlatformRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-native-package-missing-"));
+  const missingPlatformRoot = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-native-package-missing-"));
   try {
     createFixtureArtifacts(missingPlatformRoot, ["darwin-arm64"]);
     expectFailure(process.execPath, ["scripts/prepare-npm-artifacts.mjs"], {
-      env: { ...process.env, FIELDWORK_ARTIFACT_DIR: missingPlatformRoot },
+      env: { ...process.env, SHELLY_ARTIFACT_DIR: missingPlatformRoot },
     }, "missing extracted artifact directory for darwin-x64");
   } finally {
     fs.rmSync(missingPlatformRoot, { recursive: true, force: true });
@@ -83,10 +83,10 @@ function restoreNativeBins() {
 
 function createFixtureArtifacts(rootDir = fixtureRoot, platformNames = platforms) {
   for (const platform of platformNames) {
-    const artifactDir = path.join(rootDir, `fieldwork-${platform}`);
+    const artifactDir = path.join(rootDir, `shelly-${platform}`);
     fs.mkdirSync(artifactDir, { recursive: true });
-    writeExecutable(path.join(artifactDir, "fieldwork"), `#!/bin/sh\necho fieldwork-${platform}\n`);
-    writeExecutable(path.join(artifactDir, "fieldworkd"), `#!/bin/sh\necho fieldworkd-${platform}\n`);
+    writeExecutable(path.join(artifactDir, "shelly"), `#!/bin/sh\necho shelly-${platform}\n`);
+    writeExecutable(path.join(artifactDir, "shellyd"), `#!/bin/sh\necho shellyd-${platform}\n`);
   }
 }
 
@@ -98,7 +98,7 @@ function publishBlockedEnv() {
   return {
     ...process.env,
     HOME: home,
-    NODE_AUTH_TOKEN: "fieldwork-test-token",
+    NODE_AUTH_TOKEN: "shelly-test-token",
     NPM_CONFIG_REGISTRY: "http://127.0.0.1:9",
     NPM_CONFIG_USERCONFIG: userconfig,
   };
@@ -109,8 +109,8 @@ function assertNativePackagePack(platform) {
   const result = run(npmBin, ["pack", packageDir, "--dry-run", "--json"]);
   const packs = JSON.parse(result.stdout);
   const files = filesByPath(packs);
-  assertExecutablePackFile(files, "bin/fieldwork", `${platform} pack`);
-  assertExecutablePackFile(files, "bin/fieldworkd", `${platform} pack`);
+  assertExecutablePackFile(files, "bin/shelly", `${platform} pack`);
+  assertExecutablePackFile(files, "bin/shellyd", `${platform} pack`);
   assert(files.has("LICENSE"), `${platform} pack is missing LICENSE`);
   assert(files.has("NOTICE"), `${platform} pack is missing NOTICE`);
 }
@@ -120,8 +120,8 @@ function assertMetaPackagePack() {
   const result = run(npmBin, ["pack", packageDir, "--dry-run", "--json"]);
   const packs = JSON.parse(result.stdout);
   const files = filesByPath(packs);
-  assertExecutablePackFile(files, "bin/fieldwork", "meta pack");
-  assertExecutablePackFile(files, "bin/fieldworkd", "meta pack");
+  assertExecutablePackFile(files, "bin/shelly", "meta pack");
+  assertExecutablePackFile(files, "bin/shellyd", "meta pack");
   assert(files.has("install.js"), "meta pack is missing install.js");
   assert(files.has("README.md"), "meta pack is missing README.md");
   assert(files.has("LICENSE"), "meta pack is missing LICENSE");

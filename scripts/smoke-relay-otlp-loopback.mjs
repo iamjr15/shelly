@@ -6,14 +6,14 @@ import os from "node:os";
 import path from "node:path";
 
 const repo = path.resolve(new URL("..", import.meta.url).pathname);
-const traceTimeoutMs = Number.parseInt(process.env.FIELDWORK_OTLP_SMOKE_TIMEOUT_MS ?? "15000", 10);
+const traceTimeoutMs = Number.parseInt(process.env.SHELLY_OTLP_SMOKE_TIMEOUT_MS ?? "15000", 10);
 const sensitiveSentinels = [
-  "fieldwork-secret-terminal-bytes",
-  "fieldwork-secret-session-hash",
-  "fieldwork-secret-daemon-node",
-  "fieldwork-secret-push-token",
-  "fieldwork-secret-command",
-  "fieldwork-secret-path",
+  "shelly-secret-terminal-bytes",
+  "shelly-secret-session-hash",
+  "shelly-secret-daemon-node",
+  "shelly-secret-push-token",
+  "shelly-secret-command",
+  "shelly-secret-path",
 ];
 
 const collector = await startCollector();
@@ -23,7 +23,7 @@ try {
   const relayPort = await freePort();
   const relayUrl = `http://127.0.0.1:${relayPort}`;
   const binary = await ensureRelayBinary();
-  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "fieldwork-relay-otlp-"));
+  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-relay-otlp-"));
 
   relay = spawn(binary, [], {
     cwd: repo,
@@ -33,12 +33,12 @@ try {
       XDG_RUNTIME_DIR: tempHome,
       XDG_CONFIG_HOME: tempHome,
       XDG_STATE_HOME: tempHome,
-      FIELDWORK_RELAY_ADDR: `127.0.0.1:${relayPort}`,
-      FIELDWORK_RELAY_METRICS_ADDR: "off",
-      FIELDWORK_RELAY_DB_PATH: "off",
-      FIELDWORK_RELAY_OTLP_ENDPOINT: collector.url,
-      FIELDWORK_RELAY_OTLP_SAMPLE_RATE: "1.0",
-      RUST_LOG: "fieldwork_relay=info",
+      SHELLY_RELAY_ADDR: `127.0.0.1:${relayPort}`,
+      SHELLY_RELAY_METRICS_ADDR: "off",
+      SHELLY_RELAY_DB_PATH: "off",
+      SHELLY_RELAY_OTLP_ENDPOINT: collector.url,
+      SHELLY_RELAY_OTLP_SAMPLE_RATE: "1.0",
+      RUST_LOG: "shelly_relay=info",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -59,7 +59,7 @@ try {
   await fetch(`${relayUrl}/v1/version?${sensitiveQuery}`, {
     headers: {
       "user-agent": sensitiveSentinels[0],
-      "x-fieldwork-test": sensitiveSentinels[1],
+      "x-shelly-test": sensitiveSentinels[1],
     },
   });
 
@@ -76,11 +76,11 @@ try {
 }
 
 async function ensureRelayBinary() {
-  const binaryName = process.platform === "win32" ? "fieldwork-relay.exe" : "fieldwork-relay";
-  const configuredBinary = process.env.FIELDWORK_RELAY_BINARY;
+  const binaryName = process.platform === "win32" ? "shelly-relay.exe" : "shelly-relay";
+  const configuredBinary = process.env.SHELLY_RELAY_BINARY;
   if (configuredBinary) {
     if (!fs.existsSync(configuredBinary)) {
-      throw new Error(`FIELDWORK_RELAY_BINARY does not exist: ${configuredBinary}`);
+      throw new Error(`SHELLY_RELAY_BINARY does not exist: ${configuredBinary}`);
     }
     return configuredBinary;
   }
@@ -95,12 +95,12 @@ async function ensureRelayBinary() {
     return debugBinary;
   }
 
-  const result = spawnSync("cargo", ["build", "-p", "fieldwork-relay"], {
+  const result = spawnSync("cargo", ["build", "-p", "shelly-relay"], {
     cwd: repo,
     stdio: "inherit",
   });
   if (result.status !== 0) {
-    throw new Error("cargo build -p fieldwork-relay failed");
+    throw new Error("cargo build -p shelly-relay failed");
   }
   if (!fs.existsSync(debugBinary)) {
     throw new Error(`expected relay binary missing after build: ${debugBinary}`);
@@ -114,7 +114,7 @@ function assertTrace(trace) {
   }
 
   const bodyText = trace.body.toString("latin1");
-  for (const expected of ["fieldwork-relay", "relay.version", "/v1/version"]) {
+  for (const expected of ["shelly-relay", "relay.version", "/v1/version"]) {
     if (!bodyText.includes(expected)) {
       throw new Error(`OTLP trace missing expected field: ${expected}`);
     }
@@ -132,7 +132,7 @@ async function waitForRelay(baseUrl, output) {
   let lastError;
   while (Date.now() < deadline) {
     if (relay?.exitCode !== null) {
-      throw new Error(`fieldwork-relay exited before becoming ready:\n${output()}`);
+      throw new Error(`shelly-relay exited before becoming ready:\n${output()}`);
     }
     try {
       const response = await fetch(`${baseUrl}/v1/version`);
@@ -145,7 +145,7 @@ async function waitForRelay(baseUrl, output) {
     }
     await sleep(150);
   }
-  throw new Error(`fieldwork-relay did not become ready: ${lastError?.message ?? "unknown"}\n${output()}`);
+  throw new Error(`shelly-relay did not become ready: ${lastError?.message ?? "unknown"}\n${output()}`);
 }
 
 async function startCollector() {

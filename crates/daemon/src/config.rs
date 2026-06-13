@@ -50,20 +50,20 @@ impl Config {
 
 fn apply_env_overrides(config: &mut Config) -> Result<()> {
     let env_config: EnvConfig = Figment::new()
-        .merge(Env::prefixed("FIELDWORK_"))
+        .merge(Env::prefixed("SHELLY_"))
         .extract()
         .context("load daemon config from environment")?;
     if let Some(log_dir) = env_config.log_dir {
         config.log_dir = Some(log_dir);
     }
 
-    if let Some(value) = env_var("FIELDWORK_TELEMETRY_OPT_IN") {
+    if let Some(value) = env_var("SHELLY_TELEMETRY_OPT_IN") {
         config.telemetry.opt_in = parse_bool(&value)?;
     }
 
-    if let Some(value) = env_var("FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED") {
+    if let Some(value) = env_var("SHELLY_SCROLLBACK_ENCRYPTION_ENABLED") {
         config.scrollback_encryption.enabled =
-            parse_bool_with_name(&value, "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED")?;
+            parse_bool_with_name(&value, "SHELLY_SCROLLBACK_ENCRYPTION_ENABLED")?;
     }
 
     Ok(())
@@ -86,7 +86,7 @@ fn env_var(name: &str) -> Option<String> {
 }
 
 fn parse_bool(value: &str) -> Result<bool> {
-    parse_bool_with_name(value, "FIELDWORK_TELEMETRY_OPT_IN")
+    parse_bool_with_name(value, "SHELLY_TELEMETRY_OPT_IN")
 }
 
 fn parse_bool_with_name(value: &str, name: &str) -> Result<bool> {
@@ -110,17 +110,17 @@ fn default_config_path() -> PathBuf {
         return home
             .join("Library")
             .join("Application Support")
-            .join("app.fieldwork")
+            .join("app.shelly")
             .join("config.toml");
     }
 
     if let Some(config_home) = std::env::var_os("XDG_CONFIG_HOME") {
         return PathBuf::from(config_home)
-            .join("fieldwork")
+            .join("shelly")
             .join("config.toml");
     }
 
-    home.join(".config").join("fieldwork").join("config.toml")
+    home.join(".config").join("shelly").join("config.toml")
 }
 
 #[cfg(test)]
@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn env_var_treats_empty_and_whitespace_values_as_unset() {
-        let name = "FIELDWORK_DAEMON_TEST_EMPTY_ENV";
+        let name = "SHELLY_DAEMON_TEST_EMPTY_ENV";
         unsafe {
             std::env::set_var(name, "");
         }
@@ -160,10 +160,10 @@ mod tests {
             assert!(!parse_bool_with_name(value, "TEST").unwrap());
         }
 
-        let error = parse_bool_with_name("maybe", "FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED")
+        let error = parse_bool_with_name("maybe", "SHELLY_SCROLLBACK_ENCRYPTION_ENABLED")
             .unwrap_err()
             .to_string();
-        assert!(error.contains("FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED"));
+        assert!(error.contains("SHELLY_SCROLLBACK_ENCRYPTION_ENABLED"));
         assert!(error.contains("maybe"));
     }
 
@@ -174,7 +174,7 @@ mod tests {
         std::fs::write(
             &path,
             r#"
-log_dir = "/tmp/fieldwork-logs"
+log_dir = "/tmp/shelly-logs"
 
 [telemetry]
 opt_in = true
@@ -189,7 +189,7 @@ enabled = false
 
         assert_eq!(
             config.log_dir.unwrap(),
-            std::path::PathBuf::from("/tmp/fieldwork-logs")
+            std::path::PathBuf::from("/tmp/shelly-logs")
         );
         assert!(config.telemetry.opt_in);
         assert!(!config.scrollback_encryption.enabled);

@@ -1,7 +1,7 @@
 <resources>
-    <string name="app_name">Fieldwork</string>
+    <string name="app_name">Shelly</string>
     <string name="notification_channel_agent_state">Agent state</string>
-    <string name="notification_channel_agent_state_description">Generic Fieldwork session state alerts</string>
-    <string name="notification_awaiting_input_title">Fieldwork</string>
+    <string name="notification_channel_agent_state_description">Generic Shelly session state alerts</string>
+    <string name="notification_awaiting_input_title">Shelly</string>
     <string name="notification_awaiting_input_body">A session is waiting for you.</string>
 </resources>

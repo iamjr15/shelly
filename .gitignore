@@ -8,8 +8,8 @@
 /site/dist/
 /site/.astro/
 /artifacts/
-/packages/cli-*/bin/fieldwork
-/packages/cli-*/bin/fieldworkd
+/packages/cli-*/bin/shelly
+/packages/cli-*/bin/shellyd
 .npmrc
 .env
 .env.local

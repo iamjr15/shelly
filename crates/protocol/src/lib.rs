@@ -1,5 +1,5 @@
 #![deny(missing_docs)]
-//! Versioned wire protocol shared by the Fieldwork daemon, CLI, relay-adjacent
+//! Versioned wire protocol shared by the Shelly daemon, CLI, relay-adjacent
 //! clients, and native mobile bindings.
 //!
 //! Local Unix-socket IPC uses bincode frames. Remote iroh/mobile streams use the
@@ -139,7 +139,7 @@ mod tests {
         };
 
         let encoded = ticket.encode().unwrap();
-        assert!(encoded.starts_with("fw1"));
+        assert!(encoded.starts_with("sh1"));
         assert_eq!(PairingTicket::decode(&encoded).unwrap(), ticket);
         // The base32 body decodes case-insensitively.
         assert_eq!(
@@ -250,7 +250,7 @@ mod tests {
         let session_id = fixed_session_id();
         let client_id = fixed_client_id();
         let mut env = HashMap::new();
-        env.insert("FIELDWORK_TEST".to_string(), "1".to_string());
+        env.insert("SHELLY_TEST".to_string(), "1".to_string());
         vec![
             wire_case(
                 "hello",
@@ -266,7 +266,7 @@ mod tests {
                 ClientToServerMsg::CreateSession {
                     name: "demo".to_string(),
                     command: vec!["bash".to_string(), "-lc".to_string(), "echo hi".to_string()],
-                    cwd: PathBuf::from("/tmp/fieldwork"),
+                    cwd: PathBuf::from("/tmp/shelly"),
                     env,
                     size: ClientSize {
                         cols: 100,
@@ -500,7 +500,7 @@ mod tests {
             id,
             name: "demo".to_string(),
             command: vec!["bash".to_string()],
-            cwd: PathBuf::from("/tmp/fieldwork"),
+            cwd: PathBuf::from("/tmp/shelly"),
             created_at: 1_700_000_000_000,
             last_activity: 1_700_000_000_010,
             state: AgentState::Working,

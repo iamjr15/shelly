@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Shelly mobile sessions and terminal attach</title>
+  <desc id="desc">Two phone screenshots showing the session dashboard and a live attached terminal.</desc>
+  <rect width="1280" height="720" fill="#f2f4f7"/>
+  <rect x="216" y="48" width="280" height="624" rx="42" fill="#11161a"/>
+  <rect x="236" y="82" width="240" height="556" rx="30" fill="#ffffff"/>
+  <text x="264" y="138" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="24" font-weight="700" fill="#11161a">Sessions</text>
+  <rect x="260" y="170" width="192" height="92" rx="14" fill="#eaf4ef"/>
+  <text x="278" y="204" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#14231c">claude-api</text>
+  <text x="278" y="232" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" fill="#1c7c5b">Working</text>
+  <text x="278" y="250" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="12" fill="#53615c">npm test -- --watch</text>
+  <rect x="260" y="282" width="192" height="92" rx="14" fill="#f0f1f3"/>
+  <text x="278" y="316" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#14231c">bash</text>
+  <text x="278" y="344" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" fill="#68727d">Idle</text>
+  <text x="278" y="362" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="12" fill="#68727d">~/projects/shelly</text>
+  <rect x="260" y="394" width="192" height="92" rx="14" fill="#fff4dd"/>
+  <text x="278" y="428" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#14231c">codex</text>
+  <text x="278" y="456" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" fill="#a86200">Awaiting input</text>
+  <text x="278" y="474" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="12" fill="#68727d">A session is waiting.</text>
+  <rect x="784" y="48" width="280" height="624" rx="42" fill="#11161a"/>
+  <rect x="804" y="82" width="240" height="556" rx="30" fill="#101418"/>
+  <text x="834" y="132" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="19" font-weight="700" fill="#ffffff">claude-api</text>
+  <text x="834" y="160" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="13" fill="#87d787">live attach</text>
+  <g font-family="Menlo, Consolas, monospace" font-size="13">
+    <text x="830" y="214" fill="#9fb4c8">$ cargo nextest run</text>
+    <text x="830" y="240" fill="#9fb4c8">running 88 tests</text>
+    <text x="830" y="266" fill="#87d787">PASS protocol round trips</text>
+    <text x="830" y="292" fill="#87d787">PASS pty replay</text>
+    <text x="830" y="318" fill="#87d787">PASS relay payload privacy</text>
+    <text x="830" y="370" fill="#d6e0ea">Claude is waiting for input.</text>
+    <text x="830" y="396" fill="#d6e0ea">Continue with release notes?</text>
+    <text x="830" y="448" fill="#87d787">$ y</text>
+  </g>
+  <rect x="824" y="546" width="44" height="38" rx="10" fill="#26323a"/>
+  <text x="846" y="570" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="15" fill="#ffffff">Esc</text>
+  <rect x="878" y="546" width="44" height="38" rx="10" fill="#26323a"/>
+  <text x="900" y="570" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="15" fill="#ffffff">Ctrl</text>
+  <rect x="932" y="546" width="44" height="38" rx="10" fill="#26323a"/>
+  <text x="954" y="570" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="15" fill="#ffffff">Tab</text>
+  <rect x="986" y="546" width="38" height="38" rx="10" fill="#26323a"/>
+  <text x="1005" y="570" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="15" fill="#ffffff">|</text>
+  <path d="M566 334 H704" stroke="#56636f" stroke-width="8" stroke-linecap="round"/>
+  <path d="M690 306 L718 334 L690 362" fill="none" stroke="#56636f" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

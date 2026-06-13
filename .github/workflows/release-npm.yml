@@ -57,7 +57,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "NPM_TOKEN is required to publish Fieldwork npm packages."
+            echo "NPM_TOKEN is required to publish Shelly npm packages."
             exit 1
           fi
 
@@ -68,9 +68,9 @@ jobs:
         run: |
           mkdir -p artifacts
           gh release download "${{ inputs.tag }}" \
-            --pattern 'fieldwork-*.tar.gz' \
-            --pattern 'fieldwork-*.tar.gz.sha256' \
-            --pattern 'fieldwork-*.tar.gz.bundle' \
+            --pattern 'shelly-*.tar.gz' \
+            --pattern 'shelly-*.tar.gz.sha256' \
+            --pattern 'shelly-*.tar.gz.bundle' \
             --dir artifacts
 
       - name: Download Rust workflow artifacts
@@ -80,7 +80,7 @@ jobs:
         run: |
           mkdir -p artifacts
           gh run download "${{ github.event.workflow_run.id }}" \
-            --pattern 'fieldwork-*' \
+            --pattern 'shelly-*' \
             --dir artifacts
 
       - name: Verify release artifact checksums
@@ -95,11 +95,12 @@ jobs:
       - name: Verify cosign attestations
         run: |
           set -euo pipefail
+          repo_regex="$(printf '%s' "$GITHUB_REPOSITORY" | sed -e 's#[][.^$*+?{}()|\\]#\\&#g')"
           while IFS= read -r archive; do
             cosign verify-blob-attestation \
               --bundle "${archive}.bundle" \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-              --certificate-identity-regexp '^https://github\.com/fieldwork-app/fieldwork/\.github/workflows/release-rust\.yml@' \
+              --certificate-identity-regexp "^https://github\.com/${repo_regex}/\.github/workflows/release-rust\.yml@" \
               --type slsaprovenance1 \
               "$archive"
           done < <(find artifacts -name '*.tar.gz')

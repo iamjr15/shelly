@@ -4,7 +4,7 @@ Decision: use `connectbot/termlib` for v1 Android.
 
 Rationale:
 
-- `termlib` is an Apache-2.0 native Jetpack Compose terminal backed by MIT-licensed libvterm, so it consumes the same raw PTY byte stream that Fieldwork transports between daemon and mobile clients.
+- `termlib` is an Apache-2.0 native Jetpack Compose terminal backed by MIT-licensed libvterm, so it consumes the same raw PTY byte stream that Shelly transports between daemon and mobile clients.
 - It supports the v1 rendering needs called out in `PLAN.md`: 256/true color, double-width and combining characters, text selection, scrolling, zoom, and resize.
 - It is published as `org.connectbot:termlib`; the Android app currently pins `0.0.35`.
 - Recent upstream work specifically addressed two v1 risk areas: IME `ACTION_MULTIPLE` input handling and terminal recomposition overhead.
@@ -23,7 +23,7 @@ Local verification status:
   paired through the local relay/daemon, attached to a daemon-owned `bash`
   session named `pretzel`, sent `fw_android_direct_ok` from the Android terminal,
   verified the live PTY bytes through a second paired client, force-stopped and
-  relaunched the app, restored the paired dashboard, and found no Fieldwork
+  relaunched the app, restored the paired dashboard, and found no Shelly
   crash/ANR logcat entries. This was a direct adb spot check, not a repo-owned
   evidence harness.
 - A 2026-05-21 direct adb terminal attach/input refresh on `Medium_Phone_API_36.1`

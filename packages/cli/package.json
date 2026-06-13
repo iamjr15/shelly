@@ -1,27 +1,26 @@
 {
-  "name": "fieldwork",
+  "name": "shellykit",
   "version": "1.0.0",
   "description": "Your terminal sessions, from anywhere.",
   "bin": {
-    "fieldwork": "bin/fieldwork",
-    "fw": "bin/fieldwork",
-    "fieldworkd": "bin/fieldworkd"
+    "shelly": "bin/shelly",
+    "shellyd": "bin/shellyd"
   },
   "scripts": {
     "postinstall": "node install.js"
   },
   "optionalDependencies": {
-    "fieldwork-darwin-arm64": "1.0.0",
-    "fieldwork-darwin-x64": "1.0.0",
-    "fieldwork-linux-arm64": "1.0.0",
-    "fieldwork-linux-x64": "1.0.0"
+    "shellykit-darwin-arm64": "1.0.0",
+    "shellykit-darwin-x64": "1.0.0",
+    "shellykit-linux-arm64": "1.0.0",
+    "shellykit-linux-x64": "1.0.0"
   },
   "engines": {
     "node": ">=18"
   },
   "files": [
-    "bin/fieldwork",
-    "bin/fieldworkd",
+    "bin/shelly",
+    "bin/shellyd",
     "install.js",
     "README.md",
     "LICENSE",
@@ -33,7 +32,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fieldwork-app/fieldwork.git",
+    "url": "git+https://github.com/shelly-app/shelly.git",
     "directory": "packages/cli"
   },
   "keywords": [

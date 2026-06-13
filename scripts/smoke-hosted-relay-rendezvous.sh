@@ -5,11 +5,11 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ "${1:-}" == "--" ]]; then
   shift
 fi
-relay_control_url="${1:-${FIELDWORK_HOSTED_RELAY_CONTROL_URL:-${FIELDWORK_RELAY_CONTROL_URL:-}}}"
+relay_control_url="${1:-${SHELLY_HOSTED_RELAY_CONTROL_URL:-${SHELLY_RELAY_CONTROL_URL:-}}}"
 
 if [[ -z "$relay_control_url" ]]; then
   cat >&2 <<'MSG'
-Set FIELDWORK_HOSTED_RELAY_CONTROL_URL, FIELDWORK_RELAY_CONTROL_URL, or pass the
+Set SHELLY_HOSTED_RELAY_CONTROL_URL, SHELLY_RELAY_CONTROL_URL, or pass the
 relay control URL as the first argument.
 
 Example:
@@ -48,7 +48,7 @@ cleanup() {
     kill "$daemon_pid" 2>/dev/null || true
     wait "$daemon_pid" 2>/dev/null || true
   fi
-  if [[ "$status" -ne 0 || "${FIELDWORK_PRESERVE_HOSTED_RELAY_SMOKE:-0}" == "1" ]]; then
+  if [[ "$status" -ne 0 || "${SHELLY_PRESERVE_HOSTED_RELAY_SMOKE:-0}" == "1" ]]; then
     printf 'hosted relay smoke artifacts preserved: %s\n' "$tmp" >&2
     if [[ "$status" -ne 0 ]]; then
       dump_smoke_logs
@@ -68,10 +68,10 @@ export XDG_CONFIG_HOME="$tmp/config"
 export XDG_STATE_HOME="$tmp/state"
 export CARGO_HOME="$host_cargo_home"
 export RUSTUP_HOME="$host_rustup_home"
-export FIELDWORK_RELAY_CONTROL_URL="$relay_control_url"
-export FIELDWORK_IROH_SECRET_KEY_B64="${FIELDWORK_IROH_SECRET_KEY_B64:-BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU}"
-export FIELDWORK_RELAY_SIGNING_KEY_B64="${FIELDWORK_RELAY_SIGNING_KEY_B64:-BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc}"
-export FIELDWORK_SCROLLBACK_ENCRYPTION_ENABLED=false
+export SHELLY_RELAY_CONTROL_URL="$relay_control_url"
+export SHELLY_IROH_SECRET_KEY_B64="${SHELLY_IROH_SECRET_KEY_B64:-BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU}"
+export SHELLY_RELAY_SIGNING_KEY_B64="${SHELLY_RELAY_SIGNING_KEY_B64:-BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc}"
+export SHELLY_SCROLLBACK_ENCRYPTION_ENABLED=false
 export PATH="$tmp/bin:$PATH"
 
 cat >"$tmp/bin/claude" <<'EOF'
@@ -84,36 +84,36 @@ EOF
 chmod +x "$tmp/bin/claude"
 
 cargo_target_dir="${CARGO_TARGET_DIR:-$repo_root/target}"
-fieldwork_bin_overridden=0
-if [[ -n "${FIELDWORK_BIN:-}" ]]; then
-  fieldwork="$FIELDWORK_BIN"
-  fieldwork_bin_overridden=1
+shelly_bin_overridden=0
+if [[ -n "${SHELLY_BIN:-}" ]]; then
+  shelly="$SHELLY_BIN"
+  shelly_bin_overridden=1
 else
-  fieldwork="$cargo_target_dir/release/fieldwork"
+  shelly="$cargo_target_dir/release/shelly"
 fi
-fieldworkd="${FIELDWORK_DAEMON_BIN:-$cargo_target_dir/release/fieldworkd}"
+shellyd="${SHELLY_DAEMON_BIN:-$cargo_target_dir/release/shellyd}"
 
-if [[ ! -x "$fieldwork" || ! -x "$fieldworkd" ]]; then
-  cargo build -q -p fieldwork-cli -p fieldwork-daemon --features fieldwork-cli/test-client
-  fieldwork="${FIELDWORK_BIN:-$cargo_target_dir/debug/fieldwork}"
-  fieldworkd="${FIELDWORK_DAEMON_BIN:-$cargo_target_dir/debug/fieldworkd}"
+if [[ ! -x "$shelly" || ! -x "$shellyd" ]]; then
+  cargo build -q -p shelly-cli -p shelly-daemon --features shelly-cli/test-client
+  shelly="${SHELLY_BIN:-$cargo_target_dir/debug/shelly}"
+  shellyd="${SHELLY_DAEMON_BIN:-$cargo_target_dir/debug/shellyd}"
 fi
 
-if [[ ! -x "$fieldwork" || ! -x "$fieldworkd" ]]; then
-  echo "fieldwork and fieldworkd binaries are required" >&2
+if [[ ! -x "$shelly" || ! -x "$shellyd" ]]; then
+  echo "shelly and shellyd binaries are required" >&2
   exit 1
 fi
 
-if ! "$fieldwork" pair-test --help >/dev/null 2>&1; then
-  if [[ "$fieldwork_bin_overridden" -eq 1 ]]; then
-    echo "FIELDWORK_BIN must point to a fieldwork binary built with --features fieldwork-cli/test-client for hosted relay smoke" >&2
+if ! "$shelly" pair-test --help >/dev/null 2>&1; then
+  if [[ "$shelly_bin_overridden" -eq 1 ]]; then
+    echo "SHELLY_BIN must point to a shelly binary built with --features shelly-cli/test-client for hosted relay smoke" >&2
     exit 1
   fi
 
-  cargo build -q -p fieldwork-cli --features fieldwork-cli/test-client
-  fieldwork="$cargo_target_dir/debug/fieldwork"
-  if ! "$fieldwork" pair-test --help >/dev/null 2>&1; then
-    echo "debug fieldwork binary does not expose pair-test after building with fieldwork-cli/test-client" >&2
+  cargo build -q -p shelly-cli --features shelly-cli/test-client
+  shelly="$cargo_target_dir/debug/shelly"
+  if ! "$shelly" pair-test --help >/dev/null 2>&1; then
+    echo "debug shelly binary does not expose pair-test after building with shelly-cli/test-client" >&2
     exit 1
   fi
 fi
@@ -130,7 +130,7 @@ if (version.contract_version !== 2) {
 
 wait_for_socket() {
   for _ in $(seq 1 100); do
-    if [[ -S "$XDG_RUNTIME_DIR/fieldwork/control.sock" ]]; then
+    if [[ -S "$XDG_RUNTIME_DIR/shelly/control.sock" ]]; then
       return 0
     fi
     sleep 0.1
@@ -138,10 +138,10 @@ wait_for_socket() {
   return 1
 }
 
-"$fieldworkd" >"$tmp/daemon.log" 2>&1 &
+"$shellyd" >"$tmp/daemon.log" 2>&1 &
 daemon_pid=$!
 if ! wait_for_socket; then
-  echo "fieldworkd did not create its control socket" >&2
+  echo "shellyd did not create its control socket" >&2
   tail -100 "$tmp/daemon.log" >&2 || true
   exit 1
 fi
@@ -165,7 +165,7 @@ capture_pair_code() {
   return 1
 }
 
-"$fieldwork" new --name hosted_relay bash -lc 'printf "HOSTED_RELAY_READY\n"; exec env PS1="$ " bash --noprofile --norc -i' >"$tmp/new-hosted.log" 2>&1
+"$shelly" new --name hosted_relay bash -lc 'printf "HOSTED_RELAY_READY\n"; exec env PS1="$ " bash --noprofile --norc -i' >"$tmp/new-hosted.log" 2>&1
 session_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-hosted.log")"
 if [[ -z "$session_id" ]]; then
   echo "could not read hosted_relay session id" >&2
@@ -175,21 +175,21 @@ fi
 
 mkfifo "$tmp/pair.in"
 exec 3<>"$tmp/pair.in"
-"$fieldwork" pair <"$tmp/pair.in" >"$tmp/pair.log" 2>&1 &
+"$shelly" pair <"$tmp/pair.in" >"$tmp/pair.log" 2>&1 &
 pair_pid=$!
 
 pair_code="$(capture_pair_code "$tmp/pair.log" || true)"
 if [[ -z "$pair_code" ]]; then
-  echo "fieldwork pair did not print a pairing code" >&2
+  echo "shelly pair did not print a pairing code" >&2
   cat "$tmp/pair.log" >&2 || true
   exit 1
 fi
 
 # Relay publish is asynchronous; give the hosted control plane a short window
 # before the one-shot pair-test resolve.
-sleep "${FIELDWORK_HOSTED_RELAY_PUBLISH_WAIT_SECONDS:-5}"
+sleep "${SHELLY_HOSTED_RELAY_PUBLISH_WAIT_SECONDS:-5}"
 
-"$fieldwork" pair-test \
+"$shelly" pair-test \
   --code "$pair_code" \
   --relay-control-url "$relay_control_url" \
   --name "Hosted Relay Smoke Phone" \
@@ -208,7 +208,7 @@ for _ in $(seq 1 100); do
 done
 
 if ! grep -q 'approve?' "$tmp/pair.log"; then
-  echo "fieldwork pair did not request desktop approval" >&2
+  echo "shelly pair did not request desktop approval" >&2
   cat "$tmp/pair.log" "$tmp/pairtest.log" "$tmp/daemon.log" >&2 || true
   exit 1
 fi

@@ -58,11 +58,11 @@ pub fn set_control_socket_permissions(path: &Path) -> Result<()> {
 
 fn runtime_dir() -> PathBuf {
     if let Some(value) = std::env::var_os("XDG_RUNTIME_DIR") {
-        return PathBuf::from(value).join("fieldwork");
+        return PathBuf::from(value).join("shelly");
     }
 
     let uid = unsafe { libc::geteuid() };
-    std::env::temp_dir().join(format!("fieldwork-{uid}"))
+    std::env::temp_dir().join(format!("shelly-{uid}"))
 }
 
 #[cfg(test)]

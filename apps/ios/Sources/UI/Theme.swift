@@ -30,7 +30,7 @@ extension MobileSession.State {
 }
 
 extension View {
-    func fieldworkPanel() -> some View {
+    func shellyPanel() -> some View {
         padding(14)
             .background(Color(uiColor: .secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))

@@ -1,8 +1,8 @@
 # Contributing
 
-Fieldwork is built from `PLAN.md`. Keep implementation, tests, and docs synchronized with that plan. If implementation reality conflicts with the plan, update `PLAN.md` in the same change before continuing.
+Shelly is built from `PLAN.md`. Keep implementation, tests, and docs synchronized with that plan. If implementation reality conflicts with the plan, update `PLAN.md` in the same change before continuing.
 
-By contributing to Fieldwork, you license your contribution under
+By contributing to Shelly, you license your contribution under
 AGPL-3.0-or-later and the Apple App Store distribution additional permission in
 `NOTICE`.
 

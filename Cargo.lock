@@ -1797,126 +1797,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
 
 [[package]]
-name = "fieldwork-cli"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "clap",
- "clap_complete",
- "crossterm",
- "fieldwork-protocol",
- "interprocess",
- "iroh",
- "libc",
- "qrcode",
- "reqwest 0.13.3",
- "rmp-serde",
- "semver",
- "serde",
- "serde_json",
- "service-manager",
- "tempfile",
- "tokio",
- "toml 0.9.12+spec-1.1.0",
-]
-
-[[package]]
-name = "fieldwork-daemon"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "axum",
- "backon",
- "base64",
- "chacha20poly1305",
- "dashmap",
- "data-encoding",
- "ed25519-dalek 2.2.0",
- "fieldwork-protocol",
- "figment",
- "interprocess",
- "iroh",
- "keyring",
- "libc",
- "portable-pty",
- "proptest",
- "redb",
- "reqwest 0.13.3",
- "rmp-serde",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tattoy-wezterm-term",
- "tempfile",
- "tokio",
- "toml 0.9.12+spec-1.1.0",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "fieldwork-mobile-core"
-version = "1.0.0"
-dependencies = [
- "fieldwork-protocol",
- "iroh",
- "jni",
- "ndk-context",
- "reqwest 0.13.3",
- "rmp-serde",
- "serde",
- "thiserror 2.0.18",
- "tokio",
- "uniffi",
-]
-
-[[package]]
-name = "fieldwork-protocol"
-version = "1.0.0"
-dependencies = [
- "bincode",
- "data-encoding",
- "insta",
- "postcard",
- "rmp-serde",
- "serde",
- "thiserror 2.0.18",
- "uuid",
-]
-
-[[package]]
-name = "fieldwork-relay"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "axum",
- "axum-server",
- "base64",
- "ed25519-dalek 2.2.0",
- "fieldwork-protocol",
- "garde",
- "iroh-relay",
- "moka",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "p256",
- "reqwest 0.13.3",
- "ring",
- "rusqlite",
- "rustls",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tower",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "figment"
 version = "0.10.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5811,6 +5691,126 @@ name = "shell-words"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
+
+[[package]]
+name = "shelly-cli"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "clap_complete",
+ "crossterm",
+ "interprocess",
+ "iroh",
+ "libc",
+ "qrcode",
+ "reqwest 0.13.3",
+ "rmp-serde",
+ "semver",
+ "serde",
+ "serde_json",
+ "service-manager",
+ "shelly-protocol",
+ "tempfile",
+ "tokio",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "shelly-daemon"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "backon",
+ "base64",
+ "chacha20poly1305",
+ "dashmap",
+ "data-encoding",
+ "ed25519-dalek 2.2.0",
+ "figment",
+ "interprocess",
+ "iroh",
+ "keyring",
+ "libc",
+ "portable-pty",
+ "proptest",
+ "redb",
+ "reqwest 0.13.3",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "shelly-protocol",
+ "tattoy-wezterm-term",
+ "tempfile",
+ "tokio",
+ "toml 0.9.12+spec-1.1.0",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "shelly-mobile-core"
+version = "1.0.0"
+dependencies = [
+ "iroh",
+ "jni",
+ "ndk-context",
+ "reqwest 0.13.3",
+ "rmp-serde",
+ "serde",
+ "shelly-protocol",
+ "thiserror 2.0.18",
+ "tokio",
+ "uniffi",
+]
+
+[[package]]
+name = "shelly-protocol"
+version = "1.0.0"
+dependencies = [
+ "bincode",
+ "data-encoding",
+ "insta",
+ "postcard",
+ "rmp-serde",
+ "serde",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
+name = "shelly-relay"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "axum-server",
+ "base64",
+ "ed25519-dalek 2.2.0",
+ "garde",
+ "iroh-relay",
+ "moka",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "p256",
+ "reqwest 0.13.3",
+ "ring",
+ "rusqlite",
+ "rustls",
+ "serde",
+ "serde_json",
+ "shelly-protocol",
+ "tempfile",
+ "tokio",
+ "tower",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "shlex"

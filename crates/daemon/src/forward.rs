@@ -1,4 +1,4 @@
-use fieldwork_protocol::{ServerToClientMsg, SessionId};
+use shelly_protocol::{ServerToClientMsg, SessionId};
 use tokio::sync::broadcast;
 
 #[derive(Debug)]
@@ -31,7 +31,7 @@ pub(crate) fn output_was_replayed(event: &ServerToClientMsg, attached_seq: u64) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fieldwork_protocol::ServerToClientMsg;
+    use shelly_protocol::ServerToClientMsg;
 
     #[tokio::test]
     async fn lag_is_a_terminal_forwarded_event() {
@@ -96,7 +96,7 @@ mod tests {
         };
         let state = ServerToClientMsg::AgentStateChanged {
             session_id,
-            state: fieldwork_protocol::AgentState::Working,
+            state: shelly_protocol::AgentState::Working,
             last_line: None,
         };
 

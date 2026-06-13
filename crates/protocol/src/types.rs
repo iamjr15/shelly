@@ -134,7 +134,7 @@ pub struct SessionSummary {
 }
 
 /// Human-readable prefix on every encoded [`PairingTicket`] string.
-const TICKET_PREFIX: &str = "fw1";
+const TICKET_PREFIX: &str = "sh1";
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 /// Compact pairing target carrying both the daemon's reachability and the
@@ -158,17 +158,17 @@ pub struct PairingTicket {
 }
 
 impl PairingTicket {
-    /// Encodes the ticket as `fw1<base32>`: postcard bytes wrapped in
+    /// Encodes the ticket as `sh1<base32>`: postcard bytes wrapped in
     /// unpadded base32 behind the human-readable [`TICKET_PREFIX`].
     pub fn encode(&self) -> Result<String, TicketError> {
         let bytes = postcard::to_stdvec(self)?;
         Ok(format!("{TICKET_PREFIX}{}", BASE32_NOPAD.encode(&bytes)))
     }
 
-    /// Decodes a `fw1<base32>` ticket string produced by [`Self::encode`].
+    /// Decodes a `sh1<base32>` ticket string produced by [`Self::encode`].
     ///
     /// The base32 body is accepted case-insensitively; surrounding whitespace
-    /// is ignored. The exact `fw1` prefix is required.
+    /// is ignored. The exact `sh1` prefix is required.
     pub fn decode(s: &str) -> Result<Self, TicketError> {
         let body = s
             .trim()
@@ -182,8 +182,8 @@ impl PairingTicket {
 #[derive(Debug, Error)]
 /// Errors returned while encoding or decoding a [`PairingTicket`] string.
 pub enum TicketError {
-    /// The ticket string did not begin with the expected `fw1` prefix.
-    #[error("ticket string is missing the \"fw1\" prefix")]
+    /// The ticket string did not begin with the expected `sh1` prefix.
+    #[error("ticket string is missing the \"sh1\" prefix")]
     MissingPrefix,
     /// The base32 body could not be decoded.
     #[error(transparent)]

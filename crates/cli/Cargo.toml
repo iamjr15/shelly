@@ -1,17 +1,17 @@
 [package]
-name = "fieldwork-cli"
+name = "shelly-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Fieldwork desktop CLI."
+description = "Shelly desktop CLI."
 
 [features]
 default = []
 test-client = ["dep:iroh"]
 
 [[bin]]
-name = "fieldwork"
+name = "shelly"
 path = "src/main.rs"
 
 [dependencies]
@@ -19,7 +19,7 @@ anyhow.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 crossterm.workspace = true
-fieldwork-protocol = { path = "../protocol" }
+shelly-protocol = { path = "../protocol" }
 interprocess.workspace = true
 iroh = { workspace = true, optional = true }
 libc.workspace = true

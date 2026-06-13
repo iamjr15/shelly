@@ -1,4 +1,4 @@
-[fieldwork fixture: redacted Claude Code terminal transcript]
+[shelly fixture: redacted Claude Code terminal transcript]
 I checked whether the docs mention mobile create-session support?
 They do not; the current contract still says mobile attach/input/resize only.
 

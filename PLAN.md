@@ -1,4 +1,4 @@
-# Fieldwork v1 Plan
+# Shelly v1 Plan
 
 **Status**: local source hardening verified against local gates; manual release
 gates remain
@@ -13,7 +13,7 @@ plan before continuing.
 
 ## 1. Product Contract
 
-Fieldwork gives developers universal terminal handoff. A user can run a real PTY
+Shelly gives developers universal terminal handoff. A user can run a real PTY
 session on their laptop, attach to the same live session from Android in the
 current local target, send input, resize, detach, reconnect, and return to the
 laptop without losing process state. iOS source is parked for later resumption.
@@ -25,7 +25,7 @@ v1 supports arbitrary PTY commands:
 - REPLs: `python`, `node`, `irb`
 - AI agents: `claude`, `codex`, and any other terminal command
 
-The default desktop command is the user's shell, not an agent. A Fieldwork
+The default desktop command is the user's shell, not an agent. A Shelly
 session is agent-agnostic: users can start Claude, kill it, start Codex, return
 to a shell, or run any other TUI/REPL inside the same PTY. Unknown terminal
 content still gets only byte-rate `Idle`/`Working` state inference and never
@@ -52,26 +52,25 @@ Mobile clients must not create sessions, kill sessions, or specify commands.
 
 ## 2. Naming and Distribution
 
-- Product name: `fieldwork`
-- CLI binary: `fieldwork`
-- Short CLI alias: `fw`
-- Daemon binary: `fieldworkd`
-- Relay binary: `fieldwork-relay`
-- npm meta-package: `fieldwork`
+- Product name: `shelly`
+- CLI binary: `shelly`
+- Daemon binary: `shellyd`
+- Relay binary: `shelly-relay`
+- npm meta-package: `shellykit`
 - npm platform packages:
-  - `fieldwork-darwin-arm64`
-  - `fieldwork-darwin-x64`
-  - `fieldwork-linux-arm64`
-  - `fieldwork-linux-x64`
-- Rust crates: `protocol`, `daemon`, `cli`, `relay`, `mobile-core`
-- Android package: `app.fieldwork.android`
-- iOS bundle id: `app.fieldwork.ios`
+  - `shellykit-darwin-arm64`
+  - `shellykit-darwin-x64`
+  - `shellykit-linux-arm64`
+  - `shellykit-linux-x64`
+- Rust crates: `shelly-protocol`, `shelly-daemon`, `shelly-cli`, `shelly-relay`, `shelly-mobile-core`
+- Android package: `app.shelly.android`
+- iOS bundle id: `app.shelly.ios`
 
-npm is the only v1 desktop install and update path. The `fieldwork` meta-package
+npm is the only v1 desktop install and update path. The `shellykit` meta-package
 uses optional dependencies to pull the matching platform package. Platform
-packages include both `fieldwork` and `fieldworkd`; the meta-package exposes
-`fieldwork`, `fw`, and `fieldworkd` bin entrypoints so daemon service workflows
-can resolve the colocated daemon binary from the same npm install.
+packages include both `shelly` and `shellyd`; the meta-package exposes
+`shelly` and `shellyd` bin entrypoints so daemon service workflows can resolve
+the colocated daemon binary from the same npm install.
 
 cargo-dist may build archives, but v1 does not ship cargo-dist installers,
 Homebrew formulae, curl installers, or a desktop self-updater.
@@ -80,21 +79,21 @@ Homebrew formulae, curl installers, or a desktop self-updater.
 
 The short path should match the user's existing terminal habit:
 
-- `fw pair` opens QR and typed-code pairing.
-- `fw` creates and attaches a new Fieldwork session running the user's shell.
-- `fw <name>` attaches an existing named session or creates a new shell-backed
-  Fieldwork session with that name.
-- `fw new <command...>` creates a session for the requested command.
-- `fw attach <session-id-or-name>` attaches explicitly.
-- `fw kill <session-id-or-name>` stops one Fieldwork session.
-- `fw kill-all` stops all current Fieldwork sessions.
+- `shelly pair` opens QR and typed-code pairing.
+- `shelly` creates and attaches a new Shelly session running the user's shell.
+- `shelly <name>` attaches an existing named session or creates a new shell-backed
+  Shelly session with that name.
+- `shelly new <command...>` creates a session for the requested command.
+- `shelly attach <session-id-or-name>` attaches explicitly.
+- `shelly kill <session-id-or-name>` stops one Shelly session.
+- `shelly kill-all` stops all current Shelly sessions.
 
 When the user does not supply a name, the daemon generates a one-word memorable
 session name. The name appears in the local CLI and mobile session dashboard.
 
 ## 4. Architecture
 
-Fieldwork streams raw PTY bytes, not terminal cell-grid diffs.
+Shelly streams raw PTY bytes, not terminal cell-grid diffs.
 
 The daemon owns:
 
@@ -145,7 +144,7 @@ Pairing invariants:
 - wrong in-band attempts are capped
 - long-lived auth uses device Ed25519 keys
 - there is no password fallback
-- lost devices are revoked with `fieldwork devices remove`
+- lost devices are revoked with `shelly devices remove`
 
 The original 32-byte base32 pair-token design was replaced before release by
 the shorter code plus compact ticket flow, which bumped the protocol contract
@@ -189,8 +188,8 @@ v1 modules:
 
 Fixture-based tests should cover captured Claude and Codex sessions as fixtures
 are added. Unknown commands must never infer `AwaitingInput` from content. Local
-Claude/Codex hook events may still update a generic shell-backed Fieldwork
-session through `FIELDWORK_SESSION_ID`, because agents can be started and
+Claude/Codex hook events may still update a generic shell-backed Shelly
+session through `SHELLY_SESSION_ID`, because agents can be started and
 replaced inside the same PTY.
 
 ## 8. Relay
@@ -255,12 +254,12 @@ The relay host scaffold targets AWS Lightsail; cloud capacity and bundle changes
 stay operator-owned.
 
 `test:local-handoff` and `test:hosted-relay` build the CLI with the
-`fieldwork-cli/test-client` Cargo feature so they can run the internal
+`shelly-cli/test-client` Cargo feature so they can run the internal
 simulated-phone `pair-test` harness. Normal production CLI builds do not enable
-that feature, so `pair-test` is not compiled into the shipped `fieldwork`/`fw`
-binary. `test:hosted-relay` is an operator smoke and requires an explicit relay
-control URL via `FIELDWORK_HOSTED_RELAY_CONTROL_URL`,
-`FIELDWORK_RELAY_CONTROL_URL`, or a first positional argument.
+that feature, so `pair-test` is not compiled into the shipped `shelly` binary.
+`test:hosted-relay` is an operator smoke and requires an explicit relay
+control URL via `SHELLY_HOSTED_RELAY_CONTROL_URL`,
+`SHELLY_RELAY_CONTROL_URL`, or a first positional argument.
 
 ## 11. Required Local Checks
 
@@ -309,7 +308,7 @@ direct `adb` screenshots/logcat inspection where needed.
 
 These remain manual and are run deliberately by a maintainer, not by CI:
 
-- real npm publish of `fieldwork`
+- real npm publish of `shellykit`
 - npm provenance confirmation
 - GitHub release finalization
 - production relay credential deployment

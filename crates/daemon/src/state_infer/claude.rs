@@ -1,4 +1,4 @@
-use fieldwork_protocol::AgentState;
+use shelly_protocol::AgentState;
 
 pub fn infer_from_line(line: &str) -> Option<AgentState> {
     let normalized = line.trim();
@@ -29,7 +29,7 @@ pub fn infer_from_line(line: &str) -> Option<AgentState> {
 #[cfg(test)]
 mod tests {
     use super::infer_from_line;
-    use fieldwork_protocol::AgentState;
+    use shelly_protocol::AgentState;
 
     #[test]
     fn detects_awaiting_input_from_fixture() {

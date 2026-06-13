@@ -56,16 +56,16 @@ jobs:
 
       - name: Build Darwin
         if: matrix.build == 'cargo'
-        run: cargo build --release --target ${{ matrix.target }} -p fieldwork-cli -p fieldwork-daemon -p fieldwork-relay
+        run: cargo build --release --target ${{ matrix.target }} -p shelly-cli -p shelly-daemon -p shelly-relay
 
       - name: Build Linux
         if: matrix.build == 'zigbuild'
-        run: cargo zigbuild --release --target ${{ matrix.target }} -p fieldwork-cli -p fieldwork-daemon -p fieldwork-relay
+        run: cargo zigbuild --release --target ${{ matrix.target }} -p shelly-cli -p shelly-daemon -p shelly-relay
 
       - name: Ad-hoc sign Darwin CLI and daemon
         if: startsWith(matrix.target, 'aarch64-apple') || startsWith(matrix.target, 'x86_64-apple')
         run: |
-          for binary in fieldwork fieldworkd; do
+          for binary in shelly shellyd; do
             chmod 755 "target/${{ matrix.target }}/release/$binary"
             codesign --force --sign - "target/${{ matrix.target }}/release/$binary"
             codesign --verify --verbose=2 "target/${{ matrix.target }}/release/$binary"
@@ -73,14 +73,14 @@ jobs:
 
       - name: Stage archive
         run: |
-          mkdir -p dist/fieldwork-${{ matrix.package }}
-          cp target/${{ matrix.target }}/release/fieldwork dist/fieldwork-${{ matrix.package }}/fieldwork
-          cp target/${{ matrix.target }}/release/fieldworkd dist/fieldwork-${{ matrix.package }}/fieldworkd
-          cp target/${{ matrix.target }}/release/fieldwork-relay dist/fieldwork-${{ matrix.package }}/fieldwork-relay
-          chmod 755 dist/fieldwork-${{ matrix.package }}/fieldwork dist/fieldwork-${{ matrix.package }}/fieldworkd dist/fieldwork-${{ matrix.package }}/fieldwork-relay
-          tar -C dist -czf fieldwork-${{ matrix.package }}.tar.gz fieldwork-${{ matrix.package }}
-          LC_ALL=C LANG=C shasum -a 256 fieldwork-${{ matrix.package }}.tar.gz > fieldwork-${{ matrix.package }}.tar.gz.sha256
-          cat > fieldwork-${{ matrix.package }}.predicate.json <<EOF
+          mkdir -p dist/shelly-${{ matrix.package }}
+          cp target/${{ matrix.target }}/release/shelly dist/shelly-${{ matrix.package }}/shelly
+          cp target/${{ matrix.target }}/release/shellyd dist/shelly-${{ matrix.package }}/shellyd
+          cp target/${{ matrix.target }}/release/shelly-relay dist/shelly-${{ matrix.package }}/shelly-relay
+          chmod 755 dist/shelly-${{ matrix.package }}/shelly dist/shelly-${{ matrix.package }}/shellyd dist/shelly-${{ matrix.package }}/shelly-relay
+          tar -C dist -czf shelly-${{ matrix.package }}.tar.gz shelly-${{ matrix.package }}
+          LC_ALL=C LANG=C shasum -a 256 shelly-${{ matrix.package }}.tar.gz > shelly-${{ matrix.package }}.tar.gz.sha256
+          cat > shelly-${{ matrix.package }}.predicate.json <<EOF
           {
             "_type": "https://slsa.dev/provenance/v1",
             "buildDefinition": {
@@ -89,7 +89,7 @@ jobs:
                 "releaseTag": "${GITHUB_REF_NAME}",
                 "package": "${{ matrix.package }}",
                 "target": "${{ matrix.target }}",
-                "sha256": "$(cut -d ' ' -f 1 fieldwork-${{ matrix.package }}.tar.gz.sha256)"
+                "sha256": "$(cut -d ' ' -f 1 shelly-${{ matrix.package }}.tar.gz.sha256)"
               },
               "internalParameters": {}
             },
@@ -108,25 +108,25 @@ jobs:
         run: |
           cosign attest-blob \
             --yes \
-            --predicate fieldwork-${{ matrix.package }}.predicate.json \
+            --predicate shelly-${{ matrix.package }}.predicate.json \
             --type slsaprovenance1 \
-            --bundle fieldwork-${{ matrix.package }}.tar.gz.bundle \
-            fieldwork-${{ matrix.package }}.tar.gz
+            --bundle shelly-${{ matrix.package }}.tar.gz.bundle \
+            shelly-${{ matrix.package }}.tar.gz
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: fieldwork-${{ matrix.package }}
+          name: shelly-${{ matrix.package }}
           path: |
-            fieldwork-${{ matrix.package }}.tar.gz
-            fieldwork-${{ matrix.package }}.tar.gz.sha256
-            fieldwork-${{ matrix.package }}.tar.gz.bundle
+            shelly-${{ matrix.package }}.tar.gz
+            shelly-${{ matrix.package }}.tar.gz.sha256
+            shelly-${{ matrix.package }}.tar.gz.bundle
           if-no-files-found: error
 
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            fieldwork-${{ matrix.package }}.tar.gz
-            fieldwork-${{ matrix.package }}.tar.gz.sha256
-            fieldwork-${{ matrix.package }}.tar.gz.bundle
+            shelly-${{ matrix.package }}.tar.gz
+            shelly-${{ matrix.package }}.tar.gz.sha256
+            shelly-${{ matrix.package }}.tar.gz.bundle
           generate_release_notes: true
