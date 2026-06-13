@@ -1284,7 +1284,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 2.0.117",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -2832,7 +2832,7 @@ dependencies = [
  "portable-atomic",
  "portmapper",
  "rand 0.10.1",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustc-hash",
  "rustls",
  "rustls-pki-types",
@@ -2887,7 +2887,7 @@ dependencies = [
  "n0-future",
  "ndk-context",
  "rand 0.10.1",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustls",
  "simple-dns",
  "strum",
@@ -2909,7 +2909,7 @@ dependencies = [
  "itoa",
  "n0-error",
  "portable-atomic",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustls",
  "rustls-platform-verifier",
  "ryu",
@@ -2965,7 +2965,7 @@ dependencies = [
  "rand 0.10.1",
  "rcgen",
  "reloadable-state",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustls",
  "rustls-cert-file-reader",
  "rustls-cert-reloadable-resolver",
@@ -5051,9 +5051,9 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.13.3"
+version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62e0021ea2c22aed41653bc7e1419abb2c97e038ff2c33d0e1309e49a97deec0"
+checksum = "219c5811de6525e5416c7d5d53bb656d3afdbc6c5af816e0802bcfa42dbdc1c3"
 dependencies = [
  "base64",
  "bytes",
@@ -5704,7 +5704,7 @@ dependencies = [
  "iroh",
  "libc",
  "qrcode",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rmp-serde",
  "semver",
  "serde",
@@ -5736,7 +5736,7 @@ dependencies = [
  "portable-pty",
  "proptest",
  "redb",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rmp-serde",
  "serde",
  "serde_json",
@@ -5758,7 +5758,7 @@ dependencies = [
  "iroh",
  "jni",
  "ndk-context",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rmp-serde",
  "serde",
  "shelly-protocol",
@@ -5797,7 +5797,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "p256",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "ring",
  "rusqlite",
  "rustls",
@@ -6530,7 +6530,7 @@ dependencies = [
  "pem",
  "proc-macro2",
  "rcgen",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "ring",
  "rustls",
  "serde",
