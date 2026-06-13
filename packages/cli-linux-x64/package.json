@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/shelly-app/shelly.git",
+    "url": "git+https://github.com/iamjr15/shelly.git",
     "directory": "packages/cli-linux-x64"
   },
   "preferUnplugged": true

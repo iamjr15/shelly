@@ -24,7 +24,7 @@ private data class LicenseNotice(
 )
 
 private val licenseNotices = listOf(
-    LicenseNotice("Shelly", "AGPL-3.0-or-later", "https://github.com/shelly-app/shelly"),
+    LicenseNotice("Shelly", "AGPL-3.0-or-later", "https://github.com/iamjr15/shelly"),
     LicenseNotice("AndroidX", "Apache-2.0", "https://developer.android.com/jetpack/androidx"),
     LicenseNotice("Firebase Android SDK", "Apache-2.0", "https://github.com/firebase/firebase-android-sdk"),
     LicenseNotice("CameraX", "Apache-2.0", "https://developer.android.com/media/camera/camerax"),

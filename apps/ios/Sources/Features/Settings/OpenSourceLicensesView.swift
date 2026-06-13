@@ -10,8 +10,8 @@ private struct LicenseNotice: Identifiable {
 }
 
 private let licenseNotices = [
-    LicenseNotice(name: "Shelly", license: "AGPL-3.0-or-later", url: "https://github.com/shelly-app/shelly"),
-    LicenseNotice(name: "Shelly App Store Distribution Notice", license: "AGPL-3.0-or-later additional permission", url: "https://github.com/shelly-app/shelly/blob/main/NOTICE"),
+    LicenseNotice(name: "Shelly", license: "AGPL-3.0-or-later", url: "https://github.com/iamjr15/shelly"),
+    LicenseNotice(name: "Shelly App Store Distribution Notice", license: "AGPL-3.0-or-later additional permission", url: "https://github.com/iamjr15/shelly/blob/main/NOTICE"),
     LicenseNotice(name: "SwiftTerm", license: "MIT", url: "https://github.com/migueldeicaza/SwiftTerm"),
     LicenseNotice(name: "AndroidX", license: "Apache-2.0", url: "https://developer.android.com/jetpack/androidx"),
     LicenseNotice(name: "Firebase Android SDK", license: "Apache-2.0", url: "https://github.com/firebase/firebase-android-sdk"),

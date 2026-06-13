@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@2/schema.json",
-  "changelog": ["@changesets/changelog-github", { "repo": "shelly-app/shelly" }],
+  "changelog": ["@changesets/changelog-github", { "repo": "iamjr15/shelly" }],
   "commit": false,
   "fixed": [["shellykit", "shellykit-*"]],
   "linked": [],
