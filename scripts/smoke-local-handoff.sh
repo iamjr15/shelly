@@ -348,8 +348,8 @@ fi
   --name "Smoke Phone" \
   --secret-key-path "$tmp/phone.key" \
   --attach "$bash_id" \
-  --input $'printf "FW_BASH_RESULT_%s\\n" OK\n' \
-  --expect-output "FW_BASH_RESULT_OK" \
+  --input $'printf "SHELLY_BASH_RESULT_%s\\n" OK\n' \
+  --expect-output "SHELLY_BASH_RESULT_OK" \
   >"$tmp/pairtest.log" 2>&1 &
 pairtest_pid=$!
 
@@ -421,8 +421,8 @@ fi
   --name "Smoke Typed Phone" \
   --secret-key-path "$tmp/phone-typed.key" \
   --attach "$bash_id" \
-  --input $'printf "FW_TYPED_RESULT_%s\\n" OK\n' \
-  --expect-output "FW_TYPED_RESULT_OK" \
+  --input $'printf "SHELLY_TYPED_RESULT_%s\\n" OK\n' \
+  --expect-output "SHELLY_TYPED_RESULT_OK" \
   >"$tmp/pairtest-code.log" 2>&1 &
 pairtest_code_pid=$!
 
@@ -462,21 +462,21 @@ fi
   --payload "$payload" \
   --secret-key-path "$tmp/phone.key" \
   --connect-only \
-  --subscribe-expect "FW_SUBSCRIBE_SESSION_READY" \
+  --subscribe-expect "SHELLY_SUBSCRIBE_SESSION_READY" \
   >"$tmp/subscribe.log" 2>&1 &
 subscribe_pid=$!
 
 sleep 0.2
-run_shelly_new "$tmp/new-subscribe.log" --name FW_SUBSCRIBE_SESSION_READY -- bash -lc 'printf "FW_SUBSCRIBE_SESSION_READY\n"; while IFS= read -r line; do printf "late: %s\n" "$line"; done'
+run_shelly_new "$tmp/new-subscribe.log" --name SHELLY_SUBSCRIBE_SESSION_READY -- bash -lc 'printf "SHELLY_SUBSCRIBE_SESSION_READY\n"; while IFS= read -r line; do printf "late: %s\n" "$line"; done'
 subscribe_created="$(cat "$tmp/new-subscribe.log")"
 subscribe_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-subscribe.log")"
 
-run_shelly_new "$tmp/new-reconnect.log" --name FW_RECONNECT_READY -- bash -lc 'printf "FW_RECONNECT_READY\n"; sleep 5; for i in $(seq 1 50); do printf "FW_RECONNECT_LINE_%02d\n" "$i"; done; sleep 10'
+run_shelly_new "$tmp/new-reconnect.log" --name SHELLY_RECONNECT_READY -- bash -lc 'printf "SHELLY_RECONNECT_READY\n"; sleep 5; for i in $(seq 1 50); do printf "SHELLY_RECONNECT_LINE_%02d\n" "$i"; done; sleep 10'
 reconnect_created="$(cat "$tmp/new-reconnect.log")"
 reconnect_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-reconnect.log")"
 
 wait "$subscribe_pid"
-if ! grep -q '^subscription saw session: FW_SUBSCRIBE_SESSION_READY' "$tmp/subscribe.log"; then
+if ! grep -q '^subscription saw session: SHELLY_SUBSCRIBE_SESSION_READY' "$tmp/subscribe.log"; then
   echo "paired simulated phone did not observe desktop-created session over subscription" >&2
   cat "$tmp/subscribe.log" >&2 || true
   exit 1
@@ -489,7 +489,7 @@ fi
   --attach "$claude_id" \
   --input $'hello from mobile\n' \
   --expect-output "stub: hello from mobile" \
-  --reject-output "FW_BASH_RESULT_OK" \
+  --reject-output "SHELLY_BASH_RESULT_OK" \
   >"$tmp/attach-claude.log" 2>&1
 
 if ! grep -q '^attached ' "$tmp/attach-claude.log"; then
@@ -510,7 +510,7 @@ fi
   --attach "$subscribe_id" \
   --input $'phone late\n' \
   --expect-output "late: phone late" \
-  --reject-output "FW_BASH_RESULT_OK" \
+  --reject-output "SHELLY_BASH_RESULT_OK" \
   --reject-output "stub: hello from mobile" \
   >"$tmp/attach-subscribe.log" 2>&1
 
@@ -530,13 +530,13 @@ fi
   --secret-key-path "$tmp/phone.key" \
   --connect-only \
   --attach "$reconnect_id" \
-  --expect-output "FW_RECONNECT_READY" \
+  --expect-output "SHELLY_RECONNECT_READY" \
   --reconnect-delay-ms 6000 \
   --reconnect-timeout-ms 2000 \
-  --reconnect-expect-output "FW_RECONNECT_LINE_50" \
+  --reconnect-expect-output "SHELLY_RECONNECT_LINE_50" \
   >"$tmp/reconnect.log" 2>&1
 
-if ! grep -q '^reconnect replay saw expected output: FW_RECONNECT_LINE_50' "$tmp/reconnect.log"; then
+if ! grep -q '^reconnect replay saw expected output: SHELLY_RECONNECT_LINE_50' "$tmp/reconnect.log"; then
   echo "paired simulated phone did not replay missed output after reconnect" >&2
   cat "$tmp/reconnect.log" >&2 || true
   exit 1
@@ -552,7 +552,7 @@ fi
   --secret-key-path "$tmp/phone.key" \
   --connect-only \
   --attach "$tui_id" \
-  --reject-output "FW_BASH_RESULT_OK" \
+  --reject-output "SHELLY_BASH_RESULT_OK" \
   --reject-output "stub: hello from mobile" \
   --reject-output "late: phone late" \
   >"$tmp/attach-tui.log" 2>&1
@@ -628,13 +628,13 @@ if ! printf '%s' "$after_restart" | grep -Eq 'vim|vi'; then
   printf 'after restart: %s\n' "$after_restart" >&2
   exit 1
 fi
-if ! printf '%s' "$after_restart" | grep -q 'FW_SUBSCRIBE_SESSION_READY'; then
+if ! printf '%s' "$after_restart" | grep -q 'SHELLY_SUBSCRIBE_SESSION_READY'; then
   echo "restored session list did not include the subscribed desktop-created session" >&2
   printf 'before restart: %s\n' "$before_restart" >&2
   printf 'after restart: %s\n' "$after_restart" >&2
   exit 1
 fi
-if ! printf '%s' "$after_restart" | grep -q 'FW_RECONNECT_READY'; then
+if ! printf '%s' "$after_restart" | grep -q 'SHELLY_RECONNECT_READY'; then
   echo "restored session list did not include the reconnect replay session" >&2
   printf 'before restart: %s\n' "$before_restart" >&2
   printf 'after restart: %s\n' "$after_restart" >&2

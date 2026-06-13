@@ -21,7 +21,7 @@ Local verification status:
 - `apps/android/gradlew --no-daemon bundleRelease` builds the Rust mobile core for `arm64-v8a`, `armeabi-v7a`, and `x86_64`, then emits a release AAB that includes all three ABI slices.
 - Latest direct adb emulator pass on 2026-06-02 used `Medium_Phone_API_36.1`,
   paired through the local relay/daemon, attached to a daemon-owned `bash`
-  session named `pretzel`, sent `fw_android_direct_ok` from the Android terminal,
+  session named `pretzel`, sent `shelly_android_direct_ok` from the Android terminal,
   verified the live PTY bytes through a second paired client, force-stopped and
   relaunched the app, restored the paired dashboard, and found no Shelly
   crash/ANR logcat entries. This was a direct adb spot check, not a repo-owned
