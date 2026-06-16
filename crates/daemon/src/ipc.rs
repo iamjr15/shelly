@@ -1,4 +1,6 @@
-use crate::authz::may_create_or_kill_session;
+use crate::authz::{
+    may_create_or_kill_session, may_emit_agent_state_event, requires_shell_only_sessions,
+};
 use crate::config::Config;
 use crate::forward::{ForwardedEvent, output_was_replayed, recv_attached_event};
 use crate::pairing::PairingManager;
@@ -431,61 +433,12 @@ where
                 size,
             } => {
                 if !may_create_or_kill_session(client_kind) {
-                    write_forbidden(&writer, "mobile clients cannot create sessions").await?;
+                    write_forbidden(&writer, "client cannot create sessions").await?;
                     continue;
                 }
-                let summaries = state.summaries();
-                let name = match resolve_new_session_name(name, &summaries) {
-                    Ok(name) => name,
-                    Err(error) => {
-                        write_msg(
-                            &writer,
-                            &ServerToClientMsg::Error {
-                                code: ErrorCode::InvalidRequest,
-                                message: error.to_string(),
-                            },
-                        )
-                        .await?;
-                        continue;
-                    }
-                };
-
-                match Session::spawn(
-                    name,
-                    command,
-                    cwd,
-                    env,
-                    size,
-                    state.persistence.as_ref().map(Arc::clone),
-                    Some(state.push.clone()),
-                ) {
-                    Ok(session) => {
-                        let session_id = session.id();
-                        let summary = session.summary();
-                        state.restored.remove(&session_id);
-                        state.sessions.insert(session_id, Arc::clone(&session));
-                        spawn_session_list_forwarder(Arc::clone(&state), session);
-                        state.publish_session_list();
-                        write_msg(
-                            &writer,
-                            &ServerToClientMsg::SessionCreated {
-                                session_id,
-                                summary,
-                            },
-                        )
-                        .await?;
-                    }
-                    Err(error) => {
-                        write_msg(
-                            &writer,
-                            &ServerToClientMsg::Error {
-                                code: ErrorCode::InvalidRequest,
-                                message: error.to_string(),
-                            },
-                        )
-                        .await?;
-                    }
-                }
+                let response =
+                    create_session_for(&state, client_kind, name, command, cwd, env, size);
+                write_msg(&writer, &response).await?;
             }
             ClientToServerMsg::AttachSession {
                 session_id,
@@ -600,19 +553,10 @@ where
             ClientToServerMsg::DetachSession => break,
             ClientToServerMsg::KillSession { session_id } => {
                 if !may_create_or_kill_session(client_kind) {
-                    write_forbidden(&writer, "mobile clients cannot kill sessions").await?;
+                    write_forbidden(&writer, "client cannot kill sessions").await?;
                     continue;
                 }
-                if let Some((_, session)) = state.sessions.remove(&session_id) {
-                    let _ = session.kill();
-                }
-                state.restored.remove(&session_id);
-                if let Some(persistence) = &state.persistence
-                    && let Err(error) = persistence.remove_session(session_id)
-                {
-                    warn!(%error, %session_id, "failed to remove persisted session");
-                }
-                state.publish_session_list();
+                kill_session_for(&state, session_id);
             }
             ClientToServerMsg::Input { session_id, bytes } => {
                 let Some(session) = state
@@ -857,7 +801,7 @@ where
                 state: agent_state,
                 last_line,
             } => {
-                if !may_create_or_kill_session(client_kind) {
+                if !may_emit_agent_state_event(client_kind) {
                     write_forbidden(&writer, "mobile clients cannot emit agent state events")
                         .await?;
                     continue;
@@ -901,6 +845,112 @@ where
     }
 
     Ok(())
+}
+
+/// Creates a session on behalf of `client_kind` and returns the message to send
+/// back to the client.
+///
+/// Mobile clients are restricted to a default shell: their requested command,
+/// working directory, and environment are ignored and replaced with the daemon's
+/// default shell, the user's home directory, and an empty environment. This is
+/// the server-side half of the "shell only" mobile boundary and is enforced even
+/// if a modified client sends a different command. Shared by the local IPC and
+/// iroh transports so both behave identically.
+pub(crate) fn create_session_for(
+    state: &Arc<AppState>,
+    client_kind: ClientKind,
+    name: String,
+    command: Vec<String>,
+    cwd: std::path::PathBuf,
+    env: std::collections::HashMap<String, String>,
+    size: shelly_protocol::ClientSize,
+) -> ServerToClientMsg {
+    let (command, cwd, env) = if requires_shell_only_sessions(client_kind) {
+        (
+            default_session_command(),
+            default_home_dir(),
+            std::collections::HashMap::new(),
+        )
+    } else {
+        (command, cwd, env)
+    };
+
+    let summaries = state.summaries();
+    let name = match resolve_new_session_name(name, &summaries) {
+        Ok(name) => name,
+        Err(error) => {
+            return ServerToClientMsg::Error {
+                code: ErrorCode::InvalidRequest,
+                message: error.to_string(),
+            };
+        }
+    };
+
+    match Session::spawn(
+        name,
+        command,
+        cwd,
+        env,
+        size,
+        state.persistence.as_ref().map(Arc::clone),
+        Some(state.push.clone()),
+    ) {
+        Ok(session) => {
+            let session_id = session.id();
+            let summary = session.summary();
+            state.restored.remove(&session_id);
+            state.sessions.insert(session_id, Arc::clone(&session));
+            spawn_session_list_forwarder(Arc::clone(state), session);
+            state.publish_session_list();
+            ServerToClientMsg::SessionCreated {
+                session_id,
+                summary,
+            }
+        }
+        Err(error) => ServerToClientMsg::Error {
+            code: ErrorCode::InvalidRequest,
+            message: error.to_string(),
+        },
+    }
+}
+
+/// Kills a session and removes any persisted copy. Missing sessions are treated
+/// as already-killed (idempotent), matching the local-CLI behavior. Shared by the
+/// local IPC and iroh transports.
+pub(crate) fn kill_session_for(state: &Arc<AppState>, session_id: SessionId) {
+    if let Some((_, session)) = state.sessions.remove(&session_id) {
+        let _ = session.kill();
+    }
+    state.restored.remove(&session_id);
+    if let Some(persistence) = &state.persistence
+        && let Err(error) = persistence.remove_session(session_id)
+    {
+        warn!(%error, %session_id, "failed to remove persisted session");
+    }
+    state.publish_session_list();
+}
+
+/// The default session command for daemon-created sessions: the user's login
+/// shell, falling back to `/bin/sh`. Used for mobile "shell only" creates.
+fn default_session_command() -> Vec<String> {
+    vec![default_shell_from_env(std::env::var_os("SHELL"))]
+}
+
+fn default_shell_from_env(shell: Option<std::ffi::OsString>) -> String {
+    shell
+        .and_then(|value| value.into_string().ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "/bin/sh".to_string())
+}
+
+/// The working directory for daemon-created (mobile) sessions: the user's home
+/// directory, falling back to `/`.
+fn default_home_dir() -> std::path::PathBuf {
+    std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::PathBuf::from("/"))
 }
 
 fn spawn_session_list_forwarder(state: Arc<AppState>, session: Arc<Session>) {
@@ -1167,7 +1217,7 @@ mod tests {
         assert_ipc_rejects_protocol_mismatch(ClientKind::AndroidApp).await;
     }
 
-    async fn assert_ipc_forbids_create_and_kill(client_kind: ClientKind) {
+    async fn assert_ipc_allows_shell_only_create_and_kill(client_kind: ClientKind) {
         let (client, server) = tokio::io::duplex(8192);
         let (server_reader, server_writer) = tokio::io::split(server);
         let server_task =
@@ -1188,43 +1238,54 @@ mod tests {
         let welcome: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
         assert!(matches!(welcome, ServerToClientMsg::Welcome { .. }));
 
+        // A mobile client may create a session, but the daemon forces a default
+        // shell and ignores the requested command, cwd, and env.
         write_msg(
             &client_writer,
             &ClientToServerMsg::CreateSession {
-                name: "forbidden".to_string(),
+                name: "from-phone".to_string(),
                 command: vec!["/bin/false".to_string()],
                 cwd: std::env::current_dir().expect("current dir"),
-                env: HashMap::new(),
+                env: HashMap::from([("SECRET".to_string(), "value".to_string())]),
                 size: ClientSize { rows: 24, cols: 80 },
             },
         )
         .await
         .unwrap();
-        let create_error: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
-        assert_eq!(
-            create_error,
-            ServerToClientMsg::Error {
-                code: ErrorCode::Forbidden,
-                message: "mobile clients cannot create sessions".to_string(),
+        let created: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
+        let session_id = match created {
+            ServerToClientMsg::SessionCreated {
+                session_id,
+                summary,
+            } => {
+                assert_eq!(summary.command, default_session_command());
+                assert_ne!(summary.command, vec!["/bin/false".to_string()]);
+                session_id
             }
-        );
+            other => panic!("expected SessionCreated, got {other:?}"),
+        };
 
+        // Kill is fire-and-forget (no response). Verify removal via ListSessions;
+        // the handler processes messages in order, so the kill lands first.
         write_msg(
             &client_writer,
-            &ClientToServerMsg::KillSession {
-                session_id: SessionId::new(),
-            },
+            &ClientToServerMsg::KillSession { session_id },
         )
         .await
         .unwrap();
-        let kill_error: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
-        assert_eq!(
-            kill_error,
-            ServerToClientMsg::Error {
-                code: ErrorCode::Forbidden,
-                message: "mobile clients cannot kill sessions".to_string(),
+        write_msg(&client_writer, &ClientToServerMsg::ListSessions)
+            .await
+            .unwrap();
+        let listed: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
+        match listed {
+            ServerToClientMsg::SessionList { sessions } => {
+                assert!(
+                    !sessions.iter().any(|session| session.id == session_id),
+                    "killed session should be gone"
+                );
             }
-        );
+            other => panic!("expected SessionList, got {other:?}"),
+        }
 
         drop(client_writer);
         drop(client_reader);
@@ -1236,9 +1297,58 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ipc_handler_rejects_mobile_create_and_kill_session_requests() {
-        assert_ipc_forbids_create_and_kill(ClientKind::IosApp).await;
-        assert_ipc_forbids_create_and_kill(ClientKind::AndroidApp).await;
+    async fn ipc_handler_allows_mobile_shell_only_create_and_kill() {
+        assert_ipc_allows_shell_only_create_and_kill(ClientKind::IosApp).await;
+        assert_ipc_allows_shell_only_create_and_kill(ClientKind::AndroidApp).await;
+    }
+
+    #[tokio::test]
+    async fn create_session_for_forces_shell_only_for_mobile() {
+        let state = test_state();
+        let response = create_session_for(
+            &state,
+            ClientKind::AndroidApp,
+            "phone".to_string(),
+            vec!["/bin/false".to_string()],
+            std::path::PathBuf::from("/tmp"),
+            HashMap::from([("SECRET".to_string(), "value".to_string())]),
+            ClientSize { rows: 24, cols: 80 },
+        );
+        match response {
+            ServerToClientMsg::SessionCreated {
+                session_id,
+                summary,
+            } => {
+                assert_eq!(summary.command, default_session_command());
+                kill_session_for(&state, session_id);
+            }
+            other => panic!("expected SessionCreated, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_session_for_preserves_command_for_local_cli() {
+        let state = test_state();
+        let command = vec!["/bin/echo".to_string(), "hi".to_string()];
+        let response = create_session_for(
+            &state,
+            ClientKind::LocalCli,
+            "cli".to_string(),
+            command.clone(),
+            std::env::current_dir().expect("current dir"),
+            HashMap::new(),
+            ClientSize { rows: 24, cols: 80 },
+        );
+        match response {
+            ServerToClientMsg::SessionCreated {
+                session_id,
+                summary,
+            } => {
+                assert_eq!(summary.command, command);
+                kill_session_for(&state, session_id);
+            }
+            other => panic!("expected SessionCreated, got {other:?}"),
+        }
     }
 
     async fn assert_ipc_reports_missing_session_for_input_and_resize(client_kind: ClientKind) {

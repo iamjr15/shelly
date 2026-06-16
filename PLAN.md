@@ -40,6 +40,8 @@ Mobile clients may:
 
 - pair
 - list sessions
+- create a session (shell only — see below)
+- kill a session
 - attach to a session
 - stream terminal output
 - send input
@@ -47,8 +49,14 @@ Mobile clients may:
 - detach
 - register and unregister push tokens
 
-Mobile clients must not create sessions, kill sessions, or specify commands.
-`CreateSession` and `KillSession` remain local-CLI-only capabilities.
+Mobile create is shell-only: the daemon ignores any command, working directory,
+or environment a mobile client sends and spawns the user's default shell, so a
+paired phone can never launch an arbitrary process at create time. Mobile clients
+still must not specify commands or emit agent-state events. Create and kill are
+authorized by the paired device identity (the daemon's `require_paired` check on
+the iroh transport); the Android biometric prompt is a local UX gate, not a
+daemon-trusted boundary. `CreateSession`/`KillSession` reuse the existing wire
+messages, so the contract version is unchanged.
 
 ## 2. Naming and Distribution
 
@@ -215,8 +223,9 @@ are available.
 ## 9. Mobile
 
 Android is the active mobile target for v1. It must
-pair, list sessions, attach, send input, resize, detach, register push tokens,
-restore after process restart, and pass Android build/unit checks. Emulator
+pair, list sessions, create (shell only) and kill sessions, attach, send input,
+resize, detach, register push tokens, restore after process restart, and pass
+Android build/unit checks. Emulator
 handoff validation should be done directly with `adb`, screenshots, UI dumps,
 and logcat rather than repo-owned wrapper scripts.
 
@@ -224,7 +233,9 @@ iOS is deferred for v1. Keep the parked source tree, but do not
 keep active iOS prereq helpers, release workflows, or CI checks in the current
 production/dev surface until iOS work is explicitly resumed.
 
-Mobile must not include command creation or process-kill surfaces.
+Mobile includes a shell-only create surface and a kill surface. It must not allow
+arbitrary-command creation (the daemon forces a default shell for mobile) or
+agent-state injection.
 
 ## 10. Current Script Surface
 

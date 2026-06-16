@@ -74,9 +74,7 @@ enum Command {
         #[arg(long)]
         expect_local_cli_forbidden: bool,
         #[arg(long)]
-        expect_forbidden_create: bool,
-        #[arg(long)]
-        expect_forbidden_kill: Option<String>,
+        expect_create_and_kill: bool,
         #[arg(long)]
         expect_forbidden_agent_event: bool,
     },
@@ -212,8 +210,7 @@ async fn main() -> Result<()> {
             expect_unauthorized,
             expect_protocol_mismatch,
             expect_local_cli_forbidden,
-            expect_forbidden_create,
-            expect_forbidden_kill,
+            expect_create_and_kill,
             expect_forbidden_agent_event,
         }) => {
             iroh_client::pair_test(iroh_client::PairTestOptions {
@@ -234,8 +231,7 @@ async fn main() -> Result<()> {
                 expect_unauthorized,
                 expect_protocol_mismatch,
                 expect_local_cli_forbidden,
-                expect_forbidden_create,
-                expect_forbidden_kill,
+                expect_create_and_kill,
                 expect_forbidden_agent_event,
             })
             .await

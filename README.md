@@ -90,10 +90,15 @@ scrollback locally in encrypted `redb` storage keyed from your OS keychain.
 The desktop CLI talks to it over a hardened Unix socket (`0700` parent, `0600`
 socket, symlink rejection). Phones connect peer-to-peer over
 [iroh](https://github.com/n0-computer/iroh) QUIC, authenticated by device keys
-that are exchanged at pairing time — there is no account and no password. An
-optional relay provides the typed-code pairing rendezvous and forwards hashed
-push events; terminal bytes never traverse it in readable form, and push
-payloads carry only opaque hashes and fixed event enums.
+that are exchanged at pairing time — there is no account and no password.
+Connections are keyed to the daemon's stable NodeID, so a phone reconnects to the
+same laptop even after its IP changes. Shelly uses **only self-hosted relays — no
+n0**: a control-plane relay handles typed-code pairing rendezvous and forwards
+hashed push events, and a self-hosted iroh relay (`SHELLY_IROH_RELAY_URL`)
+forwards QUIC by NodeID as the rendezvous when a direct link isn't available.
+Terminal bytes never traverse a relay in readable form — the QUIC payload is
+end-to-end encrypted — and push payloads carry only opaque hashes and fixed event
+enums.
 
 Live sessions keep a daemon-side WezTerm terminal model: warm reconnects
 replay raw bytes from a 256 KB ring, and stale attaches get a synthetic ANSI
@@ -109,9 +114,12 @@ Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 
 ## Security and privacy
 
-- Mobile clients can list, attach, stream, send input, resize, detach, and
-  manage push tokens — they **cannot** create sessions, kill sessions, or
-  choose commands. That boundary is enforced in the daemon, not the app.
+- Mobile clients can list, create (shell only), kill, attach, stream, send
+  input, resize, detach, and manage push tokens. Mobile create is **shell only**:
+  the daemon ignores any command and spawns your default shell, so a paired phone
+  can't launch an arbitrary process at create time, and mobile clients still
+  cannot choose commands or emit agent-state events. Create/kill are authorized by
+  the paired device identity in the daemon, not by the app.
 - Pairing: single active 5-character code, 5-minute TTL, invalidated after 5
   wrong attempts, single-use, explicit desktop approval, no password fallback.
   Lost devices are revoked with `shelly devices remove`.

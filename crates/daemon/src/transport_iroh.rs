@@ -1,5 +1,5 @@
 use crate::forward::{ForwardedEvent, output_was_replayed, recv_attached_event};
-use crate::ipc::{AppState, IrohEndpointInfo};
+use crate::ipc::{AppState, IrohEndpointInfo, create_session_for, kill_session_for};
 use crate::persistence::StoredDevice;
 use anyhow::{Context, Result, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
@@ -24,12 +24,25 @@ const IROH_SECRET_KEY_ENV: &str = "SHELLY_IROH_SECRET_KEY_B64";
 
 pub(crate) async fn serve(state: Arc<AppState>) -> Result<()> {
     let secret_key = load_or_create_secret_key().context("load iroh endpoint secret")?;
-    let mut builder = Endpoint::builder(presets::N0)
+    // Build from the minimal preset (crypto only) rather than presets::N0 so the
+    // endpoint contacts no n0 server: no n0 DNS/pkarr publish or resolve, and n0's
+    // public relays are not used. The self-hosted relay is the sole rendezvous.
+    let mut builder = Endpoint::builder(presets::Minimal)
         .secret_key(secret_key)
         .alpns(vec![SHELLY_ALPN.to_vec()]);
 
-    if let Some(relay_url) = configured_relay_url()? {
-        builder = builder.relay_mode(RelayMode::custom([relay_url]));
+    match configured_relay_url()? {
+        Some(relay_url) => {
+            builder = builder.relay_mode(RelayMode::custom([relay_url]));
+        }
+        None => {
+            warn!(
+                "SHELLY_IROH_RELAY_URL is not set; the iroh endpoint runs direct-only \
+                 (no relay, no n0 fallback). Same-host and same-network reconnects work \
+                 over direct addresses, but cross-network reconnect needs a self-hosted \
+                 iroh relay."
+            );
+        }
     }
 
     let endpoint = builder.bind().await.context("bind iroh endpoint")?;
@@ -440,9 +453,29 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                 write_msg(&writer, &ServerToClientMsg::Pong { seq }).await?;
             }
             ClientToServerMsg::DetachSession => break,
-            ClientToServerMsg::CreateSession { .. }
-            | ClientToServerMsg::KillSession { .. }
-            | ClientToServerMsg::BeginPairing { .. }
+            ClientToServerMsg::CreateSession {
+                name,
+                command,
+                cwd,
+                env,
+                size,
+            } => {
+                if !require_paired(&writer, paired).await? {
+                    continue;
+                }
+                // Mobile create is shell-only: `create_session_for` ignores the
+                // client-supplied command/cwd/env and forces a default shell.
+                let response =
+                    create_session_for(&state, client_kind, name, command, cwd, env, size);
+                write_msg(&writer, &response).await?;
+            }
+            ClientToServerMsg::KillSession { session_id } => {
+                if !require_paired(&writer, paired).await? {
+                    continue;
+                }
+                kill_session_for(&state, session_id);
+            }
+            ClientToServerMsg::BeginPairing { .. }
             | ClientToServerMsg::ApprovePairing { .. }
             | ClientToServerMsg::ListDevices
             | ClientToServerMsg::RemoveDevice { .. }

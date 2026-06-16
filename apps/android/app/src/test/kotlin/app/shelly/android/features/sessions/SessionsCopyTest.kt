@@ -13,15 +13,15 @@ class SessionsCopyTest {
     }
 
     @Test
-    fun emptyDashboardCopyPointsToDesktopShortcutsAndAutomaticRefresh() {
+    fun emptyDashboardCopyPointsToCreateShortcutDesktopAndAutomaticRefresh() {
         assertTrue(EMPTY_SESSIONS_TITLE.contains("No sessions"))
+        assertTrue(EMPTY_SESSIONS_BODY.contains("+"))
         assertTrue(EMPTY_SESSIONS_BODY.contains("shelly"))
-        assertTrue(EMPTY_SESSIONS_BODY.contains("shelly <name>"))
         assertTrue(EMPTY_SESSIONS_BODY.contains("automatically"))
     }
 
     @Test
-    fun emptyDashboardCopyDoesNotExposeMobileCreationOrKillControls() {
+    fun dashboardCopyStaysFreeOfTechnicalControlJargon() {
         assertFalse(LOADING_SESSIONS_BODY.contains("create", ignoreCase = true))
         assertFalse(LOADING_SESSIONS_BODY.contains("kill", ignoreCase = true))
         assertFalse(LOADING_SESSIONS_BODY.contains("command", ignoreCase = true))

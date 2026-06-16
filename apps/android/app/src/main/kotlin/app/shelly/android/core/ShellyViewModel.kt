@@ -156,6 +156,49 @@ class ShellyViewModel internal constructor(
         }
     }
 
+    // Creates a new shell session on the laptop and opens it. The command is
+    // chosen by the daemon (always a shell); the optional name is just a label.
+    fun createSession(name: String? = null) {
+        viewModelScope.launch {
+            _state.update { it.copy(loading = true, message = null) }
+            try {
+                val session = withContext(repositoryDispatcher) {
+                    repository.createSession(name?.takeIf { it.isNotBlank() })
+                }
+                applySessions((_state.value.sessions + session).distinctBy { it.id })
+                openTerminalSession(session)
+            } catch (error: Throwable) {
+                if (error is CancellationException) {
+                    throw error
+                }
+                _state.update { it.copy(message = CREATE_SESSION_FAILED_MESSAGE) }
+            } finally {
+                _state.update { it.copy(loading = false) }
+            }
+        }
+    }
+
+    // Kills a session on the laptop. Fire-and-forget at the daemon; the list is
+    // updated optimistically and reconciled by the session subscription.
+    fun killSession(sessionId: String) {
+        viewModelScope.launch {
+            try {
+                withContext(repositoryDispatcher) {
+                    repository.killSession(sessionId)
+                }
+                if (_state.value.activeTerminalSessionId == sessionId) {
+                    closeTerminalSession()
+                }
+                applySessions(_state.value.sessions.filterNot { it.id == sessionId })
+            } catch (error: Throwable) {
+                if (error is CancellationException) {
+                    throw error
+                }
+                _state.update { it.copy(message = KILL_SESSION_FAILED_MESSAGE) }
+            }
+        }
+    }
+
     suspend fun createTerminalController(
         session: MobileSession,
         inputGate: suspend () -> Boolean,
@@ -442,3 +485,5 @@ private val HEX = "0123456789abcdef".toCharArray()
 private const val PAIRING_FAILED_MESSAGE = "Pairing failed"
 private const val SAVED_PAIRING_UNAVAILABLE_MESSAGE = "Saved pairing unavailable"
 private const val SESSIONS_UNAVAILABLE_MESSAGE = "Sessions unavailable"
+private const val CREATE_SESSION_FAILED_MESSAGE = "Couldn't create session"
+private const val KILL_SESSION_FAILED_MESSAGE = "Couldn't close session"

@@ -42,6 +42,7 @@ pub struct Session {
     persistence: Option<Arc<Persistence>>,
     push: Option<PushDispatcher>,
     persist_dirty: AtomicBool,
+    killed: AtomicBool,
     resize_tx: mpsc::Sender<()>,
 }
 
@@ -119,6 +120,7 @@ impl Session {
             persistence,
             push,
             persist_dirty: AtomicBool::new(false),
+            killed: AtomicBool::new(false),
             resize_tx,
         });
 
@@ -247,6 +249,10 @@ impl Session {
     }
 
     pub fn kill(&self) -> Result<()> {
+        // Mark as explicitly killed so the post-exit reader thread and the periodic
+        // persistence loop stop persisting it. KillSession removes the session from
+        // storage, and it must not reappear as a crashed session after a restart.
+        self.killed.store(true, Ordering::Release);
         let mut child = self
             .child
             .lock()
@@ -507,6 +513,9 @@ impl Session {
     }
 
     fn persist(&self) {
+        if self.killed.load(Ordering::Acquire) {
+            return;
+        }
         let Some(persistence) = &self.persistence else {
             return;
         };

@@ -306,6 +306,47 @@ class ShellyViewModelTest {
     }
 
     @Test
+    fun createSessionAddsShellSessionAndOpensIt() {
+        val created = testSession(id = "018f0000-0000-7000-8000-0000000000c1")
+            .copy(name = "work", command = listOf("/bin/zsh"))
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            createResult = created,
+        )
+        val viewModel = testViewModel(repository)
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        viewModel.createSession("work")
+        drainMainLooper()
+
+        assertEquals(listOf("work"), repository.createdNames)
+        assertEquals(created.id, viewModel.state.value.activeTerminalSessionId)
+        assertTrue(viewModel.state.value.sessions.any { it.id == created.id })
+        assertNull(viewModel.state.value.message)
+    }
+
+    @Test
+    fun killSessionRemovesSessionAndClosesActiveTerminal() {
+        val session = testSession(id = "018f0000-0000-7000-8000-0000000000c2")
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            sessions = listOf(session),
+        )
+        val viewModel = testViewModel(repository)
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+        viewModel.openTerminalSession(session)
+
+        viewModel.killSession(session.id)
+        drainMainLooper()
+
+        assertEquals(listOf(session.id), repository.killedSessionIds)
+        assertNull(viewModel.state.value.activeTerminalSessionId)
+        assertFalse(viewModel.state.value.sessions.any { it.id == session.id })
+    }
+
+    @Test
     fun sessionSubscriptionDisconnectRetriesWithoutUserVisibleAlert() {
         val session = testSession(id = "018f0000-0000-7000-8000-0000000000f0")
         val repository = FakeRepository(
@@ -955,11 +996,15 @@ class ShellyViewModelTest {
         private val onAttach: ((ULong?) -> Unit)? = null,
         private val onRegisterFcmToken: ((String) -> Unit)? = null,
         private val onUnregisterFcmToken: ((String) -> Unit)? = null,
+        private val createResult: MobileSession? = null,
+        private val onKill: ((String) -> Unit)? = null,
     ) : ShellyRepositoryClient {
         override var savedPairing: PairedDaemonRecord? = null
             private set
         val registeredFcmTokens = mutableListOf<String>()
         val unregisteredFcmTokens = mutableListOf<String>()
+        val createdNames = mutableListOf<String?>()
+        val killedSessionIds = mutableListOf<String>()
         val pairedPayloads = mutableListOf<String>()
         var pairedPayload: String? = null
             private set
@@ -997,6 +1042,26 @@ class ShellyViewModelTest {
         override suspend fun listSessions(): List<MobileSession> {
             onListSessions?.invoke()
             return sessions
+        }
+
+        override suspend fun createSession(name: String?): MobileSession {
+            createdNames += name
+            return createResult ?: MobileSession(
+                id = "created-${createdNames.size}",
+                name = name ?: "new",
+                command = listOf("/bin/zsh"),
+                cwd = "/home",
+                createdAt = 9UL,
+                lastActivity = 9UL,
+                state = AgentState.Idle,
+                lastLine = null,
+                model = null,
+            )
+        }
+
+        override suspend fun killSession(sessionId: String) {
+            killedSessionIds += sessionId
+            onKill?.invoke(sessionId)
         }
 
         override suspend fun subscribeSessions(onUpdate: (List<MobileSession>) -> Unit) {

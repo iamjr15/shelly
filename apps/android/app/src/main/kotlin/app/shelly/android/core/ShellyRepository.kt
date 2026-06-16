@@ -22,6 +22,8 @@ internal interface ShellyRepositoryClient {
     suspend fun pairWithCode(code: String)
     suspend fun listSessions(): List<MobileSession>
     suspend fun subscribeSessions(onUpdate: (List<MobileSession>) -> Unit)
+    suspend fun createSession(name: String?): MobileSession
+    suspend fun killSession(sessionId: String)
     suspend fun attach(sessionId: String, lastSeenSeq: ULong? = null): AttachedSession
     fun recordLastSeenSeq(sessionId: String, seq: ULong)
     suspend fun registerFcmToken(token: String)
@@ -108,6 +110,20 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
                 )
             }
         })
+    }
+
+    override suspend fun createSession(name: String?): MobileSession {
+        val summary = requireClient().createSession(name)
+        debugLog("createSession returned ${summary.id}")
+        return toMobileSession(summary)
+    }
+
+    override suspend fun killSession(sessionId: String) {
+        requireClient().killSession(sessionId)
+        debugLog("killSession sent for $sessionId")
+        synchronized(stateLock) {
+            lastSeenSeqBySession.remove(sessionId)
+        }
     }
 
     override suspend fun attach(sessionId: String, lastSeenSeq: ULong?): AttachedSession {

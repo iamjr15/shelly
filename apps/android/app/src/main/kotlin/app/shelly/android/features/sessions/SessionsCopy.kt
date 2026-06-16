@@ -2,7 +2,14 @@ package app.shelly.android.features.sessions
 
 internal const val EMPTY_SESSIONS_TITLE = "No sessions yet"
 internal const val EMPTY_SESSIONS_BODY =
-    "Run shelly or shelly <name> on your laptop. New sessions appear here automatically."
+    "Tap + to start a shell, or run shelly on your laptop. New sessions appear here automatically."
+
+internal const val KILL_SESSION_TITLE = "Close session?"
+internal const val KILL_SESSION_CONFIRM = "Close"
+internal const val KILL_SESSION_CANCEL = "Cancel"
+
+internal fun killSessionBody(name: String): String =
+    "This stops \"$name\" on your laptop and ends its running processes."
 
 internal const val LOADING_SESSIONS_TITLE = "Syncing sessions"
 internal const val LOADING_SESSIONS_BODY =

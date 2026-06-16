@@ -99,6 +99,11 @@ fn install_ctx_for(program: PathBuf) -> Result<ServiceInstallCtx> {
     })
 }
 
+/// Hosted Shelly iroh relay used as the daemon's default rendezvous when the
+/// operator does not set `SHELLY_IROH_RELAY_URL`. Self-hosters override it by
+/// exporting `SHELLY_IROH_RELAY_URL` before running `shelly daemon install`.
+const DEFAULT_IROH_RELAY_URL: &str = "https://relay.shelly.sh";
+
 fn service_environment() -> Option<Vec<(String, String)>> {
     const PASSTHROUGH: &[&str] = &[
         "HOME",
@@ -114,7 +119,7 @@ fn service_environment() -> Option<Vec<(String, String)>> {
         "SHELLY_TELEMETRY_OPT_IN",
     ];
 
-    let values = PASSTHROUGH
+    let mut values = PASSTHROUGH
         .iter()
         .filter_map(|key| {
             std::env::var(key)
@@ -123,6 +128,15 @@ fn service_environment() -> Option<Vec<(String, String)>> {
                 .map(|value| ((*key).to_string(), value))
         })
         .collect::<Vec<_>>();
+
+    // Bake in the hosted relay so installed daemons reconnect by NodeID out of the
+    // box; an operator-provided SHELLY_IROH_RELAY_URL (already collected above) wins.
+    if !values.iter().any(|(key, _)| key == "SHELLY_IROH_RELAY_URL") {
+        values.push((
+            "SHELLY_IROH_RELAY_URL".to_string(),
+            DEFAULT_IROH_RELAY_URL.to_string(),
+        ));
+    }
 
     if values.is_empty() {
         None

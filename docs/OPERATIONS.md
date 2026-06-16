@@ -33,15 +33,33 @@ The relay infrastructure scaffold lives under `infra/lightsail` and
 `dock-relay` with static IP `3.7.138.203`. Production relay deployment still
 needs operator-owned DNS/TLS and relay-only credentials.
 
-The committed Ansible defaults run the host in a pre-production posture:
+The committed Ansible defaults now target production for the iroh relay:
 
-- iroh relay is HTTP-only on port 80 until DNS points at `dock-relay` and ACME
-  can issue certificates.
+- the iroh relay serves ACME-issued TLS on port 443 (HTTP on 80 for the ACME
+  challenge, QUIC address discovery on 7842) using hostname `relay.shelly.sh` and
+  contact `jigyanshu15@gmail.com`. This requires a DNS **A record
+  `relay.shelly.sh` → `3.7.138.203`**, set **DNS-only (not Cloudflare-proxied)** so
+  the relay's own TLS and QUIC reach it directly. Until that record exists ACME
+  cannot issue and the iroh relay service will not come up cleanly.
 - the control plane listens on port 8443 without mandatory TLS credentials until
   `shelly_relay_control_require_tls` and the cert/key credential paths are
   set.
 - FCM, APNs, and Honeycomb credentials are optional; missing files disable those
   integrations instead of preventing the relay from starting.
+
+**The iroh relay is the sole NodeID rendezvous — there is no n0 fallback — so its
+uptime is load-bearing.** The laptop daemon must set
+`SHELLY_IROH_RELAY_URL=https://relay.shelly.sh` to use it; with that unset the
+daemon runs direct-only (LAN) and cross-network reconnect will not work. Phones
+learn the relay URL from the pairing ticket, so re-pair after first enabling the
+relay.
+
+Abuse/cost posture: the iroh relay forwards encrypted QUIC for any NodeID —
+pairing and identity are enforced end-to-end at the app layer, so an open relay
+URL does not weaken authentication; the practical risk is bandwidth/connection
+abuse. Bound it at the Lightsail firewall (restrict and monitor inbound on
+`80/443/7842`) and watch the relay's aggregate metrics on `127.0.0.1:9091`.
+Per-client iroh-level rate limits can be added if abuse appears.
 
 `.github/workflows/deploy-relay.yml` deploys the relay automatically from
 `main` when relay code or relay infrastructure files change. It builds

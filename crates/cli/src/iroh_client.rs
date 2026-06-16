@@ -34,8 +34,7 @@ pub(crate) struct PairTestOptions {
     pub(crate) expect_unauthorized: bool,
     pub(crate) expect_protocol_mismatch: bool,
     pub(crate) expect_local_cli_forbidden: bool,
-    pub(crate) expect_forbidden_create: bool,
-    pub(crate) expect_forbidden_kill: Option<String>,
+    pub(crate) expect_create_and_kill: bool,
     pub(crate) expect_forbidden_agent_event: bool,
 }
 
@@ -57,8 +56,7 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
         bail!("--reconnect-timeout-ms must be greater than zero");
     }
     if !options.reconnect_expect_output.is_empty()
-        && (options.expect_forbidden_create
-            || options.expect_forbidden_kill.is_some()
+        && (options.expect_create_and_kill
             || options.expect_forbidden_agent_event
             || options.expect_local_cli_forbidden)
     {
@@ -91,11 +89,11 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
     };
 
     let secret_key = load_or_create_secret_key(options.secret_key_path.as_deref())?;
-    let endpoint = Endpoint::builder(presets::N0)
+    let endpoint = Endpoint::builder(presets::Minimal)
         .secret_key(secret_key)
-        // `pair-test` is a local simulated-phone harness. It connects through
-        // the daemon's direct ticket addresses so local smokes do not depend on,
-        // or tear down, the public n0 relay actor.
+        // `pair-test` is a local simulated-phone harness. The minimal preset keeps
+        // it off n0 entirely (no n0 DNS/relays), and it connects through the
+        // daemon's direct ticket addresses so local smokes stay self-contained.
         .relay_mode(RelayMode::Disabled)
         .bind()
         .await
@@ -244,31 +242,57 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
         }
     }
 
-    if options.expect_forbidden_create {
+    if options.expect_create_and_kill {
+        // Mobile create is allowed but shell-only: send a bogus command and expect
+        // the daemon to ignore it and spawn a shell. Receiving SessionCreated (not
+        // an error from trying to spawn the bogus command) proves the override.
+        let bogus = "shelly-smoke-should-be-ignored".to_string();
         write_msg(
             &mut send,
             &ClientToServerMsg::CreateSession {
-                name: "mobile-forbidden".to_string(),
-                command: vec!["bash".to_string()],
-                cwd: std::env::current_dir().context("resolve cwd for forbidden create smoke")?,
+                name: "from-phone".to_string(),
+                command: vec![bogus.clone()],
+                cwd: std::env::current_dir().context("resolve cwd for create smoke")?,
                 env: std::collections::HashMap::new(),
                 size: ClientSize { cols: 80, rows: 24 },
             },
         )
         .await?;
-        expect_forbidden(&mut recv, "CreateSession").await?;
-    }
+        let created_id = match read_msg::<ServerToClientMsg>(&mut recv).await? {
+            ServerToClientMsg::SessionCreated {
+                session_id,
+                summary,
+            } => {
+                if summary.command == vec![bogus.clone()] {
+                    bail!(
+                        "mobile create was not forced to a shell: {:?}",
+                        summary.command
+                    );
+                }
+                println!(
+                    "CreateSession allowed (shell-only) as expected: {session_id}\t{:?}",
+                    summary.command
+                );
+                session_id
+            }
+            other => bail!("expected SessionCreated for mobile create, got {other:?}"),
+        };
 
-    if let Some(target) = options.expect_forbidden_kill.as_deref() {
-        let session = resolve_session(&sessions, target)?;
+        // Kill is allowed and fire-and-forget; confirm the session is gone.
         write_msg(
             &mut send,
             &ClientToServerMsg::KillSession {
-                session_id: session.id,
+                session_id: created_id,
             },
         )
         .await?;
-        expect_forbidden(&mut recv, "KillSession").await?;
+        let remaining = list_sessions(&mut send, &mut recv, false)
+            .await?
+            .unwrap_or_default();
+        if remaining.iter().any(|session| session.id == created_id) {
+            bail!("KillSession did not remove the session");
+        }
+        println!("KillSession allowed as expected: {created_id} removed");
     }
 
     if options.expect_forbidden_agent_event {

@@ -1,12 +1,16 @@
 #![deny(missing_docs)]
 //! UniFFI mobile client surface for native iOS and Android apps.
 //!
-//! The API intentionally exposes only pair/list/attach/input/resize/detach and
-//! push-token registration/unregistration. It does not expose session creation, command
-//! selection, or session termination, preserving the v1 mobile security boundary.
+//! The API exposes pair/list/attach/input/resize/detach, push-token
+//! registration/unregistration, and session create/kill. Session creation is
+//! shell-only: the daemon ignores any command, working directory, or environment
+//! from mobile clients and spawns the user's default shell, so a paired phone can
+//! never launch an arbitrary process at create time. The daemon authorizes
+//! create/kill by the paired device identity; the relay/transport never weakens
+//! that boundary.
 
 use iroh::endpoint::{RecvStream, SendStream, presets};
-use iroh::{Endpoint, EndpointAddr, RelayConfig, RelayUrl, SecretKey, TransportAddr};
+use iroh::{Endpoint, EndpointAddr, RelayMode, RelayUrl, SecretKey, TransportAddr};
 use serde::{Serialize, de::DeserializeOwned};
 use shelly_protocol::{
     AgentState as ProtocolAgentState, CONTRACT_VERSION, ClientKind, ClientSize, ClientToServerMsg,
@@ -271,8 +275,8 @@ impl ShellyClient {
 
     /// Connects to a previously paired daemon and verifies authorization with a ping.
     pub async fn connect(self: Arc<Self>) -> Result<(), ShellyError> {
-        let endpoint = self.endpoint().await?;
         let target = self.daemon_target().await?;
+        let endpoint = self.endpoint(target.parsed_relay()?.as_ref()).await?;
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
         write_hello(&mut send, self.config.platform).await?;
         expect_welcome(&mut recv).await?;
@@ -310,7 +314,52 @@ impl ShellyClient {
         }
     }
 
-    /// Attaches to a desktop-created session by id.
+    /// Creates a new shell session on the paired daemon and returns its summary.
+    ///
+    /// Mobile create is shell-only: the daemon ignores any command, working
+    /// directory, or environment and spawns the user's default shell. The optional
+    /// `name` is a label; an empty name asks the daemon to generate a memorable one.
+    pub async fn create_session(
+        self: Arc<Self>,
+        name: Option<String>,
+    ) -> Result<SessionSummaryFfi, ShellyError> {
+        let (mut send, mut recv) = self.open_authenticated_stream().await?;
+        write_msg(
+            &mut send,
+            &ClientToServerMsg::CreateSession {
+                name: name.unwrap_or_default(),
+                command: Vec::new(),
+                cwd: std::path::PathBuf::from("/"),
+                env: std::collections::HashMap::new(),
+                size: ClientSize { cols: 80, rows: 24 },
+            },
+        )
+        .await?;
+        match read_msg::<ServerToClientMsg>(&mut recv).await? {
+            ServerToClientMsg::SessionCreated { summary, .. } => Ok(summary.into()),
+            ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
+            other => Err(ShellyError::Protocol(format!(
+                "unexpected daemon response to CreateSession: {other:?}"
+            ))),
+        }
+    }
+
+    /// Kills a session on the paired daemon.
+    ///
+    /// Fire-and-forget: the daemon sends no response and treats a missing session
+    /// as already killed, so this returns once the request is flushed. The
+    /// session-list subscription reflects the removal.
+    pub async fn kill_session(self: Arc<Self>, id: String) -> Result<(), ShellyError> {
+        let session_id = id
+            .parse::<SessionId>()
+            .map_err(|error| ShellyError::InvalidConfig(error.to_string()))?;
+        let (mut send, _recv) = self.open_authenticated_stream().await?;
+        write_msg(&mut send, &ClientToServerMsg::KillSession { session_id }).await?;
+        let _ = send.finish();
+        Ok(())
+    }
+
+    /// Attaches to a session by id.
     pub async fn attach_session(
         self: Arc<Self>,
         id: String,
@@ -432,7 +481,7 @@ impl ShellyClient {
     /// Shared dial-and-pair path for both the QR and typed-code flows.
     async fn pair_with_ticket(&self, ticket: PairingTicket) -> Result<DaemonInfo, ShellyError> {
         let target = DaemonTarget::from_ticket(&ticket);
-        let endpoint = self.endpoint().await?;
+        let endpoint = self.endpoint(target.parsed_relay()?.as_ref()).await?;
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
 
         write_hello(&mut send, self.config.platform).await?;
@@ -475,21 +524,21 @@ impl ShellyClient {
     }
 
     async fn open_authenticated_stream(&self) -> Result<(SendStream, RecvStream), ShellyError> {
-        let endpoint = self.endpoint().await?;
         let target = self.daemon_target().await?;
+        let endpoint = self.endpoint(target.parsed_relay()?.as_ref()).await?;
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
         write_hello(&mut send, self.config.platform).await?;
         expect_welcome(&mut recv).await?;
         Ok((send, recv))
     }
 
-    async fn endpoint(&self) -> Result<Endpoint, ShellyError> {
+    async fn endpoint(&self, relay_url: Option<&RelayUrl>) -> Result<Endpoint, ShellyError> {
         let mut endpoint = self.endpoint.lock().await;
         if let Some(endpoint) = endpoint.as_ref() {
             return Ok(endpoint.clone());
         }
 
-        let created = endpoint_for_secret(&self.secret_key).await?;
+        let created = endpoint_for_secret(&self.secret_key, relay_url).await?;
         *endpoint = Some(created.clone());
         Ok(created)
     }
@@ -677,11 +726,34 @@ impl DaemonTarget {
         }
         Ok(EndpointAddr::from_parts(endpoint_id, addrs))
     }
+
+    fn parsed_relay(&self) -> Result<Option<RelayUrl>, ShellyError> {
+        self.relay_url
+            .as_ref()
+            .map(|relay_url| {
+                relay_url
+                    .parse::<RelayUrl>()
+                    .map_err(|error: iroh::RelayUrlParseError| {
+                        ShellyError::Protocol(error.to_string())
+                    })
+            })
+            .transpose()
+    }
 }
 
-async fn endpoint_for_secret(secret_key: &SecretKey) -> Result<Endpoint, ShellyError> {
-    Endpoint::builder(presets::N0)
-        .secret_key(secret_key.clone())
+async fn endpoint_for_secret(
+    secret_key: &SecretKey,
+    relay_url: Option<&RelayUrl>,
+) -> Result<Endpoint, ShellyError> {
+    // Minimal preset (crypto only) so the phone contacts no n0 server: no n0 DNS
+    // publish/resolve, no n0 relays. When the daemon's relay is known (from the
+    // pairing ticket or stored pairing) it becomes the only relay; otherwise the
+    // endpoint is direct-only (same-network reconnect over the pinned addresses).
+    let mut builder = Endpoint::builder(presets::Minimal).secret_key(secret_key.clone());
+    if let Some(relay_url) = relay_url {
+        builder = builder.relay_mode(RelayMode::custom([relay_url.clone()]));
+    }
+    builder
         .bind()
         .await
         .map_err(|error| ShellyError::Transport(error.to_string()))
@@ -691,14 +763,9 @@ async fn open_stream(
     endpoint: &Endpoint,
     target: &DaemonTarget,
 ) -> Result<(SendStream, RecvStream), ShellyError> {
-    if let Some(relay_url) = &target.relay_url {
-        let relay_url: RelayUrl = relay_url
-            .parse()
-            .map_err(|error: iroh::RelayUrlParseError| ShellyError::Protocol(error.to_string()))?;
-        endpoint
-            .insert_relay(relay_url.clone(), Arc::new(RelayConfig::from(relay_url)))
-            .await;
-    }
+    // The relay (if any) is configured on the endpoint at build time. The target
+    // address carries the daemon's stable relay URL plus any direct addresses as
+    // connection candidates, so same-network reconnects still go direct.
     let conn = timeout(
         Duration::from_secs(15),
         endpoint.connect(target.endpoint_addr()?, SHELLY_ALPN),

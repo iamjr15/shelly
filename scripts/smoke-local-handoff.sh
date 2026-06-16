@@ -567,24 +567,23 @@ fi
   --payload "$payload" \
   --secret-key-path "$tmp/phone.key" \
   --connect-only \
-  --expect-forbidden-create \
-  --expect-forbidden-kill "$bash_id" \
+  --expect-create-and-kill \
   --expect-forbidden-agent-event \
-  >"$tmp/mobile-forbidden.log" 2>&1
+  >"$tmp/mobile-capabilities.log" 2>&1
 
-if ! grep -q '^CreateSession forbidden as expected:' "$tmp/mobile-forbidden.log"; then
-  echo "paired simulated phone was not forbidden from creating a session" >&2
-  cat "$tmp/mobile-forbidden.log" >&2 || true
+if ! grep -q '^CreateSession allowed (shell-only) as expected:' "$tmp/mobile-capabilities.log"; then
+  echo "paired simulated phone could not create a shell-only session" >&2
+  cat "$tmp/mobile-capabilities.log" >&2 || true
   exit 1
 fi
-if ! grep -q '^KillSession forbidden as expected:' "$tmp/mobile-forbidden.log"; then
-  echo "paired simulated phone was not forbidden from killing a session" >&2
-  cat "$tmp/mobile-forbidden.log" >&2 || true
+if ! grep -q '^KillSession allowed as expected:' "$tmp/mobile-capabilities.log"; then
+  echo "paired simulated phone could not kill a session" >&2
+  cat "$tmp/mobile-capabilities.log" >&2 || true
   exit 1
 fi
-if ! grep -q '^AgentStateEvent forbidden as expected:' "$tmp/mobile-forbidden.log"; then
+if ! grep -q '^AgentStateEvent forbidden as expected:' "$tmp/mobile-capabilities.log"; then
   echo "paired simulated phone was not forbidden from emitting an agent state event" >&2
-  cat "$tmp/mobile-forbidden.log" >&2 || true
+  cat "$tmp/mobile-capabilities.log" >&2 || true
   exit 1
 fi
 
@@ -658,6 +657,6 @@ printf 'PASS attach explicit claude: %s\n' "$(tr '\n' ' ' <"$tmp/attach-claude.l
 printf 'PASS attach subscribed session: %s\n' "$(tr '\n' ' ' <"$tmp/attach-subscribe.log")"
 printf 'PASS reconnect replay: %s\n' "$(tr '\n' ' ' <"$tmp/reconnect.log")"
 printf 'PASS attach tui: %s\n' "$(tr '\n' ' ' <"$tmp/attach-tui.log")"
-printf 'PASS mobile forbidden ops: %s\n' "$(tr '\n' ' ' <"$tmp/mobile-forbidden.log")"
+printf 'PASS mobile create/kill + forbidden agent-event: %s\n' "$(tr '\n' ' ' <"$tmp/mobile-capabilities.log")"
 printf 'PASS revoke: %s\n' "$(tr '\n' ' ' <"$tmp/unauth.log")"
 printf 'PASS restart restore: %s\n' "$after_restart"

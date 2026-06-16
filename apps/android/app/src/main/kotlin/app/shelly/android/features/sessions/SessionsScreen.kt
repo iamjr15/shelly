@@ -17,20 +17,25 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,6 +77,7 @@ fun SessionsScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     var searchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var sessionPendingKill by remember { mutableStateOf<MobileSession?>(null) }
     val closeSearch = {
         searchQuery = ""
         searchActive = false
@@ -141,6 +147,19 @@ fun SessionsScreen(
                 },
             )
         },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = {
+                    scope.launch {
+                        if (biometricGate.unlock("Create new session")) {
+                            viewModel.createSession()
+                        }
+                    }
+                },
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "New session")
+            }
+        },
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -167,16 +186,47 @@ fun SessionsScreen(
                     SessionSectionHeader(agentState = section.state, count = section.sessions.size)
                 }
                 items(section.sessions, key = { it.id }) { session ->
-                    SessionCard(session = session) {
-                        scope.launch {
-                            if (biometricGate.unlock("Open terminal session")) {
-                                onOpenSession(session)
+                    SessionCard(
+                        session = session,
+                        onClick = {
+                            scope.launch {
+                                if (biometricGate.unlock("Open terminal session")) {
+                                    onOpenSession(session)
+                                }
                             }
-                        }
-                    }
+                        },
+                        onKill = { sessionPendingKill = session },
+                    )
                 }
             }
         }
+    }
+
+    sessionPendingKill?.let { session ->
+        AlertDialog(
+            onDismissRequest = { sessionPendingKill = null },
+            title = { Text(KILL_SESSION_TITLE) },
+            text = { Text(killSessionBody(session.name)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        sessionPendingKill = null
+                        scope.launch {
+                            if (biometricGate.unlock("Close session")) {
+                                viewModel.killSession(session.id)
+                            }
+                        }
+                    },
+                ) {
+                    Text(KILL_SESSION_CONFIRM, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { sessionPendingKill = null }) {
+                    Text(KILL_SESSION_CANCEL)
+                }
+            },
+        )
     }
 }
 
@@ -274,7 +324,11 @@ private fun SessionSectionHeader(agentState: AgentState, count: Int) {
 }
 
 @Composable
-private fun SessionCard(session: MobileSession, onClick: () -> Unit) {
+private fun SessionCard(
+    session: MobileSession,
+    onClick: () -> Unit,
+    onKill: () -> Unit,
+) {
     Card(
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -282,7 +336,7 @@ private fun SessionCard(session: MobileSession, onClick: () -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(start = 14.dp, top = 14.dp, bottom = 14.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             StatusDot(agentState = session.state, modifier = Modifier.size(12.dp))
@@ -322,6 +376,13 @@ private fun SessionCard(session: MobileSession, onClick: () -> Unit) {
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+            }
+            IconButton(onClick = onKill) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Close session",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
