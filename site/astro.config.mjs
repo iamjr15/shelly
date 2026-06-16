@@ -1,6 +1,6 @@
 import { defineConfig } from "astro/config";
 
 export default defineConfig({
-  site: "https://shelly.dev",
+  site: "https://shelly.sh",
   output: "static"
 });

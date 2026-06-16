@@ -145,7 +145,7 @@ function writeSlate(slide) {
   <text x="184" y="262" class="eyebrow">${xml(slide.eyebrow)}</text>
   <text x="184" y="428" class="title">${xml(slide.title)}</text>
   ${lines}
-  <text x="184" y="892" class="meta">shelly.dev · npm i -g shellykit · AGPL-3.0</text>
+  <text x="184" y="892" class="meta">shelly.sh · npm i -g shellykit · AGPL-3.0</text>
 </svg>
 `);
   return file;

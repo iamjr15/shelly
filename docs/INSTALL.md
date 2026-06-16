@@ -191,4 +191,4 @@ pnpm check:site
 pnpm build:site
 ```
 
-Cloudflare Pages deployment is handled by `.github/workflows/deploy-site.yml` once the `shelly.dev` domain and `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets exist.
+Cloudflare Pages deployment is handled by `.github/workflows/deploy-site.yml` once the `shelly.sh` domain and `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets exist.

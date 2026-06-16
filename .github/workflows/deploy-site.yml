@@ -22,10 +22,10 @@ jobs:
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-              echo "Cloudflare Pages credentials are required to deploy shelly.dev."
+              echo "Cloudflare Pages credentials are required to deploy shelly.sh."
               exit 1
             fi
-            echo "Cloudflare Pages credentials are required to deploy shelly.dev."
+            echo "Cloudflare Pages credentials are required to deploy shelly.sh."
             echo "Skipping Cloudflare Pages deploy for this push."
             echo "skip_deploy=1" >> "$GITHUB_OUTPUT"
             exit 0

@@ -55,6 +55,9 @@ import app.shelly.android.core.TerminalController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import org.connectbot.terminal.Terminal
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -69,6 +72,8 @@ fun TerminalScreen(
     var controller by remember(session.id) { mutableStateOf<TerminalController?>(null) }
     var attachError by remember(session.id) { mutableStateOf<String?>(null) }
     var attachAttempt by remember(session.id) { mutableStateOf(0) }
+    val state by viewModel.state.collectAsState()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(session.id, attachAttempt) {
         controller = null
@@ -115,35 +120,108 @@ fun TerminalScreen(
             currentController?.let { AccessoryBar(it) }
         },
     ) { innerPadding ->
-        val current = currentController
-        if (current == null) {
-            TerminalAttachStatus(
-                error = attachError,
-                onRetry = { attachAttempt += 1 },
-                modifier = Modifier.padding(innerPadding),
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize(),
+        ) {
+            SessionSwitcherStrip(
+                sessions = state.sessions,
+                currentSessionId = session.id,
+                onSelect = { target ->
+                    scope.launch {
+                        if (biometricGate.unlock("Switch session")) {
+                            viewModel.openTerminalSession(target)
+                        }
+                    }
+                },
+                onCreate = {
+                    scope.launch {
+                        if (biometricGate.unlock("Create new session")) {
+                            viewModel.createSession()
+                        }
+                    }
+                },
             )
-        } else {
-            val terminalState by current.state.collectAsState()
-            Column(modifier = Modifier.padding(innerPadding)) {
-                Text(
-                    text = terminalState.status,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    color = Color.Gray,
+            val current = currentController
+            if (current == null) {
+                TerminalAttachStatus(
+                    error = attachError,
+                    onRetry = { attachAttempt += 1 },
+                    modifier = Modifier.weight(1f),
                 )
-                Terminal(
-                    terminalEmulator = current.emulator,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f),
-                    keyboardEnabled = true,
-                    focusRequester = terminalFocusRequester,
-                    onTerminalTap = {
-                        runCatching { terminalFocusRequester.requestFocus() }
-                        keyboardController?.show()
-                    },
-                    modifierManager = current.modifierManager,
-                )
+            } else {
+                val terminalState by current.state.collectAsState()
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = terminalState.status,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        color = Color.Gray,
+                    )
+                    Terminal(
+                        terminalEmulator = current.emulator,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                        keyboardEnabled = true,
+                        focusRequester = terminalFocusRequester,
+                        onTerminalTap = {
+                            runCatching { terminalFocusRequester.requestFocus() }
+                            keyboardController?.show()
+                        },
+                        modifierManager = current.modifierManager,
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun SessionSwitcherStrip(
+    sessions: List<MobileSession>,
+    currentSessionId: String,
+    onSelect: (MobileSession) -> Unit,
+    onCreate: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        sessions.forEach { session ->
+            val selected = session.id == currentSessionId
+            OutlinedButton(
+                onClick = { if (!selected) onSelect(session) },
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.outline
+                    },
+                ),
+                colors = if (selected) {
+                    ButtonDefaults.outlinedButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                } else {
+                    ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    )
+                },
+                contentPadding = PaddingValues(horizontal = 12.dp),
+            ) {
+                Text(text = session.name, maxLines = 1)
+            }
+        }
+        IconButton(onClick = onCreate) {
+            Icon(Icons.Default.Add, contentDescription = "New session")
         }
     }
 }
