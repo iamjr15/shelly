@@ -17,10 +17,10 @@ shelly_iroh_relay_https_addr: 0.0.0.0:443
 shelly_iroh_relay_quic_addr: 0.0.0.0:7842
 shelly_iroh_relay_metrics_addr: 127.0.0.1:9091
 shelly_iroh_relay_cert_dir: /var/lib/shelly/acme
-shelly_iroh_relay_hostname: ""
-shelly_iroh_relay_contact_email: ""
+shelly_iroh_relay_hostname: "relay.shelly.sh"
+shelly_iroh_relay_contact_email: "jigyanshu15@gmail.com"
 shelly_iroh_relay_staging: "false"
-shelly_iroh_relay_http_only: "true"
+shelly_iroh_relay_http_only: "false"
 shelly_relay_binary: ""
 shelly_relay_apns_credential: /etc/shelly/secrets/apns.p8
 shelly_relay_apns_team_id: ""

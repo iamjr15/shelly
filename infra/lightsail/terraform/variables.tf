@@ -61,7 +61,7 @@ variable "ssh_allowed_cidrs" {
 variable "enable_iroh_tls_ports" {
   description = "Open public iroh HTTPS/QUIC ports after DNS and ACME are ready for this host."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "tags" {
