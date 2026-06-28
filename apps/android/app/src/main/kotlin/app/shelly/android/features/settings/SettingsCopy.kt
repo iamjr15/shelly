@@ -25,3 +25,6 @@ internal const val UNPAIR_ROW_BODY = "Removes this app's local pairing. Desktop 
 
 internal fun pairedDaemonSummary(record: PairedDaemonRecord?): String =
     record?.daemonNodeId?.take(12)?.plus("...") ?: DAEMON_UNPAIRED
+
+internal fun compactDaemonNodeId(nodeId: String, maxChars: Int = 15): String =
+    if (nodeId.length > maxChars) "${nodeId.take(maxChars)}…" else nodeId

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Declares the bare ComponentActivity that Compose's createComposeRule() launches via
+      ActivityScenario, so Robolectric screenshot tests (testDebugUnitTest) can resolve it.
+      Debug-only; never shipped in release.
+    -->
+    <application>
+        <activity
+            android:name="androidx.activity.ComponentActivity"
+            android:exported="false" />
+    </application>
+</manifest>

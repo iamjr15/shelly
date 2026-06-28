@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit
 import uniffi.shelly_mobile_core.AttachedSession
 import uniffi.shelly_mobile_core.ByteStreamSink
 import uniffi.shelly_mobile_core.NoHandle
+import uniffi.shelly_mobile_core.ShellyException
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -604,7 +605,42 @@ class ShellyViewModelTest {
 
         assertFalse(viewModel.state.value.loading)
         assertFalse(viewModel.state.value.paired)
-        assertEquals("Pairing failed", viewModel.state.value.message)
+        assertNull(viewModel.state.value.message)
+        assertEquals(
+            "Pairing stopped because Android reported an unexpected error.",
+            viewModel.state.value.pairingError?.message,
+        )
+        assertEquals(
+            "Run `shelly pair` again and try a fresh code.",
+            viewModel.state.value.pairingError?.detail,
+        )
+    }
+
+    @Test
+    fun expiredPairingCodeUsesPairingErrorWithoutGlobalAlert() {
+        val repository = FakeRepository(
+            restoredPairing = null,
+            pairResult = testPairing(),
+            onPair = {
+                throw ShellyException.NotFound("pairing code not found, expired, or already used")
+            },
+        )
+        val viewModel = testViewModel(repository)
+
+        viewModel.pairWithCode("AB12C")
+        drainMainLooper()
+
+        assertFalse(viewModel.state.value.loading)
+        assertFalse(viewModel.state.value.paired)
+        assertNull(viewModel.state.value.message)
+        assertEquals(
+            "That pairing code expired or was already used.",
+            viewModel.state.value.pairingError?.message,
+        )
+        assertEquals(
+            "Run `shelly pair` on your laptop for a fresh code.",
+            viewModel.state.value.pairingError?.detail,
+        )
     }
 
     @Test
@@ -693,7 +729,15 @@ class ShellyViewModelTest {
         val viewModel = testViewModel(repository)
 
         assertFalse(viewModel.state.value.restoringPairing)
-        assertEquals("Saved pairing unavailable", viewModel.state.value.message)
+        assertNull(viewModel.state.value.message)
+        assertEquals(
+            "Shelly could not read the saved pairing on this phone.",
+            viewModel.state.value.pairingError?.message,
+        )
+        assertEquals(
+            "Pair again from your laptop if your sessions do not appear.",
+            viewModel.state.value.pairingError?.detail,
+        )
     }
 
     @Test
@@ -765,7 +809,12 @@ class ShellyViewModelTest {
         drainMainLooper()
 
         assertFalse(viewModel.state.value.loading)
-        assertEquals("Sessions unavailable", viewModel.state.value.message)
+        assertEquals("SESSION REFRESH FAILED", viewModel.state.value.message?.kicker)
+        assertEquals("SYNC", viewModel.state.value.message?.title)
+        assertEquals(
+            "Shelly could not refresh sessions because Android reported an unexpected error. Try again; if it continues, run `shelly doctor` on your laptop.",
+            viewModel.state.value.message?.body,
+        )
     }
 
     @Test

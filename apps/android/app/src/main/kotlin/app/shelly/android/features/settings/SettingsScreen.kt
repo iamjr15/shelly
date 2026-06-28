@@ -1,136 +1,121 @@
 package app.shelly.android.features.settings
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import app.shelly.android.core.ShellyViewModel
 import app.shelly.android.core.MobileTelemetry
+import app.shelly.android.core.ShellyViewModel
+import app.shelly.android.ui.components.SettingsFooterAction
+import app.shelly.android.ui.components.SettingsGlyph
+import app.shelly.android.ui.components.SettingsHeroBody
+import app.shelly.android.ui.components.SettingsListRow
+import app.shelly.android.ui.components.ShellyScreen
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(padding: PaddingValues, viewModel: ShellyViewModel) {
+fun SettingsScreen(
+    padding: PaddingValues,
+    viewModel: ShellyViewModel,
+    themeModeLabel: String = "SYSTEM",
+    onBackToSessions: () -> Unit = {},
+    onOpenAppearance: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
+    onOpenSecurity: () -> Unit = {},
+    onOpenPrivacy: () -> Unit = {},
+    onOpenAbout: () -> Unit = {},
+    onOpenDaemonDetail: () -> Unit = {},
+    onUnpair: () -> Unit = {},
+) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
-    var telemetry by remember { mutableStateOf(MobileTelemetry.isDiagnosticsEnabled(context)) }
-    var showLicenses by remember { mutableStateOf(false) }
-    var confirmUnpair by remember { mutableStateOf(false) }
+    val telemetry by remember { mutableStateOf(MobileTelemetry.isDiagnosticsEnabled(context)) }
 
-    if (showLicenses) {
-        OpenSourceLicensesScreen(padding = padding, onBack = { showLicenses = false })
-        return
-    }
-
-    if (confirmUnpair) {
-        AlertDialog(
-            onDismissRequest = { confirmUnpair = false },
-            title = { Text(UNPAIR_TITLE) },
-            text = { Text(UNPAIR_BODY) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        confirmUnpair = false
-                        viewModel.unpair()
-                    },
-                ) {
-                    Text(UNPAIR_CONFIRM)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmUnpair = false }) {
-                    Text(UNPAIR_CANCEL)
-                }
-            },
-        )
-    }
-
-    Scaffold(
+    SettingsContent(
         modifier = Modifier.padding(padding),
-        topBar = { TopAppBar(title = { Text("Settings") }) },
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            item { SettingsSectionHeader(SETTINGS_CONNECTION_SECTION) }
-            item {
-                ListItem(
-                    headlineContent = { Text(DAEMON_TITLE) },
-                    supportingContent = { Text(pairedDaemonSummary(state.pairedDaemon)) },
-                )
-            }
-            item { SettingsSectionHeader(SETTINGS_PRIVACY_SECTION) }
-            item {
-                ListItem(
-                    headlineContent = { Text(DIAGNOSTICS_TITLE) },
-                    supportingContent = { Text(DIAGNOSTICS_BODY) },
-                    trailingContent = {
-                        Switch(
-                            checked = telemetry,
-                            onCheckedChange = {
-                                telemetry = it
-                                MobileTelemetry.setDiagnosticsEnabled(context, it)
-                            },
-                        )
-                    },
-                )
-            }
-            item { SettingsSectionHeader(SETTINGS_HELP_SECTION) }
-            item {
-                ListItem(
-                    headlineContent = { Text(LICENSES_TITLE) },
-                    supportingContent = { Text(LICENSES_BODY) },
-                    modifier = Modifier.clickable { showLicenses = true },
-                )
-            }
-            if (state.paired) {
-                item { SettingsSectionHeader(SETTINGS_DEVICE_SECTION) }
-                item {
-                    ListItem(
-                        headlineContent = { Text("Unpair this phone") },
-                        supportingContent = { Text(UNPAIR_ROW_BODY) },
-                        trailingContent = {
-                            Button(onClick = { confirmUnpair = true }) {
-                                Text(UNPAIR_CONFIRM)
-                            }
-                        },
-                    )
-                }
-            }
-        }
-    }
+        paired = state.paired,
+        daemonNodeId = state.pairedDaemon?.daemonNodeId,
+        themeModeLabel = themeModeLabel,
+        telemetryEnabled = telemetry,
+        onBackToSessions = onBackToSessions,
+        onOpenAppearance = onOpenAppearance,
+        onOpenNotifications = onOpenNotifications,
+        onOpenSecurity = onOpenSecurity,
+        onOpenPrivacy = onOpenPrivacy,
+        onOpenAbout = onOpenAbout,
+        onOpenDaemonDetail = onOpenDaemonDetail,
+        onUnpair = onUnpair,
+    )
 }
 
 @Composable
-private fun SettingsSectionHeader(text: String) {
-    Text(
-        text = text,
-        modifier = Modifier.padding(start = 4.dp, top = 14.dp, bottom = 4.dp),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun SettingsContent(
+    modifier: Modifier = Modifier,
+    paired: Boolean,
+    daemonNodeId: String?,
+    themeModeLabel: String,
+    telemetryEnabled: Boolean,
+    onBackToSessions: () -> Unit,
+    onOpenAppearance: () -> Unit,
+    onOpenNotifications: () -> Unit,
+    onOpenSecurity: () -> Unit,
+    onOpenPrivacy: () -> Unit,
+    onOpenAbout: () -> Unit,
+    onOpenDaemonDetail: () -> Unit,
+    onUnpair: () -> Unit,
+) {
+    val daemonStatus = daemonNodeId?.let { "paired with ${compactDaemonNodeId(it)}" } ?: DAEMON_UNPAIRED.lowercase()
+    ShellyScreen(
+        modifier = modifier,
+        hero = {
+            SettingsHeroBody(
+                eyebrow = "YOUR PREFERENCES\nLIVE ON THIS DEVICE",
+                wordmark = "PREFS",
+                status = daemonStatus,
+                statusGlyph = SettingsGlyph.Monitor,
+                backLabel = "Sessions",
+                onBack = onBackToSessions,
+                onStatusClick = onOpenDaemonDetail,
+            )
+        },
+        content = {
+            SettingsListRow("Appearance", themeModeLabel, glyph = SettingsGlyph.Sun, onClick = onOpenAppearance)
+            SettingsListRow("Notifications", "ON", glyph = SettingsGlyph.Bell, onClick = onOpenNotifications)
+            SettingsListRow("Security", "5 MIN", glyph = SettingsGlyph.Lock, onClick = onOpenSecurity)
+            SettingsListRow(
+                "Privacy",
+                if (telemetryEnabled) "OPT-IN" else "OPT-OUT",
+                glyph = SettingsGlyph.Shield,
+                onClick = onOpenPrivacy,
+            )
+            SettingsListRow("About", "V1.0.0", glyph = SettingsGlyph.Info, showDivider = false, onClick = onOpenAbout)
+            Spacer(Modifier.weight(1f))
+            if (paired) {
+                SettingsFooterAction("Unpair this device", onClick = onUnpair)
+            }
+        },
+    )
+}
+
+@Composable
+internal fun SettingsContentPreview() {
+    SettingsContent(
+        paired = true,
+        daemonNodeId = "node_01k9c4f3hg7z",
+        themeModeLabel = "SYSTEM",
+        telemetryEnabled = false,
+        onBackToSessions = {},
+        onOpenAppearance = {},
+        onOpenNotifications = {},
+        onOpenSecurity = {},
+        onOpenPrivacy = {},
+        onOpenAbout = {},
+        onOpenDaemonDetail = {},
+        onUnpair = {},
     )
 }

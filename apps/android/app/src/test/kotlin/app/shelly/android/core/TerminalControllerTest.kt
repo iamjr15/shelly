@@ -191,7 +191,7 @@ class TerminalControllerTest {
         controller.onLag(1UL)
         withTimeout(1_000) { reattachAttempted.await() }
 
-        assertEquals("Connection unavailable", controller.state.value.status)
+        assertEquals("Connection lost", controller.state.value.status)
         scope.cancel()
     }
 
@@ -268,7 +268,7 @@ class TerminalControllerTest {
         controller.sendInput(byteArrayOf('x'.code.toByte()))
         controller.onOutput("1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n".encodeToByteArray())
 
-        assertEquals("Session unavailable", controller.state.value.status)
+        assertEquals("Session ended", controller.state.value.status)
         assertNull(attached.lastInput)
         assertEquals(false, controller.modifierManager.ctrl)
         assertEquals(false, controller.modifierManager.alt)
@@ -411,7 +411,7 @@ class TerminalControllerTest {
 
         controller.requestResize(rows = 40, columns = 120)
 
-        assertEquals("Session unavailable", controller.state.value.status)
+        assertEquals("Session ended", controller.state.value.status)
         assertEquals(emptyList<Pair<UShort, UShort>>(), attached.resizeCalls)
         scope.cancel()
     }

@@ -719,7 +719,7 @@ where
                         .await?;
                     }
                     Ok(false) => {
-                        write_forbidden(&writer, "pairing denied").await?;
+                        write_forbidden(&writer, "pairing denied on laptop").await?;
                     }
                     Err(error) => {
                         write_msg(

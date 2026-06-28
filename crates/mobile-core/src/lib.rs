@@ -202,7 +202,9 @@ impl ShellyClient {
     pub fn new(config: ClientConfig) -> Result<Arc<Self>, ShellyError> {
         let secret_key = match &config.device_secret_key {
             Some(bytes) => SecretKey::from_bytes(&bytes.as_slice().try_into().map_err(|_| {
-                ShellyError::InvalidConfig("device_secret_key must be 32 bytes".to_string())
+                ShellyError::InvalidConfig(
+                    "stored mobile identity key is invalid: expected 32 bytes".to_string(),
+                )
             })?),
             None => SecretKey::generate(),
         };
@@ -226,8 +228,9 @@ impl ShellyClient {
         self: Arc<Self>,
         qr_payload: String,
     ) -> Result<DaemonInfo, ShellyError> {
-        let ticket = PairingTicket::decode(qr_payload.trim())
-            .map_err(|error| ShellyError::Protocol(error.to_string()))?;
+        let ticket = PairingTicket::decode(qr_payload.trim()).map_err(|error| {
+            ShellyError::Protocol(format!("invalid pairing QR payload: {error}"))
+        })?;
         self.pair_with_ticket(ticket).await
     }
 
@@ -243,7 +246,10 @@ impl ShellyClient {
             .relay_control_url
             .as_deref()
             .ok_or_else(|| {
-                ShellyError::InvalidConfig("relay control URL not configured".to_string())
+                ShellyError::InvalidConfig(
+                    "typed pairing codes are unavailable because no relay control URL is configured"
+                        .to_string(),
+                )
             })?
             .trim_end_matches('/');
         let url = format!("{relay_control_url}/v1/pair/resolve/{code}");
@@ -252,24 +258,32 @@ impl ShellyClient {
             .get(&url)
             .send()
             .await
-            .map_err(|error| ShellyError::Transport(error.to_string()))?;
+            .map_err(|error| {
+                ShellyError::Transport(format!(
+                    "failed to resolve pairing code through the relay: {error}"
+                ))
+            })?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(ShellyError::NotFound(
-                "code not found or expired".to_string(),
+                "pairing code not found, expired, or already used".to_string(),
             ));
         }
         if !response.status().is_success() {
             return Err(ShellyError::Protocol(format!(
-                "relay resolve returned {}",
+                "pairing relay returned HTTP {} while resolving the code",
                 response.status()
             )));
         }
-        let resolved: ResolvePairingResponse = response
-            .json()
-            .await
-            .map_err(|error| ShellyError::Protocol(error.to_string()))?;
-        let ticket = PairingTicket::decode(resolved.ticket_blob.trim())
-            .map_err(|error| ShellyError::Protocol(error.to_string()))?;
+        let resolved: ResolvePairingResponse = response.json().await.map_err(|error| {
+            ShellyError::Protocol(format!(
+                "pairing relay returned an invalid resolve response: {error}"
+            ))
+        })?;
+        let ticket = PairingTicket::decode(resolved.ticket_blob.trim()).map_err(|error| {
+            ShellyError::Protocol(format!(
+                "pairing relay returned an invalid pairing ticket: {error}"
+            ))
+        })?;
         self.pair_with_ticket(ticket).await
     }
 
@@ -352,7 +366,7 @@ impl ShellyClient {
     pub async fn kill_session(self: Arc<Self>, id: String) -> Result<(), ShellyError> {
         let session_id = id
             .parse::<SessionId>()
-            .map_err(|error| ShellyError::InvalidConfig(error.to_string()))?;
+            .map_err(|error| ShellyError::InvalidConfig(format!("invalid session id: {error}")))?;
         let (mut send, _recv) = self.open_authenticated_stream().await?;
         write_msg(&mut send, &ClientToServerMsg::KillSession { session_id }).await?;
         let _ = send.finish();
@@ -375,7 +389,7 @@ impl ShellyClient {
     ) -> Result<Arc<AttachedSession>, ShellyError> {
         let session_id = id
             .parse::<SessionId>()
-            .map_err(|error| ShellyError::InvalidConfig(error.to_string()))?;
+            .map_err(|error| ShellyError::InvalidConfig(format!("invalid session id: {error}")))?;
         let (mut send, mut recv) = self.open_authenticated_stream().await?;
         write_msg(
             &mut send,
@@ -516,11 +530,11 @@ impl ShellyClient {
     }
 
     async fn daemon_target(&self) -> Result<DaemonTarget, ShellyError> {
-        self.daemon
-            .lock()
-            .await
-            .clone()
-            .ok_or_else(|| ShellyError::InvalidConfig("client is not paired".to_string()))
+        self.daemon.lock().await.clone().ok_or_else(|| {
+            ShellyError::InvalidConfig(
+                "client has no saved daemon pairing; pair this device first".to_string(),
+            )
+        })
     }
 
     async fn open_authenticated_stream(&self) -> Result<(SendStream, RecvStream), ShellyError> {
@@ -610,9 +624,11 @@ impl AttachedSession {
     /// Detaches this client without killing the desktop session.
     pub async fn detach(self: Arc<Self>) -> Result<(), ShellyError> {
         let mut guard = self.send.lock().await;
-        let send = guard
-            .as_mut()
-            .ok_or_else(|| ShellyError::Protocol("send stream closed".to_string()))?;
+        let send = guard.as_mut().ok_or_else(|| {
+            ShellyError::Protocol(
+                "cannot detach because the terminal send stream is closed".to_string(),
+            )
+        })?;
         if let Err(error) = write_msg(send, &ClientToServerMsg::DetachSession).await {
             guard.take();
             return Err(error);
@@ -663,9 +679,11 @@ impl AttachedSession {
 
     async fn write_to_send_stream(&self, message: &ClientToServerMsg) -> Result<(), ShellyError> {
         let mut guard = self.send.lock().await;
-        let send = guard
-            .as_mut()
-            .ok_or_else(|| ShellyError::Protocol("send stream closed".to_string()))?;
+        let send = guard.as_mut().ok_or_else(|| {
+            ShellyError::Protocol(
+                "cannot send terminal command because the daemon stream is closed".to_string(),
+            )
+        })?;
         if let Err(error) = write_msg(send, message).await {
             guard.take();
             return Err(error);
@@ -674,11 +692,12 @@ impl AttachedSession {
     }
 
     async fn take_recv(&self) -> Result<RecvStream, ShellyError> {
-        self.recv
-            .lock()
-            .await
-            .take()
-            .ok_or_else(|| ShellyError::Protocol("receive stream is already in use".to_string()))
+        self.recv.lock().await.take().ok_or_else(|| {
+            ShellyError::Protocol(
+                "cannot subscribe to terminal output because the receive stream is already in use"
+                    .to_string(),
+            )
+        })
     }
 
     async fn replace_recv(&self, recv: RecvStream) {
@@ -707,20 +726,24 @@ impl DaemonTarget {
         let endpoint_id = self
             .node_id
             .parse()
-            .map_err(|error: iroh::KeyParsingError| ShellyError::Protocol(error.to_string()))?;
+            .map_err(|error: iroh::KeyParsingError| {
+                ShellyError::Protocol(format!("stored daemon node id is invalid: {error}"))
+            })?;
         let mut addrs = Vec::new();
         if let Some(relay_url) = &self.relay_url {
             let relay_url: RelayUrl =
                 relay_url
                     .parse()
                     .map_err(|error: iroh::RelayUrlParseError| {
-                        ShellyError::Protocol(error.to_string())
+                        ShellyError::Protocol(format!(
+                            "stored daemon relay URL is invalid: {error}"
+                        ))
                     })?;
             addrs.push(TransportAddr::Relay(relay_url));
         }
         for addr in &self.addrs {
             let addr: SocketAddr = addr.parse().map_err(|error: std::net::AddrParseError| {
-                ShellyError::Protocol(error.to_string())
+                ShellyError::Protocol(format!("stored daemon address is invalid: {error}"))
             })?;
             addrs.push(TransportAddr::Ip(addr));
         }
@@ -734,7 +757,9 @@ impl DaemonTarget {
                 relay_url
                     .parse::<RelayUrl>()
                     .map_err(|error: iroh::RelayUrlParseError| {
-                        ShellyError::Protocol(error.to_string())
+                        ShellyError::Protocol(format!(
+                            "stored daemon relay URL is invalid: {error}"
+                        ))
                     })
             })
             .transpose()
@@ -753,10 +778,11 @@ async fn endpoint_for_secret(
     if let Some(relay_url) = relay_url {
         builder = builder.relay_mode(RelayMode::custom([relay_url.clone()]));
     }
-    builder
-        .bind()
-        .await
-        .map_err(|error| ShellyError::Transport(error.to_string()))
+    builder.bind().await.map_err(|error| {
+        ShellyError::Transport(format!(
+            "failed to start Shelly mobile network endpoint: {error}"
+        ))
+    })
 }
 
 async fn open_stream(
@@ -771,11 +797,13 @@ async fn open_stream(
         endpoint.connect(target.endpoint_addr()?, SHELLY_ALPN),
     )
     .await
-    .map_err(|_| ShellyError::Transport("timed out connecting to daemon".to_string()))?
-    .map_err(|error| ShellyError::Transport(error.to_string()))?;
-    conn.open_bi()
-        .await
-        .map_err(|error| ShellyError::Transport(error.to_string()))
+    .map_err(|_| ShellyError::Transport("timed out connecting to the paired daemon".to_string()))?
+    .map_err(|error| {
+        ShellyError::Transport(format!("failed to connect to the paired daemon: {error}"))
+    })?;
+    conn.open_bi().await.map_err(|error| {
+        ShellyError::Transport(format!("failed to open daemon control stream: {error}"))
+    })
 }
 
 async fn write_hello(send: &mut SendStream, platform: MobilePlatform) -> Result<(), ShellyError> {
@@ -813,20 +841,19 @@ where
     R: AsyncRead + Unpin,
 {
     let mut len_bytes = [0_u8; 4];
-    reader
-        .read_exact(&mut len_bytes)
-        .await
-        .map_err(|error| ShellyError::Transport(error.to_string()))?;
+    reader.read_exact(&mut len_bytes).await.map_err(|error| {
+        ShellyError::Transport(format!("failed to read daemon frame length: {error}"))
+    })?;
     let len = u32::from_be_bytes(len_bytes) as usize;
     if len > max_frame_len() {
         return Err(ShellyError::Protocol(format!("frame too large: {len}")));
     }
     let mut payload = vec![0; len];
-    reader
-        .read_exact(&mut payload)
-        .await
-        .map_err(|error| ShellyError::Transport(error.to_string()))?;
-    rmp_serde::from_slice(&payload).map_err(|error| ShellyError::Protocol(error.to_string()))
+    reader.read_exact(&mut payload).await.map_err(|error| {
+        ShellyError::Transport(format!("failed to read daemon frame payload: {error}"))
+    })?;
+    rmp_serde::from_slice(&payload)
+        .map_err(|error| ShellyError::Protocol(format!("daemon frame payload is invalid: {error}")))
 }
 
 async fn write_msg<T>(writer: &mut SendStream, message: &T) -> Result<(), ShellyError>
@@ -841,8 +868,9 @@ where
     T: Serialize,
     W: AsyncWrite + Unpin,
 {
-    let payload = rmp_serde::to_vec_named(message)
-        .map_err(|error| ShellyError::Protocol(error.to_string()))?;
+    let payload = rmp_serde::to_vec_named(message).map_err(|error| {
+        ShellyError::Protocol(format!("failed to encode daemon request: {error}"))
+    })?;
     if payload.len() > max_frame_len() {
         return Err(ShellyError::Protocol(format!(
             "frame too large: {}",
@@ -852,11 +880,12 @@ where
     writer
         .write_all(&(payload.len() as u32).to_be_bytes())
         .await
-        .map_err(|error| ShellyError::Transport(error.to_string()))?;
-    writer
-        .write_all(&payload)
-        .await
-        .map_err(|error| ShellyError::Transport(error.to_string()))?;
+        .map_err(|error| {
+            ShellyError::Transport(format!("failed to write daemon frame length: {error}"))
+        })?;
+    writer.write_all(&payload).await.map_err(|error| {
+        ShellyError::Transport(format!("failed to write daemon frame payload: {error}"))
+    })?;
     Ok(())
 }
 

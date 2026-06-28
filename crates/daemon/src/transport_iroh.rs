@@ -199,7 +199,7 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                         )
                         .await?;
                     }
-                    Ok(false) => write_forbidden(&writer, "pairing denied").await?,
+                    Ok(false) => write_forbidden(&writer, "pairing denied on laptop").await?,
                     Err(error) => {
                         write_msg(
                             &writer,
