@@ -392,6 +392,132 @@ class ShellyViewModelTest {
     }
 
     @Test
+    fun sessionRetryBackoffDoublesPerAttemptAndCaps() {
+        assertEquals(750L, sessionRetryBackoffMillis(attempt = 1, baseMillis = 750L, capMillis = 30_000L))
+        assertEquals(1_500L, sessionRetryBackoffMillis(attempt = 2, baseMillis = 750L, capMillis = 30_000L))
+        assertEquals(3_000L, sessionRetryBackoffMillis(attempt = 3, baseMillis = 750L, capMillis = 30_000L))
+        assertEquals(6_000L, sessionRetryBackoffMillis(attempt = 4, baseMillis = 750L, capMillis = 30_000L))
+        assertEquals(30_000L, sessionRetryBackoffMillis(attempt = 99, baseMillis = 750L, capMillis = 30_000L))
+        assertEquals(0L, sessionRetryBackoffMillis(attempt = 5, baseMillis = 0L, capMillis = 30_000L))
+    }
+
+    @Test
+    fun sessionSubscriptionDropEntersReconnectingAndHoldsLastSessions() {
+        val session = testSession(id = "018f0000-0000-7000-8000-0000000000d1")
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            sessions = listOf(session),
+            subscriptionFailures = ArrayDeque<Throwable>().apply {
+                add(RuntimeException("transport error: connection lost"))
+            },
+            emitOnSubscribe = false,
+        )
+        val viewModel = testViewModel(
+            repository = repository,
+            sessionSubscriptionRetryDelayMillis = 0L,
+            now = { 1_000_000L },
+        )
+
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        waitForState { viewModel.state.value.connectionState is ConnectionState.Reconnecting }
+        val reconnecting = viewModel.state.value.connectionState as ConnectionState.Reconnecting
+        assertEquals(1, reconnecting.attempt)
+        assertEquals(1_000_000L, reconnecting.droppedAtMillis)
+        assertEquals(1_000_000L, reconnecting.nextRetryAtMillis)
+        assertEquals(listOf(session), viewModel.state.value.sessions)
+        assertNull(viewModel.state.value.message)
+    }
+
+    @Test
+    fun sustainedSessionSubscriptionDropBecomesUnreachable() {
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            subscriptionFailures = ArrayDeque<Throwable>().apply {
+                add(RuntimeException("transport error: connection lost"))
+            },
+            emitOnSubscribe = false,
+        )
+        val viewModel = testViewModel(
+            repository = repository,
+            sessionSubscriptionRetryDelayMillis = 0L,
+            unreachableAfterMillis = 0L,
+            unreachableRetryIntervalMillis = 15_000L,
+            now = { 2_000_000L },
+        )
+
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        waitForState { viewModel.state.value.connectionState is ConnectionState.Unreachable }
+        val unreachable = viewModel.state.value.connectionState as ConnectionState.Unreachable
+        assertEquals(1, unreachable.attempt)
+        assertEquals(2_000_000L, unreachable.droppedAtMillis)
+        assertEquals(15_000L, unreachable.retryIntervalMillis)
+        assertEquals(2_015_000L, unreachable.nextRetryAtMillis)
+
+        viewModel.setUnlocked(false)
+        drainMainLooper()
+    }
+
+    @Test
+    fun sessionSubscriptionRecoveryReturnsToConnected() {
+        val session = testSession(id = "018f0000-0000-7000-8000-0000000000d3")
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            sessions = listOf(session),
+            subscriptionFailures = ArrayDeque<Throwable>().apply {
+                add(RuntimeException("transport error: connection lost"))
+            },
+        )
+        val viewModel = testViewModel(
+            repository = repository,
+            sessionSubscriptionRetryDelayMillis = 0L,
+        )
+
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        waitForState {
+            repository.subscribeCalls >= 2 &&
+                viewModel.state.value.connectionState == ConnectionState.Connected
+        }
+        assertEquals(ConnectionState.Connected, viewModel.state.value.connectionState)
+        assertEquals(listOf(session), viewModel.state.value.sessions)
+        assertNull(viewModel.state.value.message)
+    }
+
+    @Test
+    fun retryConnectionNowShortensReconnectWait() {
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            subscriptionAlwaysFails = true,
+        )
+        // A 30s base backoff means the next retry only fires within the test window if
+        // retryConnectionNow() interrupts the wait.
+        val viewModel = testViewModel(
+            repository = repository,
+            sessionSubscriptionRetryDelayMillis = 30_000L,
+        )
+
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        waitForState { viewModel.state.value.connectionState is ConnectionState.Reconnecting }
+        assertEquals(1, repository.subscribeCalls)
+
+        viewModel.retryConnectionNow()
+        drainMainLooper()
+
+        waitForState { repository.subscribeCalls >= 2 }
+        assertTrue(repository.subscribeCalls >= 2)
+
+        viewModel.setUnlocked(false)
+        drainMainLooper()
+    }
+
+    @Test
     fun setLockedStopsSessionSubscriptionUpdates() {
         val first = testSession(id = "018f0000-0000-7000-8000-000000000009")
         val second = testSession(id = "018f0000-0000-7000-8000-00000000000a")
@@ -965,6 +1091,10 @@ class ShellyViewModelTest {
         fcmTokens: FakeFcmTokenSource = FakeFcmTokenSource(pending = null, current = null),
         sessionSubscriptionRetryDelayMillis: Long = 750L,
         backgroundDetachGraceMillis: Long = 5 * 60 * 1000L,
+        maxRetryDelayMillis: Long = 30_000L,
+        unreachableAfterMillis: Long = 60_000L,
+        unreachableRetryIntervalMillis: Long = 15_000L,
+        now: () -> Long = { System.currentTimeMillis() },
     ): ShellyViewModel {
         return ShellyViewModel(
             context,
@@ -974,6 +1104,10 @@ class ShellyViewModelTest {
             repositoryDispatcher = Dispatchers.Unconfined,
             sessionSubscriptionRetryDelayMillis = sessionSubscriptionRetryDelayMillis,
             backgroundDetachGraceMillis = backgroundDetachGraceMillis,
+            maxRetryDelayMillis = maxRetryDelayMillis,
+            unreachableAfterMillis = unreachableAfterMillis,
+            unreachableRetryIntervalMillis = unreachableRetryIntervalMillis,
+            now = now,
         ).also {
             drainMainLooper()
         }
@@ -1041,6 +1175,8 @@ class ShellyViewModelTest {
         private val attachedSessions: ArrayDeque<AttachedSession> = ArrayDeque(),
         private val subscriptionFailures: ArrayDeque<Throwable> = ArrayDeque(),
         private var subscriptionCleanReturnsBeforeHold: Int = 0,
+        private val subscriptionAlwaysFails: Boolean = false,
+        private val emitOnSubscribe: Boolean = true,
         private val onRestore: (() -> Unit)? = null,
         private val onPair: ((String) -> Unit)? = null,
         private val onListSessions: (() -> Unit)? = null,
@@ -1117,9 +1253,14 @@ class ShellyViewModelTest {
 
         override suspend fun subscribeSessions(onUpdate: (List<MobileSession>) -> Unit) {
             subscribeCalls += 1
+            if (subscriptionAlwaysFails) {
+                throw RuntimeException("transport error: connection lost")
+            }
             subscriptionFailures.removeFirstOrNull()?.let { throw it }
             subscriptionSink = onUpdate
-            initialSubscriptionSessions?.let(onUpdate)
+            if (emitOnSubscribe) {
+                initialSubscriptionSessions?.let(onUpdate)
+            }
             if (subscriptionCleanReturnsBeforeHold > 0) {
                 subscriptionCleanReturnsBeforeHold -= 1
                 return
