@@ -44,6 +44,25 @@
         mode: "0755"
       notify: Restart shelly relay
 
+    - name: Ensure relay secrets directory
+      ansible.builtin.file:
+        path: /etc/shelly/secrets
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      when: fcm_credential_src is defined and (fcm_credential_src | length > 0)
+
+    - name: Install FCM service-account credential
+      ansible.builtin.copy:
+        src: "{{ fcm_credential_src }}"
+        dest: /etc/shelly/secrets/fcm-service-account.json
+        owner: root
+        group: root
+        mode: "0600"
+      when: fcm_credential_src is defined and (fcm_credential_src | length > 0)
+      notify: Restart shelly relay
+
     - name: Remove unmanaged relay service drop-ins
       ansible.builtin.file:
         path: "{{ item }}"
