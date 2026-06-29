@@ -986,6 +986,8 @@ class ShellyViewModelTest {
         deviceNodeId = "device-node",
         deviceSecretKey = "device-secret".encodeToByteArray(),
         pairedAtMillis = 1L,
+        daemonVersion = "1.0.0",
+        protocolVersion = 3,
     )
 
     private fun testSession(id: String) = MobileSession(

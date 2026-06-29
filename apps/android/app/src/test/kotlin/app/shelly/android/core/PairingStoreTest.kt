@@ -92,6 +92,8 @@ class PairingStoreTest {
         deviceNodeId = "device-node-id",
         deviceSecretKey = byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8),
         pairedAtMillis = 1_717_000_000_000L,
+        daemonVersion = "1.2.3",
+        protocolVersion = 3,
     )
 
     private fun Context.pairingPrefsForTests() =

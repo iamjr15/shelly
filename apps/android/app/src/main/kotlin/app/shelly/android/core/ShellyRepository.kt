@@ -84,6 +84,8 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
             deviceNodeId = info.deviceNodeId,
             deviceSecretKey = info.deviceSecretKey,
             pairedAtMillis = System.currentTimeMillis(),
+            daemonVersion = info.daemonVersion,
+            protocolVersion = info.protocolVersion.toInt(),
         )
         store.save(record)
         replacePairing(record, createClient(record))

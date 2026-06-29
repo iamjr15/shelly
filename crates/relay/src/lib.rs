@@ -165,12 +165,18 @@ impl PushPlatform {
 pub(crate) enum PushEventType {
     #[garde(skip)]
     AwaitingInput,
+    #[garde(skip)]
+    SessionCrashed,
+    #[garde(skip)]
+    BuildFinished,
 }
 
 impl PushEventType {
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::AwaitingInput => "awaiting_input",
+            Self::SessionCrashed => "session_crashed",
+            Self::BuildFinished => "build_finished",
         }
     }
 }
@@ -1730,6 +1736,42 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         assert_eq!(delivered[0].body, "A session is waiting for you.");
         assert!(!delivered[0].body.contains("secret"));
         assert_eq!(delivered[0].thread_id, format!("session.{HASH_A}"));
+    }
+
+    #[tokio::test]
+    async fn accepts_session_crashed_and_build_finished_event_types() {
+        let state = RelayState::default();
+        let key = SigningKey::from_bytes(&[7; 32]);
+        register_daemon_key(&state, DAEMON_A, &key).await;
+        register_token_for(&state, DAEMON_A, &key, "nonce-register-events").await;
+
+        for (index, event_type) in [PushEventType::SessionCrashed, PushEventType::BuildFinished]
+            .into_iter()
+            .enumerate()
+        {
+            let nonce = format!("nonce-event-{index:06}");
+            let body = serde_json::to_vec(&PushRequest {
+                daemon_node_id: DAEMON_A.to_string(),
+                recipient_token: TOKEN.to_string(),
+                platform: PushPlatform::Apns,
+                session_id_hash: HASH_A.to_string(),
+                session_name_hash: HASH_B.to_string(),
+                event_type,
+                nonce: nonce.clone(),
+                ts_ms: now_ms(),
+            })
+            .unwrap();
+            let response = signed_post(&state, &key, "/v1/push", body, &nonce).await;
+            assert_eq!(response.status(), StatusCode::ACCEPTED);
+        }
+
+        // The new types are delivered through the same generic, content-free path:
+        // only the event_type discriminator changes; title/body stay generic.
+        let delivered = state.delivered();
+        assert_eq!(delivered.len(), 2);
+        assert_eq!(delivered[0].event_type.as_str(), "session_crashed");
+        assert_eq!(delivered[1].event_type.as_str(), "build_finished");
+        assert!(delivered.iter().all(|push| push.title == "Shelly"));
     }
 
     #[tokio::test]

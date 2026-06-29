@@ -48,6 +48,8 @@ class SettingsCopyTest {
             deviceNodeId = "device-node",
             deviceSecretKey = byteArrayOf(1, 2, 3),
             pairedAtMillis = 1L,
+            daemonVersion = "1.0.0",
+            protocolVersion = 3,
         )
 
         assertEquals("No paired daemon", pairedDaemonSummary(null))

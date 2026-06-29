@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -33,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -89,7 +92,7 @@ fun ShellyApp(
 
     var onboarded by remember { mutableStateOf(uiPrefs.readOnboarded()) }
     var onboardingStack by remember { mutableStateOf(listOf(ShellyOnboardingStep.Welcome)) }
-    var themeMode by remember { mutableStateOf(uiPrefs.readThemeMode()) }
+    val settings = remember(uiPrefs) { ShellySettings(uiPrefs) }
     var route by remember { mutableStateOf(ShellyRoute.Sessions) }
     var commandPaletteVisible by remember { mutableStateOf(false) }
     var searchRequestToken by remember { mutableStateOf(0) }
@@ -109,10 +112,16 @@ fun ShellyApp(
     )
     var lastAlertMessage by remember { mutableStateOf<ShellyAlertMessage?>(null) }
 
-    val cycleThemeMode = {
-        val next = themeMode.next()
-        themeMode = next
-        uiPrefs.writeThemeMode(next)
+    val onToggleTelemetry = {
+        val next = !telemetryEnabled
+        MobileTelemetry.setDiagnosticsEnabled(context, next)
+        telemetryEnabled = next
+    }
+
+    // Keep the biometric gate's idle timeout + enabled flag in sync with settings. Runs during
+    // composition (before the unlock effect below) so a disabled lock never prompts on cold start.
+    remember(settings.autoLock, settings.biometricLock) {
+        biometricGate.configure(settings.autoLock.millis, settings.biometricLock)
     }
 
     LaunchedEffect(onboarded) {
@@ -146,7 +155,9 @@ fun ShellyApp(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
-                    AndroidBiometricGate.markBackgrounded()
+                    if (settings.blockOnBackground) {
+                        AndroidBiometricGate.markBackgrounded()
+                    }
                     viewModel.onAppBackgrounded()
                 }
                 Lifecycle.Event.ON_RESUME -> {
@@ -164,172 +175,183 @@ fun ShellyApp(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    ShellyTheme(darkTheme = themeMode.resolvedDark(systemDark)) {
+    ShellyTheme(
+        darkTheme = settings.themeMode.resolvedDark(systemDark),
+        animationsEnabled = !settings.reduceMotion,
+    ) {
         val c = ShellyTheme.colors
-        Box(Modifier.fillMaxSize().background(c.screen)) {
-            AnimatedContent(
-                targetState = surface,
-                transitionSpec = { shellyHorizontalTransform(targetState.motionDepth >= initialState.motionDepth) },
-                modifier = Modifier.fillMaxSize(),
-                label = "shellySurfaceTransition",
-            ) { targetSurface ->
-                when (targetSurface) {
-                    ShellySurface.Onboarding -> OnboardingFlow(
-                        step = onboardingStack.last(),
-                        canGoBack = onboardingStack.size > 1,
-                        onPush = { step -> onboardingStack = onboardingStack + step },
-                        onBack = {
-                            if (onboardingStack.size > 1) {
-                                onboardingStack = onboardingStack.dropLast(1)
+        // Scale every sp text globally by the chosen text-size (on top of the system fontScale).
+        CompositionLocalProvider(
+            LocalDensity provides Density(
+                LocalDensity.current.density,
+                LocalDensity.current.fontScale * settings.textSize.scale,
+            ),
+        ) {
+            Box(Modifier.fillMaxSize().background(c.screen)) {
+                AnimatedContent(
+                    targetState = surface,
+                    transitionSpec = { shellyHorizontalTransform(targetState.motionDepth >= initialState.motionDepth) },
+                    modifier = Modifier.fillMaxSize(),
+                    label = "shellySurfaceTransition",
+                ) { targetSurface ->
+                    when (targetSurface) {
+                        ShellySurface.Onboarding -> OnboardingFlow(
+                            step = onboardingStack.last(),
+                            canGoBack = onboardingStack.size > 1,
+                            onPush = { step -> onboardingStack = onboardingStack + step },
+                            onBack = {
+                                if (onboardingStack.size > 1) {
+                                    onboardingStack = onboardingStack.dropLast(1)
+                                }
+                            },
+                            onComplete = {
+                                uiPrefs.writeOnboarded(true)
+                                onboarded = true
+                                route = ShellyRoute.Sessions
+                            },
+                        )
+                        ShellySurface.Locked -> LockedScreen(
+                            onUnlock = {
+                                unlockUnavailableMessage = biometricGate.unlockUnavailableMessage()
+                                scope.launch { viewModel.setUnlocked(biometricGate.unlock("Unlock Shelly")) }
+                            },
+                            unavailableMessage = unlockUnavailableMessage,
+                        )
+                        ShellySurface.RestoringPairing -> CenterSpinner()
+                        ShellySurface.Pairing -> PairingScreen(
+                            padding = PaddingValues(0.dp),
+                            pairing = state.loading,
+                            onPair = viewModel::pair,
+                            onPairWithCode = viewModel::pairWithCode,
+                            uiState = state.pairingError?.let {
+                                PairingUiState.Error(message = it.message, detail = it.detail)
+                            } ?: PairingUiState.Idle,
+                        )
+                        is ShellySurface.Terminal -> {
+                            val terminalSession = state.sessions.firstOrNull { it.id == targetSurface.sessionId } ?: activeTerminalSession
+                            if (terminalSession == null) {
+                                CenterSpinner()
+                            } else {
+                                TerminalScreen(
+                                    session = terminalSession,
+                                    viewModel = viewModel,
+                                    biometricGate = biometricGate,
+                                    onBack = viewModel::closeTerminalSession,
+                                )
+                            }
+                        }
+                        is ShellySurface.Routed -> RoutedContent(
+                            route = targetSurface.route,
+                            settings = settings,
+                            telemetryEnabled = telemetryEnabled,
+                            viewModel = viewModel,
+                            biometricGate = biometricGate,
+                            onRoute = { route = it },
+                            onToggleTelemetry = onToggleTelemetry,
+                            onOpenPalette = { commandPaletteVisible = true },
+                            searchRequestToken = searchRequestToken,
+                            onUnpair = { showUnpairSheet = true },
+                        )
+                    }
+                }
+
+                if (commandPaletteVisible && onboarded && state.paired && state.unlocked && state.activeTerminalSessionId == null) {
+                    CommandPaletteScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        onDismiss = { commandPaletteVisible = false },
+                        onAttachSession = {
+                            commandPaletteVisible = false
+                            attachFirstSession(state.sessions, biometricGate, viewModel, scope)
+                        },
+                        onNewSession = {
+                            commandPaletteVisible = false
+                            scope.launch {
+                                if (biometricGate.unlock("Create new session")) {
+                                    viewModel.createSession()
+                                }
                             }
                         },
-                        onComplete = {
-                            uiPrefs.writeOnboarded(true)
-                            onboarded = true
+                        onSearchSessions = {
+                            commandPaletteVisible = false
                             route = ShellyRoute.Sessions
+                            searchRequestToken += 1
                         },
-                    )
-                    ShellySurface.Locked -> LockedScreen(
-                        onUnlock = {
-                            unlockUnavailableMessage = biometricGate.unlockUnavailableMessage()
-                            scope.launch { viewModel.setUnlocked(biometricGate.unlock("Unlock Shelly")) }
+                        onLockNow = {
+                            commandPaletteVisible = false
+                            viewModel.setUnlocked(false)
                         },
-                        unavailableMessage = unlockUnavailableMessage,
-                    )
-                    ShellySurface.RestoringPairing -> CenterSpinner()
-                    ShellySurface.Pairing -> PairingScreen(
-                        padding = PaddingValues(0.dp),
-                        pairing = state.loading,
-                        onPair = viewModel::pair,
-                        onPairWithCode = viewModel::pairWithCode,
-                        uiState = state.pairingError?.let {
-                            PairingUiState.Error(message = it.message, detail = it.detail)
-                        } ?: PairingUiState.Idle,
-                    )
-                    is ShellySurface.Terminal -> {
-                        val terminalSession = state.sessions.firstOrNull { it.id == targetSurface.sessionId } ?: activeTerminalSession
-                        if (terminalSession == null) {
-                            CenterSpinner()
-                        } else {
-                            TerminalScreen(
-                                session = terminalSession,
-                                viewModel = viewModel,
-                                biometricGate = biometricGate,
-                                onBack = viewModel::closeTerminalSession,
-                            )
-                        }
-                    }
-                    is ShellySurface.Routed -> RoutedContent(
-                        route = targetSurface.route,
-                        themeMode = themeMode,
-                        telemetryEnabled = telemetryEnabled,
-                        viewModel = viewModel,
-                        biometricGate = biometricGate,
-                        onRoute = { route = it },
-                        onToggleTheme = cycleThemeMode,
-                        onOpenPalette = { commandPaletteVisible = true },
-                        searchRequestToken = searchRequestToken,
-                        onUnpair = { showUnpairSheet = true },
+                        onCopyLastOutput = { commandPaletteVisible = false },
+                        onOpenSettings = {
+                            commandPaletteVisible = false
+                            route = ShellyRoute.Settings
+                        },
+                        onShowGroupedSessions = {
+                            commandPaletteVisible = false
+                            route = ShellyRoute.SessionsGrouped
+                        },
+                        onShowReconnecting = {
+                            commandPaletteVisible = false
+                            route = ShellyRoute.SessionsReconnecting
+                        },
+                        onShowDaemonUnreachable = {
+                            commandPaletteVisible = false
+                            route = ShellyRoute.SessionsDaemonUnreachable
+                        },
                     )
                 }
-            }
 
-            if (commandPaletteVisible && onboarded && state.paired && state.unlocked && state.activeTerminalSessionId == null) {
-                CommandPaletteScreen(
-                    modifier = Modifier.fillMaxSize(),
-                    onDismiss = { commandPaletteVisible = false },
-                    onAttachSession = {
-                        commandPaletteVisible = false
-                        attachFirstSession(state.sessions, biometricGate, viewModel, scope)
-                    },
-                    onNewSession = {
-                        commandPaletteVisible = false
-                        scope.launch {
-                            if (biometricGate.unlock("Create new session")) {
-                                viewModel.createSession()
-                            }
-                        }
-                    },
-                    onSearchSessions = {
-                        commandPaletteVisible = false
-                        route = ShellyRoute.Sessions
-                        searchRequestToken += 1
-                    },
-                    onLockNow = {
-                        commandPaletteVisible = false
-                        viewModel.setUnlocked(false)
-                    },
-                    onCopyLastOutput = { commandPaletteVisible = false },
-                    onOpenSettings = {
-                        commandPaletteVisible = false
-                        route = ShellyRoute.Settings
-                    },
-                    onShowGroupedSessions = {
-                        commandPaletteVisible = false
-                        route = ShellyRoute.SessionsGrouped
-                    },
-                    onShowReconnecting = {
-                        commandPaletteVisible = false
-                        route = ShellyRoute.SessionsReconnecting
-                    },
-                    onShowDaemonUnreachable = {
-                        commandPaletteVisible = false
-                        route = ShellyRoute.SessionsDaemonUnreachable
-                    },
-                )
-            }
-
-            ShellyModalOverlay(visible = showUnpairSheet, onDismiss = { showUnpairSheet = false }) {
-                UnpairSheet(
-                    daemonLabel = state.pairedDaemon?.daemonNodeId?.take(12)?.let { "$it…" } ?: "this laptop",
-                    liveSessions = state.sessions.size,
-                    onConfirm = {
-                        showUnpairSheet = false
-                        route = ShellyRoute.Sessions
-                        viewModel.unpair()
-                    },
-                    onDismiss = { showUnpairSheet = false },
-                )
-            }
-            ShellyModalOverlay(
-                visible = state.telemetryConsentPromptVisible,
-                onDismiss = {
-                    viewModel.answerTelemetryConsent(false)
-                    telemetryEnabled = MobileTelemetry.isDiagnosticsEnabled(context)
-                },
-            ) {
-                TelemetrySheet(
-                    onConfirm = {
-                        viewModel.answerTelemetryConsent(true)
-                        telemetryEnabled = MobileTelemetry.isDiagnosticsEnabled(context)
-                    },
+                ShellyModalOverlay(visible = showUnpairSheet, onDismiss = { showUnpairSheet = false }) {
+                    UnpairSheet(
+                        daemonLabel = state.pairedDaemon?.daemonNodeId?.take(12)?.let { "$it…" } ?: "this laptop",
+                        liveSessions = state.sessions.size,
+                        onConfirm = {
+                            showUnpairSheet = false
+                            route = ShellyRoute.Sessions
+                            viewModel.unpair()
+                        },
+                        onDismiss = { showUnpairSheet = false },
+                    )
+                }
+                ShellyModalOverlay(
+                    visible = state.telemetryConsentPromptVisible,
                     onDismiss = {
                         viewModel.answerTelemetryConsent(false)
                         telemetryEnabled = MobileTelemetry.isDiagnosticsEnabled(context)
                     },
-                )
-            }
-            ShellyModalOverlay(visible = notificationPromptVisible, onDismiss = { notificationPromptVisible = false }) {
-                NotificationPermissionSheet(
-                    onConfirm = {
-                        notificationPromptVisible = false
-                        onRequestNotifications()
-                    },
-                    onDismiss = { notificationPromptVisible = false },
-                )
-            }
-            ShellyModalOverlay(visible = state.message != null, onDismiss = viewModel::clearMessage) {
-                lastAlertMessage?.let { message ->
-                    AlertSheet(
-                        message = message,
+                ) {
+                    TelemetrySheet(
                         onConfirm = {
-                            viewModel.clearMessage()
-                            if (state.paired && state.unlocked) {
-                                viewModel.refreshSessions()
-                            }
+                            viewModel.answerTelemetryConsent(true)
+                            telemetryEnabled = MobileTelemetry.isDiagnosticsEnabled(context)
                         },
-                        onDismiss = viewModel::clearMessage,
+                        onDismiss = {
+                            viewModel.answerTelemetryConsent(false)
+                            telemetryEnabled = MobileTelemetry.isDiagnosticsEnabled(context)
+                        },
                     )
+                }
+                ShellyModalOverlay(visible = notificationPromptVisible, onDismiss = { notificationPromptVisible = false }) {
+                    NotificationPermissionSheet(
+                        onConfirm = {
+                            notificationPromptVisible = false
+                            onRequestNotifications()
+                        },
+                        onDismiss = { notificationPromptVisible = false },
+                    )
+                }
+                ShellyModalOverlay(visible = state.message != null, onDismiss = viewModel::clearMessage) {
+                    lastAlertMessage?.let { message ->
+                        AlertSheet(
+                            message = message,
+                            onConfirm = {
+                                viewModel.clearMessage()
+                                if (state.paired && state.unlocked) {
+                                    viewModel.refreshSessions()
+                                }
+                            },
+                            onDismiss = viewModel::clearMessage,
+                        )
+                    }
                 }
             }
         }
@@ -339,12 +361,12 @@ fun ShellyApp(
 @Composable
 private fun RoutedContent(
     route: ShellyRoute,
-    themeMode: ShellyThemeMode,
+    settings: ShellySettings,
     telemetryEnabled: Boolean,
     viewModel: ShellyViewModel,
     biometricGate: AndroidBiometricGate,
     onRoute: (ShellyRoute) -> Unit,
-    onToggleTheme: () -> Unit,
+    onToggleTelemetry: () -> Unit,
     onOpenPalette: () -> Unit,
     searchRequestToken: Int,
     onUnpair: () -> Unit,
@@ -355,7 +377,7 @@ private fun RoutedContent(
             biometricGate = biometricGate,
             onOpenSession = viewModel::openTerminalSession,
             onOpenSettings = { onRoute(ShellyRoute.Settings) },
-            onToggleTheme = onToggleTheme,
+            onToggleTheme = settings::cycleTheme,
             onOpenCommandPalette = onOpenPalette,
             searchRequestToken = searchRequestToken,
         )
@@ -364,7 +386,7 @@ private fun RoutedContent(
             SettingsScreen(
                 padding = PaddingValues(0.dp),
                 viewModel = viewModel,
-                themeModeLabel = themeMode.label.uppercase(),
+                themeModeLabel = settings.themeMode.label.uppercase(),
                 onBackToSessions = { onRoute(ShellyRoute.Sessions) },
                 onOpenAppearance = { onRoute(ShellyRoute.Appearance) },
                 onOpenNotifications = { onRoute(ShellyRoute.Notifications) },
@@ -379,19 +401,45 @@ private fun RoutedContent(
             BackHandler { onRoute(ShellyRoute.Settings) }
             AppearanceScreen(
                 onBack = { onRoute(ShellyRoute.Settings) },
-                themeModeLabel = themeMode.label,
-                onOpenTheme = onToggleTheme,
+                themeModeLabel = settings.themeMode.label,
+                textSizeLabel = settings.textSize.label,
+                reduceMotionOn = settings.reduceMotion,
+                onOpenTheme = settings::cycleTheme,
+                onOpenTextSize = settings::cycleTextSize,
+                onToggleReduceMotion = settings::toggleReduceMotion,
             )
         }
         ShellyRoute.Notifications -> {
             BackHandler { onRoute(ShellyRoute.Settings) }
-            NotificationsScreen(onBack = { onRoute(ShellyRoute.Settings) })
+            NotificationsScreen(
+                onBack = { onRoute(ShellyRoute.Settings) },
+                pushOn = settings.pushEnabled,
+                awaitingInputOn = settings.notifyAwaitingInput,
+                sessionCrashedOn = settings.notifySessionCrashed,
+                buildFinishedOn = settings.notifyBuildFinished,
+                quietHoursLabel = settings.quietHours.label,
+                onTogglePush = {
+                    settings.togglePush()
+                    viewModel.setPushEnabled(settings.pushEnabled)
+                },
+                onToggleAwaitingInput = settings::toggleNotifyAwaiting,
+                onToggleSessionCrashed = settings::toggleNotifySessionCrashed,
+                onToggleBuildFinished = settings::toggleNotifyBuildFinished,
+                onCycleQuietHours = settings::cycleQuietHours,
+            )
         }
         ShellyRoute.Security -> {
             BackHandler { onRoute(ShellyRoute.Settings) }
             SecurityScreen(
                 onBack = { onRoute(ShellyRoute.Settings) },
                 telemetryEnabled = telemetryEnabled,
+                biometricLockOn = settings.biometricLock,
+                autoLockLabel = settings.autoLock.label,
+                blockOnBackgroundOn = settings.blockOnBackground,
+                onToggleBiometricLock = settings::toggleBiometricLock,
+                onCycleAutoLock = settings::cycleAutoLock,
+                onToggleBlockOnBackground = settings::toggleBlockOnBackground,
+                onToggleTelemetry = onToggleTelemetry,
             )
         }
         ShellyRoute.Privacy -> {
@@ -412,11 +460,16 @@ private fun RoutedContent(
         }
         ShellyRoute.DaemonDetail -> {
             BackHandler { onRoute(ShellyRoute.Settings) }
+            val daemonRecord = viewModel.state.value.pairedDaemon
             DaemonDetailScreen(
                 onBack = { onRoute(ShellyRoute.Settings) },
-                nodeId = viewModel.state.value.pairedDaemon?.daemonNodeId ?: "unpaired",
-                pairedAge = pairedAgeLabel(viewModel.state.value.pairedDaemon?.pairedAtMillis),
-                transport = viewModel.state.value.pairedDaemon?.relayUrl ?: "iroh QUIC",
+                nodeId = daemonRecord?.daemonNodeId ?: "unpaired",
+                pairedAge = pairedAgeLabel(daemonRecord?.pairedAtMillis),
+                daemon = daemonRecord?.daemonVersion?.takeIf { it.isNotBlank() }
+                    ?.let { "shellyd $it" } ?: "shellyd",
+                protocol = daemonRecord?.protocolVersion?.takeIf { it != 0 }
+                    ?.let { "v$it" } ?: "v3",
+                transport = if (daemonRecord?.relayUrl != null) "iroh QUIC (relay)" else "iroh QUIC",
                 onUnpair = onUnpair,
             )
         }

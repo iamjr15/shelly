@@ -3,10 +3,12 @@ package app.shelly.android.push
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -17,6 +19,18 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [32])
 class ShellyPushNotificationsTest {
+    // Pin the quiet-hours clock to midday so the default 10pm–8am window never suppresses
+    // notifications regardless of the wall-clock time the suite runs at.
+    @Before
+    fun setUp() {
+        ShellyPushNotifications.currentHourOfDay = { 12 }
+    }
+
+    @After
+    fun tearDown() {
+        ShellyPushNotifications.resetClockForTests()
+    }
+
     @Test
     fun sessionHashAcceptsLowercaseSha256Hex() {
         assertTrue(ShellyPushNotifications.isSessionIdHash("a".repeat(64)))

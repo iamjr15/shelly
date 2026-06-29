@@ -186,6 +186,7 @@ fun SessionsScreen(
                     onRefresh = viewModel::refreshSessions,
                     onToggleTheme = onToggleTheme,
                     onOpenCommandPalette = onOpenCommandPalette,
+                    onSearch = { searchActive = true },
                 )
             } else {
                 ShellyScreen(
@@ -786,6 +787,7 @@ private fun SessionsEmptyScaffold(
     onRefresh: () -> Unit = {},
     onToggleTheme: () -> Unit = {},
     onOpenCommandPalette: () -> Unit = {},
+    onSearch: () -> Unit = {},
 ) {
     val c = ShellyTheme.colors
     ShellyScreen(
@@ -795,7 +797,14 @@ private fun SessionsEmptyScaffold(
                 wordmark = "ZERO",
                 wordmarkSize = 132.sp,
                 onBrandClick = onOpenCommandPalette,
-                brandTrailing = { PaperHeroActions(onRefresh = onRefresh, onToggleTheme = onToggleTheme, includeTheme = true) },
+                brandTrailing = {
+                    PaperHeroActions(
+                        onRefresh = onRefresh,
+                        onToggleTheme = onToggleTheme,
+                        onSearch = onSearch,
+                        includeTheme = true,
+                    )
+                },
             )
         },
         content = { SessionsEmptyStateContent() },
@@ -1274,11 +1283,12 @@ private fun FooterLink(text: String) {
 private fun PaperHeroActions(
     onRefresh: () -> Unit = {},
     onToggleTheme: () -> Unit = {},
+    onSearch: () -> Unit = {},
     includeTheme: Boolean,
 ) {
     val c = ShellyTheme.colors
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        IconCircleButton(Icons.Default.Search, "Search", onClick = {})
+        IconCircleButton(Icons.Default.Search, "Search", onClick = onSearch)
         RefreshCircleButton(onRefresh)
         if (includeTheme) {
             IconCircleButton(if (c.isDark) Icons.Default.LightMode else Icons.Default.DarkMode, "Toggle theme", onToggleTheme)

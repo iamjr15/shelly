@@ -110,6 +110,10 @@ pub struct DaemonInfo {
     pub device_node_id: String,
     /// 32-byte mobile iroh secret key to persist in platform secure storage.
     pub device_secret_key: Vec<u8>,
+    /// Daemon package version captured from the pairing handshake `Welcome`.
+    pub daemon_version: String,
+    /// Protocol contract version negotiated at pairing time.
+    pub protocol_version: u32,
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
@@ -589,7 +593,7 @@ impl ShellyClient {
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
 
         write_hello(&mut send, self.config.platform).await?;
-        expect_welcome(&mut recv).await?;
+        let daemon_version = expect_welcome(&mut recv).await?;
         write_msg(
             &mut send,
             &ClientToServerMsg::PairWithCode {
@@ -610,6 +614,8 @@ impl ShellyClient {
                     addrs: target.addrs,
                     device_node_id: endpoint.id().to_string(),
                     device_secret_key: self.secret_key.to_bytes().to_vec(),
+                    daemon_version,
+                    protocol_version: CONTRACT_VERSION,
                 })
             }
             ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
@@ -908,9 +914,10 @@ async fn write_hello(send: &mut SendStream, platform: MobilePlatform) -> Result<
     .await
 }
 
-async fn expect_welcome(recv: &mut RecvStream) -> Result<(), ShellyError> {
+/// Reads the daemon handshake and returns its reported package version.
+async fn expect_welcome(recv: &mut RecvStream) -> Result<String, ShellyError> {
     match read_msg::<ServerToClientMsg>(recv).await? {
-        ServerToClientMsg::Welcome { .. } => Ok(()),
+        ServerToClientMsg::Welcome { daemon_version, .. } => Ok(daemon_version),
         ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
         other => Err(ShellyError::Protocol(format!(
             "unexpected daemon response during handshake: {other:?}"

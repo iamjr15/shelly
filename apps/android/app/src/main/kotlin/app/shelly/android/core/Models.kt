@@ -26,6 +26,8 @@ data class PairedDaemonRecord(
     val deviceNodeId: String,
     val deviceSecretKey: ByteArray,
     val pairedAtMillis: Long,
+    val daemonVersion: String,
+    val protocolVersion: Int,
 ) {
     override fun equals(other: Any?): Boolean {
         return other is PairedDaemonRecord &&
@@ -34,7 +36,9 @@ data class PairedDaemonRecord(
             addrs == other.addrs &&
             deviceNodeId == other.deviceNodeId &&
             deviceSecretKey.contentEquals(other.deviceSecretKey) &&
-            pairedAtMillis == other.pairedAtMillis
+            pairedAtMillis == other.pairedAtMillis &&
+            daemonVersion == other.daemonVersion &&
+            protocolVersion == other.protocolVersion
     }
 
     override fun hashCode(): Int {
@@ -44,6 +48,8 @@ data class PairedDaemonRecord(
         result = 31 * result + deviceNodeId.hashCode()
         result = 31 * result + deviceSecretKey.contentHashCode()
         result = 31 * result + pairedAtMillis.hashCode()
+        result = 31 * result + daemonVersion.hashCode()
+        result = 31 * result + protocolVersion
         return result
     }
 }

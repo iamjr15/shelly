@@ -246,9 +246,9 @@ class ShellyViewModel internal constructor(
             try {
                 if (wasPaired && wasUnlocked) {
                     withTimeoutOrNull(5_000L) {
-                        val tokens = listOfNotNull(pendingToken, currentFcmTokenForUnpair()).distinct()
+                        val tokens = listOfNotNull(pendingToken, currentFcmTokenOrNull()).distinct()
                         for (token in tokens) {
-                            unregisterFcmTokenForUnpair(token)
+                            unregisterFcmTokenQuietly(token)
                         }
                     }
                 }
@@ -329,11 +329,31 @@ class ShellyViewModel internal constructor(
         }
     }
 
+    // Mirrors FCM registration to the push preference: ON re-syncs the token, OFF unregisters
+    // every token we know about. Notification display is still gated on-device in
+    // ShellyPushNotifications, so this is best-effort server-side cleanup.
+    fun setPushEnabled(enabled: Boolean) {
+        if (enabled) {
+            syncFcmToken()
+            return
+        }
+        if (!_state.value.paired) {
+            return
+        }
+        val pendingToken = fcmTokens.pendingToken(appContext)
+        viewModelScope.launch {
+            val tokens = listOfNotNull(pendingToken, currentFcmTokenOrNull()).distinct()
+            for (token in tokens) {
+                unregisterFcmTokenQuietly(token)
+            }
+        }
+    }
+
     fun clearMessage() {
         _state.update { it.copy(message = null) }
     }
 
-    private suspend fun currentFcmTokenForUnpair(): String? {
+    private suspend fun currentFcmTokenOrNull(): String? {
         return try {
             fcmTokens.currentToken(appContext)
         } catch (error: Throwable) {
@@ -344,7 +364,7 @@ class ShellyViewModel internal constructor(
         }
     }
 
-    private suspend fun unregisterFcmTokenForUnpair(token: String) {
+    private suspend fun unregisterFcmTokenQuietly(token: String) {
         try {
             withContext(repositoryDispatcher) {
                 repository.unregisterFcmToken(token)
