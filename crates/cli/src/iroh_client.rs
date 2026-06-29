@@ -782,6 +782,7 @@ async fn resolve_code_ticket(code: &str, relay_control_url: Option<&str>) -> Res
     let relay_control_url = relay_control_url.trim_end_matches('/');
     let url = format!("{relay_control_url}/v1/pair/resolve/{code}");
 
+    crate::ensure_crypto_provider();
     let response = reqwest::Client::new()
         .get(&url)
         .send()

@@ -531,6 +531,12 @@ fn is_retryable_relay_error(error: &anyhow::Error) -> bool {
 }
 
 fn relay_http_client() -> Result<reqwest::Client> {
+    // reqwest is built with `rustls-no-provider`; ensure a default crypto provider
+    // is installed before constructing the client. The daemon binary installs this
+    // in `main`, but unit tests build clients without running `main`. Idempotent.
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
     reqwest::Client::builder()
         .timeout(RELAY_REQUEST_TIMEOUT)
         .build()

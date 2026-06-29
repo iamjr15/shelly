@@ -182,8 +182,20 @@ enum HookCommand {
     },
 }
 
+/// Ensure a process-default rustls `CryptoProvider` is installed before any TLS
+/// work. reqwest is built with `rustls-no-provider`, so constructing a client
+/// panics with "No provider set" unless a default provider exists. Idempotent, so
+/// it is safe to call from every client-construction site (including unit tests
+/// that never run `main`).
+pub(crate) fn ensure_crypto_provider() {
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    ensure_crypto_provider();
     let cli = parse_cli_for_current_invocation();
     if should_check_update_notice(cli.command.as_ref()) {
         update_notice::maybe_print_update_notice().await;

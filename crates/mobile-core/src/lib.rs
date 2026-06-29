@@ -25,6 +25,26 @@ use tokio::sync::Mutex;
 use tokio::time::{Duration, timeout};
 
 const SHELLY_ALPN: &[u8] = b"shelly/1";
+#[cfg(target_os = "android")]
+const ANDROID_LOG_TAG: &str = "shelly-core";
+
+macro_rules! android_warn {
+    ($($arg:tt)*) => {
+        #[cfg(target_os = "android")]
+        {
+            log::warn!($($arg)*);
+        }
+    };
+}
+
+macro_rules! android_error {
+    ($($arg:tt)*) => {
+        #[cfg(target_os = "android")]
+        {
+            log::error!($($arg)*);
+        }
+    };
+}
 
 #[derive(Clone, Debug, uniffi::Record)]
 /// Configuration used to construct a mobile Shelly client.
@@ -183,6 +203,7 @@ pub trait ByteStreamSink: Send + Sync {
 pub struct ShellyClient {
     config: ClientConfig,
     secret_key: SecretKey,
+    http: reqwest::Client,
     daemon: Mutex<Option<DaemonTarget>>,
     endpoint: Mutex<Option<Endpoint>>,
     connected: Mutex<bool>,
@@ -195,11 +216,74 @@ struct DaemonTarget {
     addrs: Vec<String>,
 }
 
+fn build_http_client() -> Result<reqwest::Client, ShellyError> {
+    let root_store =
+        rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let mut tls = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .map_err(|error| {
+        ShellyError::Internal(format!(
+            "failed to configure HTTPS TLS protocol versions: {error}"
+        ))
+    })?
+    .with_root_certificates(root_store)
+    .with_no_client_auth();
+    tls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+
+    reqwest::Client::builder()
+        .use_preconfigured_tls(tls)
+        .build()
+        .map_err(|error| ShellyError::Internal(format!("failed to create HTTPS client: {error}")))
+}
+
+#[cfg(target_os = "android")]
+fn init_android_logging() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+
+    INIT.call_once(|| {
+        android_logger::init_once(
+            android_logger::Config::default()
+                .with_max_level(log::LevelFilter::Trace)
+                .with_tag(ANDROID_LOG_TAG),
+        );
+
+        let previous_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let message = info
+                .payload()
+                .downcast_ref::<&str>()
+                .copied()
+                .or_else(|| info.payload().downcast_ref::<String>().map(String::as_str))
+                .unwrap_or("non-string panic payload");
+            let location = info
+                .location()
+                .map(|location| {
+                    format!(
+                        "{}:{}:{}",
+                        location.file(),
+                        location.line(),
+                        location.column()
+                    )
+                })
+                .unwrap_or_else(|| "unknown location".to_string());
+
+            log::error!("panic at {location}: {message}");
+            previous_hook(info);
+        }));
+    });
+}
+
+#[cfg(not(target_os = "android"))]
+fn init_android_logging() {}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl ShellyClient {
     #[uniffi::constructor]
     /// Creates a client, generating a device key when no persisted key is supplied.
     pub fn new(config: ClientConfig) -> Result<Arc<Self>, ShellyError> {
+        init_android_logging();
         let secret_key = match &config.device_secret_key {
             Some(bytes) => SecretKey::from_bytes(&bytes.as_slice().try_into().map_err(|_| {
                 ShellyError::InvalidConfig(
@@ -210,10 +294,12 @@ impl ShellyClient {
         };
 
         let daemon = config.paired_daemon.as_ref().map(DaemonTarget::from_config);
+        let http = build_http_client()?;
 
         Ok(Arc::new(Self {
             config,
             secret_key,
+            http,
             daemon: Mutex::new(daemon),
             endpoint: Mutex::new(None),
             connected: Mutex::new(false),
@@ -254,32 +340,36 @@ impl ShellyClient {
             .trim_end_matches('/');
         let url = format!("{relay_control_url}/v1/pair/resolve/{code}");
 
-        let response = reqwest::Client::new()
-            .get(&url)
-            .send()
-            .await
-            .map_err(|error| {
-                ShellyError::Transport(format!(
-                    "failed to resolve pairing code through the relay: {error}"
-                ))
-            })?;
-        if response.status() == reqwest::StatusCode::NOT_FOUND {
+        let response = self.http.get(&url).send().await.map_err(|error| {
+            let error = error.without_url();
+            android_error!("failed to resolve pairing code through relay: {error}");
+            ShellyError::Transport(format!(
+                "failed to resolve pairing code through the relay: {error}"
+            ))
+        })?;
+        let status = response.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            android_warn!("pairing relay returned HTTP {status} while resolving typed code");
             return Err(ShellyError::NotFound(
                 "pairing code not found, expired, or already used".to_string(),
             ));
         }
-        if !response.status().is_success() {
+        if !status.is_success() {
+            android_error!("pairing relay returned HTTP {status} while resolving typed code");
             return Err(ShellyError::Protocol(format!(
                 "pairing relay returned HTTP {} while resolving the code",
-                response.status()
+                status
             )));
         }
         let resolved: ResolvePairingResponse = response.json().await.map_err(|error| {
+            let error = error.without_url();
+            android_error!("pairing relay returned an invalid resolve response: {error}");
             ShellyError::Protocol(format!(
                 "pairing relay returned an invalid resolve response: {error}"
             ))
         })?;
         let ticket = PairingTicket::decode(resolved.ticket_blob.trim()).map_err(|error| {
+            android_error!("pairing relay returned an invalid pairing ticket: {error}");
             ShellyError::Protocol(format!(
                 "pairing relay returned an invalid pairing ticket: {error}"
             ))

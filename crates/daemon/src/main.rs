@@ -20,6 +20,11 @@ use anyhow::Result;
 async fn main() -> Result<()> {
     ensure_standard_fds_open()?;
 
+    // Install the ring rustls CryptoProvider as the process default before any TLS work (the iroh
+    // transport and the reqwest relay-control HTTPS client). reqwest is built rustls-no-provider,
+    // so without an installed default the first HTTPS request to the relay control plane would fail.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     if handle_cli_args(std::env::args().skip(1))? {
         return Ok(());
     }

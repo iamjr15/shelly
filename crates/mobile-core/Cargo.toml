@@ -13,14 +13,18 @@ crate-type = ["lib", "cdylib", "staticlib"]
 iroh.workspace = true
 shelly-protocol = { path = "../protocol" }
 reqwest.workspace = true
+rustls.workspace = true
 rmp-serde.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 uniffi = { workspace = true, features = ["cli"] }
+webpki-roots.workspace = true
 
 [target.'cfg(target_os = "android")'.dependencies]
+android_logger.workspace = true
 jni.workspace = true
+log.workspace = true
 ndk-context.workspace = true
 
 [build-dependencies]
