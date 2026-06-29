@@ -1121,6 +1121,7 @@ class ShellyViewModelTest {
         deviceSecretKey = "device-secret".encodeToByteArray(),
         pairedAtMillis = 1L,
         daemonVersion = "1.0.0",
+        hostName = "Test Mac",
         protocolVersion = 3,
     )
 
@@ -1232,6 +1233,8 @@ class ShellyViewModelTest {
         }
 
         override suspend fun liveDaemonVersion(): String? = savedPairing?.daemonVersion
+
+        override suspend fun liveDaemonHostName(): String? = savedPairing?.hostName
 
         override suspend fun createSession(name: String?): MobileSession {
             createdNames += name

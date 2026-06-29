@@ -49,11 +49,12 @@ class SettingsCopyTest {
             deviceSecretKey = byteArrayOf(1, 2, 3),
             pairedAtMillis = 1L,
             daemonVersion = "1.0.0",
+            hostName = "Jigyansu's MacBook",
             protocolVersion = 3,
         )
 
         assertEquals("No paired daemon", pairedDaemonSummary(null))
-        assertEquals("0123456789ab...", pairedDaemonSummary(record))
+        assertEquals("Jigyansu's MacBook", pairedDaemonSummary(record))
         assertFalse(pairedDaemonSummary(record).contains("abcdef0123456789abcdef"))
     }
 }

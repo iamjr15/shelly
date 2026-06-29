@@ -129,6 +129,7 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                     client_id,
                     daemon_version: env!("CARGO_PKG_VERSION").to_string(),
                     capabilities: state.capabilities(),
+                    host_name: crate::ipc::host_display_name(),
                 },
             )
             .await?;

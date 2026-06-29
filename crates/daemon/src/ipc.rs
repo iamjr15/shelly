@@ -51,6 +51,16 @@ const AUTO_SESSION_NAMES: &[&str] = &[
     "jellybean",
 ];
 
+/// Human-readable computer name for this daemon's host (macOS ComputerName, etc.), sent in Welcome.
+pub(crate) fn host_display_name() -> String {
+    let name = whoami::devicename();
+    if name.trim().is_empty() {
+        "this computer".to_string()
+    } else {
+        name
+    }
+}
+
 pub struct AppState {
     pub(crate) sessions: DashMap<SessionId, Arc<Session>>,
     pub(crate) restored: DashMap<SessionId, StoredSession>,
@@ -360,6 +370,7 @@ where
                     client_id,
                     daemon_version: env!("CARGO_PKG_VERSION").to_string(),
                     capabilities: state.capabilities(),
+                    host_name: host_display_name(),
                 },
             )
             .await?;

@@ -26,6 +26,9 @@ internal interface ShellyRepositoryClient {
     /** Daemon version from the most recent handshake, or null if not yet connected this launch. */
     suspend fun liveDaemonVersion(): String?
 
+    /** Daemon host name from the most recent handshake, or null if not yet connected this launch. */
+    suspend fun liveDaemonHostName(): String?
+
     suspend fun createSession(name: String?): MobileSession
     suspend fun killSession(sessionId: String)
     suspend fun attach(sessionId: String, lastSeenSeq: ULong? = null): AttachedSession
@@ -89,6 +92,7 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
             deviceSecretKey = info.deviceSecretKey,
             pairedAtMillis = System.currentTimeMillis(),
             daemonVersion = info.daemonVersion,
+            hostName = info.hostName,
             protocolVersion = info.protocolVersion.toInt(),
         )
         store.save(record)
@@ -119,6 +123,8 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
     }
 
     override suspend fun liveDaemonVersion(): String? = client?.daemonVersion()
+
+    override suspend fun liveDaemonHostName(): String? = client?.daemonHostName()
 
     override suspend fun createSession(name: String?): MobileSession {
         val summary = requireClient().createSession(name)

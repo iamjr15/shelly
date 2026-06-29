@@ -114,6 +114,8 @@ pub struct DaemonInfo {
     pub daemon_version: String,
     /// Protocol contract version negotiated at pairing time.
     pub protocol_version: u32,
+    /// Human-readable host/computer name reported by the pairing handshake `Welcome`.
+    pub host_name: String,
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
@@ -232,6 +234,9 @@ pub struct ShellyClient {
     /// Daemon version from the most recent successful handshake, refreshed on every authenticated
     /// connect so the UI can reflect the *current* daemon rather than the snapshot taken at pairing.
     last_daemon_version: Mutex<Option<String>>,
+    /// Host/computer name from the most recent successful handshake, refreshed on every authenticated
+    /// connect so the UI can reflect the *current* daemon rather than the snapshot taken at pairing.
+    last_host_name: Mutex<Option<String>>,
 }
 
 #[derive(Clone, Debug)]
@@ -329,6 +334,7 @@ impl ShellyClient {
             endpoint: Mutex::new(None),
             connected: Mutex::new(false),
             last_daemon_version: Mutex::new(None),
+            last_host_name: Mutex::new(None),
         }))
     }
 
@@ -409,7 +415,9 @@ impl ShellyClient {
         let endpoint = self.endpoint(target.parsed_relay()?.as_ref()).await?;
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
         write_hello(&mut send, self.config.platform).await?;
-        expect_welcome(&mut recv).await?;
+        let welcome = expect_welcome(&mut recv).await?;
+        *self.last_daemon_version.lock().await = Some(welcome.daemon_version);
+        *self.last_host_name.lock().await = Some(welcome.host_name);
         write_msg(&mut send, &ClientToServerMsg::Ping { seq: 1 }).await?;
         match read_msg::<ServerToClientMsg>(&mut recv).await? {
             ServerToClientMsg::Pong { seq: 1 } => {
@@ -605,6 +613,11 @@ impl ShellyClient {
         self.last_daemon_version.lock().await.clone()
     }
 
+    /// Host/computer name reported by the most recent handshake, or None if not yet connected.
+    pub async fn daemon_host_name(&self) -> Option<String> {
+        self.last_host_name.lock().await.clone()
+    }
+
     /// Registers the native APNs/FCM token with the paired daemon.
     pub async fn register_push_token(
         self: Arc<Self>,
@@ -662,7 +675,7 @@ impl ShellyClient {
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
 
         write_hello(&mut send, self.config.platform).await?;
-        let daemon_version = expect_welcome(&mut recv).await?;
+        let welcome = expect_welcome(&mut recv).await?;
         write_msg(
             &mut send,
             &ClientToServerMsg::PairWithCode {
@@ -683,8 +696,9 @@ impl ShellyClient {
                     addrs: target.addrs,
                     device_node_id: endpoint.id().to_string(),
                     device_secret_key: self.secret_key.to_bytes().to_vec(),
-                    daemon_version,
+                    daemon_version: welcome.daemon_version,
                     protocol_version: CONTRACT_VERSION,
+                    host_name: welcome.host_name,
                 })
             }
             ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
@@ -707,8 +721,9 @@ impl ShellyClient {
         let endpoint = self.endpoint(target.parsed_relay()?.as_ref()).await?;
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
         write_hello(&mut send, self.config.platform).await?;
-        let daemon_version = expect_welcome(&mut recv).await?;
-        *self.last_daemon_version.lock().await = Some(daemon_version);
+        let welcome = expect_welcome(&mut recv).await?;
+        *self.last_daemon_version.lock().await = Some(welcome.daemon_version);
+        *self.last_host_name.lock().await = Some(welcome.host_name);
         Ok((send, recv))
     }
 
@@ -984,10 +999,23 @@ async fn write_hello(send: &mut SendStream, platform: MobilePlatform) -> Result<
     .await
 }
 
-/// Reads the daemon handshake and returns its reported package version.
-async fn expect_welcome(recv: &mut RecvStream) -> Result<String, ShellyError> {
+/// Daemon handshake details captured from the `Welcome` frame.
+struct WelcomeInfo {
+    daemon_version: String,
+    host_name: String,
+}
+
+/// Reads the daemon handshake and returns its reported package version and host name.
+async fn expect_welcome(recv: &mut RecvStream) -> Result<WelcomeInfo, ShellyError> {
     match read_msg::<ServerToClientMsg>(recv).await? {
-        ServerToClientMsg::Welcome { daemon_version, .. } => Ok(daemon_version),
+        ServerToClientMsg::Welcome {
+            daemon_version,
+            host_name,
+            ..
+        } => Ok(WelcomeInfo {
+            daemon_version,
+            host_name,
+        }),
         ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
         other => Err(ShellyError::Protocol(format!(
             "unexpected daemon response during handshake: {other:?}"

@@ -96,6 +96,7 @@ import app.shelly.android.core.AndroidBiometricGate
 import app.shelly.android.core.ConnectionState
 import app.shelly.android.core.MobileSession
 import app.shelly.android.core.ShellyViewModel
+import app.shelly.android.core.displayName
 import app.shelly.android.ui.components.BrandRow
 import app.shelly.android.ui.components.DoubleChevron
 import app.shelly.android.ui.components.HeroBody
@@ -127,6 +128,7 @@ fun SessionsScreen(
     searchRequestToken: Int = 0,
 ) {
     val state by viewModel.state.collectAsState()
+    val laptopName = state.pairedDaemon.displayName()
     val c = ShellyTheme.colors
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -217,7 +219,7 @@ fun SessionsScreen(
                     },
                     content = {
                         when {
-                            all.isEmpty() && state.loading -> CenteredHint(loading = true, text = "Connecting to your laptop…")
+                            all.isEmpty() && state.loading -> CenteredHint(loading = true, text = "Connecting to $laptopName…")
                             ordered.isEmpty() -> CenteredHint(loading = false, text = "No sessions match.")
                             else -> SessionList(
                                 sessions = ordered,
@@ -1096,17 +1098,18 @@ private fun CommandCheckRow(command: String, action: String) {
 internal fun ReconnectingScaffold(
     reconnecting: ConnectionState.Reconnecting,
     sessions: List<MobileSession>,
+    laptopName: String = "your laptop",
     onRetry: () -> Unit,
 ) {
     val now = rememberReconnectNow()
     ShellyScreen(
-        hero = { ReconnectingHero(reconnecting = reconnecting, now = now) },
+        hero = { ReconnectingHero(reconnecting = reconnecting, now = now, laptopName = laptopName) },
         content = { ReconnectingContent(reconnecting = reconnecting, sessions = sessions, onRetry = onRetry) },
     )
 }
 
 @Composable
-private fun ColumnScope.ReconnectingHero(reconnecting: ConnectionState.Reconnecting, now: Long) {
+private fun ColumnScope.ReconnectingHero(reconnecting: ConnectionState.Reconnecting, now: Long, laptopName: String) {
     val c = ShellyTheme.colors
     val retryProgress = retryProgress(label = "reconnectingHeroProgress")
     val pulseAlpha = 1f - sin(retryProgress * PI).toFloat().coerceAtLeast(0f) * 0.22f
@@ -1142,7 +1145,7 @@ private fun ColumnScope.ReconnectingHero(reconnecting: ConnectionState.Reconnect
     )
     Spacer(Modifier.height(18.dp))
     Text(
-        "Reconnecting to your laptop",
+        "Reconnecting to $laptopName",
         style = ShellyType.rowTitle.copy(fontWeight = FontWeight(500), lineHeight = 24.sp),
         color = c.textPrimary,
         maxLines = 1,

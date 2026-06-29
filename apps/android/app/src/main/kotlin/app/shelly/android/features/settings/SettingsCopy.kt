@@ -1,6 +1,7 @@
 package app.shelly.android.features.settings
 
 import app.shelly.android.core.PairedDaemonRecord
+import app.shelly.android.core.displayName
 
 internal const val SETTINGS_CONNECTION_SECTION = "Connection"
 internal const val SETTINGS_PRIVACY_SECTION = "Privacy"
@@ -24,7 +25,4 @@ internal const val UNPAIR_CANCEL = "Cancel"
 internal const val UNPAIR_ROW_BODY = "Removes this app's local pairing. Desktop sessions keep running."
 
 internal fun pairedDaemonSummary(record: PairedDaemonRecord?): String =
-    record?.daemonNodeId?.take(12)?.plus("...") ?: DAEMON_UNPAIRED
-
-internal fun compactDaemonNodeId(nodeId: String, maxChars: Int = 15): String =
-    if (nodeId.length > maxChars) "${nodeId.take(maxChars)}…" else nodeId
+    if (record != null) record.displayName() else DAEMON_UNPAIRED

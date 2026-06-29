@@ -12,34 +12,26 @@ import app.shelly.android.ui.components.ShellyScreen
 @Composable
 fun DaemonDetailScreen(
     onBack: () -> Unit,
-    nodeId: String = "node_01k9c4f3hg",
+    hostName: String = "your laptop",
     pairedAge: String = "14d",
-    host: String = "your laptop",
     daemon: String = "shellyd 1.0.0",
     protocol: String = "v3",
     transport: String = "iroh QUIC",
-    lastSeen: String = "just now",
-    onOpenHost: () -> Unit = {},
     onOpenDaemon: () -> Unit = {},
     onOpenProtocol: () -> Unit = {},
     onOpenTransport: () -> Unit = {},
-    onOpenLastSeen: () -> Unit = {},
     onUnpair: () -> Unit = {},
 ) {
     DaemonDetailContent(
         onBack = onBack,
-        nodeId = nodeId,
+        hostName = hostName,
         pairedAge = pairedAge,
-        host = host,
         daemon = daemon,
         protocol = protocol,
         transport = transport,
-        lastSeen = lastSeen,
-        onOpenHost = onOpenHost,
         onOpenDaemon = onOpenDaemon,
         onOpenProtocol = onOpenProtocol,
         onOpenTransport = onOpenTransport,
-        onOpenLastSeen = onOpenLastSeen,
         onUnpair = onUnpair,
     )
 }
@@ -47,18 +39,14 @@ fun DaemonDetailScreen(
 @Composable
 private fun DaemonDetailContent(
     onBack: () -> Unit,
-    nodeId: String,
+    hostName: String,
     pairedAge: String,
-    host: String,
     daemon: String,
     protocol: String,
     transport: String,
-    lastSeen: String,
-    onOpenHost: () -> Unit,
     onOpenDaemon: () -> Unit,
     onOpenProtocol: () -> Unit,
     onOpenTransport: () -> Unit,
-    onOpenLastSeen: () -> Unit,
     onUnpair: () -> Unit,
 ) {
     ShellyScreen(
@@ -66,18 +54,16 @@ private fun DaemonDetailContent(
             SettingsHeroBody(
                 eyebrow = "THE LAPTOP THIS PHONE\nIS PAIRED WITH",
                 wordmark = "NODE",
-                status = "$nodeId · paired $pairedAge",
+                status = "$hostName · paired $pairedAge",
                 statusGlyph = SettingsGlyph.Monitor,
                 backLabel = "Settings",
                 onBack = onBack,
             )
         },
         content = {
-            SettingsListRow("Host", host, onClick = onOpenHost)
             SettingsListRow("Daemon", daemon, onClick = onOpenDaemon)
             SettingsListRow("Protocol", protocol, onClick = onOpenProtocol)
-            SettingsListRow("Transport", transport, onClick = onOpenTransport)
-            SettingsListRow("Last seen", lastSeen, showDivider = false, onClick = onOpenLastSeen)
+            SettingsListRow("Transport", transport, showDivider = false, onClick = onOpenTransport)
             Spacer(Modifier.weight(1f))
             SettingsFooterAction("Unpair this device", onClick = onUnpair)
         },
@@ -88,18 +74,14 @@ private fun DaemonDetailContent(
 internal fun DaemonDetailContentPreview() {
     DaemonDetailContent(
         onBack = {},
-        nodeId = "node_01k9c4f3hg",
+        hostName = "macbook-pro",
         pairedAge = "14d",
-        host = "macbook-pro",
         daemon = "shellyd 1.0.0",
         protocol = "v3",
         transport = "iroh QUIC",
-        lastSeen = "just now",
-        onOpenHost = {},
         onOpenDaemon = {},
         onOpenProtocol = {},
         onOpenTransport = {},
-        onOpenLastSeen = {},
         onUnpair = {},
     )
 }

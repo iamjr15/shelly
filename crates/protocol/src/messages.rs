@@ -140,6 +140,10 @@ pub enum ServerToClientMsg {
         daemon_version: String,
         /// Feature flags active for this daemon.
         capabilities: Capabilities,
+        /// Human-readable host/computer name (e.g. "Jigyanshu's MacBook Pro"). Empty when sent by a
+        /// daemon older than this field; clients fall back to a generic label.
+        #[serde(default)]
+        host_name: String,
     },
     /// Current dashboard session list.
     SessionList {
