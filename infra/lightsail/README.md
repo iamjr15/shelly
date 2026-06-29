@@ -17,8 +17,8 @@ The active Mumbai relay currently runs as:
 - One AWS Lightsail instance for the relay host.
 - One Lightsail static IPv4 address.
 - Static IP attachment to the relay instance.
-- Public port policy for SSH, ACME/HTTP, the relay control plane, and optional
-  iroh HTTPS/QUIC after DNS and ACME are ready.
+- Public port policy for SSH, ACME/HTTP, and the Caddy HTTPS proxy. The relay
+  control plane and iroh fallback service bind to loopback-only backend ports.
 
 Relay binaries and secrets are still installed by Ansible under
 `infra/relay/ansible`; Terraform owns only the cloud host shape and network
@@ -39,8 +39,9 @@ ssh_allowed_cidrs = ["203.0.113.42/32"]
 ```
 
 Leave `enable_iroh_tls_ports = false` until the relay hostname resolves to this
-Lightsail static IP and the Ansible iroh service is switched out of HTTP-only
-mode. Set it to `true` only when 443/tcp and 7842/udp should be public.
+Lightsail static IP and Caddy can complete ACME issuance. Set it to `true` only
+when 443/tcp should be public. The variable name is retained for compatibility
+with existing local tfvars.
 
 Never commit Terraform state, local tfvars, AWS credentials, SSH private keys,
 APNs keys, FCM service accounts, or Honeycomb keys.

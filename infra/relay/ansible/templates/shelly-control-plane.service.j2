@@ -12,6 +12,7 @@ Environment=SHELLY_RELAY_ADDR={{ shelly_relay_control_addr }}
 Environment=SHELLY_RELAY_REQUIRE_TLS={{ shelly_relay_control_require_tls }}
 Environment=SHELLY_RELAY_DB_PATH={{ shelly_relay_db_path }}
 Environment=SHELLY_RELAY_METRICS_ADDR={{ shelly_relay_metrics_addr }}
+Environment=SHELLY_RELAY_TRUST_FORWARDED_FOR={{ shelly_relay_trust_forwarded_for }}
 {% if shelly_relay_otlp_endpoint | length > 0 %}
 Environment=SHELLY_RELAY_OTLP_ENDPOINT={{ shelly_relay_otlp_endpoint }}
 Environment=SHELLY_RELAY_OTLP_SAMPLE_RATE={{ shelly_relay_otlp_sample_rate }}
