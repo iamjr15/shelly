@@ -8,8 +8,8 @@ internal const val KILL_SESSION_TITLE = "Close session?"
 internal const val KILL_SESSION_CONFIRM = "Close"
 internal const val KILL_SESSION_CANCEL = "Cancel"
 
-internal fun killSessionBody(name: String): String =
-    "This stops \"$name\" on your laptop and ends its running processes."
+internal fun killSessionBody(name: String, laptopName: String): String =
+    "This stops \"$name\" on $laptopName and ends its running processes."
 
 internal const val LOADING_SESSIONS_TITLE = "Syncing sessions"
 internal const val LOADING_SESSIONS_BODY =
