@@ -47,7 +47,7 @@ ndk-context = "0.1.1"
 portable-pty = "0.9"
 postcard = { version = "1", features = ["use-std"] }
 p256 = "0.13"
-opentelemetry = { version = "0.31", default-features = false, features = ["trace"] }
+opentelemetry = { version = "0.32", default-features = false, features = ["trace"] }
 opentelemetry-otlp = { version = "0.31", default-features = false, features = ["http-proto", "reqwest-blocking-client", "reqwest-rustls", "trace"] }
 opentelemetry_sdk = { version = "0.31", default-features = false, features = ["trace"] }
 proptest = "1"
