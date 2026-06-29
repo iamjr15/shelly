@@ -190,6 +190,7 @@ fun SessionsScreen(
                 )
             } else if (all.isEmpty() && !state.loading) {
                 SessionsEmptyScaffold(
+                    laptopName = laptopName,
                     onRefresh = viewModel::refreshSessions,
                     onToggleTheme = onToggleTheme,
                     onOpenCommandPalette = onOpenCommandPalette,
@@ -199,7 +200,7 @@ fun SessionsScreen(
                 ShellyScreen(
                     hero = {
                         HeroBody(
-                            eyebrow = sessionsEyebrow(all.size),
+                            eyebrow = sessionsEyebrow(all.size, laptopName),
                             wordmark = "SES",
                             wordmarkSize = 132.sp,
                             onBrandClick = onOpenCommandPalette,
@@ -251,6 +252,7 @@ fun SessionsScreen(
         killPending?.let { session ->
             ConfirmKillSheet(
                 session = session,
+                laptopName = laptopName,
                 onDismiss = { killPending = null },
                 onConfirm = {
                     killPending = null
@@ -261,13 +263,13 @@ fun SessionsScreen(
     }
 }
 
-private fun sessionsEyebrow(count: Int): String {
+private fun sessionsEyebrow(count: Int, laptopName: String = "your laptop"): String {
     val n = when (count) {
         0 -> "NO"; 1 -> "ONE"; 2 -> "TWO"; 3 -> "THREE"; 4 -> "FOUR"; 5 -> "FIVE"; 6 -> "SIX"
         else -> count.toString()
     }
     val noun = if (count == 1) "SESSION" else "SESSIONS"
-    return "$n $noun LIVE ON YOUR\nLAPTOP RIGHT NOW"
+    return "$n $noun LIVE ON\n${laptopName.uppercase()}"
 }
 
 @Composable
@@ -556,12 +558,12 @@ private fun SheetRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ConfirmKillSheet(session: MobileSession, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+private fun ConfirmKillSheet(session: MobileSession, laptopName: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     val c = ShellyTheme.colors
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.modalCard) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Kill ${session.name}?", style = ShellyType.heading, color = c.textPrimary)
-            Text("This ends the session on your laptop.", style = ShellyType.mono, color = c.textMuted)
+            Text(killSessionBody(session.name, laptopName), style = ShellyType.mono, color = c.textMuted)
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(c.destructive).clickable(onClick = onConfirm).padding(vertical = 15.dp),
                 horizontalArrangement = Arrangement.Center,
@@ -791,6 +793,7 @@ private fun RecentSearchChip(text: String) {
 
 @Composable
 private fun SessionsEmptyScaffold(
+    laptopName: String = "your laptop",
     onRefresh: () -> Unit = {},
     onToggleTheme: () -> Unit = {},
     onOpenCommandPalette: () -> Unit = {},
@@ -800,7 +803,7 @@ private fun SessionsEmptyScaffold(
     ShellyScreen(
         hero = {
             HeroBody(
-                eyebrow = "NOTHING RUNNING RIGHT NOW —\nYOUR LAPTOP IS QUIET",
+                eyebrow = "NOTHING RUNNING ON\n${laptopName.uppercase()}",
                 wordmark = "ZERO",
                 wordmarkSize = 132.sp,
                 onBrandClick = onOpenCommandPalette,
@@ -1021,13 +1024,14 @@ private fun OutlinedNewSessionButton() {
 @Composable
 internal fun DaemonUnreachableScaffold(
     unreachable: ConnectionState.Unreachable,
+    laptopName: String = "your laptop",
     onRetry: () -> Unit,
 ) {
     val now = rememberReconnectNow()
     ShellyScreen(
         hero = {
             HeroBody(
-                eyebrow = "CAN'T REACH YOUR LAPTOP —\nIS THE DAEMON UP?",
+                eyebrow = "CAN'T REACH\n${laptopName.uppercase()}",
                 wordmark = "SES",
                 wordmarkSize = 132.sp,
                 brandTrailing = { PaperHeroActions(includeTheme = false) },

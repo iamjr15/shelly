@@ -519,6 +519,7 @@ private fun RoutedContent(
             when (val connection = connectionState) {
                 is ConnectionState.Unreachable -> DaemonUnreachableScaffold(
                     unreachable = connection,
+                    laptopName = laptopName,
                     onRetry = viewModel::retryConnectionNow,
                 )
                 // Reached via the debug command palette without a live drop — show sample data.
