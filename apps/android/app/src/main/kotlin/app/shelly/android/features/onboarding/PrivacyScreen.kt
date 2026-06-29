@@ -8,13 +8,14 @@ import androidx.compose.ui.Modifier
 fun PrivacyScreen(
     onContinue: () -> Unit = {},
     onSkip: () -> Unit = {},
+    inSettings: Boolean = false,
 ) {
     OnboardingShell(
         hero = {
             OnboardingHero(
                 eyebrow = "WHERE YOUR KEYS AND\nBYTES ACTUALLY LIVE",
                 wordmark = "SAFE",
-                trailing = "SKIP",
+                trailing = if (inSettings) "Settings" else "SKIP",
                 onTrailingClick = onSkip,
                 status = OnboardingStatus(
                     icon = OnboardingStatusIcon.Lock,
@@ -26,24 +27,24 @@ fun PrivacyScreen(
             OnboardingStepRow(
                 number = 1,
                 title = "Keys never leave",
-                detail = "Generated on-device, kept in the\nAndroid Keystore",
+                detail = "Generated on-device, kept in the Android Keystore",
                 showDivider = true,
             )
             OnboardingStepRow(
                 number = 2,
                 title = "The relay is blind",
-                detail = "It forwards sealed packets — never your\nterminal bytes",
+                detail = "It forwards sealed packets — never your terminal bytes",
                 showDivider = true,
             )
             OnboardingStepRow(
                 number = 3,
                 title = "Revoke in one command",
-                detail = "shelly devices remove cuts a phone off\ninstantly",
+                detail = "shelly devices remove cuts a phone off instantly",
                 showDivider = false,
             )
             Spacer(Modifier.weight(1f))
             OnboardingFooterLink(
-                label = "Got it",
+                label = if (inSettings) "Done" else "Got it",
                 onClick = onContinue,
                 strongDivider = true,
             )

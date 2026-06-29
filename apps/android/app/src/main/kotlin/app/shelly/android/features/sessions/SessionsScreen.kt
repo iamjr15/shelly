@@ -41,7 +41,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.OpenInFull
@@ -175,7 +174,7 @@ fun SessionsScreen(
                     focusRequester = searchFocus,
                     matches = ordered,
                     totalSessions = all.size,
-                    totalDevices = 2,
+                    totalDevices = if (state.pairedDaemon != null) 1 else 0,
                     onQueryChange = { search = it },
                     onClose = closeSearch,
                     onRefresh = viewModel::refreshSessions,
@@ -509,7 +508,6 @@ private fun SessionActionsSheet(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 SheetRow(Icons.Default.Link, "Attach", c.textPrimary, FontWeight(600), onAttach)
-                SheetRow(Icons.Default.Edit, "Rename", c.textPrimary, FontWeight(500)) {}
                 SheetRow(Icons.Default.ContentCopy, "Copy session ID", c.textPrimary, FontWeight(500), onCopyId)
                 SheetRow(Icons.Default.DeleteOutline, "Kill session", c.destructive, FontWeight(600), onKill)
             }
@@ -749,29 +747,20 @@ private fun RecentSearchesFooter(totalSessions: Int, totalDevices: Int) {
             .padding(top = 22.dp),
         verticalArrangement = Arrangement.spacedBy(13.dp),
     ) {
-        Text(
-            "RECENT SEARCHES",
-            style = ShellyType.microLabel,
-            color = (if (c.isDark) c.textMuted else c.textPrimary).copy(alpha = 0.4f),
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RecentSearchChip("cargo test")
-                RecentSearchChip("pair.rs")
-                RecentSearchChip("dogfood")
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RecentSearchChip("rebase main")
-            }
-        }
         Row(
-            Modifier.padding(top = 1.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ClockGlyph(color = c.textMuted.copy(alpha = if (c.isDark) 0.55f else 0.35f), size = 13.dp)
             Text(
-                "SEARCHED $totalSessions SESSIONS · $totalDevices DEVICES",
+                buildString {
+                    append("SEARCHED $totalSessions ")
+                    append(if (totalSessions == 1) "SESSION" else "SESSIONS")
+                    if (totalDevices > 0) {
+                        append(" · $totalDevices ")
+                        append(if (totalDevices == 1) "DEVICE" else "DEVICES")
+                    }
+                },
                 style = ShellyType.microLabel.copy(fontWeight = FontWeight(500), letterSpacing = 0.06.sp),
                 color = (if (c.isDark) c.textMuted else c.textPrimary).copy(alpha = 0.35f),
             )

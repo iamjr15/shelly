@@ -281,6 +281,8 @@ fun ShellyApp(
 
             ShellyModalOverlay(visible = showUnpairSheet, onDismiss = { showUnpairSheet = false }) {
                 UnpairSheet(
+                    daemonLabel = state.pairedDaemon?.daemonNodeId?.take(12)?.let { "$it…" } ?: "this laptop",
+                    liveSessions = state.sessions.size,
                     onConfirm = {
                         showUnpairSheet = false
                         route = ShellyRoute.Sessions
@@ -397,6 +399,7 @@ private fun RoutedContent(
             PrivacyScreen(
                 onContinue = { onRoute(ShellyRoute.Settings) },
                 onSkip = { onRoute(ShellyRoute.Settings) },
+                inSettings = true,
             )
         }
         ShellyRoute.About -> {

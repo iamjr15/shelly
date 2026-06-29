@@ -61,7 +61,7 @@ private fun ColumnScope.LockedHero() {
 
     CompositionLocalProvider(LocalShellyColors provides c.copy(textPrimary = heroForeground)) {
         HeroBody(
-            eyebrow = "UNLOCK TO SEE YOUR\nSESSIONS · 5 MIN AGO",
+            eyebrow = "UNLOCK TO PICK UP\nWHERE YOU LEFT OFF",
             wordmark = "LOCK",
             wordmarkSize = 96.sp,
             brandTrailing = {
@@ -82,12 +82,13 @@ private fun ColumnScope.LockedHero() {
 
 @Composable
 private fun LockedDate(primary: Color, muted: Color) {
+    val (clockTime, clockDay) = remember { currentClock() }
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "9:41 AM",
+            clockTime,
             style = ShellyType.brand.copy(
                 fontWeight = FontWeight.Medium,
                 letterSpacing = 0.em,
@@ -96,7 +97,7 @@ private fun LockedDate(primary: Color, muted: Color) {
             modifier = Modifier.alignByBaseline(),
         )
         Text(
-            "Thu",
+            clockDay,
             style = ShellyType.mono.copy(
                 fontFamily = ShellyType.brand.fontFamily,
                 fontSize = 13.sp,
@@ -112,7 +113,7 @@ private fun LockedDate(primary: Color, muted: Color) {
 @Composable
 private fun LockedHeroStatus(primary: Color, muted: Color) {
     Text(
-        "HELD SINCE 9:36 AM",
+        "SESSIONS HELD ON YOUR LAPTOP",
         style = ShellyType.monoSmall.copy(
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 0.06.em,
@@ -174,19 +175,14 @@ private fun ActivityCard(modifier: Modifier = Modifier) {
             ),
             color = muted,
         )
-        ActivityRow(
-            dot = c.accent,
-            title = "shelly · pkg/cli",
-            subtitle = "awaiting input · 12s",
-            primary = primary,
-            muted = muted,
-        )
-        ActivityRow(
-            dot = primary,
-            title = "infra · scripts/dogfood",
-            subtitle = "build started · 4m",
-            primary = primary,
-            muted = muted,
+        Text(
+            "Your sessions kept running on your laptop.\nUnlock to see where they're at.",
+            style = ShellyType.itemTitle.copy(
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.Medium,
+            ),
+            color = primary,
         )
     }
 }
@@ -345,6 +341,13 @@ private fun DoubleChevronIcon(color: Color, modifier: Modifier = Modifier) {
         polyline(6f, 12f, 6f)
         polyline(13f, 19f, 13f)
     }
+}
+
+private fun currentClock(): Pair<String, String> {
+    val now = java.util.Date()
+    val time = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(now)
+    val day = java.text.SimpleDateFormat("EEE", java.util.Locale.US).format(now)
+    return time to day
 }
 
 private fun lockedHeroForeground(c: ShellyColors): Color =

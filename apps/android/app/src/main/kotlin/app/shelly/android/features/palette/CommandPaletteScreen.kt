@@ -1,5 +1,6 @@
 package app.shelly.android.features.palette
 
+import app.shelly.android.BuildConfig
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -481,44 +482,44 @@ private fun commandPaletteCommands(
         searchTerms = listOf("secure"),
     ),
     PaletteCommand(
-        title = "Copy last output",
-        shortcut = "Y",
-        glyph = CommandGlyph.Copy,
-        onClick = onCopyLastOutput,
-        searchTerms = listOf("clipboard", "terminal"),
-    ),
-    PaletteCommand(
         title = "Open settings",
         shortcut = ",",
         glyph = CommandGlyph.Settings,
         onClick = onOpenSettings,
         searchTerms = listOf("preferences"),
     ),
-    PaletteCommand(
-        title = "Show grouped sessions",
-        shortcut = "DBG",
-        glyph = CommandGlyph.Settings,
-        onClick = onShowGroupedSessions,
-        searchTerms = listOf("debug grouped multi device"),
-        hiddenUntilQuery = true,
-    ),
-    PaletteCommand(
-        title = "Show reconnecting",
-        shortcut = "DBG",
-        glyph = CommandGlyph.Settings,
-        onClick = onShowReconnecting,
-        searchTerms = listOf("debug reconnect offline sync"),
-        hiddenUntilQuery = true,
-    ),
-    PaletteCommand(
-        title = "Show daemon unreachable",
-        shortcut = "DBG",
-        glyph = CommandGlyph.Settings,
-        onClick = onShowDaemonUnreachable,
-        searchTerms = listOf("debug daemon unreachable offline"),
-        hiddenUntilQuery = true,
-    ),
-)
+) + if (BuildConfig.DEBUG) {
+    // Debug-only previews of the reconnecting / daemon-unreachable / grouped states.
+    // Gated so they never ship in release builds.
+    listOf(
+        PaletteCommand(
+            title = "Show grouped sessions",
+            shortcut = "DBG",
+            glyph = CommandGlyph.Settings,
+            onClick = onShowGroupedSessions,
+            searchTerms = listOf("debug grouped multi device"),
+            hiddenUntilQuery = true,
+        ),
+        PaletteCommand(
+            title = "Show reconnecting",
+            shortcut = "DBG",
+            glyph = CommandGlyph.Settings,
+            onClick = onShowReconnecting,
+            searchTerms = listOf("debug reconnect offline sync"),
+            hiddenUntilQuery = true,
+        ),
+        PaletteCommand(
+            title = "Show daemon unreachable",
+            shortcut = "DBG",
+            glyph = CommandGlyph.Settings,
+            onClick = onShowDaemonUnreachable,
+            searchTerms = listOf("debug daemon unreachable offline"),
+            hiddenUntilQuery = true,
+        ),
+    )
+} else {
+    emptyList()
+}
 
 @Composable
 internal fun CommandPaletteContentPreview() {

@@ -139,6 +139,7 @@ fun TerminalScreen(
             onAccessory = {},
         ) {
             AttachStatus(
+                sessionName = session.name,
                 error = attachError,
                 onRetry = { attachAttempt += 1 },
             )
@@ -228,7 +229,7 @@ internal fun TerminalContentPreview(state: TerminalPreviewState) {
     ) {
         when (state) {
             TerminalPreviewState.Base -> MockTerminalTranscript(exited = false)
-            TerminalPreviewState.Attaching -> AttachStatus(error = null, onRetry = {})
+            TerminalPreviewState.Attaching -> AttachStatus(sessionName = "crates/daemon", error = null, onRetry = {})
             TerminalPreviewState.Locked -> LockedStatus(onUnlock = {})
             TerminalPreviewState.Exited -> MockTerminalTranscript(exited = true)
             TerminalPreviewState.ClaudeTui -> ClaudeTuiTranscript()
@@ -431,6 +432,7 @@ private fun TerminalKeyButton(
 
 @Composable
 private fun AttachStatus(
+    sessionName: String,
     error: TerminalAttachErrorMessage?,
     onRetry: () -> Unit,
 ) {
@@ -446,7 +448,7 @@ private fun AttachStatus(
             Spacer(Modifier.height(20.dp))
         }
         Text(
-            text = if (error == null) "Attaching to crates/daemon" else error.title,
+            text = if (error == null) "Attaching to $sessionName" else error.title,
             style = terminalInterStyle(
                 fontSize = if (error == null) 18 else 20,
                 lineHeight = if (error == null) 22 else 24,
