@@ -9,48 +9,63 @@ import app.shelly.android.ui.components.ShellyScreen
 @Composable
 fun NotificationsScreen(
     onBack: () -> Unit,
-    onOpenPush: () -> Unit = {},
-    onOpenAwaitingInput: () -> Unit = {},
-    onOpenSessionCrashed: () -> Unit = {},
-    onOpenBuildFinished: () -> Unit = {},
-    onOpenQuietHours: () -> Unit = {},
+    pushOn: Boolean = true,
+    awaitingInputOn: Boolean = true,
+    sessionCrashedOn: Boolean = true,
+    buildFinishedOn: Boolean = false,
+    quietHoursLabel: String = "10pm–8am",
+    onTogglePush: () -> Unit = {},
+    onToggleAwaitingInput: () -> Unit = {},
+    onToggleSessionCrashed: () -> Unit = {},
+    onToggleBuildFinished: () -> Unit = {},
+    onCycleQuietHours: () -> Unit = {},
 ) {
     NotificationsContent(
         onBack = onBack,
-        onOpenPush = onOpenPush,
-        onOpenAwaitingInput = onOpenAwaitingInput,
-        onOpenSessionCrashed = onOpenSessionCrashed,
-        onOpenBuildFinished = onOpenBuildFinished,
-        onOpenQuietHours = onOpenQuietHours,
+        pushOn = pushOn,
+        awaitingInputOn = awaitingInputOn,
+        sessionCrashedOn = sessionCrashedOn,
+        buildFinishedOn = buildFinishedOn,
+        quietHoursLabel = quietHoursLabel,
+        onTogglePush = onTogglePush,
+        onToggleAwaitingInput = onToggleAwaitingInput,
+        onToggleSessionCrashed = onToggleSessionCrashed,
+        onToggleBuildFinished = onToggleBuildFinished,
+        onCycleQuietHours = onCycleQuietHours,
     )
 }
 
 @Composable
 private fun NotificationsContent(
     onBack: () -> Unit,
-    onOpenPush: () -> Unit,
-    onOpenAwaitingInput: () -> Unit,
-    onOpenSessionCrashed: () -> Unit,
-    onOpenBuildFinished: () -> Unit,
-    onOpenQuietHours: () -> Unit,
+    pushOn: Boolean,
+    awaitingInputOn: Boolean,
+    sessionCrashedOn: Boolean,
+    buildFinishedOn: Boolean,
+    quietHoursLabel: String,
+    onTogglePush: () -> Unit,
+    onToggleAwaitingInput: () -> Unit,
+    onToggleSessionCrashed: () -> Unit,
+    onToggleBuildFinished: () -> Unit,
+    onCycleQuietHours: () -> Unit,
 ) {
     ShellyScreen(
         hero = {
             SettingsHeroBody(
                 eyebrow = "WHAT BUZZES YOUR\nPHONE — AND WHEN",
                 wordmark = "PINGS",
-                status = "push via FCM · on",
+                status = "push via FCM · ${if (pushOn) "on" else "off"}",
                 statusGlyph = SettingsGlyph.Bell,
                 backLabel = "Settings",
                 onBack = onBack,
             )
         },
         content = {
-            SettingsListRow("Push", "On", onClick = onOpenPush)
-            SettingsListRow("Awaiting input", "On", onClick = onOpenAwaitingInput)
-            SettingsListRow("Session crashed", "On", onClick = onOpenSessionCrashed)
-            SettingsListRow("Build finished", "Off", onClick = onOpenBuildFinished)
-            SettingsListRow("Quiet hours", "10pm–8am", showDivider = false, onClick = onOpenQuietHours)
+            SettingsListRow("Push", if (pushOn) "On" else "Off", onClick = onTogglePush)
+            SettingsListRow("Awaiting input", if (awaitingInputOn) "On" else "Off", onClick = onToggleAwaitingInput)
+            SettingsListRow("Session crashed", if (sessionCrashedOn) "On" else "Off", onClick = onToggleSessionCrashed)
+            SettingsListRow("Build finished", if (buildFinishedOn) "On" else "Off", onClick = onToggleBuildFinished)
+            SettingsListRow("Quiet hours", quietHoursLabel, showDivider = false, onClick = onCycleQuietHours)
         },
     )
 }
@@ -59,10 +74,15 @@ private fun NotificationsContent(
 internal fun NotificationsContentPreview() {
     NotificationsContent(
         onBack = {},
-        onOpenPush = {},
-        onOpenAwaitingInput = {},
-        onOpenSessionCrashed = {},
-        onOpenBuildFinished = {},
-        onOpenQuietHours = {},
+        pushOn = true,
+        awaitingInputOn = true,
+        sessionCrashedOn = true,
+        buildFinishedOn = false,
+        quietHoursLabel = "10pm–8am",
+        onTogglePush = {},
+        onToggleAwaitingInput = {},
+        onToggleSessionCrashed = {},
+        onToggleBuildFinished = {},
+        onCycleQuietHours = {},
     )
 }

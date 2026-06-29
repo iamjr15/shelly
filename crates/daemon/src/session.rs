@@ -20,6 +20,9 @@ use tokio::sync::broadcast;
 const RING_CAPACITY: usize = 256 * 1024;
 const IDLE_AFTER_MS: u64 = 2_000;
 const RESIZE_DEBOUNCE_MS: u64 = 100;
+// Minimum continuous time in Working before a Working->Idle edge counts as a
+// finished build worth a push; shorter bursts are trivial quick commands.
+const BUILD_FINISHED_MIN_WORKING_MS: u64 = 5_000;
 
 pub struct Session {
     id: SessionId,
@@ -30,6 +33,7 @@ pub struct Session {
     created_at: u64,
     last_activity: Mutex<u64>,
     state: Mutex<AgentState>,
+    working_since: Mutex<Option<u64>>,
     exit_code: Mutex<Option<i32>>,
     last_line: Mutex<Option<String>>,
     ring: Mutex<PtyRingBuffer>,
@@ -108,6 +112,7 @@ impl Session {
             created_at: now_ms(),
             last_activity: Mutex::new(now_ms()),
             state: Mutex::new(AgentState::Idle),
+            working_since: Mutex::new(None),
             exit_code: Mutex::new(None),
             last_line: Mutex::new(None),
             ring: Mutex::new(PtyRingBuffer::new(RING_CAPACITY)),
@@ -482,19 +487,39 @@ impl Session {
 
     fn set_state(&self, state: AgentState, last_line: Option<String>) {
         let mut current = self.state.lock().expect("state lock poisoned");
-        if *current == state {
+        let previous = *current;
+        if previous == state {
             return;
         }
         *current = state;
+
+        // Track how long the session has been continuously Working so a
+        // Working->Idle edge can tell a real build from a trivial quick command.
+        let build_finished = {
+            let mut working_since = self
+                .working_since
+                .lock()
+                .expect("working_since lock poisoned");
+            let finished = previous == AgentState::Working
+                && state == AgentState::Idle
+                && working_since.is_some_and(|since| {
+                    now_ms().saturating_sub(since) >= BUILD_FINISHED_MIN_WORKING_MS
+                });
+            *working_since = (state == AgentState::Working).then(now_ms);
+            finished
+        };
+
         let _ = self.subscribers.send(ServerToClientMsg::AgentStateChanged {
             session_id: self.id,
             state,
             last_line,
         });
-        if state == AgentState::AwaitingInput
-            && let Some(push) = &self.push
-        {
-            push.awaiting_input(self.id, self.name.clone());
+        if let Some(push) = &self.push {
+            if state == AgentState::AwaitingInput {
+                push.awaiting_input(self.id, self.name.clone());
+            } else if build_finished {
+                push.build_finished(self.id, self.name.clone());
+            }
         }
     }
 
@@ -509,6 +534,14 @@ impl Session {
             session_id: self.id,
             exit_code,
         });
+        // A non-zero exit is a crash/failure worth a push; a clean exit (code 0) is
+        // a normal logout, and an explicit kill must not masquerade as a crash.
+        if exit_code != 0
+            && !self.killed.load(Ordering::Acquire)
+            && let Some(push) = &self.push
+        {
+            push.session_crashed(self.id, self.name.clone());
+        }
         self.persist();
     }
 
@@ -589,8 +622,10 @@ fn min_client_size(sizes: impl IntoIterator<Item = ClientSize>) -> Option<Client
 
 #[cfg(test)]
 mod handoff_tests {
-    use super::Session;
-    use shelly_protocol::{AgentSource, AgentState, ClientId, ClientSize, ServerToClientMsg};
+    use super::{BUILD_FINISHED_MIN_WORKING_MS, Session};
+    use shelly_protocol::{
+        AgentSource, AgentState, ClientId, ClientSize, ServerToClientMsg, now_ms,
+    };
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -832,6 +867,115 @@ mod handoff_tests {
                 "non-zero exit did not mark session crashed"
             );
             std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    #[tokio::test]
+    async fn non_zero_exit_dispatches_session_crashed_push() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let push = crate::push::PushDispatcher::from_test_sender(tx);
+        let cwd = tempfile::tempdir().expect("tempdir");
+        let session = Session::spawn(
+            "crashy-shell".to_string(),
+            vec!["sh".to_string(), "-c".to_string(), "exit 7".to_string()],
+            cwd.path().to_path_buf(),
+            HashMap::new(),
+            ClientSize { cols: 80, rows: 24 },
+            None,
+            Some(push),
+        )
+        .expect("spawn exiting session");
+
+        let command = timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("session-crashed push dispatched before timeout")
+            .expect("push command channel stays open");
+        match command {
+            crate::push::PushCommand::SessionCrashed {
+                session_id,
+                session_name,
+            } => {
+                assert_eq!(session_id, session.id());
+                assert_eq!(session_name, "crashy-shell");
+            }
+            _ => panic!("expected a SessionCrashed push command"),
+        }
+    }
+
+    #[tokio::test]
+    async fn clean_exit_does_not_dispatch_session_crashed_push() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let push = crate::push::PushDispatcher::from_test_sender(tx);
+        let cwd = tempfile::tempdir().expect("tempdir");
+        let session = Session::spawn(
+            "clean-shell".to_string(),
+            vec!["sh".to_string(), "-c".to_string(), "exit 0".to_string()],
+            cwd.path().to_path_buf(),
+            HashMap::new(),
+            ClientSize { cols: 80, rows: 24 },
+            None,
+            Some(push),
+        )
+        .expect("spawn clean-exit session");
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if session.exit_code() == Some(0) {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "session did not exit cleanly in time"
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        // A clean exit must never enqueue a crash push.
+        assert!(
+            rx.try_recv().is_err(),
+            "clean exit must not dispatch a push"
+        );
+    }
+
+    #[tokio::test]
+    async fn sustained_working_then_idle_dispatches_build_finished_push() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let push = crate::push::PushDispatcher::from_test_sender(tx);
+        let cwd = tempfile::tempdir().expect("tempdir");
+        let session = Session::spawn(
+            "builder-shell".to_string(),
+            vec!["sleep".to_string(), "30".to_string()],
+            cwd.path().to_path_buf(),
+            HashMap::new(),
+            ClientSize { cols: 80, rows: 24 },
+            None,
+            Some(push),
+        )
+        .expect("spawn long-running session");
+        let _kill_on_drop = KillOnDrop(Arc::clone(&session));
+
+        // Drive a long build: enter Working, backdate its start past the threshold,
+        // then settle to Idle, which must fire exactly one build-finished push.
+        session.set_state(AgentState::Working, None);
+        *session
+            .working_since
+            .lock()
+            .expect("working_since lock poisoned") =
+            Some(now_ms().saturating_sub(BUILD_FINISHED_MIN_WORKING_MS + 1_000));
+        session.set_state(AgentState::Idle, None);
+
+        let command = timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("build-finished push dispatched before timeout")
+            .expect("push command channel stays open");
+        match command {
+            crate::push::PushCommand::BuildFinished {
+                session_id,
+                session_name,
+            } => {
+                assert_eq!(session_id, session.id());
+                assert_eq!(session_name, "builder-shell");
+            }
+            _ => panic!("expected a BuildFinished push command"),
         }
     }
 

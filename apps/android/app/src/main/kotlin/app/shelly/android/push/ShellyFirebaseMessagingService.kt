@@ -9,8 +9,15 @@ class ShellyFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        if (message.data[ShellyPushNotifications.DATA_EVENT_TYPE] == "awaiting_input") {
-            ShellyPushNotifications.showAwaitingInput(applicationContext, message.data)
+        when (message.data[ShellyPushNotifications.DATA_EVENT_TYPE]) {
+            ShellyPushNotifications.EVENT_AWAITING_INPUT ->
+                ShellyPushNotifications.showAwaitingInput(applicationContext, message.data)
+            // The daemon emits these on session crash and long-build completion; the per-type
+            // Notifications settings gate whether each is shown.
+            ShellyPushNotifications.EVENT_SESSION_CRASHED ->
+                ShellyPushNotifications.showSessionCrashed(applicationContext, message.data)
+            ShellyPushNotifications.EVENT_BUILD_FINISHED ->
+                ShellyPushNotifications.showBuildFinished(applicationContext, message.data)
         }
     }
 }

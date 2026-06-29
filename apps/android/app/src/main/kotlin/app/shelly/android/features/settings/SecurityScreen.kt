@@ -13,21 +13,27 @@ import app.shelly.android.ui.components.ShellyScreen
 fun SecurityScreen(
     onBack: () -> Unit,
     telemetryEnabled: Boolean = false,
-    onOpenBiometricLock: () -> Unit = {},
-    onOpenAutoLock: () -> Unit = {},
+    biometricLockOn: Boolean = true,
+    autoLockLabel: String = "5 min",
+    blockOnBackgroundOn: Boolean = true,
+    onToggleBiometricLock: () -> Unit = {},
+    onCycleAutoLock: () -> Unit = {},
     onOpenScrollback: () -> Unit = {},
-    onOpenBlockOnBackground: () -> Unit = {},
-    onOpenTelemetry: () -> Unit = {},
+    onToggleBlockOnBackground: () -> Unit = {},
+    onToggleTelemetry: () -> Unit = {},
     onRevokeAllKeys: () -> Unit = {},
 ) {
     SecurityContent(
         onBack = onBack,
         telemetryEnabled = telemetryEnabled,
-        onOpenBiometricLock = onOpenBiometricLock,
-        onOpenAutoLock = onOpenAutoLock,
+        biometricLockOn = biometricLockOn,
+        autoLockLabel = autoLockLabel,
+        blockOnBackgroundOn = blockOnBackgroundOn,
+        onToggleBiometricLock = onToggleBiometricLock,
+        onCycleAutoLock = onCycleAutoLock,
         onOpenScrollback = onOpenScrollback,
-        onOpenBlockOnBackground = onOpenBlockOnBackground,
-        onOpenTelemetry = onOpenTelemetry,
+        onToggleBlockOnBackground = onToggleBlockOnBackground,
+        onToggleTelemetry = onToggleTelemetry,
         onRevokeAllKeys = onRevokeAllKeys,
     )
 }
@@ -36,11 +42,14 @@ fun SecurityScreen(
 private fun SecurityContent(
     onBack: () -> Unit,
     telemetryEnabled: Boolean,
-    onOpenBiometricLock: () -> Unit,
-    onOpenAutoLock: () -> Unit,
+    biometricLockOn: Boolean,
+    autoLockLabel: String,
+    blockOnBackgroundOn: Boolean,
+    onToggleBiometricLock: () -> Unit,
+    onCycleAutoLock: () -> Unit,
     onOpenScrollback: () -> Unit,
-    onOpenBlockOnBackground: () -> Unit,
-    onOpenTelemetry: () -> Unit,
+    onToggleBlockOnBackground: () -> Unit,
+    onToggleTelemetry: () -> Unit,
     onRevokeAllKeys: () -> Unit,
 ) {
     ShellyScreen(
@@ -48,22 +57,22 @@ private fun SecurityContent(
             SettingsHeroBody(
                 eyebrow = "KEYS, LOCKS, AND WHAT\nTHIS PHONE CAN SEE",
                 wordmark = "GUARD",
-                status = "biometric lock is on",
+                status = if (biometricLockOn) "biometric lock is on" else "biometric lock is off",
                 statusGlyph = SettingsGlyph.Fingerprint,
                 backLabel = "Settings",
                 onBack = onBack,
             )
         },
         content = {
-            SettingsListRow("Biometric lock", "On", onClick = onOpenBiometricLock)
-            SettingsListRow("Auto-lock", "5 min", onClick = onOpenAutoLock)
+            SettingsListRow("Biometric lock", if (biometricLockOn) "On" else "Off", onClick = onToggleBiometricLock)
+            SettingsListRow("Auto-lock", autoLockLabel, onClick = onCycleAutoLock)
             SettingsListRow("Scrollback", "Encrypted", onClick = onOpenScrollback)
-            SettingsListRow("Block on background", "On", onClick = onOpenBlockOnBackground)
+            SettingsListRow("Block on background", if (blockOnBackgroundOn) "On" else "Off", onClick = onToggleBlockOnBackground)
             SettingsListRow(
                 "Telemetry",
                 if (telemetryEnabled) "On" else "Off",
                 showDivider = false,
-                onClick = onOpenTelemetry,
+                onClick = onToggleTelemetry,
             )
             Spacer(Modifier.weight(1f))
             SettingsFooterAction("Revoke all keys", onClick = onRevokeAllKeys)
@@ -76,11 +85,14 @@ internal fun SecurityContentPreview() {
     SecurityContent(
         onBack = {},
         telemetryEnabled = false,
-        onOpenBiometricLock = {},
-        onOpenAutoLock = {},
+        biometricLockOn = true,
+        autoLockLabel = "5 min",
+        blockOnBackgroundOn = true,
+        onToggleBiometricLock = {},
+        onCycleAutoLock = {},
         onOpenScrollback = {},
-        onOpenBlockOnBackground = {},
-        onOpenTelemetry = {},
+        onToggleBlockOnBackground = {},
+        onToggleTelemetry = {},
         onRevokeAllKeys = {},
     )
 }

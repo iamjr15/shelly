@@ -119,6 +119,20 @@ impl PushDispatcher {
         });
     }
 
+    pub(crate) fn session_crashed(&self, session_id: SessionId, session_name: String) {
+        self.send(PushCommand::SessionCrashed {
+            session_id,
+            session_name,
+        });
+    }
+
+    pub(crate) fn build_finished(&self, session_id: SessionId, session_name: String) {
+        self.send(PushCommand::BuildFinished {
+            session_id,
+            session_name,
+        });
+    }
+
     fn send(&self, command: PushCommand) {
         if let Some(tx) = &self.tx
             && tx.send(command).is_err()
@@ -153,6 +167,14 @@ pub(crate) enum PushCommand {
         expires_at_ms: u64,
     },
     AwaitingInput {
+        session_id: SessionId,
+        session_name: String,
+    },
+    SessionCrashed {
+        session_id: SessionId,
+        session_name: String,
+    },
+    BuildFinished {
         session_id: SessionId,
         session_name: String,
     },
@@ -236,8 +258,34 @@ impl PushWorker {
                     session_id,
                     session_name,
                 } => {
-                    self.dispatch_awaiting_input(session_id, &session_name)
-                        .await
+                    self.dispatch_session_event(
+                        session_id,
+                        &session_name,
+                        RelayPushEventType::AwaitingInput,
+                    )
+                    .await
+                }
+                PushCommand::SessionCrashed {
+                    session_id,
+                    session_name,
+                } => {
+                    self.dispatch_session_event(
+                        session_id,
+                        &session_name,
+                        RelayPushEventType::SessionCrashed,
+                    )
+                    .await
+                }
+                PushCommand::BuildFinished {
+                    session_id,
+                    session_name,
+                } => {
+                    self.dispatch_session_event(
+                        session_id,
+                        &session_name,
+                        RelayPushEventType::BuildFinished,
+                    )
+                    .await
                 }
             };
             if let Err(error) = result {
@@ -343,10 +391,11 @@ impl PushWorker {
         .await
     }
 
-    async fn dispatch_awaiting_input(
+    async fn dispatch_session_event(
         &mut self,
         session_id: SessionId,
         session_name: &str,
+        event_type: RelayPushEventType,
     ) -> Result<()> {
         let daemon_node_id = self.ensure_daemon_registered().await?;
         let tokens: Vec<_> = self
@@ -364,7 +413,7 @@ impl PushWorker {
             let session_id_hash = hash_for_push(&session_id.to_string());
             let session_name_hash = hash_for_push(session_name);
             let worker = &*self;
-            retry_relay_operation(self.retry, "dispatch awaiting-input push", || {
+            retry_relay_operation(self.retry, event_type.dispatch_operation(), || {
                 let daemon_node_id = daemon_node_id.clone();
                 let recipient_token = recipient_token.clone();
                 let session_id_hash = session_id_hash.clone();
@@ -378,7 +427,7 @@ impl PushWorker {
                         platform: platform.into(),
                         session_id_hash,
                         session_name_hash,
-                        event_type: RelayPushEventType::AwaitingInput,
+                        event_type,
                         nonce: nonce.clone(),
                         ts_ms,
                     };
@@ -608,6 +657,19 @@ impl From<PushPlatform> for RelayPushPlatform {
 #[serde(rename_all = "snake_case")]
 enum RelayPushEventType {
     AwaitingInput,
+    SessionCrashed,
+    BuildFinished,
+}
+
+impl RelayPushEventType {
+    /// Operation label used for retry/diagnostic logging on the dispatch path.
+    fn dispatch_operation(self) -> &'static str {
+        match self {
+            Self::AwaitingInput => "dispatch awaiting-input push",
+            Self::SessionCrashed => "dispatch session-crashed push",
+            Self::BuildFinished => "dispatch build-finished push",
+        }
+    }
 }
 
 fn sign(key: &SigningKey, path: &str, body: &[u8], nonce: &str, ts_ms: u64) -> String {
@@ -729,6 +791,22 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&RelayPushPlatform::Fcm).unwrap(),
             r#""fcm""#
+        );
+    }
+
+    #[test]
+    fn relay_event_type_serializes_as_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&RelayPushEventType::AwaitingInput).unwrap(),
+            r#""awaiting_input""#
+        );
+        assert_eq!(
+            serde_json::to_string(&RelayPushEventType::SessionCrashed).unwrap(),
+            r#""session_crashed""#
+        );
+        assert_eq!(
+            serde_json::to_string(&RelayPushEventType::BuildFinished).unwrap(),
+            r#""build_finished""#
         );
     }
 

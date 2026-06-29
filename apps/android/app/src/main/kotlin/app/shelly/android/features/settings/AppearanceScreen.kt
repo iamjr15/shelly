@@ -10,20 +10,20 @@ import app.shelly.android.ui.components.ShellyScreen
 fun AppearanceScreen(
     onBack: () -> Unit,
     themeModeLabel: String = "System",
+    textSizeLabel: String = "Default",
+    reduceMotionOn: Boolean = false,
     onOpenTheme: () -> Unit = {},
-    onOpenAccent: () -> Unit = {},
-    onOpenCodeFont: () -> Unit = {},
     onOpenTextSize: () -> Unit = {},
-    onOpenReduceMotion: () -> Unit = {},
+    onToggleReduceMotion: () -> Unit = {},
 ) {
     AppearanceContent(
         onBack = onBack,
         themeModeLabel = themeModeLabel,
+        textSizeLabel = textSizeLabel,
+        reduceMotionOn = reduceMotionOn,
         onOpenTheme = onOpenTheme,
-        onOpenAccent = onOpenAccent,
-        onOpenCodeFont = onOpenCodeFont,
         onOpenTextSize = onOpenTextSize,
-        onOpenReduceMotion = onOpenReduceMotion,
+        onToggleReduceMotion = onToggleReduceMotion,
     )
 }
 
@@ -31,11 +31,11 @@ fun AppearanceScreen(
 private fun AppearanceContent(
     onBack: () -> Unit,
     themeModeLabel: String,
+    textSizeLabel: String,
+    reduceMotionOn: Boolean,
     onOpenTheme: () -> Unit,
-    onOpenAccent: () -> Unit,
-    onOpenCodeFont: () -> Unit,
     onOpenTextSize: () -> Unit,
-    onOpenReduceMotion: () -> Unit,
+    onToggleReduceMotion: () -> Unit,
 ) {
     ShellyScreen(
         hero = {
@@ -54,10 +54,13 @@ private fun AppearanceContent(
         },
         content = {
             SettingsListRow("Theme", themeModeLabel, onClick = onOpenTheme)
-            SettingsListRow("Accent", "Safety orange", onClick = onOpenAccent)
-            SettingsListRow("Code font", "JetBrains Mono", onClick = onOpenCodeFont)
-            SettingsListRow("Text size", "Default", onClick = onOpenTextSize)
-            SettingsListRow("Reduce motion", "Off", showDivider = false, onClick = onOpenReduceMotion)
+            SettingsListRow("Text size", textSizeLabel, onClick = onOpenTextSize)
+            SettingsListRow(
+                "Reduce motion",
+                if (reduceMotionOn) "On" else "Off",
+                showDivider = false,
+                onClick = onToggleReduceMotion,
+            )
         },
     )
 }
@@ -67,10 +70,10 @@ internal fun AppearanceContentPreview() {
     AppearanceContent(
         onBack = {},
         themeModeLabel = "System",
+        textSizeLabel = "Default",
+        reduceMotionOn = false,
         onOpenTheme = {},
-        onOpenAccent = {},
-        onOpenCodeFont = {},
         onOpenTextSize = {},
-        onOpenReduceMotion = {},
+        onToggleReduceMotion = {},
     )
 }
