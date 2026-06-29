@@ -105,12 +105,20 @@ jobs:
       - name: Deploy with Ansible
         env:
           ANSIBLE_HOST_KEY_CHECKING: "true"
+          RELAY_FCM_SERVICE_ACCOUNT: ${{ secrets.RELAY_FCM_SERVICE_ACCOUNT }}
         run: |
+          fcm_args=()
+          if [ -n "$RELAY_FCM_SERVICE_ACCOUNT" ]; then
+            umask 077
+            printf '%s' "$RELAY_FCM_SERVICE_ACCOUNT" > "$RUNNER_TEMP/fcm-service-account.json"
+            fcm_args=(-e "fcm_credential_src=$RUNNER_TEMP/fcm-service-account.json" -e "shelly_relay_fcm_credential=/etc/shelly/secrets/fcm-service-account.json")
+          fi
           ansible-playbook \
             -i infra/relay/ansible/inventory.ini \
             --private-key ~/.ssh/shelly-relay \
             infra/relay/ansible/playbook.yml \
-            -e shelly_relay_binary="$PWD/target/release/shelly-relay"
+            -e shelly_relay_binary="$PWD/target/release/shelly-relay" \
+            "${fcm_args[@]}"
 
       - name: Close relay SSH for this runner
         if: always() && env.RUNNER_CIDR != ''
