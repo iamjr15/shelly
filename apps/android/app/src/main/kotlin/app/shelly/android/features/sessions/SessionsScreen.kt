@@ -1043,11 +1043,10 @@ private fun DaemonUnreachableContent(
 ) {
     val c = ShellyTheme.colors
     val lastSeen = formatRelativeAgo(now - unreachable.droppedAtMillis)
-    val retryEvery = formatDurationSeconds(unreachable.retryIntervalMillis)
     Column(Modifier.fillMaxSize()) {
         Spacer(Modifier.height(4.dp))
         Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(bottom = 18.dp)) {
-            PulsingWarningGlyph(color = c.textPrimary, size = 40.dp)
+            WarningGlyph(color = c.textPrimary, size = 40.dp)
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     "Daemon unreachable",
@@ -1055,7 +1054,7 @@ private fun DaemonUnreachableContent(
                     color = c.textPrimary,
                 )
                 Text(
-                    "last seen $lastSeen · attempt ${unreachable.attempt} · retrying every $retryEvery",
+                    "last seen $lastSeen",
                     style = ShellyType.mono.copy(fontWeight = FontWeight(500), lineHeight = 18.sp),
                     color = c.textMuted.copy(alpha = 0.6f),
                 )
@@ -1111,9 +1110,7 @@ private fun ColumnScope.ReconnectingHero(reconnecting: ConnectionState.Reconnect
     val c = ShellyTheme.colors
     val retryProgress = retryProgress(label = "reconnectingHeroProgress")
     val pulseAlpha = 1f - sin(retryProgress * PI).toFloat().coerceAtLeast(0f) * 0.22f
-    val droppedClock = formatClockTime(reconnecting.droppedAtMillis)
     val elapsedShort = formatDurationSeconds(now - reconnecting.droppedAtMillis)
-    val countdown = formatDurationSeconds(reconnecting.nextRetryAtMillis - now)
     BrandRow {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -1122,7 +1119,7 @@ private fun ColumnScope.ReconnectingHero(reconnecting: ConnectionState.Reconnect
                 color = c.textPrimary,
                 modifier = Modifier.graphicsLayer { alpha = pulseAlpha },
             )
-            Text(elapsedShort, style = ShellyType.mono.copy(fontSize = 13.sp, lineHeight = 16.sp), color = c.textMuted.copy(alpha = 0.6f))
+            Text(elapsedShort, style = ShellyType.mono.copy(fontSize = 13.sp, lineHeight = 16.sp), color = c.textPrimary.copy(alpha = 0.7f))
         }
     }
     Spacer(Modifier.weight(1f).heightIn(min = 8.dp))
@@ -1144,10 +1141,8 @@ private fun ColumnScope.ReconnectingHero(reconnecting: ConnectionState.Reconnect
         },
     )
     Spacer(Modifier.height(18.dp))
-    Text("Dropped at", style = ShellyType.brand.copy(fontWeight = FontWeight(500), letterSpacing = 0.sp), color = c.textPrimary)
-    Spacer(Modifier.height(6.dp))
     Text(
-        "$droppedClock · attempt ${reconnecting.attempt} · next retry in $countdown",
+        "Reconnecting to your laptop",
         style = ShellyType.rowTitle.copy(fontWeight = FontWeight(500), lineHeight = 24.sp),
         color = c.textPrimary,
         maxLines = 1,
@@ -1174,7 +1169,6 @@ private fun ReconnectingContent(
     onRetry: () -> Unit,
 ) {
     val c = ShellyTheme.colors
-    val droppedClock = formatClockTime(reconnecting.droppedAtMillis)
     val held = sessions.take(MAX_HELD_SESSION_ROWS)
     Column(Modifier.fillMaxSize()) {
         Column(
@@ -1225,7 +1219,7 @@ private fun ReconnectingContent(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                "LAST SEEN $droppedClock · ATTEMPT ${reconnecting.attempt}",
+                "ENCRYPTED",
                 style = ShellyType.microLabel.copy(fontWeight = FontWeight(400), fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.06.sp),
                 color = c.textMuted.copy(alpha = 0.5f),
             )
@@ -1480,9 +1474,6 @@ private fun rememberReconnectNow(): Long {
     return now
 }
 
-private fun formatClockTime(millis: Long): String =
-    SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(millis))
-
 /** "4s" / "1m 4s" — floor to whole seconds, never negative. */
 private fun formatDurationSeconds(millis: Long): String {
     val totalSeconds = (millis / 1000).coerceAtLeast(0)
@@ -1500,25 +1491,6 @@ private fun formatRelativeAgo(millis: Long): String {
         hours > 0 -> "${hours}h ago"
         minutes > 0 -> "${minutes}m ago"
         else -> "${totalSeconds}s ago"
-    }
-}
-
-@Composable
-private fun PulsingWarningGlyph(color: Color, size: Dp) {
-    val progress = retryProgress(label = "daemonWarningPulse")
-    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            val alpha = sin(progress * PI).toFloat().coerceAtLeast(0f) * 0.14f
-            if (alpha > 0.001f) {
-                drawCircle(
-                    color = color.copy(alpha = alpha),
-                    radius = this.size.minDimension * (0.42f + progress * 0.18f),
-                    center = Offset(this.size.width / 2f, this.size.height / 2f),
-                    style = Stroke(width = 1.5.dp.toPx()),
-                )
-            }
-        }
-        WarningGlyph(color = color, size = size)
     }
 }
 
