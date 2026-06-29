@@ -177,6 +177,24 @@ pub enum ShellyError {
     Internal(String),
 }
 
+/// Cadence of the subscription heartbeat PING and the window a reply must arrive within. The daemon
+/// only pushes SessionList on change, so without this an idle-but-healthy link is indistinguishable
+/// from a dead daemon at the transport layer — a relay keeps the QUIC path alive well past a daemon
+/// kill, so its idle timeout can lag 15–40s. PINGing and bounding the read surfaces a dead daemon in
+/// ~SUBSCRIBE_READ_TIMEOUT instead, while tolerating a couple of missed PINGs over a flaky link.
+const SUBSCRIBE_PING_INTERVAL: Duration = Duration::from_secs(3);
+const SUBSCRIBE_READ_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// Aborts a spawned task when dropped, so the heartbeat PING loop stops the moment its subscription
+/// returns (error or cancellation) and releases the send half it owns.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 #[uniffi::export(callback_interface)]
 /// Callback interface for session-list subscriptions.
 pub trait SessionListSink: Send + Sync {
@@ -519,11 +537,51 @@ impl ShellyClient {
     ) -> Result<(), ShellyError> {
         let (mut send, mut recv) = self.open_authenticated_stream().await?;
         write_msg(&mut send, &ClientToServerMsg::SubscribeSessions).await?;
+
+        // Heartbeat the subscription so a killed daemon is detected promptly. The send half is moved
+        // into a task that PINGs every SUBSCRIBE_PING_INTERVAL; the daemon answers each on the same
+        // stream, and the read loop below requires *some* message (Pong or SessionList) within
+        // SUBSCRIBE_READ_TIMEOUT. A dead daemon stops answering, the read times out, and we surface a
+        // transport error that drives the app's reconnecting state — without waiting on the QUIC idle
+        // timeout, which a relay can keep alive for 15–40s after the daemon is gone.
+        let ping_task = tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(SUBSCRIBE_PING_INTERVAL);
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            ticker.tick().await; // first tick is immediate; the SubscribeSessions write covers it
+            let mut seq: u64 = 0;
+            loop {
+                ticker.tick().await;
+                seq = seq.wrapping_add(1);
+                if write_msg(&mut send, &ClientToServerMsg::Ping { seq })
+                    .await
+                    .is_err()
+                {
+                    break; // connection is gone; the read side times out and surfaces the error
+                }
+            }
+        });
+        let _ping_guard = AbortOnDrop(ping_task);
+
         loop {
-            match read_msg::<ServerToClientMsg>(&mut recv).await? {
+            let message = match timeout(
+                SUBSCRIBE_READ_TIMEOUT,
+                read_msg::<ServerToClientMsg>(&mut recv),
+            )
+            .await
+            {
+                Ok(result) => result?,
+                Err(_elapsed) => {
+                    return Err(ShellyError::Transport(
+                        "daemon stopped responding to heartbeat".to_string(),
+                    ));
+                }
+            };
+            match message {
                 ServerToClientMsg::SessionList { sessions } => {
                     sink.on_update(sessions.into_iter().map(Into::into).collect());
                 }
+                // Heartbeat replies just keep the subscription alive; nothing to surface.
+                ServerToClientMsg::Pong { .. } => {}
                 ServerToClientMsg::Error { code, message } => {
                     return Err(error_from_server(code, message));
                 }
