@@ -378,6 +378,7 @@ mod tests {
                     client_id,
                     daemon_version: "0.1.0".to_string(),
                     capabilities: Capabilities::v1(true),
+                    host_name: "Jigyanshu's MacBook Pro".to_string(),
                 },
             ),
             wire_case(

@@ -76,3 +76,4 @@ uniffi = { version = "=0.31.1", features = ["tokio"] }
 uuid = { version = "1", features = ["serde", "v7"] }
 webpki-roots = "1"
 wezterm-term = { package = "tattoy-wezterm-term", version = "=0.1.0-fork.5" }
+whoami = "1.5"

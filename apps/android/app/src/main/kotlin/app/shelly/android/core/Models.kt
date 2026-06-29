@@ -54,6 +54,7 @@ data class PairedDaemonRecord(
     val deviceSecretKey: ByteArray,
     val pairedAtMillis: Long,
     val daemonVersion: String,
+    val hostName: String,
     val protocolVersion: Int,
 ) {
     override fun equals(other: Any?): Boolean {
@@ -65,6 +66,7 @@ data class PairedDaemonRecord(
             deviceSecretKey.contentEquals(other.deviceSecretKey) &&
             pairedAtMillis == other.pairedAtMillis &&
             daemonVersion == other.daemonVersion &&
+            hostName == other.hostName &&
             protocolVersion == other.protocolVersion
     }
 
@@ -76,7 +78,12 @@ data class PairedDaemonRecord(
         result = 31 * result + deviceSecretKey.contentHashCode()
         result = 31 * result + pairedAtMillis.hashCode()
         result = 31 * result + daemonVersion.hashCode()
+        result = 31 * result + hostName.hashCode()
         result = 31 * result + protocolVersion
         return result
     }
 }
+
+/** Friendly identifier for the paired computer; falls back to a generic label pre-host-name. */
+fun PairedDaemonRecord?.displayName(): String =
+    this?.hostName?.takeIf { it.isNotBlank() } ?: "your laptop"

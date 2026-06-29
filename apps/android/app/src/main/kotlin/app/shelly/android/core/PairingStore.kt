@@ -34,6 +34,7 @@ class PairingStore internal constructor(
             pairedAtMillis = json.getLong("pairedAtMillis"),
             // Defaults keep records written before these fields existed loadable.
             daemonVersion = json.optString("daemonVersion", ""),
+            hostName = json.optString("hostName", ""),
             protocolVersion = json.optInt("protocolVersion", 0),
         )
     }
@@ -49,6 +50,7 @@ class PairingStore internal constructor(
             .put("deviceSecretKey", Base64.encodeToString(record.deviceSecretKey, Base64.NO_WRAP))
             .put("pairedAtMillis", record.pairedAtMillis)
             .put("daemonVersion", record.daemonVersion)
+            .put("hostName", record.hostName)
             .put("protocolVersion", record.protocolVersion)
         val encrypted = cipher.encrypt(json.toString().toByteArray(Charsets.UTF_8))
         prefs.edit().putString("daemon", Base64.encodeToString(encrypted, Base64.NO_WRAP)).apply()

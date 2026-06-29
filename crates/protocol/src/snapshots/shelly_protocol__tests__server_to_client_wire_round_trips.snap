@@ -1,11 +1,10 @@
 ---
 source: crates/protocol/src/lib.rs
-assertion_line: 191
 expression: cases
 ---
 - name: welcome
-  frame_len: 46
-  decoded: "Welcome { client_id: ClientId(018f0000-0000-7000-8000-000000000002), daemon_version: \"0.1.0\", capabilities: Capabilities { push_notifications: true } }"
+  frame_len: 77
+  decoded: "Welcome { client_id: ClientId(018f0000-0000-7000-8000-000000000002), daemon_version: \"0.1.0\", capabilities: Capabilities { push_notifications: true }, host_name: \"Jigyanshu's MacBook Pro\" }"
 - name: session_list
   frame_len: 126
   decoded: "SessionList { sessions: [SessionSummary { id: SessionId(018f0000-0000-7000-8000-000000000001), name: \"demo\", command: [\"bash\"], cwd: \"/tmp/shelly\", created_at: 1700000000000, last_activity: 1700000000010, state: Working, last_line: Some(\"ready\"), model: None }] }"

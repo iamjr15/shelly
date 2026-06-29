@@ -47,6 +47,7 @@ import app.shelly.android.core.MobileTelemetry
 import app.shelly.android.core.ShellyAlertMessage
 import app.shelly.android.core.ShellyUiState
 import app.shelly.android.core.ShellyViewModel
+import app.shelly.android.core.displayName
 import app.shelly.android.features.lock.LockedScreen
 import app.shelly.android.features.modals.AlertSheet
 import app.shelly.android.features.modals.NotificationPermissionSheet
@@ -251,6 +252,7 @@ fun ShellyApp(
                             biometricGate = biometricGate,
                             connectionState = state.connectionState,
                             sessions = state.sessions,
+                            laptopName = state.pairedDaemon.displayName(),
                             onRoute = { route = it },
                             onToggleTelemetry = onToggleTelemetry,
                             onOpenPalette = { commandPaletteVisible = true },
@@ -307,7 +309,7 @@ fun ShellyApp(
 
                 ShellyModalOverlay(visible = showUnpairSheet, onDismiss = { showUnpairSheet = false }) {
                     UnpairSheet(
-                        daemonLabel = state.pairedDaemon?.daemonNodeId?.take(12)?.let { "$it…" } ?: "this laptop",
+                        daemonLabel = state.pairedDaemon.displayName(),
                         liveSessions = state.sessions.size,
                         onConfirm = {
                             showUnpairSheet = false
@@ -372,6 +374,7 @@ private fun RoutedContent(
     biometricGate: AndroidBiometricGate,
     connectionState: ConnectionState,
     sessions: List<MobileSession>,
+    laptopName: String,
     onRoute: (ShellyRoute) -> Unit,
     onToggleTelemetry: () -> Unit,
     onOpenPalette: () -> Unit,
@@ -470,7 +473,7 @@ private fun RoutedContent(
             val daemonRecord = viewModel.state.value.pairedDaemon
             DaemonDetailScreen(
                 onBack = { onRoute(ShellyRoute.Settings) },
-                nodeId = daemonRecord?.daemonNodeId ?: "unpaired",
+                hostName = daemonRecord.displayName(),
                 pairedAge = pairedAgeLabel(daemonRecord?.pairedAtMillis),
                 daemon = daemonRecord?.daemonVersion?.takeIf { it.isNotBlank() }
                     ?.let { "shellyd $it" } ?: "shellyd",
@@ -504,6 +507,7 @@ private fun RoutedContent(
                 is ConnectionState.Reconnecting -> ReconnectingScaffold(
                     reconnecting = connection,
                     sessions = sessions,
+                    laptopName = laptopName,
                     onRetry = viewModel::retryConnectionNow,
                 )
                 // Reached via the debug command palette without a live drop — show sample data.

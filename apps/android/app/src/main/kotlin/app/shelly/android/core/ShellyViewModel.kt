@@ -441,17 +441,19 @@ class ShellyViewModel internal constructor(
     }
 
     /**
-     * Pulls the daemon version from the live handshake and updates the paired-daemon record if it
-     * changed (e.g. the user upgraded their daemon since pairing). Keeps DaemonDetail honest without
-     * forcing a re-pair.
+     * Pulls the daemon version and host name from the live handshake and updates the paired-daemon
+     * record if either changed (e.g. the user upgraded or renamed their laptop since pairing). Keeps
+     * DaemonDetail and the laptop identifier honest without forcing a re-pair.
      */
-    private suspend fun refreshDaemonVersion() {
-        val live = repository.liveDaemonVersion()?.takeIf { it.isNotBlank() } ?: return
-        _state.update { st ->
-            val current = st.pairedDaemon ?: return@update st
-            if (current.daemonVersion == live) st
-            else st.copy(pairedDaemon = current.copy(daemonVersion = live))
-        }
+    private suspend fun refreshDaemonInfo() {
+        val current = _state.value.pairedDaemon ?: return
+        val liveVersion = repository.liveDaemonVersion()?.takeIf { it.isNotBlank() }
+        val liveHost = repository.liveDaemonHostName()?.takeIf { it.isNotBlank() }
+        val updated = current.copy(
+            daemonVersion = liveVersion ?: current.daemonVersion,
+            hostName = liveHost ?: current.hostName,
+        )
+        if (updated != current) _state.update { st -> if (st.pairedDaemon == null) st else st.copy(pairedDaemon = updated) }
     }
 
     private fun startSessionSubscription() {
@@ -465,9 +467,10 @@ class ShellyViewModel internal constructor(
             var droppedAtMillis = 0L
             _state.update { it.copy(connectionState = ConnectionState.Connected) }
             while (_state.value.unlocked && _state.value.paired) {
-                // Refresh the daemon version once per (re)connection: the live handshake value can
-                // differ from the snapshot stored at pairing if the daemon was upgraded since.
-                var versionRefreshed = false
+                // Refresh the daemon info once per (re)connection: the live handshake values
+                // (version + host name) can differ from the snapshot stored at pairing if the
+                // daemon was upgraded or the laptop renamed since.
+                var infoRefreshed = false
                 try {
                     repository.subscribeSessions { sessions ->
                         if (!_state.value.unlocked) {
@@ -482,9 +485,9 @@ class ShellyViewModel internal constructor(
                         }
                         applySessions(sessions)
                         resolvePendingPushTarget(sessions)
-                        if (!versionRefreshed) {
-                            versionRefreshed = true
-                            viewModelScope.launch(repositoryDispatcher) { refreshDaemonVersion() }
+                        if (!infoRefreshed) {
+                            infoRefreshed = true
+                            viewModelScope.launch(repositoryDispatcher) { refreshDaemonInfo() }
                         }
                     }
                 } catch (error: Throwable) {

@@ -11,7 +11,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import app.shelly.android.core.MobileTelemetry
+import app.shelly.android.core.PairedDaemonRecord
 import app.shelly.android.core.ShellyViewModel
+import app.shelly.android.core.displayName
 import app.shelly.android.ui.components.SettingsFooterAction
 import app.shelly.android.ui.components.SettingsGlyph
 import app.shelly.android.ui.components.SettingsHeroBody
@@ -39,7 +41,7 @@ fun SettingsScreen(
     SettingsContent(
         modifier = Modifier.padding(padding),
         paired = state.paired,
-        daemonNodeId = state.pairedDaemon?.daemonNodeId,
+        pairedDaemon = state.pairedDaemon,
         themeModeLabel = themeModeLabel,
         telemetryEnabled = telemetry,
         onBackToSessions = onBackToSessions,
@@ -57,7 +59,7 @@ fun SettingsScreen(
 private fun SettingsContent(
     modifier: Modifier = Modifier,
     paired: Boolean,
-    daemonNodeId: String?,
+    pairedDaemon: PairedDaemonRecord?,
     themeModeLabel: String,
     telemetryEnabled: Boolean,
     onBackToSessions: () -> Unit,
@@ -69,7 +71,7 @@ private fun SettingsContent(
     onOpenDaemonDetail: () -> Unit,
     onUnpair: () -> Unit,
 ) {
-    val daemonStatus = daemonNodeId?.let { "paired with ${compactDaemonNodeId(it)}" } ?: DAEMON_UNPAIRED.lowercase()
+    val daemonStatus = pairedDaemon?.let { "paired with ${it.displayName()}" } ?: DAEMON_UNPAIRED.lowercase()
     ShellyScreen(
         modifier = modifier,
         hero = {
@@ -106,7 +108,17 @@ private fun SettingsContent(
 internal fun SettingsContentPreview() {
     SettingsContent(
         paired = true,
-        daemonNodeId = "node_01k9c4f3hg7z",
+        pairedDaemon = PairedDaemonRecord(
+            daemonNodeId = "node_01k9c4f3hg7z",
+            relayUrl = null,
+            addrs = emptyList(),
+            deviceNodeId = "device-node",
+            deviceSecretKey = ByteArray(0),
+            pairedAtMillis = 0L,
+            daemonVersion = "1.0.0",
+            hostName = "Jigyansu's MacBook",
+            protocolVersion = 3,
+        ),
         themeModeLabel = "SYSTEM",
         telemetryEnabled = false,
         onBackToSessions = {},
