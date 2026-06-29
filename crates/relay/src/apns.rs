@@ -108,6 +108,10 @@ impl ApnsCredentials {
 
 impl ApnsClient {
     pub(crate) fn new(credentials: ApnsCredentials) -> Result<Self> {
+        // reqwest is built with `rustls-no-provider`; ensure a default crypto
+        // provider exists before constructing the client. The relay serve path
+        // installs this, but unit tests build clients without it. Idempotent.
+        crate::install_default_rustls_provider();
         let jwt_cache = ApnsJwtCache::new(
             credentials.team_id,
             credentials.key_id,

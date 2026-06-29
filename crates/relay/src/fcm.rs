@@ -149,6 +149,10 @@ impl FcmCredentials {
 
 impl FcmClient {
     pub(crate) fn new(credentials: FcmCredentials) -> Result<Self> {
+        // reqwest is built with `rustls-no-provider`; ensure a default crypto
+        // provider exists before constructing the client. The relay serve path
+        // installs this, but unit tests build clients without it. Idempotent.
+        crate::install_default_rustls_provider();
         Ok(Self {
             endpoint: credentials.endpoint.trim_end_matches('/').to_string(),
             project_id: credentials.project_id,

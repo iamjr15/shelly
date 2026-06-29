@@ -77,6 +77,7 @@ where
 }
 
 async fn fetch_latest_version() -> Result<String> {
+    crate::ensure_crypto_provider();
     let client = reqwest::Client::builder()
         .timeout(REQUEST_TIMEOUT)
         .user_agent(concat!("shelly/", env!("CARGO_PKG_VERSION")))
