@@ -1,0 +1,31 @@
+{
+	email {{ shelly_caddy_acme_email }}
+}
+
+http://{{ shelly_relay_public_hostname }} {
+	handle /generate_204 {
+		reverse_proxy {{ shelly_iroh_relay_upstream }}
+	}
+
+	handle {
+		redir https://{host}{uri} 308
+	}
+}
+
+{{ shelly_relay_public_hostname }} {
+	handle /v1/* {
+		reverse_proxy {{ shelly_relay_control_upstream }}
+	}
+
+	handle /healthz {
+		reverse_proxy {{ shelly_relay_control_upstream }}
+	}
+
+	handle /metrics {
+		reverse_proxy {{ shelly_relay_metrics_upstream }}
+	}
+
+	handle {
+		reverse_proxy {{ shelly_iroh_relay_upstream }}
+	}
+}

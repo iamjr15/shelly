@@ -3,24 +3,30 @@ shelly_relay_group: shelly-relay
 shelly_relay_data_dir: /var/lib/shelly
 shelly_relay_db_path: /var/lib/shelly/relay.db
 shelly_relay_bin_dir: /usr/local/bin
-shelly_relay_control_addr: 0.0.0.0:8443
+shelly_relay_public_hostname: "{{ shelly_iroh_relay_hostname }}"
+shelly_relay_control_addr: 127.0.0.1:8443
+shelly_relay_control_upstream: "http://{{ shelly_relay_control_addr }}"
 shelly_relay_control_require_tls: "false"
 shelly_relay_control_tls_cert: ""
 shelly_relay_control_tls_key: ""
+shelly_relay_trust_forwarded_for: "true"
 shelly_relay_metrics_addr: 127.0.0.1:9090
+shelly_relay_metrics_upstream: "http://{{ shelly_relay_metrics_addr }}"
 shelly_relay_otlp_endpoint: ""
 shelly_relay_otlp_sample_rate: "0.01"
 shelly_relay_honeycomb_credential: ""
 shelly_relay_honeycomb_dataset: ""
-shelly_iroh_relay_http_addr: 0.0.0.0:80
-shelly_iroh_relay_https_addr: 0.0.0.0:443
-shelly_iroh_relay_quic_addr: 0.0.0.0:7842
+shelly_iroh_relay_http_addr: 127.0.0.1:8080
+shelly_iroh_relay_https_addr: 127.0.0.1:9443
+shelly_iroh_relay_quic_addr: 127.0.0.1:7842
+shelly_iroh_relay_upstream: "http://{{ shelly_iroh_relay_http_addr }}"
 shelly_iroh_relay_metrics_addr: 127.0.0.1:9091
 shelly_iroh_relay_cert_dir: /var/lib/shelly/acme
 shelly_iroh_relay_hostname: "relay.shelly.sh"
 shelly_iroh_relay_contact_email: "jigyanshu15@gmail.com"
 shelly_iroh_relay_staging: "false"
-shelly_iroh_relay_http_only: "false"
+shelly_iroh_relay_http_only: "true"
+shelly_caddy_acme_email: "{{ shelly_iroh_relay_contact_email }}"
 shelly_relay_binary: ""
 shelly_relay_apns_credential: /etc/shelly/secrets/apns.p8
 shelly_relay_apns_team_id: ""

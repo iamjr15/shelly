@@ -59,7 +59,7 @@ variable "ssh_allowed_cidrs" {
 }
 
 variable "enable_iroh_tls_ports" {
-  description = "Open public iroh HTTPS/QUIC ports after DNS and ACME are ready for this host."
+  description = "Open public HTTPS on 443 after DNS and Caddy ACME are ready for this host. Name is kept for compatibility with existing tfvars."
   type        = bool
   default     = true
 }
