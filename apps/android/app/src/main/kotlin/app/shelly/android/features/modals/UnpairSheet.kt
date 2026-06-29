@@ -7,14 +7,21 @@ import androidx.compose.ui.graphics.Color
 @Composable
 fun UnpairSheet(
     modifier: Modifier = Modifier,
+    daemonLabel: String = "this laptop",
+    liveSessions: Int = 0,
     onConfirm: () -> Unit = {},
     onDismiss: () -> Unit = {},
 ) {
+    val body = when (liveSessions) {
+        0 -> "Keys for this phone are erased and Shelly\ndisconnects. Pairing again needs a fresh\ncode from your laptop."
+        1 -> "Keys for this phone are erased and the one\nlive session detaches. Pairing again needs\na fresh code from your laptop."
+        else -> "Keys for this phone are erased and all $liveSessions\nlive sessions detach. Pairing again needs\na fresh code from your laptop."
+    }
     ShellyModalCard(
         kicker = "THIS CANNOT BE UNDONE",
         title = "DROP",
-        meta = "node_01k9c4f3hg · paired 14d",
-        body = "Keys for this phone are erased and all 6\nlive sessions detach. Pairing again needs\na fresh QR from your laptop.",
+        meta = daemonLabel,
+        body = body,
         primary = "Unpair this device",
         secondary = "Keep it paired",
         onConfirm = onConfirm,
@@ -29,6 +36,6 @@ fun UnpairSheet(
 @Composable
 internal fun UnpairSheetPreview() {
     ModalPreviewScaffold {
-        UnpairSheet()
+        UnpairSheet(daemonLabel = "6e7a1cdd29b0…", liveSessions = 6)
     }
 }

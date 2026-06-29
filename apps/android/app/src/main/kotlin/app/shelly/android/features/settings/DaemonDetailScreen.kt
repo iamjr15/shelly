@@ -14,7 +14,7 @@ fun DaemonDetailScreen(
     onBack: () -> Unit,
     nodeId: String = "node_01k9c4f3hg",
     pairedAge: String = "14d",
-    host: String = "macbook-pro",
+    host: String = "your laptop",
     daemon: String = "shellyd 1.0.0",
     protocol: String = "v3",
     transport: String = "iroh QUIC",

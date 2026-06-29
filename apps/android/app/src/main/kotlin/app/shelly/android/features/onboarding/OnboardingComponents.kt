@@ -416,7 +416,7 @@ internal fun OnboardingStepRow(
                 text = detail,
                 style = ShellyType.monoSmall,
                 color = onboardingMuted().copy(alpha = 0.6f),
-                maxLines = 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
         }

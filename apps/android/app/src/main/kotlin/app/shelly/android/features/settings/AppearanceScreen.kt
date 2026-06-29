@@ -42,7 +42,11 @@ private fun AppearanceContent(
             SettingsHeroBody(
                 eyebrow = "HOW SHELLY LOOKS\nON THIS PHONE",
                 wordmark = "LOOK",
-                status = "following the system theme",
+                status = when (themeModeLabel.lowercase()) {
+                    "light" -> "always light"
+                    "dark" -> "always dark"
+                    else -> "following the system theme"
+                },
                 statusGlyph = SettingsGlyph.HalfCircle,
                 backLabel = "Settings",
                 onBack = onBack,

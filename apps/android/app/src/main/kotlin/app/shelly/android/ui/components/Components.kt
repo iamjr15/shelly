@@ -162,7 +162,7 @@ fun BrandRow(onClick: (() -> Unit)? = null, trailing: @Composable RowScope.() ->
     val c = ShellyTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val scale = if (onClick == null) 1f else shellyPressScale(interactionSource, pressedScale = 0.985f)
-    val clickableModifier = if (onClick == null) {
+    val brandModifier = if (onClick == null) {
         Modifier
     } else {
         Modifier
@@ -177,12 +177,20 @@ fun BrandRow(onClick: (() -> Unit)? = null, trailing: @Composable RowScope.() ->
             )
     }
     Row(
-        modifier = clickableModifier,
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TriangleLogo(color = c.textPrimary)
-        Spacer(Modifier.width(8.dp))
-        Text("SHELLY", style = ShellyType.brand, color = c.textPrimary)
+        // Only the brand mark (logo + wordmark) is clickable. The trailing action
+        // icons live OUTSIDE this clickable so their taps aren't swallowed by the
+        // brand's (command-palette) onClick.
+        Row(
+            modifier = brandModifier,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TriangleLogo(color = c.textPrimary)
+            Spacer(Modifier.width(8.dp))
+            Text("SHELLY", style = ShellyType.brand, color = c.textPrimary)
+        }
         Spacer(Modifier.weight(1f))
         trailing()
     }
