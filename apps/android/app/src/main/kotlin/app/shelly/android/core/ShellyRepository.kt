@@ -22,6 +22,10 @@ internal interface ShellyRepositoryClient {
     suspend fun pairWithCode(code: String)
     suspend fun listSessions(): List<MobileSession>
     suspend fun subscribeSessions(onUpdate: (List<MobileSession>) -> Unit)
+
+    /** Daemon version from the most recent handshake, or null if not yet connected this launch. */
+    suspend fun liveDaemonVersion(): String?
+
     suspend fun createSession(name: String?): MobileSession
     suspend fun killSession(sessionId: String)
     suspend fun attach(sessionId: String, lastSeenSeq: ULong? = null): AttachedSession
@@ -113,6 +117,8 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
             }
         })
     }
+
+    override suspend fun liveDaemonVersion(): String? = client?.daemonVersion()
 
     override suspend fun createSession(name: String?): MobileSession {
         val summary = requireClient().createSession(name)

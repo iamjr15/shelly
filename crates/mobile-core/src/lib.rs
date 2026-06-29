@@ -229,6 +229,9 @@ pub struct ShellyClient {
     daemon: Mutex<Option<DaemonTarget>>,
     endpoint: Mutex<Option<Endpoint>>,
     connected: Mutex<bool>,
+    /// Daemon version from the most recent successful handshake, refreshed on every authenticated
+    /// connect so the UI can reflect the *current* daemon rather than the snapshot taken at pairing.
+    last_daemon_version: Mutex<Option<String>>,
 }
 
 #[derive(Clone, Debug)]
@@ -325,6 +328,7 @@ impl ShellyClient {
             daemon: Mutex::new(daemon),
             endpoint: Mutex::new(None),
             connected: Mutex::new(false),
+            last_daemon_version: Mutex::new(None),
         }))
     }
 
@@ -594,6 +598,13 @@ impl ShellyClient {
         }
     }
 
+    /// Daemon version reported by the most recent successful handshake, or `None` if the client has
+    /// not connected since launch. Lets the UI show the live daemon version instead of the snapshot
+    /// captured at pairing time.
+    pub async fn daemon_version(&self) -> Option<String> {
+        self.last_daemon_version.lock().await.clone()
+    }
+
     /// Registers the native APNs/FCM token with the paired daemon.
     pub async fn register_push_token(
         self: Arc<Self>,
@@ -696,7 +707,8 @@ impl ShellyClient {
         let endpoint = self.endpoint(target.parsed_relay()?.as_ref()).await?;
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
         write_hello(&mut send, self.config.platform).await?;
-        expect_welcome(&mut recv).await?;
+        let daemon_version = expect_welcome(&mut recv).await?;
+        *self.last_daemon_version.lock().await = Some(daemon_version);
         Ok((send, recv))
     }
 
