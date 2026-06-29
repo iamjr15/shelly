@@ -95,7 +95,11 @@ jobs:
       - name: Verify cosign attestations
         run: |
           set -euo pipefail
-          repo_regex="$(printf '%s' "$GITHUB_REPOSITORY" | sed -e 's#[][.^$*+?{}()|\\]#\\&#g')"
+          # Escape regex metacharacters in the repo slug for the identity regexp.
+          # A GitHub owner/repo only contains [A-Za-z0-9._-] besides '/', so '.'
+          # is the sole metacharacter to escape. (Avoid a bracket class here: a
+          # leading "[." is parsed by sed as a collating symbol and never closes.)
+          repo_regex="$(printf '%s' "$GITHUB_REPOSITORY" | sed 's/\./\\./g')"
           while IFS= read -r archive; do
             cosign verify-blob-attestation \
               --bundle "${archive}.bundle" \
