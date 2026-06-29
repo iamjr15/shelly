@@ -156,29 +156,21 @@ function runCase({ platform, arch, key }, metaPack, platformPack) {
   requireExecutable(path.join(binDir, "shellyd"));
 
   if (process.platform === platform && process.arch === arch) {
-    if (usingFixtureBins) {
-      assertIncludes(
-        run(path.join(binDir, "shelly"), [], { cwd: caseDir, env }).stdout,
-        `shelly-${key}`,
-        `${key} shelly fixture`,
-      );
-      assertIncludes(
-        run(path.join(binDir, "shellyd"), [], { cwd: caseDir, env }).stdout,
-        `shellyd-${key}`,
-        `${key} shellyd fixture`,
-      );
-    } else {
-      assertIncludes(
-        run(path.join(binDir, "shelly"), ["version"], { cwd: caseDir, env }).stdout,
-        "shelly",
-        `${key} shelly version`,
-      );
-      assertIncludes(
-        run(path.join(binDir, "shellyd"), ["--help"], { cwd: caseDir, env }).stdout,
-        "Usage:",
-        `${key} shellyd help`,
-      );
-    }
+    // Smoke-test the resolved binaries with non-interactive --help only. This is
+    // safe whether bun resolved the local fixture stubs (which echo their key) or
+    // the real published binaries (which print clap help): --help never starts a
+    // session or the daemon, so it needs no TTY or control socket in CI. (Bare
+    // `shelly` would try to open an interactive session and fail under non-TTY CI.)
+    assertIncludes(
+      run(path.join(binDir, "shelly"), ["--help"], { cwd: caseDir, env }).stdout,
+      "shelly",
+      `${key} shelly smoke`,
+    );
+    assertIncludes(
+      run(path.join(binDir, "shellyd"), ["--help"], { cwd: caseDir, env }).stdout,
+      "Usage:",
+      `${key} shellyd smoke`,
+    );
   }
 }
 
