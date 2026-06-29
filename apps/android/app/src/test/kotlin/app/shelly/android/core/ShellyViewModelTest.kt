@@ -1231,6 +1231,8 @@ class ShellyViewModelTest {
             return sessions
         }
 
+        override suspend fun liveDaemonVersion(): String? = savedPairing?.daemonVersion
+
         override suspend fun createSession(name: String?): MobileSession {
             createdNames += name
             return createResult ?: MobileSession(

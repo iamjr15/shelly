@@ -440,6 +440,20 @@ class ShellyViewModel internal constructor(
         retrySignal.trySend(Unit)
     }
 
+    /**
+     * Pulls the daemon version from the live handshake and updates the paired-daemon record if it
+     * changed (e.g. the user upgraded their daemon since pairing). Keeps DaemonDetail honest without
+     * forcing a re-pair.
+     */
+    private suspend fun refreshDaemonVersion() {
+        val live = repository.liveDaemonVersion()?.takeIf { it.isNotBlank() } ?: return
+        _state.update { st ->
+            val current = st.pairedDaemon ?: return@update st
+            if (current.daemonVersion == live) st
+            else st.copy(pairedDaemon = current.copy(daemonVersion = live))
+        }
+    }
+
     private fun startSessionSubscription() {
         if (sessionSubscriptionJob?.isActive == true) {
             return
@@ -451,6 +465,9 @@ class ShellyViewModel internal constructor(
             var droppedAtMillis = 0L
             _state.update { it.copy(connectionState = ConnectionState.Connected) }
             while (_state.value.unlocked && _state.value.paired) {
+                // Refresh the daemon version once per (re)connection: the live handshake value can
+                // differ from the snapshot stored at pairing if the daemon was upgraded since.
+                var versionRefreshed = false
                 try {
                     repository.subscribeSessions { sessions ->
                         if (!_state.value.unlocked) {
@@ -465,6 +482,10 @@ class ShellyViewModel internal constructor(
                         }
                         applySessions(sessions)
                         resolvePendingPushTarget(sessions)
+                        if (!versionRefreshed) {
+                            versionRefreshed = true
+                            viewModelScope.launch(repositoryDispatcher) { refreshDaemonVersion() }
+                        }
                     }
                 } catch (error: Throwable) {
                     if (error is CancellationException) {
