@@ -5673,7 +5673,7 @@ checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
 
 [[package]]
 name = "shelly-cli"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -5698,7 +5698,7 @@ dependencies = [
 
 [[package]]
 name = "shelly-daemon"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -5734,7 +5734,7 @@ dependencies = [
 
 [[package]]
 name = "shelly-mobile-core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "android_logger",
  "iroh",
@@ -5754,7 +5754,7 @@ dependencies = [
 
 [[package]]
 name = "shelly-protocol"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "bincode",
  "data-encoding",
@@ -5768,7 +5768,7 @@ dependencies = [
 
 [[package]]
 name = "shelly-relay"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "axum",
