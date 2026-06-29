@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Duration, timeout};
 
-const PAIR_TOKEN_TTL_MS: u64 = 5 * 60 * 1000;
+const PAIR_TOKEN_TTL_MS: u64 = 15 * 60 * 1000;
 /// Wrong in-band code attempts tolerated before an active code is invalidated.
 const MAX_CODE_ATTEMPTS: u8 = 5;
 
@@ -88,14 +88,14 @@ impl PairingManager {
                         pending.attempts = pending.attempts.saturating_add(1);
                         pending.attempts < MAX_CODE_ATTEMPTS
                     });
-                    bail!("pair code is invalid or already used");
+                    bail!("pairing code is invalid or already used");
                 }
             }
         };
 
         let remaining_ms = pending.expires_at.saturating_sub(now_ms());
         if remaining_ms == 0 {
-            bail!("pair code expired");
+            bail!("pairing code expired");
         }
 
         let request_id = ClientId::new();

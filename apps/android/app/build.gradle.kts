@@ -138,6 +138,8 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation(platform("androidx.compose:compose-bom:2026.03.01"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
 }
 
 tasks.matching { task ->

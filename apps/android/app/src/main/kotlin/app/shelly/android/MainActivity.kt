@@ -1,13 +1,17 @@
 package app.shelly.android
 
+import android.Manifest
 import android.content.Intent
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -42,6 +46,7 @@ class MainActivity : FragmentActivity() {
             ShellyApp(
                 viewModel = viewModel,
                 biometricGate = biometricGate,
+                shouldRequestNotifications = { shouldRequestNotificationPermission() },
                 onRequestNotifications = {
                     ShellyPushNotifications.requestPermissionIfNeeded(this, requestNotifications)
                 },
@@ -55,6 +60,11 @@ class MainActivity : FragmentActivity() {
         ShellyPushNotifications.sessionIdHash(intent)?.let(pushSessionHashes::tryEmit)
     }
 }
+
+private fun MainActivity.shouldRequestNotificationPermission(): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+        PackageManager.PERMISSION_GRANTED
 
 private fun shellyViewModelFactory(context: Context): ViewModelProvider.Factory {
     val appContext = context.applicationContext

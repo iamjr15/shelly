@@ -244,13 +244,6 @@ class TerminalController(
         return minOf(5_000L, 250L * (1L shl minOf(attempt, 4)))
     }
 
-    private fun terminalCommandErrorStatus(error: Throwable): String {
-        return when (error) {
-            is ShellyException.NotFound -> "Session unavailable"
-            else -> "Connection unavailable"
-        }
-    }
-
     private fun shouldRecoverAttachment(error: Throwable): Boolean {
         return when (error) {
             is ShellyException.Transport,

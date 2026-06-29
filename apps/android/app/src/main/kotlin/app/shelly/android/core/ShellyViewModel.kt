@@ -26,7 +26,8 @@ data class ShellyUiState(
     val restoringPairing: Boolean = true,
     val sessions: List<MobileSession> = emptyList(),
     val loading: Boolean = false,
-    val message: String? = null,
+    val message: ShellyAlertMessage? = null,
+    val pairingError: PairingErrorMessage? = null,
     val pairedDaemon: PairedDaemonRecord? = null,
     val targetSession: MobileSession? = null,
     val activeTerminalSessionId: String? = null,
@@ -115,6 +116,7 @@ class ShellyViewModel internal constructor(
                 restoringPairing = false,
                 loading = true,
                 message = null,
+                pairingError = null,
             )
         }
         viewModelScope.launch {
@@ -129,7 +131,8 @@ class ShellyViewModel internal constructor(
                     it.copy(
                         paired = true,
                         pairedDaemon = pairedDaemon,
-                        message = "Paired",
+                        message = null,
+                        pairingError = null,
                     )
                 }
                 if (_state.value.unlocked) {
@@ -141,7 +144,12 @@ class ShellyViewModel internal constructor(
                 if (error is CancellationException) {
                     throw error
                 }
-                _state.update { it.copy(message = PAIRING_FAILED_MESSAGE) }
+                _state.update {
+                    it.copy(
+                        message = null,
+                        pairingError = pairingErrorMessage(error),
+                    )
+                }
             } finally {
                 _state.update { it.copy(loading = false) }
             }
@@ -171,7 +179,7 @@ class ShellyViewModel internal constructor(
                 if (error is CancellationException) {
                     throw error
                 }
-                _state.update { it.copy(message = CREATE_SESSION_FAILED_MESSAGE) }
+                _state.update { it.copy(message = createSessionFailedMessage(error)) }
             } finally {
                 _state.update { it.copy(loading = false) }
             }
@@ -194,7 +202,7 @@ class ShellyViewModel internal constructor(
                 if (error is CancellationException) {
                     throw error
                 }
-                _state.update { it.copy(message = KILL_SESSION_FAILED_MESSAGE) }
+                _state.update { it.copy(message = killSessionFailedMessage(error)) }
             }
         }
     }
@@ -390,7 +398,8 @@ class ShellyViewModel internal constructor(
             _state.update {
                 it.copy(
                     restoringPairing = false,
-                    message = SAVED_PAIRING_UNAVAILABLE_MESSAGE,
+                    message = null,
+                    pairingError = savedPairingUnavailableMessage(error),
                 )
             }
         }
@@ -439,7 +448,7 @@ class ShellyViewModel internal constructor(
             if (error is CancellationException) {
                 throw error
             }
-            _state.update { it.copy(message = SESSIONS_UNAVAILABLE_MESSAGE) }
+            _state.update { it.copy(message = sessionsUnavailableMessage(error)) }
         } finally {
             _state.update { it.copy(loading = false) }
         }
@@ -482,8 +491,3 @@ private fun sha256Hex(value: String): String {
 }
 
 private val HEX = "0123456789abcdef".toCharArray()
-private const val PAIRING_FAILED_MESSAGE = "Pairing failed"
-private const val SAVED_PAIRING_UNAVAILABLE_MESSAGE = "Saved pairing unavailable"
-private const val SESSIONS_UNAVAILABLE_MESSAGE = "Sessions unavailable"
-private const val CREATE_SESSION_FAILED_MESSAGE = "Couldn't create session"
-private const val KILL_SESSION_FAILED_MESSAGE = "Couldn't close session"
