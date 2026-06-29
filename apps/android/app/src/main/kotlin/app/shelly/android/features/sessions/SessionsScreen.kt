@@ -93,6 +93,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.shelly.android.core.AgentState
 import app.shelly.android.core.AndroidBiometricGate
+import app.shelly.android.core.ConnectionState
 import app.shelly.android.core.MobileSession
 import app.shelly.android.core.ShellyViewModel
 import app.shelly.android.ui.components.BrandRow
@@ -106,7 +107,11 @@ import app.shelly.android.ui.components.StateChip
 import app.shelly.android.ui.theme.ShellyMotion
 import app.shelly.android.ui.theme.ShellyTheme
 import app.shelly.android.ui.theme.ShellyType
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -1012,23 +1017,33 @@ private fun OutlinedNewSessionButton() {
 }
 
 @Composable
-private fun DaemonUnreachableScaffold() {
+internal fun DaemonUnreachableScaffold(
+    unreachable: ConnectionState.Unreachable,
+    onRetry: () -> Unit,
+) {
+    val now = rememberReconnectNow()
     ShellyScreen(
         hero = {
             HeroBody(
-                eyebrow = "CAN'T REACH MACBOOK-PRO —\nIS THE DAEMON UP?",
+                eyebrow = "CAN'T REACH YOUR LAPTOP —\nIS THE DAEMON UP?",
                 wordmark = "SES",
                 wordmarkSize = 132.sp,
                 brandTrailing = { PaperHeroActions(includeTheme = false) },
             )
         },
-        content = { DaemonUnreachableContent() },
+        content = { DaemonUnreachableContent(unreachable = unreachable, now = now, onRetry = onRetry) },
     )
 }
 
 @Composable
-private fun DaemonUnreachableContent() {
+private fun DaemonUnreachableContent(
+    unreachable: ConnectionState.Unreachable,
+    now: Long,
+    onRetry: () -> Unit,
+) {
     val c = ShellyTheme.colors
+    val lastSeen = formatRelativeAgo(now - unreachable.droppedAtMillis)
+    val retryEvery = formatDurationSeconds(unreachable.retryIntervalMillis)
     Column(Modifier.fillMaxSize()) {
         Spacer(Modifier.height(4.dp))
         Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(bottom = 18.dp)) {
@@ -1040,7 +1055,7 @@ private fun DaemonUnreachableContent() {
                     color = c.textPrimary,
                 )
                 Text(
-                    "last seen 2m ago · retrying every 5s",
+                    "last seen $lastSeen · attempt ${unreachable.attempt} · retrying every $retryEvery",
                     style = ShellyType.mono.copy(fontWeight = FontWeight(500), lineHeight = 18.sp),
                     color = c.textMuted.copy(alpha = 0.6f),
                 )
@@ -1048,7 +1063,7 @@ private fun DaemonUnreachableContent() {
         }
         CommandCheckRow("$ shelly doctor", "CHECK IT")
         Spacer(Modifier.weight(1f))
-        PrimaryActionButton("Retry connection", retrying = true)
+        PrimaryActionButton("Retry connection", retrying = true, onClick = onRetry)
     }
 }
 
@@ -1079,18 +1094,26 @@ private fun CommandCheckRow(command: String, action: String) {
 }
 
 @Composable
-private fun ReconnectingScaffold() {
+internal fun ReconnectingScaffold(
+    reconnecting: ConnectionState.Reconnecting,
+    sessions: List<MobileSession>,
+    onRetry: () -> Unit,
+) {
+    val now = rememberReconnectNow()
     ShellyScreen(
-        hero = { ReconnectingHero() },
-        content = { ReconnectingContent() },
+        hero = { ReconnectingHero(reconnecting = reconnecting, now = now) },
+        content = { ReconnectingContent(reconnecting = reconnecting, sessions = sessions, onRetry = onRetry) },
     )
 }
 
 @Composable
-private fun ColumnScope.ReconnectingHero() {
+private fun ColumnScope.ReconnectingHero(reconnecting: ConnectionState.Reconnecting, now: Long) {
     val c = ShellyTheme.colors
     val retryProgress = retryProgress(label = "reconnectingHeroProgress")
     val pulseAlpha = 1f - sin(retryProgress * PI).toFloat().coerceAtLeast(0f) * 0.22f
+    val droppedClock = formatClockTime(reconnecting.droppedAtMillis)
+    val elapsedShort = formatDurationSeconds(now - reconnecting.droppedAtMillis)
+    val countdown = formatDurationSeconds(reconnecting.nextRetryAtMillis - now)
     BrandRow {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -1099,7 +1122,7 @@ private fun ColumnScope.ReconnectingHero() {
                 color = c.textPrimary,
                 modifier = Modifier.graphicsLayer { alpha = pulseAlpha },
             )
-            Text("4s", style = ShellyType.mono.copy(fontSize = 13.sp, lineHeight = 16.sp), color = c.textMuted.copy(alpha = 0.6f))
+            Text(elapsedShort, style = ShellyType.mono.copy(fontSize = 13.sp, lineHeight = 16.sp), color = c.textMuted.copy(alpha = 0.6f))
         }
     }
     Spacer(Modifier.weight(1f).heightIn(min = 8.dp))
@@ -1124,7 +1147,7 @@ private fun ColumnScope.ReconnectingHero() {
     Text("Dropped at", style = ShellyType.brand.copy(fontWeight = FontWeight(500), letterSpacing = 0.sp), color = c.textPrimary)
     Spacer(Modifier.height(6.dp))
     Text(
-        "14:02:07 · attempt 3 · next retry in 2s",
+        "$droppedClock · attempt ${reconnecting.attempt} · next retry in $countdown",
         style = ShellyType.rowTitle.copy(fontWeight = FontWeight(500), lineHeight = 24.sp),
         color = c.textPrimary,
         maxLines = 1,
@@ -1145,8 +1168,14 @@ private fun ColumnScope.ReconnectingHero() {
 }
 
 @Composable
-private fun ReconnectingContent() {
+private fun ReconnectingContent(
+    reconnecting: ConnectionState.Reconnecting,
+    sessions: List<MobileSession>,
+    onRetry: () -> Unit,
+) {
     val c = ShellyTheme.colors
+    val droppedClock = formatClockTime(reconnecting.droppedAtMillis)
+    val held = sessions.take(MAX_HELD_SESSION_ROWS)
     Column(Modifier.fillMaxSize()) {
         Column(
             Modifier
@@ -1162,11 +1191,31 @@ private fun ReconnectingContent() {
                 style = ShellyType.microLabel.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.06.sp),
                 color = c.textMuted,
             )
-            HeldSessionRow("shelly · pkg/cli", "keystrokes queued · 6", AgentState.AwaitingInput)
-            HeldSessionRow("infra · scripts/dogfood", "output buffered · 1.2k lines", AgentState.Working)
+            if (held.isEmpty()) {
+                Text(
+                    "No sessions were live when the link dropped.",
+                    style = ShellyType.monoSmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = c.textMuted.copy(alpha = 0.6f),
+                )
+            } else {
+                held.forEach { session ->
+                    HeldSessionRow(
+                        title = session.name,
+                        detail = session.sessionPreviewText(),
+                        state = session.state,
+                    )
+                }
+                if (sessions.size > held.size) {
+                    Text(
+                        "+${sessions.size - held.size} MORE HELD",
+                        style = ShellyType.microLabel.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.06.sp),
+                        color = c.textMuted.copy(alpha = 0.5f),
+                    )
+                }
+            }
         }
         Spacer(Modifier.weight(1f))
-        PrimaryActionButton("Retry now", compactRadius = 6.dp, showChevron = true, retrying = true)
+        PrimaryActionButton("Retry now", compactRadius = 6.dp, showChevron = true, retrying = true, onClick = onRetry)
         Row(
             Modifier
                 .padding(top = 12.dp)
@@ -1176,7 +1225,7 @@ private fun ReconnectingContent() {
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                "LAST SEEN 14:02:07 · ATTEMPT 3",
+                "LAST SEEN $droppedClock · ATTEMPT ${reconnecting.attempt}",
                 style = ShellyType.microLabel.copy(fontWeight = FontWeight(400), fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.06.sp),
                 color = c.textMuted.copy(alpha = 0.5f),
             )
@@ -1188,6 +1237,9 @@ private fun ReconnectingContent() {
         }
     }
 }
+
+/** Held-session rows are capped so a long live list never pushes the retry button off-screen. */
+private const val MAX_HELD_SESSION_ROWS = 3
 
 @Composable
 private fun HeldSessionRow(title: String, detail: String, state: AgentState) {
@@ -1201,11 +1253,15 @@ private fun HeldSessionRow(title: String, detail: String, state: AgentState) {
                 title,
                 style = ShellyType.brand.copy(fontWeight = FontWeight(600), letterSpacing = 0.sp),
                 color = c.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 detail,
                 style = ShellyType.monoSmall.copy(fontSize = 11.sp, lineHeight = 14.sp),
                 color = c.textMuted.copy(alpha = 0.6f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -1217,6 +1273,7 @@ private fun PrimaryActionButton(
     compactRadius: Dp = 14.dp,
     showChevron: Boolean = false,
     retrying: Boolean = false,
+    onClick: () -> Unit = {},
 ) {
     val c = ShellyTheme.colors
     val progress = if (retrying) retryProgress(label = "retryButtonProgress") else 0f
@@ -1225,6 +1282,7 @@ private fun PrimaryActionButton(
             .fillMaxWidth()
             .clip(RoundedCornerShape(compactRadius))
             .background(c.buttonPrimary)
+            .clickable(onClick = onClick)
             .drawBehind {
                 if (retrying && progress > 0.001f) {
                     drawRoundRect(
@@ -1402,6 +1460,49 @@ private fun retryProgress(label: String): Float {
     return progress
 }
 
+/**
+ * Wall-clock now for the reconnect screens, re-read every second so elapsed/countdown labels tick.
+ * Gated on [ShellyTheme.motionEnabled] so reduced-motion (and screenshot) renders take one stable
+ * snapshot instead of an endless redraw loop.
+ */
+@Composable
+private fun rememberReconnectNow(): Long {
+    if (!ShellyTheme.motionEnabled) {
+        return System.currentTimeMillis()
+    }
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000)
+            now = System.currentTimeMillis()
+        }
+    }
+    return now
+}
+
+private fun formatClockTime(millis: Long): String =
+    SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(millis))
+
+/** "4s" / "1m 4s" — floor to whole seconds, never negative. */
+private fun formatDurationSeconds(millis: Long): String {
+    val totalSeconds = (millis / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return if (minutes > 0) "${minutes}m ${seconds}s" else "${seconds}s"
+}
+
+/** "45s ago" / "2m ago" / "1h ago". */
+private fun formatRelativeAgo(millis: Long): String {
+    val totalSeconds = (millis / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val hours = minutes / 60
+    return when {
+        hours > 0 -> "${hours}h ago"
+        minutes > 0 -> "${minutes}m ago"
+        else -> "${totalSeconds}s ago"
+    }
+}
+
 @Composable
 private fun PulsingWarningGlyph(color: Color, size: Dp) {
     val progress = retryProgress(label = "daemonWarningPulse")
@@ -1530,12 +1631,30 @@ internal fun SessionsEmptyPreview() {
 
 @Composable
 internal fun DaemonUnreachablePreview() {
-    DaemonUnreachableScaffold()
+    val now = System.currentTimeMillis()
+    DaemonUnreachableScaffold(
+        unreachable = ConnectionState.Unreachable(
+            droppedAtMillis = now - 120_000L,
+            attempt = 9,
+            retryIntervalMillis = 15_000L,
+            nextRetryAtMillis = now + 15_000L,
+        ),
+        onRetry = {},
+    )
 }
 
 @Composable
 internal fun ReconnectingPreview() {
-    ReconnectingScaffold()
+    val now = System.currentTimeMillis()
+    ReconnectingScaffold(
+        reconnecting = ConnectionState.Reconnecting(
+            droppedAtMillis = now - 4_000L,
+            attempt = 3,
+            nextRetryAtMillis = now + 2_000L,
+        ),
+        sessions = previewSessions().take(2),
+        onRetry = {},
+    )
 }
 
 @Composable

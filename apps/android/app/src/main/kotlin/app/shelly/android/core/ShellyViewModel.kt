@@ -9,6 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +33,7 @@ data class ShellyUiState(
     val targetSession: MobileSession? = null,
     val activeTerminalSessionId: String? = null,
     val telemetryConsentPromptVisible: Boolean = false,
+    val connectionState: ConnectionState = ConnectionState.Connected,
 )
 
 internal interface FcmTokenSource {
@@ -56,6 +58,10 @@ class ShellyViewModel internal constructor(
     private val repositoryDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val sessionSubscriptionRetryDelayMillis: Long = 750L,
     private val backgroundDetachGraceMillis: Long = 5 * 60 * 1000L,
+    private val maxRetryDelayMillis: Long = 30_000L,
+    private val unreachableAfterMillis: Long = 60_000L,
+    private val unreachableRetryIntervalMillis: Long = 15_000L,
+    private val now: () -> Long = { System.currentTimeMillis() },
 ) : ViewModel() {
     constructor(context: Context) : this(context, ShellyRepository(context), AndroidFcmTokenSource)
 
@@ -63,6 +69,9 @@ class ShellyViewModel internal constructor(
     private val _state = MutableStateFlow(ShellyUiState())
     private var pendingPushSessionIdHash: String? = null
     private var sessionSubscriptionJob: Job? = null
+    // Rendezvous so a retry tap only ever shortens an in-flight reconnect wait: trySend is a
+    // no-op unless the subscription loop is currently parked in awaitRetryOrTimeout().
+    private val retrySignal = Channel<Unit>(Channel.RENDEZVOUS)
     private var restoreJob: Job? = null
     private var unpairJob: Job? = null
     private var backgroundDetachJob: Job? = null
@@ -425,16 +434,34 @@ class ShellyViewModel internal constructor(
         }
     }
 
+    // Interrupts an in-flight reconnect wait so the loop retries the daemon immediately. Backs the
+    // "Retry now"/"Retry connection" buttons on the reconnecting/unreachable screens.
+    fun retryConnectionNow() {
+        retrySignal.trySend(Unit)
+    }
+
     private fun startSessionSubscription() {
         if (sessionSubscriptionJob?.isActive == true) {
             return
         }
         sessionSubscriptionJob = viewModelScope.launch(repositoryDispatcher) {
+            // Fresh run: optimistically assume connected until the first drop. Clears any stale
+            // reconnecting/unreachable state left from a prior lock or background cycle.
+            var attempt = 0
+            var droppedAtMillis = 0L
+            _state.update { it.copy(connectionState = ConnectionState.Connected) }
             while (_state.value.unlocked && _state.value.paired) {
                 try {
                     repository.subscribeSessions { sessions ->
                         if (!_state.value.unlocked) {
                             return@subscribeSessions
+                        }
+                        // The call blocks while healthy, so any session-list callback is the
+                        // authoritative "we're connected" edge — reset the reconnect machine.
+                        attempt = 0
+                        droppedAtMillis = 0L
+                        if (_state.value.connectionState != ConnectionState.Connected) {
+                            _state.update { it.copy(connectionState = ConnectionState.Connected) }
                         }
                         applySessions(sessions)
                         resolvePendingPushTarget(sessions)
@@ -443,15 +470,59 @@ class ShellyViewModel internal constructor(
                     if (error is CancellationException) {
                         throw error
                     }
-                    if (!_state.value.unlocked || !_state.value.paired) {
-                        return@launch
-                    }
                 }
                 if (!_state.value.unlocked || !_state.value.paired) {
                     return@launch
                 }
-                delay(sessionSubscriptionRetryDelayMillis)
+                // subscribeSessions returned or threw → the tunnel dropped. Advance the reconnect
+                // state machine (keeping the held sessions on screen), then wait before retrying.
+                val nowMillis = now()
+                attempt += 1
+                if (droppedAtMillis == 0L) {
+                    droppedAtMillis = nowMillis
+                }
+                val backoff = sessionRetryBackoffMillis(
+                    attempt = attempt,
+                    baseMillis = sessionSubscriptionRetryDelayMillis,
+                    capMillis = maxRetryDelayMillis,
+                )
+                val waitMillis = if (nowMillis - droppedAtMillis < unreachableAfterMillis) {
+                    _state.update {
+                        it.copy(
+                            connectionState = ConnectionState.Reconnecting(
+                                droppedAtMillis = droppedAtMillis,
+                                attempt = attempt,
+                                nextRetryAtMillis = nowMillis + backoff,
+                            ),
+                        )
+                    }
+                    backoff
+                } else {
+                    _state.update {
+                        it.copy(
+                            connectionState = ConnectionState.Unreachable(
+                                droppedAtMillis = droppedAtMillis,
+                                attempt = attempt,
+                                retryIntervalMillis = unreachableRetryIntervalMillis,
+                                nextRetryAtMillis = nowMillis + unreachableRetryIntervalMillis,
+                            ),
+                        )
+                    }
+                    unreachableRetryIntervalMillis
+                }
+                awaitRetryOrTimeout(waitMillis)
             }
+        }
+    }
+
+    // Waits up to [timeoutMillis] before the next retry, but resolves early if retryConnectionNow()
+    // signals. A non-positive timeout retries immediately.
+    private suspend fun awaitRetryOrTimeout(timeoutMillis: Long) {
+        if (timeoutMillis <= 0L) {
+            return
+        }
+        withTimeoutOrNull(timeoutMillis) {
+            retrySignal.receive()
         }
     }
 
@@ -497,6 +568,25 @@ class ShellyViewModel internal constructor(
             _state.update { it.copy(telemetryConsentPromptVisible = true) }
         }
     }
+}
+
+/**
+ * Pure exponential backoff for reconnect attempts: [baseMillis] doubled per attempt, capped at
+ * [capMillis]. Attempt 1 yields the base delay. Kept side-effect-free (no jitter) so the reconnect
+ * timing is deterministic and unit-testable; clamps before doubling to avoid overflow.
+ */
+internal fun sessionRetryBackoffMillis(attempt: Int, baseMillis: Long, capMillis: Long): Long {
+    if (baseMillis <= 0L || capMillis <= 0L) {
+        return 0L
+    }
+    var delayMillis = baseMillis
+    repeat((attempt - 1).coerceAtLeast(0)) {
+        if (delayMillis >= capMillis) {
+            return capMillis
+        }
+        delayMillis *= 2
+    }
+    return delayMillis.coerceAtMost(capMillis)
 }
 
 private fun sha256Hex(value: String): String {

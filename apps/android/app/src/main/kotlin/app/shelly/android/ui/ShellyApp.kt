@@ -41,6 +41,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.shelly.android.core.AndroidBiometricGate
+import app.shelly.android.core.ConnectionState
 import app.shelly.android.core.MobileSession
 import app.shelly.android.core.MobileTelemetry
 import app.shelly.android.core.ShellyAlertMessage
@@ -59,7 +60,9 @@ import app.shelly.android.features.pairing.PairingScreen
 import app.shelly.android.features.pairing.PairingUiState
 import app.shelly.android.features.palette.CommandPaletteScreen
 import app.shelly.android.features.sessions.DaemonUnreachablePreview
+import app.shelly.android.features.sessions.DaemonUnreachableScaffold
 import app.shelly.android.features.sessions.ReconnectingPreview
+import app.shelly.android.features.sessions.ReconnectingScaffold
 import app.shelly.android.features.sessions.SessionsGroupedPreview
 import app.shelly.android.features.sessions.SessionsScreen
 import app.shelly.android.features.settings.AboutScreen
@@ -246,6 +249,8 @@ fun ShellyApp(
                             telemetryEnabled = telemetryEnabled,
                             viewModel = viewModel,
                             biometricGate = biometricGate,
+                            connectionState = state.connectionState,
+                            sessions = state.sessions,
                             onRoute = { route = it },
                             onToggleTelemetry = onToggleTelemetry,
                             onOpenPalette = { commandPaletteVisible = true },
@@ -365,6 +370,8 @@ private fun RoutedContent(
     telemetryEnabled: Boolean,
     viewModel: ShellyViewModel,
     biometricGate: AndroidBiometricGate,
+    connectionState: ConnectionState,
+    sessions: List<MobileSession>,
     onRoute: (ShellyRoute) -> Unit,
     onToggleTelemetry: () -> Unit,
     onOpenPalette: () -> Unit,
@@ -493,13 +500,26 @@ private fun RoutedContent(
         }
         ShellyRoute.SessionsReconnecting -> {
             BackHandler { onRoute(ShellyRoute.Sessions) }
-            // TODO(core): replace this debug route with a real reconnecting signal from ShellyUiState.
-            ReconnectingPreview()
+            when (val connection = connectionState) {
+                is ConnectionState.Reconnecting -> ReconnectingScaffold(
+                    reconnecting = connection,
+                    sessions = sessions,
+                    onRetry = viewModel::retryConnectionNow,
+                )
+                // Reached via the debug command palette without a live drop — show sample data.
+                else -> ReconnectingPreview()
+            }
         }
         ShellyRoute.SessionsDaemonUnreachable -> {
             BackHandler { onRoute(ShellyRoute.Sessions) }
-            // TODO(core): replace this debug route with a real daemon-offline signal from ShellyUiState.
-            DaemonUnreachablePreview()
+            when (val connection = connectionState) {
+                is ConnectionState.Unreachable -> DaemonUnreachableScaffold(
+                    unreachable = connection,
+                    onRetry = viewModel::retryConnectionNow,
+                )
+                // Reached via the debug command palette without a live drop — show sample data.
+                else -> DaemonUnreachablePreview()
+            }
         }
     }
 }
@@ -627,7 +647,12 @@ private fun shellySurfaceFor(
     !state.unlocked -> ShellySurface.Locked
     state.restoringPairing -> ShellySurface.RestoringPairing
     !state.paired -> ShellySurface.Pairing
+    // Terminal keeps priority: never interrupt an attached session with a connection screen.
     state.activeTerminalSessionId != null -> ShellySurface.Terminal(state.activeTerminalSessionId)
+    state.connectionState is ConnectionState.Unreachable ->
+        ShellySurface.Routed(ShellyRoute.SessionsDaemonUnreachable)
+    state.connectionState is ConnectionState.Reconnecting ->
+        ShellySurface.Routed(ShellyRoute.SessionsReconnecting)
     else -> ShellySurface.Routed(route)
 }
 

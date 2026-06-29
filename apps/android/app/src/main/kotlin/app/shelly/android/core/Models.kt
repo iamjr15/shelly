@@ -1,5 +1,32 @@
 package app.shelly.android.core
 
+/**
+ * Health of the live daemon tunnel that backs the session subscription.
+ *
+ * The subscription call blocks while connected and unblocks (returns or throws) when the iroh
+ * link drops, so [Connected] is the authoritative "we just heard from the daemon" edge and the
+ * other two states are driven by the reconnect state machine in [ShellyViewModel]. All timestamps
+ * are wall-clock millis so the UI can render absolute drop times and live countdowns.
+ */
+sealed interface ConnectionState {
+    data object Connected : ConnectionState
+
+    /** Link dropped recently; backing off with exponential delay before the next retry. */
+    data class Reconnecting(
+        val droppedAtMillis: Long,
+        val attempt: Int,
+        val nextRetryAtMillis: Long,
+    ) : ConnectionState
+
+    /** Link has stayed down past the unreachable threshold; retrying on a fixed slow cadence. */
+    data class Unreachable(
+        val droppedAtMillis: Long,
+        val attempt: Int,
+        val retryIntervalMillis: Long,
+        val nextRetryAtMillis: Long,
+    ) : ConnectionState
+}
+
 data class MobileSession(
     val id: String,
     val name: String,
