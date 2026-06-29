@@ -1,6 +1,6 @@
 {
   "name": "shellykit-darwin-x64",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Shelly CLI and daemon binaries for macOS x64.",
   "os": ["darwin"],
   "cpu": ["x64"],
