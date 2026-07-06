@@ -48,7 +48,9 @@ jobs:
         with:
           tool: cargo-audit
       - run: cargo deny check
-      - run: cargo audit
+      # quick-xml advisories are an unfixable transitive (plist pins ^0.39) and are
+      # unreachable in Shelly's local-XML usage — see deny.toml for the full rationale.
+      - run: cargo audit --ignore RUSTSEC-2026-0194 --ignore RUSTSEC-2026-0195
 
   workflow-static:
     name: Workflow Static Checks
