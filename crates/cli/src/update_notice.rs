@@ -2,10 +2,11 @@ use crate::settings;
 use anyhow::{Context, Result};
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use shelly_protocol::now_ms;
 use std::{
     future::Future,
     path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 const NPM_LATEST_URL: &str = "https://registry.npmjs.org/shellykit/latest";
@@ -143,13 +144,6 @@ fn update_check_disabled() -> bool {
     std::env::var("SHELLY_DISABLE_UPDATE_CHECK")
         .ok()
         .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
-}
-
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }
 
 #[cfg(test)]

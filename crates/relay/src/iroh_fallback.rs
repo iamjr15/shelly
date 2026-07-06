@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use iroh_relay::server::{
     self, AcmeConfig, CertConfig, QuicConfig, RelayConfig, ServerConfig, TlsConfig,
 };
@@ -155,19 +155,7 @@ fn optional_socket_env(name: &str, default: Option<SocketAddr>) -> Result<Option
 }
 
 fn bool_env(name: &str, default: bool) -> Result<bool> {
-    let Ok(value) = std::env::var(name) else {
-        return Ok(default);
-    };
-    parse_bool_env(name, &value, default)
-}
-
-fn parse_bool_env(name: &str, value: &str, default: bool) -> Result<bool> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "" => Ok(default),
-        "1" | "true" | "yes" | "on" => Ok(true),
-        "0" | "false" | "no" | "off" => Ok(false),
-        _ => bail!("{name} must be true/false, yes/no, on/off, or 1/0"),
-    }
+    shelly_relay::parse_bool_env(name, std::env::var_os(name).as_deref(), default)
 }
 
 fn non_empty_env(name: &str) -> Option<String> {
@@ -240,9 +228,19 @@ mod tests {
     #[test]
     fn bool_env_rejects_ambiguous_values() {
         let name = "SHELLY_TEST_BAD_BOOL";
-        let error = parse_bool_env(name, "maybe", false)
+        let error = shelly_relay::parse_bool_env(name, Some(std::ffi::OsStr::new("maybe")), false)
             .unwrap_err()
             .to_string();
         assert!(error.contains(name));
+    }
+
+    #[test]
+    fn bool_env_uses_default_for_empty_values() {
+        let name = "SHELLY_TEST_EMPTY_BOOL";
+
+        assert!(shelly_relay::parse_bool_env(name, Some(std::ffi::OsStr::new("")), true).unwrap());
+        assert!(
+            !shelly_relay::parse_bool_env(name, Some(std::ffi::OsStr::new("")), false).unwrap()
+        );
     }
 }

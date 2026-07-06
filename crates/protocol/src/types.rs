@@ -220,11 +220,6 @@ impl Capabilities {
     pub fn v1(push_notifications: bool) -> Self {
         Self { push_notifications }
     }
-
-    /// Returns the v1 capability set used when relay push is disabled.
-    pub fn v1_local() -> Self {
-        Self::v1(false)
-    }
 }
 
 /// Returns the current UTC timestamp in milliseconds.

@@ -1,3 +1,4 @@
+use crate::SERVICE;
 use anyhow::{Context, Result};
 use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
 use chacha20poly1305::{
@@ -15,7 +16,6 @@ use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-const SERVICE: &str = "app.shelly";
 const ACCOUNT: &str = "scrollback-key-v1";
 const SESSIONS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("sessions_v1");
 const DEVICES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("devices_v1");

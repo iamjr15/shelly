@@ -43,6 +43,7 @@ pub struct Session {
     terminal: Mutex<TerminalModel>,
     attached_sizes: Mutex<HashMap<ClientId, ClientSize>>,
     subscribers: broadcast::Sender<ServerToClientMsg>,
+    summary_updates: broadcast::Sender<bool>,
     persistence: Option<Arc<Persistence>>,
     push: Option<PushDispatcher>,
     persist_dirty: AtomicBool,
@@ -66,7 +67,6 @@ impl Session {
 
         let id = SessionId::new();
         let command_kind = state_infer::classify(&command);
-        let command = state_infer::command_for_spawn(command);
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -100,6 +100,7 @@ impl Session {
             pair.master.take_writer().context("take PTY writer")?,
         ));
         let (subscribers, _) = broadcast::channel(1024);
+        let (summary_updates, _) = broadcast::channel(128);
         let (resize_tx, resize_rx) = mpsc::channel();
         let terminal =
             TerminalModel::new(size, Box::new(PtyResponseWriter::new(Arc::clone(&writer))));
@@ -122,6 +123,7 @@ impl Session {
             terminal: Mutex::new(terminal),
             attached_sizes: Mutex::new(HashMap::new()),
             subscribers,
+            summary_updates,
             persistence,
             push,
             persist_dirty: AtomicBool::new(false),
@@ -164,6 +166,10 @@ impl Session {
 
     pub fn subscribe(&self) -> broadcast::Receiver<ServerToClientMsg> {
         self.subscribers.subscribe()
+    }
+
+    pub fn subscribe_summary_updates(&self) -> broadcast::Receiver<bool> {
+        self.summary_updates.subscribe()
     }
 
     pub fn attach_bytes(&self, last_seen_seq: Option<u64>) -> (u64, Vec<u8>) {
@@ -455,17 +461,18 @@ impl Session {
             .lock()
             .expect("last_activity lock poisoned") = now_ms();
 
-        let mut inferred_state = state_infer::unknown::infer_from_byte_count(bytes.len());
-        if let Some(line) = last_line.clone() {
+        // Any PTY output means the child produced bytes, so default to Working.
+        let mut inferred_state = AgentState::Working;
+        if let Some(line) = &last_line {
             *self.last_line.lock().expect("last_line lock poisoned") = Some(line.clone());
             match self.command_kind {
                 CommandKind::Claude => {
-                    if let Some(state) = state_infer::claude::infer_from_line(&line) {
+                    if let Some(state) = state_infer::claude::infer_from_line(line) {
                         inferred_state = state;
                     }
                 }
                 CommandKind::Codex => {
-                    if let Some(state) = state_infer::codex::infer_from_json_line(&line) {
+                    if let Some(state) = state_infer::codex::infer_from_json_line(line) {
                         inferred_state = state;
                     }
                 }
@@ -514,6 +521,7 @@ impl Session {
             state,
             last_line,
         });
+        let _ = self.summary_updates.send(false);
         if let Some(push) = &self.push {
             if state == AgentState::AwaitingInput {
                 push.awaiting_input(self.id, self.name.clone());
@@ -534,6 +542,7 @@ impl Session {
             session_id: self.id,
             exit_code,
         });
+        let _ = self.summary_updates.send(true);
         // A non-zero exit is a crash/failure worth a push; a clean exit (code 0) is
         // a normal logout, and an explicit kill must not masquerade as a crash.
         if exit_code != 0

@@ -7,12 +7,14 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 struct UserConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    log_dir: Option<PathBuf>,
     #[serde(default)]
     scrollback_encryption: ScrollbackEncryptionConfig,
     #[serde(default)]
     telemetry: TelemetryConfig,
+    // config.toml is shared with the daemon, whose schema may be newer than this
+    // CLI's; capturing unknown keys keeps the rewrite in write_config lossless.
+    #[serde(flatten)]
+    extra: toml::Table,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -312,6 +314,31 @@ enabled = false
                 .unwrap()
                 .contains("enabled = false")
         );
+    }
+
+    #[test]
+    fn settings_rewrite_preserves_unknown_config_keys() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+log_dir = "/var/log/shelly"
+
+[push]
+enabled = true
+"#,
+        )
+        .unwrap();
+
+        let status = set_telemetry_at_path(&path, true).unwrap();
+
+        assert!(status.opt_in);
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains(r#"log_dir = "/var/log/shelly""#));
+        assert!(contents.contains("[push]"));
+        assert!(contents.contains("enabled = true"));
+        assert!(contents.contains("opt_in = true"));
     }
 
     #[test]

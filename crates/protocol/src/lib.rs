@@ -12,6 +12,8 @@ pub mod code;
 pub mod framing;
 /// Client/server protocol messages.
 pub mod messages;
+/// Canonical request layout for relay HTTP request signing.
+pub mod signing;
 /// Shared protocol data types.
 pub mod types;
 /// Protocol contract version.
@@ -22,6 +24,7 @@ pub use framing::{
     FrameError, decode_bincode, decode_frame, encode_bincode, encode_frame, max_frame_len,
 };
 pub use messages::{ClientToServerMsg, ErrorCode, ServerToClientMsg};
+pub use signing::canonical_request;
 pub use types::{
     AgentSource, AgentState, Capabilities, ClientId, ClientKind, ClientSize, DeviceSummary,
     PairingTicket, PushPlatform, SessionId, SessionSummary, TicketError, now_ms,
@@ -378,7 +381,7 @@ mod tests {
                     client_id,
                     daemon_version: "0.1.0".to_string(),
                     capabilities: Capabilities::v1(true),
-                    host_name: "Jigyanshu's MacBook Pro".to_string(),
+                    host_name: "build-host.local".to_string(),
                 },
             ),
             wire_case(

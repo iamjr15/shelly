@@ -69,6 +69,7 @@ pub struct AppState {
     pub(crate) pairing: PairingManager,
     pub(crate) push: PushDispatcher,
     session_list_tx: watch::Sender<Vec<shelly_protocol::SessionSummary>>,
+    device_revocations: DashMap<String, watch::Sender<u64>>,
     iroh_endpoint: StdMutex<Option<IrohEndpointInfo>>,
 }
 
@@ -124,6 +125,7 @@ impl AppState {
             pairing: PairingManager::new(),
             push: PushDispatcher::from_env(devices),
             session_list_tx,
+            device_revocations: DashMap::new(),
             iroh_endpoint: StdMutex::new(None),
         })
     }
@@ -229,6 +231,23 @@ impl AppState {
         self.devices.contains_key(device_node_id)
     }
 
+    pub(crate) fn subscribe_device_revocation(&self, device_node_id: &str) -> watch::Receiver<u64> {
+        self.device_revocations
+            .entry(device_node_id.to_string())
+            .or_insert_with(|| {
+                let (tx, _) = watch::channel(0);
+                tx
+            })
+            .subscribe()
+    }
+
+    fn revoke_device_connections(&self, device_node_id: &str) {
+        if let Some(sender) = self.device_revocations.get(device_node_id) {
+            let next = sender.borrow().wrapping_add(1);
+            let _ = sender.send(next);
+        }
+    }
+
     pub(crate) fn remove_device(&self, name: &str) -> Result<Option<StoredDevice>> {
         let device_node_id = self
             .devices
@@ -246,6 +265,9 @@ impl AppState {
             .devices
             .remove(&device_node_id)
             .map(|(_, device)| device);
+        if removed.is_some() {
+            self.revoke_device_connections(&device_node_id);
+        }
         if let Some(device) = &removed
             && let Some(token) = &device.push_token
         {
@@ -347,14 +369,35 @@ async fn handle_connection(state: Arc<AppState>, conn: Stream) -> Result<()> {
     handle_client_io(state, reader, writer).await
 }
 
+struct ForwarderTask {
+    shutdown: watch::Sender<bool>,
+    handle: tokio::task::JoinHandle<()>,
+}
+
+impl ForwarderTask {
+    fn spawn<F>(build: impl FnOnce(watch::Receiver<bool>) -> F) -> Self
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let (shutdown, shutdown_rx) = watch::channel(false);
+        let handle = tokio::spawn(build(shutdown_rx));
+        Self { shutdown, handle }
+    }
+
+    fn shutdown(self) {
+        let _ = self.shutdown.send(true);
+        drop(self.handle);
+    }
+}
+
 async fn handle_client_io<R, W>(state: Arc<AppState>, mut reader: R, writer: W) -> Result<()>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin + Send + 'static,
 {
     let writer = Arc::new(Mutex::new(writer));
-    let mut attach_task: Option<tokio::task::JoinHandle<()>> = None;
-    let mut session_list_task: Option<tokio::task::JoinHandle<()>> = None;
+    let mut attach_task: Option<ForwarderTask> = None;
+    let mut session_list_task: Option<ForwarderTask> = None;
 
     let hello: ClientToServerMsg = read_msg(&mut reader).await?;
     let (client_id, client_kind) = match hello {
@@ -406,7 +449,9 @@ where
 
     while let Ok(message) = read_msg::<_, ClientToServerMsg>(&mut reader).await {
         match message {
-            ClientToServerMsg::Hello { .. } => {}
+            ClientToServerMsg::Hello { .. } => {
+                // Retrying clients may replay Hello after the handshake, so keep it idempotent.
+            }
             ClientToServerMsg::ListSessions => {
                 write_msg(
                     &writer,
@@ -418,15 +463,22 @@ where
             }
             ClientToServerMsg::SubscribeSessions => {
                 if let Some(task) = session_list_task.take() {
-                    task.abort();
+                    task.shutdown();
                 }
                 let (sessions, mut rx) = state.subscribe_session_list_with_initial();
                 write_msg(&writer, &ServerToClientMsg::SessionList { sessions }).await?;
 
                 let writer = Arc::clone(&writer);
-                session_list_task = Some(tokio::spawn(async move {
-                    while rx.changed().await.is_ok() {
-                        let sessions = rx.borrow().clone();
+                session_list_task = Some(ForwarderTask::spawn(move |mut shutdown| async move {
+                    loop {
+                        let changed = tokio::select! {
+                            changed = rx.changed() => changed,
+                            _ = shutdown.changed() => break,
+                        };
+                        if changed.is_err() {
+                            break;
+                        }
+                        let sessions = rx.borrow_and_update().clone();
                         if write_msg(&writer, &ServerToClientMsg::SessionList { sessions })
                             .await
                             .is_err()
@@ -497,7 +549,7 @@ where
                 };
 
                 if let Some(task) = attach_task.take() {
-                    task.abort();
+                    task.shutdown();
                 }
                 let attachment = match session.attach_client(client_id, size) {
                     Ok(attachment) => attachment,
@@ -538,10 +590,14 @@ where
                 }
 
                 let writer = Arc::clone(&writer);
-                attach_task = Some(tokio::spawn(async move {
+                attach_task = Some(ForwarderTask::spawn(move |mut shutdown| async move {
                     let _attachment = attachment;
                     loop {
-                        match recv_attached_event(&mut rx, session_id).await {
+                        let event = tokio::select! {
+                            event = recv_attached_event(&mut rx, session_id) => event,
+                            _ = shutdown.changed() => break,
+                        };
+                        match event {
                             ForwardedEvent::Message(event) => {
                                 if output_was_replayed(&event, seq) {
                                     continue;
@@ -849,10 +905,10 @@ where
         }
     }
     if let Some(task) = attach_task {
-        task.abort();
+        task.shutdown();
     }
     if let Some(task) = session_list_task {
-        task.abort();
+        task.shutdown();
     }
 
     Ok(())
@@ -965,17 +1021,17 @@ fn default_home_dir() -> std::path::PathBuf {
 }
 
 fn spawn_session_list_forwarder(state: Arc<AppState>, session: Arc<Session>) {
-    let mut rx = session.subscribe();
+    let mut rx = session.subscribe_summary_updates();
     drop(session);
     tokio::spawn(async move {
         loop {
             match rx.recv().await {
-                Ok(ServerToClientMsg::AgentStateChanged { .. }) => state.publish_session_list(),
-                Ok(ServerToClientMsg::SessionExited { .. }) => {
+                Ok(exited) => {
                     state.publish_session_list();
-                    break;
+                    if exited {
+                        break;
+                    }
                 }
-                Ok(_) => {}
                 Err(broadcast::error::RecvError::Lagged(_)) => state.publish_session_list(),
                 Err(broadcast::error::RecvError::Closed) => break,
             }
@@ -1082,15 +1138,11 @@ where
     if payload.len() > max_frame_len() {
         anyhow::bail!("frame too large: {}", payload.len());
     }
+    let mut frame = Vec::with_capacity(4 + payload.len());
+    frame.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+    frame.extend_from_slice(&payload);
     let mut writer = writer.lock().await;
-    writer
-        .write_u32(payload.len() as u32)
-        .await
-        .context("write frame length")?;
-    writer
-        .write_all(&payload)
-        .await
-        .context("write frame payload")?;
+    writer.write_all(&frame).await.context("write frame")?;
     writer.flush().await.context("flush frame")?;
     Ok(())
 }
@@ -1101,6 +1153,8 @@ mod tests {
     use crate::push::PushCommand;
     use shelly_protocol::{AgentSource, AgentState, ClientSize, SessionSummary};
     use std::collections::HashMap;
+    use std::pin::Pin;
+    use std::task::{Context as TaskContext, Poll};
     use tokio::time::timeout;
 
     fn test_state() -> Arc<AppState> {
@@ -1114,6 +1168,7 @@ mod tests {
             pairing: PairingManager::new(),
             push: PushDispatcher::disabled_for_tests(),
             session_list_tx,
+            device_revocations: DashMap::new(),
             iroh_endpoint: StdMutex::new(None),
         })
     }
@@ -1129,6 +1184,7 @@ mod tests {
             pairing: PairingManager::new(),
             push,
             session_list_tx,
+            device_revocations: DashMap::new(),
             iroh_endpoint: StdMutex::new(None),
         })
     }
@@ -1226,6 +1282,54 @@ mod tests {
         assert_ipc_rejects_protocol_mismatch(ClientKind::LocalCli).await;
         assert_ipc_rejects_protocol_mismatch(ClientKind::IosApp).await;
         assert_ipc_rejects_protocol_mismatch(ClientKind::AndroidApp).await;
+    }
+
+    #[derive(Default)]
+    struct RecordingWriter {
+        writes: Vec<Vec<u8>>,
+        flushes: usize,
+    }
+
+    impl AsyncWrite for RecordingWriter {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _cx: &mut TaskContext<'_>,
+            buf: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            self.writes.push(buf.to_vec());
+            Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(
+            mut self: Pin<&mut Self>,
+            _cx: &mut TaskContext<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            self.flushes += 1;
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(
+            self: Pin<&mut Self>,
+            _cx: &mut TaskContext<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn write_msg_writes_one_complete_frame_before_flush() {
+        let writer = Arc::new(Mutex::new(RecordingWriter::default()));
+
+        write_msg(&writer, &ServerToClientMsg::Pong { seq: 7 })
+            .await
+            .unwrap();
+
+        let writer = writer.lock().await;
+        assert_eq!(writer.writes.len(), 1);
+        let frame = &writer.writes[0];
+        let len = u32::from_be_bytes(frame[..4].try_into().unwrap()) as usize;
+        assert_eq!(len, frame.len() - 4);
+        assert_eq!(writer.flushes, 1);
     }
 
     async fn assert_ipc_allows_shell_only_create_and_kill(client_kind: ClientKind) {
@@ -1871,8 +1975,8 @@ mod tests {
         let _ = session.kill();
     }
 
-    #[test]
-    fn removing_device_revokes_next_iroh_pair_check() {
+    #[tokio::test]
+    async fn removing_device_revokes_live_iroh_watchers() {
         let state = test_state();
         state
             .save_device(StoredDevice::new(
@@ -1880,10 +1984,15 @@ mod tests {
                 "device-node-a".to_string(),
             ))
             .unwrap();
+        let mut revocation = state.subscribe_device_revocation("device-node-a");
 
         assert!(state.is_device_paired("device-node-a"));
         assert!(state.remove_device("Smoke Phone").unwrap().is_some());
         assert!(!state.is_device_paired("device-node-a"));
+        timeout(Duration::from_secs(1), revocation.changed())
+            .await
+            .expect("device removal should notify live iroh watchers")
+            .expect("revocation sender should stay alive");
     }
 
     #[tokio::test]

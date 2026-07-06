@@ -190,7 +190,7 @@ mod tests {
     }
 
     #[test]
-    fn pair_codes_expire_after_five_minutes() {
+    fn pair_codes_expire_after_ttl() {
         let manager = PairingManager::new();
         let before = now_ms();
         let (_, expires_at, _rx) = manager.begin_pairing().unwrap();

@@ -20,9 +20,9 @@ use garde::Validate;
 use moka::sync::Cache;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use shelly_protocol::{CONTRACT_VERSION, is_valid_code, normalize_code};
+use shelly_protocol::{CONTRACT_VERSION, canonical_request, is_valid_code, normalize_code};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::{
@@ -42,8 +42,18 @@ const PUSH_TOKEN_TTL_MS: u64 = 90 * 24 * 60 * 60 * 1000;
 const RESOLVE_ATTEMPTS_PER_MINUTE: u32 = 20;
 /// Per-client cap on daemon registration attempts inside one minute window.
 const REGISTER_ATTEMPTS_PER_MINUTE: u32 = 10;
+/// Per-daemon cap on push-token registration attempts inside one minute window.
+const REGISTER_TOKEN_ATTEMPTS_PER_MINUTE: u32 = 10;
 /// Upper bound on distinct daemon registrations retained by the relay.
 const MAX_DAEMONS: usize = 1_000_000;
+/// Upper bound on push-token bindings a single daemon may hold.
+const MAX_TOKENS_PER_DAEMON: usize = 16;
+/// Minimum spacing between amortized prunes of expired relay state.
+const PRUNE_INTERVAL_MS: u64 = 60 * 1000;
+/// Hard per-request deadline for provider (APNs/FCM) HTTP calls.
+const PROVIDER_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// Deadline for establishing a provider connection, TLS handshake included.
+const PROVIDER_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Shared relay application state.
 #[derive(Clone, Default)]
@@ -53,7 +63,7 @@ pub struct RelayState {
     rate_limits: RateLimitCache,
     resolve_rate_limits: RateLimitCache,
     register_rate_limits: RateLimitCache,
-    version_cache: VersionCache,
+    token_register_rate_limits: RateLimitCache,
     providers: PushProviders,
     store: Option<RelayStore>,
     trust_forwarded_for: bool,
@@ -63,8 +73,11 @@ pub struct RelayState {
 struct RelayInner {
     daemons: HashMap<String, VerifyingKey>,
     tokens: HashMap<String, TokenOwner>,
-    seen_nonces: HashSet<(String, String)>,
+    /// Replay nonces keyed to their signed timestamp so expired ones can be pruned.
+    seen_nonces: HashMap<(String, String), u64>,
     pairing_codes: HashMap<String, PairingCodeEntry>,
+    /// Last amortized prune (unix ms); gates the PRUNE_INTERVAL_MS cadence.
+    pruned_at_ms: u64,
     #[cfg(test)]
     delivered: Vec<DeliveredPush>,
 }
@@ -89,11 +102,6 @@ struct RelayMetrics {
 #[derive(Clone)]
 struct RateLimitCache {
     counters: Cache<(String, u64), Arc<AtomicU32>>,
-}
-
-#[derive(Clone)]
-struct VersionCache {
-    responses: Cache<&'static str, VersionResponse>,
 }
 
 #[derive(Clone, Default)]
@@ -123,7 +131,7 @@ struct RelayStore {
 type LoadedRelayState = (
     HashMap<String, VerifyingKey>,
     HashMap<String, TokenOwner>,
-    HashSet<(String, String)>,
+    HashMap<(String, String), u64>,
     HashMap<String, PairingCodeEntry>,
 );
 
@@ -188,6 +196,14 @@ struct RegisterDaemonRequest {
     daemon_node_id: String,
     #[garde(ascii, length(min = 40, max = 128))]
     public_key: String,
+    // Present only on signed key-rotation requests; first registration and
+    // same-key re-registration stay unsigned, matching the released daemon.
+    #[garde(inner(ascii, length(min = 16, max = 128)))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    nonce: Option<String>,
+    #[garde(inner(range(min = 1)))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ts_ms: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Validate)]
@@ -256,7 +272,7 @@ struct PushRequest {
     ts_ms: u64,
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct DeliveredPush {
     pub(crate) platform: PushPlatform,
     pub(crate) recipient_token: String,
@@ -332,6 +348,14 @@ impl ApiError {
         }
     }
 
+    fn registration_conflict() -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            code: "registration_conflict",
+            message: "daemon registration changed; retry".to_string(),
+        }
+    }
+
     fn clock_skew() -> Self {
         Self {
             status: StatusCode::UNAUTHORIZED,
@@ -361,6 +385,14 @@ impl ApiError {
             status: StatusCode::TOO_MANY_REQUESTS,
             code: "rate_limited",
             message: "per-client daemon registration rate limit exceeded".to_string(),
+        }
+    }
+
+    fn token_register_rate_limited() -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "rate_limited",
+            message: "per-daemon push token registration rate limit exceeded".to_string(),
         }
     }
 
@@ -421,6 +453,7 @@ impl RelayState {
                 tokens,
                 seen_nonces,
                 pairing_codes,
+                pruned_at_ms: 0,
                 #[cfg(test)]
                 delivered: Vec::new(),
             })),
@@ -428,7 +461,7 @@ impl RelayState {
             rate_limits: RateLimitCache::default(),
             resolve_rate_limits: RateLimitCache::default(),
             register_rate_limits: RateLimitCache::default(),
-            version_cache: VersionCache::default(),
+            token_register_rate_limits: RateLimitCache::default(),
             providers: PushProviders::from_env()?,
             store: Some(store),
             trust_forwarded_for: false,
@@ -453,13 +486,30 @@ impl RelayState {
 }
 
 fn trust_forwarded_for_from_env() -> anyhow::Result<bool> {
-    let Some(value) = std::env::var_os("SHELLY_RELAY_TRUST_FORWARDED_FOR") else {
-        return Ok(false);
+    parse_bool_env(
+        "SHELLY_RELAY_TRUST_FORWARDED_FOR",
+        std::env::var_os("SHELLY_RELAY_TRUST_FORWARDED_FOR").as_deref(),
+        false,
+    )
+}
+
+/// Parses a boolean environment value shared by every `SHELLY_RELAY_*` flag.
+/// Unset or empty values mean `default`; otherwise the value must be one of
+/// `1/true/yes/on` or `0/false/no/off` (case-insensitive), and anything else
+/// is an error naming `name`.
+pub fn parse_bool_env(
+    name: &str,
+    value: Option<&std::ffi::OsStr>,
+    default: bool,
+) -> anyhow::Result<bool> {
+    let Some(value) = value else {
+        return Ok(default);
     };
     match value.to_string_lossy().trim().to_ascii_lowercase().as_str() {
-        "" | "0" | "false" | "no" | "off" => Ok(false),
+        "" => Ok(default),
         "1" | "true" | "yes" | "on" => Ok(true),
-        _ => anyhow::bail!("SHELLY_RELAY_TRUST_FORWARDED_FOR must be true or false"),
+        "0" | "false" | "no" | "off" => Ok(false),
+        _ => anyhow::bail!("{name} must be true/false, yes/no, on/off, or 1/0"),
     }
 }
 
@@ -538,17 +588,6 @@ impl Default for RateLimitCache {
     }
 }
 
-impl Default for VersionCache {
-    fn default() -> Self {
-        Self {
-            responses: Cache::builder()
-                .max_capacity(1)
-                .time_to_live(Duration::from_secs(5 * 60))
-                .build(),
-        }
-    }
-}
-
 impl RateLimitCache {
     fn with_ttl(ttl: Duration) -> Self {
         Self {
@@ -566,12 +605,6 @@ impl RateLimitCache {
                 Arc::new(AtomicU32::new(0))
             });
         counter.fetch_add(1, Ordering::Relaxed) + 1
-    }
-}
-
-impl VersionCache {
-    fn get(&self) -> VersionResponse {
-        self.responses.get_with("default", build_version_response)
     }
 }
 
@@ -664,15 +697,20 @@ impl RelayStore {
             );
         }
 
-        let mut seen_nonces = HashSet::new();
-        let mut stmt = conn.prepare("SELECT daemon_node_id, nonce FROM seen_nonces")?;
+        let mut seen_nonces = HashMap::new();
+        let mut stmt = conn.prepare("SELECT daemon_node_id, nonce, ts_ms FROM seen_nonces")?;
         let rows = stmt.query_map([], |row| {
             let daemon_node_id: String = row.get(0)?;
             let nonce: String = row.get(1)?;
-            Ok((daemon_node_id, nonce))
+            let ts_ms: i64 = row.get(2)?;
+            Ok((daemon_node_id, nonce, ts_ms))
         })?;
         for row in rows {
-            seen_nonces.insert(row?);
+            let (daemon_node_id, nonce, ts_ms) = row?;
+            let ts_ms: u64 = ts_ms
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("stored nonce timestamp is negative"))?;
+            seen_nonces.insert((daemon_node_id, nonce), ts_ms);
         }
 
         let mut pairing_codes = HashMap::new();
@@ -946,11 +984,6 @@ pub fn metrics_app(state: RelayState) -> Router {
         .with_state(state)
 }
 
-/// Serves the relay control plane with the default local metrics listener.
-pub async fn serve(addr: &str) -> anyhow::Result<()> {
-    serve_with_metrics(addr, Some("127.0.0.1:9090")).await
-}
-
 /// Serves the relay control plane and optionally serves aggregate metrics.
 pub async fn serve_with_metrics(addr: &str, metrics_addr: Option<&str>) -> anyhow::Result<()> {
     let state = RelayState::from_env()?;
@@ -992,6 +1025,30 @@ pub(crate) fn install_default_rustls_provider() {
     }
 }
 
+pub(crate) fn provider_http_client() -> reqwest::Result<reqwest::Client> {
+    provider_http_client_with_timeouts(PROVIDER_REQUEST_TIMEOUT, PROVIDER_CONNECT_TIMEOUT)
+}
+
+fn provider_http_client_with_timeouts(
+    timeout: Duration,
+    connect_timeout: Duration,
+) -> reqwest::Result<reqwest::Client> {
+    // reqwest is built with `rustls-no-provider`; ensure a default crypto
+    // provider exists before constructing the client. The relay serve path
+    // installs this, but unit tests build clients without it. Idempotent.
+    install_default_rustls_provider();
+    // Keep-alive tears down dead transports, but a provider that answers
+    // pings while stalling the request stream (or a stalled TLS handshake)
+    // would otherwise pin /v1/push handlers forever; the deadlines bound both.
+    reqwest::Client::builder()
+        .http2_keep_alive_interval(Some(Duration::from_secs(60)))
+        .http2_keep_alive_timeout(Duration::from_secs(10))
+        .http2_keep_alive_while_idle(true)
+        .timeout(timeout)
+        .connect_timeout(connect_timeout)
+        .build()
+}
+
 async fn serve_metrics_if_configured(
     state: &RelayState,
     metrics_addr: Option<&str>,
@@ -1018,8 +1075,8 @@ async fn metrics(State(state): State<RelayState>) -> impl IntoResponse {
 }
 
 #[tracing::instrument(name = "relay.version", skip_all, fields(endpoint = "/v1/version"))]
-async fn version(State(state): State<RelayState>) -> impl IntoResponse {
-    axum::Json(state.version_cache.get())
+async fn version() -> impl IntoResponse {
+    axum::Json(build_version_response())
 }
 
 #[tracing::instrument(
@@ -1041,23 +1098,57 @@ async fn register_daemon(
 
     let request: RegisterDaemonRequest = parse_validated(&bytes)?;
     let public_key = decode_public_key(&request.public_key)?;
-    {
+    let existing_key = {
         let inner = state.inner.lock().expect("relay state lock poisoned");
         if daemon_capacity_exceeded(&inner, &request.daemon_node_id, MAX_DAEMONS) {
             return Err(ApiError::daemon_capacity());
         }
+        inner.daemons.get(&request.daemon_node_id).copied()
+    };
+    // Re-keying a known daemon must be authorized by the currently registered
+    // key; node ids travel inside pairing tickets, so an unsigned overwrite
+    // would let anyone who saw a ticket hijack or brick that daemon. First
+    // registration and idempotent same-key re-registration (daemon restart)
+    // stay unsigned to match the released daemon protocol.
+    if existing_key.is_some_and(|existing| existing != public_key) {
+        let (Some(nonce), Some(ts_ms)) = (request.nonce.as_deref(), request.ts_ms) else {
+            return Err(ApiError::forbidden(
+                "daemon node id is already registered with a different key",
+            ));
+        };
+        verify_signed_request(
+            &state,
+            SignedRequestContext {
+                method: Method::POST.as_str(),
+                path: "/v1/pair",
+                body: &bytes,
+                headers: &headers,
+                daemon_node_id: &request.daemon_node_id,
+                nonce,
+                ts_ms,
+            },
+        )?;
     }
-    if let Some(store) = &state.store {
-        store
-            .save_daemon(&request.daemon_node_id, &public_key)
-            .map_err(|error| ApiError::internal(format!("persist daemon registration: {error}")))?;
+    let daemon_node_id = request.daemon_node_id;
+    {
+        let mut inner = state.inner.lock().expect("relay state lock poisoned");
+        let current_key = inner.daemons.get(&daemon_node_id).copied();
+        if daemon_capacity_exceeded(&inner, &daemon_node_id, MAX_DAEMONS) {
+            return Err(ApiError::daemon_capacity());
+        }
+        if registration_key_changed(existing_key, current_key, public_key) {
+            return Err(ApiError::registration_conflict());
+        }
+        inner.daemons.insert(daemon_node_id.clone(), public_key);
     }
-    state
-        .inner
-        .lock()
-        .expect("relay state lock poisoned")
-        .daemons
-        .insert(request.daemon_node_id, public_key);
+    if let Some(store) = &state.store
+        && let Err(error) = store.save_daemon(&daemon_node_id, &public_key)
+    {
+        rollback_daemon_registration(&state, &daemon_node_id, existing_key, public_key);
+        return Err(ApiError::internal(format!(
+            "persist daemon registration: {error}"
+        )));
+    }
     state
         .metrics
         .daemon_registrations
@@ -1078,7 +1169,7 @@ async fn register_token(
 ) -> Result<impl IntoResponse, ApiError> {
     let request: RegisterTokenRequest = parse_validated(&bytes)?;
     let platform = request.platform.as_str();
-    verify_signed_request(
+    verify_signed_request_with_pre_nonce_check(
         &state,
         SignedRequestContext {
             method: Method::POST.as_str(),
@@ -1089,7 +1180,18 @@ async fn register_token(
             nonce: &request.nonce,
             ts_ms: request.ts_ms,
         },
+        |daemon_node_id| check_register_token_rate_limit(&state, daemon_node_id),
     )?;
+    // Cap the bindings one daemon can hold so a hostile or buggy daemon
+    // cannot grow relay memory and disk without bound; evicting its oldest
+    // binding keeps legitimate token rotation working.
+    let evicted = {
+        let inner = state.inner.lock().expect("relay state lock poisoned");
+        token_evicted_by_cap(&inner, &request.daemon_node_id, &request.push_token)
+    };
+    if let Some(evicted) = evicted {
+        remove_push_token_binding(&state, &evicted, "evict oldest push token")?;
+    }
     if let Some(store) = &state.store {
         store
             .save_token(
@@ -1194,7 +1296,9 @@ async fn push(
         return Err(ApiError::forbidden("push token is not registered"));
     }
 
-    let minute = request.ts_ms / 60_000;
+    // Server time, not the signed client timestamp: every ts_ms inside the
+    // skew window would otherwise mint its own fresh rate-limit bucket.
+    let minute = now_ms() / 60_000;
     if state.rate_limits.increment(&request.daemon_node_id, minute) > RATE_LIMIT_PER_MINUTE {
         return Err(ApiError::rate_limited());
     }
@@ -1435,10 +1539,132 @@ fn client_identifier(peer: SocketAddr, headers: &HeaderMap, trust_forwarded_for:
     peer.ip().to_string()
 }
 
+fn check_register_token_rate_limit(
+    state: &RelayState,
+    daemon_node_id: &str,
+) -> Result<(), ApiError> {
+    let minute = now_ms() / 60_000;
+    if state
+        .token_register_rate_limits
+        .increment(daemon_node_id, minute)
+        > REGISTER_TOKEN_ATTEMPTS_PER_MINUTE
+    {
+        return Err(ApiError::token_register_rate_limited());
+    }
+    Ok(())
+}
+
 /// True when registering `daemon_node_id` would grow the registry past
 /// `max_daemons`; re-registering an existing id is always allowed.
 fn daemon_capacity_exceeded(inner: &RelayInner, daemon_node_id: &str, max_daemons: usize) -> bool {
     inner.daemons.len() >= max_daemons && !inner.daemons.contains_key(daemon_node_id)
+}
+
+fn registration_key_changed(
+    observed_key: Option<VerifyingKey>,
+    current_key: Option<VerifyingKey>,
+    requested_key: VerifyingKey,
+) -> bool {
+    match (observed_key, current_key) {
+        (None, None) => false,
+        (None, Some(current)) => current != requested_key,
+        (Some(observed), Some(current)) => current != observed,
+        (Some(_), None) => true,
+    }
+}
+
+fn rollback_daemon_registration(
+    state: &RelayState,
+    daemon_node_id: &str,
+    previous_key: Option<VerifyingKey>,
+    attempted_key: VerifyingKey,
+) {
+    let mut inner = state.inner.lock().expect("relay state lock poisoned");
+    if inner.daemons.get(daemon_node_id).copied() != Some(attempted_key) {
+        return;
+    }
+    match previous_key {
+        Some(previous_key) => {
+            inner
+                .daemons
+                .insert(daemon_node_id.to_string(), previous_key);
+        }
+        None => {
+            inner.daemons.remove(daemon_node_id);
+        }
+    }
+}
+
+/// Push token to evict so `daemon_node_id` stays within MAX_TOKENS_PER_DAEMON
+/// once `push_token` registers. Upserting an already-known token never evicts.
+/// Oldest binding first, ties broken by token value so eviction stays
+/// deterministic within one millisecond.
+fn token_evicted_by_cap(
+    inner: &RelayInner,
+    daemon_node_id: &str,
+    push_token: &str,
+) -> Option<String> {
+    if inner.tokens.contains_key(push_token) {
+        return None;
+    }
+    let owned: Vec<(&String, u64)> = inner
+        .tokens
+        .iter()
+        .filter(|(_, owner)| owner.daemon_node_id == daemon_node_id)
+        .map(|(token, owner)| (token, owner.updated_at_ms))
+        .collect();
+    if owned.len() < MAX_TOKENS_PER_DAEMON {
+        return None;
+    }
+    owned
+        .into_iter()
+        .min_by(|left, right| left.1.cmp(&right.1).then_with(|| left.0.cmp(right.0)))
+        .map(|(token, _)| token.clone())
+}
+
+/// Drops replay nonces, pairing codes, and push tokens whose windows have
+/// lapsed, from memory and sqlite alike, so a long-running relay does not
+/// grow without bound between restarts. Store failures are logged rather
+/// than surfaced: pruning piggybacks on unrelated requests.
+fn prune_expired_relay_state(state: &RelayState, now: u64) {
+    {
+        let mut inner = state.inner.lock().expect("relay state lock poisoned");
+        let nonce_cutoff = now.saturating_sub(CLOCK_SKEW_MS as u64);
+        inner.seen_nonces.retain(|_, ts_ms| *ts_ms >= nonce_cutoff);
+        inner
+            .pairing_codes
+            .retain(|_, entry| entry.expires_at_ms > now);
+        inner
+            .tokens
+            .retain(|_, owner| !push_token_is_stale(owner.updated_at_ms, now));
+    }
+    let Some(store) = &state.store else {
+        return;
+    };
+    if let Err(error) = store.prune_old_nonces(now) {
+        tracing::warn!(%error, "failed to prune expired relay nonces");
+    }
+    if let Err(error) = store.prune_old_tokens(now) {
+        tracing::warn!(%error, "failed to prune expired relay push tokens");
+    }
+    if let Err(error) = store.prune_expired_codes(now) {
+        tracing::warn!(%error, "failed to prune expired relay pairing codes");
+    }
+}
+
+fn maybe_prune_expired_relay_state(state: &RelayState, now: u64) {
+    let should_prune = {
+        let mut inner = state.inner.lock().expect("relay state lock poisoned");
+        if now.saturating_sub(inner.pruned_at_ms) < PRUNE_INTERVAL_MS {
+            false
+        } else {
+            inner.pruned_at_ms = now;
+            true
+        }
+    };
+    if should_prune {
+        prune_expired_relay_state(state, now);
+    }
 }
 
 fn remove_push_token_binding(
@@ -1518,10 +1744,19 @@ fn verify_signed_request(
     state: &RelayState,
     request: SignedRequestContext<'_>,
 ) -> Result<(), ApiError> {
+    verify_signed_request_with_pre_nonce_check(state, request, |_| Ok(()))
+}
+
+fn verify_signed_request_with_pre_nonce_check(
+    state: &RelayState,
+    request: SignedRequestContext<'_>,
+    pre_nonce_check: impl FnOnce(&str) -> Result<(), ApiError>,
+) -> Result<(), ApiError> {
     let now = now_ms();
     if (now as i64 - request.ts_ms as i64).abs() > CLOCK_SKEW_MS {
         return Err(ApiError::clock_skew());
     }
+    maybe_prune_expired_relay_state(state, now);
 
     let signature = request
         .headers
@@ -1537,11 +1772,14 @@ fn verify_signed_request(
         request.nonce,
         request.ts_ms,
     );
-    let mut inner = state.inner.lock().expect("relay state lock poisoned");
-    let key = inner
-        .daemons
-        .get(request.daemon_node_id)
-        .ok_or_else(|| ApiError::unauthorized("unknown daemon"))?;
+    let key = {
+        let inner = state.inner.lock().expect("relay state lock poisoned");
+        inner
+            .daemons
+            .get(request.daemon_node_id)
+            .copied()
+            .ok_or_else(|| ApiError::unauthorized("unknown daemon"))?
+    };
     key.verify(canonical.as_bytes(), &signature)
         .map_err(|_| ApiError::unauthorized("invalid shelly signature"))?;
 
@@ -1549,8 +1787,15 @@ fn verify_signed_request(
         request.daemon_node_id.to_string(),
         request.nonce.to_string(),
     );
-    if !inner.seen_nonces.insert(seen_key) {
-        return Err(ApiError::replay());
+    {
+        let mut inner = state.inner.lock().expect("relay state lock poisoned");
+        if inner.daemons.get(request.daemon_node_id).copied() != Some(key) {
+            return Err(ApiError::unauthorized("daemon key changed; retry"));
+        }
+        pre_nonce_check(request.daemon_node_id)?;
+        if inner.seen_nonces.insert(seen_key, request.ts_ms).is_some() {
+            return Err(ApiError::replay());
+        }
     }
     if let Some(store) = &state.store {
         let inserted = store
@@ -1562,13 +1807,6 @@ fn verify_signed_request(
     }
 
     Ok(())
-}
-
-fn canonical_request(method: &str, path: &str, body: &[u8], nonce: &str, ts_ms: u64) -> String {
-    format!(
-        "{method}\n{path}\n{}\n{nonce}\n{ts_ms}",
-        String::from_utf8_lossy(body)
-    )
 }
 
 fn decode_public_key(value: &str) -> Result<VerifyingKey, ApiError> {
@@ -1822,6 +2060,28 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         assert_eq!(state.delivered().len(), RATE_LIMIT_PER_MINUTE as usize);
     }
 
+    #[tokio::test]
+    async fn rate_limits_push_token_registrations_per_daemon_per_minute() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("relay.db");
+        let state = RelayState::open_sqlite(&db_path).unwrap();
+        let key = SigningKey::from_bytes(&[7; 32]);
+        register_daemon_key(&state, DAEMON_A, &key).await;
+        let minute = now_ms() / 60_000;
+        for bucket in [minute, minute + 1] {
+            for _ in 0..REGISTER_TOKEN_ATTEMPTS_PER_MINUTE {
+                state.token_register_rate_limits.increment(DAEMON_A, bucket);
+            }
+        }
+
+        let response =
+            register_token_response(&state, DAEMON_A, &key, "nonce-register-token-rate").await;
+
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(stored_nonce_count(&state), 0);
+        assert_eq!(stored_token_count(&state), 0);
+    }
+
     #[test]
     fn rate_limit_cache_expires_window_counters() {
         let cache = RateLimitCache::with_ttl(Duration::from_millis(10));
@@ -1831,6 +2091,22 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         cache.counters.run_pending_tasks();
 
         assert_eq!(cache.increment(DAEMON_A, 1), 1);
+    }
+
+    #[test]
+    fn relay_uses_protocol_canonical_request_byte_layout() {
+        let canonical = canonical_request(
+            "POST",
+            "/v1/push",
+            br#"{"nonce":"nonce-1","ts_ms":42}"#,
+            "nonce-1",
+            42,
+        );
+
+        assert_eq!(
+            canonical,
+            "POST\n/v1/push\n{\"nonce\":\"nonce-1\",\"ts_ms\":42}\nnonce-1\n42"
+        );
     }
 
     #[tokio::test]
@@ -1866,6 +2142,46 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
 
         assert_eq!(first.status(), StatusCode::CREATED);
         assert_eq!(second.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn signed_request_prunes_expired_nonces_from_memory_and_sqlite() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("relay.db");
+        let state = RelayState::open_sqlite(&db_path).unwrap();
+        let key = SigningKey::from_bytes(&[7; 32]);
+        register_daemon_key(&state, DAEMON_A, &key).await;
+
+        let old_ts = now_ms().saturating_sub(CLOCK_SKEW_MS as u64 + 1_000);
+        state
+            .store
+            .as_ref()
+            .unwrap()
+            .insert_nonce(DAEMON_A, "nonce-expired-prune", old_ts)
+            .unwrap();
+        state
+            .inner
+            .lock()
+            .expect("relay state lock poisoned")
+            .seen_nonces
+            .insert(
+                (DAEMON_A.to_string(), "nonce-expired-prune".to_string()),
+                old_ts,
+            );
+
+        let response =
+            register_token_response(&state, DAEMON_A, &key, "nonce-prune-trigger1").await;
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert!(
+            !state
+                .inner
+                .lock()
+                .expect("relay state lock poisoned")
+                .seen_nonces
+                .contains_key(&(DAEMON_A.to_string(), "nonce-expired-prune".to_string()))
+        );
+        assert_eq!(stored_nonce_count(&state), 1);
     }
 
     #[tokio::test]
@@ -2183,7 +2499,9 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
 
     #[tokio::test]
     async fn apns_bad_device_token_removes_token_binding_from_memory_and_sqlite() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             let app = Router::new().route(
@@ -2256,7 +2574,9 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
 
     #[tokio::test]
     async fn provider_error_response_does_not_reflect_provider_body() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             let app = Router::new().route(
@@ -2623,7 +2943,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
     }
 
     #[tokio::test]
-    async fn register_daemon_overwrites_existing_id_under_cap() {
+    async fn register_daemon_accepts_same_key_idempotent_restart() {
         let state = RelayState::default();
         let key = SigningKey::from_bytes(&[7; 32]);
 
@@ -2638,6 +2958,81 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
                 .daemons
                 .len(),
             1
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_first_registration_same_key_is_idempotent() {
+        let state = RelayState::default();
+        let key = SigningKey::from_bytes(&[7; 32]);
+
+        let (first, second) = tokio::join!(
+            register_daemon_response(&state, DAEMON_A, &key),
+            register_daemon_response(&state, DAEMON_A, &key),
+        );
+
+        assert_eq!(first.status(), StatusCode::CREATED);
+        assert_eq!(second.status(), StatusCode::CREATED);
+        assert_eq!(
+            state
+                .inner
+                .lock()
+                .expect("relay state lock poisoned")
+                .daemons
+                .get(DAEMON_A)
+                .copied(),
+            Some(key.verifying_key())
+        );
+    }
+
+    #[tokio::test]
+    async fn signed_rekey_updates_registered_daemon_key() {
+        let state = RelayState::default();
+        let old_key = SigningKey::from_bytes(&[7; 32]);
+        let new_key = SigningKey::from_bytes(&[8; 32]);
+        register_daemon_key(&state, DAEMON_A, &old_key).await;
+
+        let response = signed_register_daemon_response(
+            &state,
+            DAEMON_A,
+            &new_key,
+            &old_key,
+            "nonce-register-rekey1",
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(
+            state
+                .inner
+                .lock()
+                .expect("relay state lock poisoned")
+                .daemons
+                .get(DAEMON_A)
+                .copied(),
+            Some(new_key.verifying_key())
+        );
+    }
+
+    #[tokio::test]
+    async fn changed_key_registration_without_signature_is_rejected() {
+        let state = RelayState::default();
+        let old_key = SigningKey::from_bytes(&[7; 32]);
+        let new_key = SigningKey::from_bytes(&[8; 32]);
+        register_daemon_key(&state, DAEMON_A, &old_key).await;
+
+        let response = register_daemon_response(&state, DAEMON_A, &new_key).await;
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            state
+                .inner
+                .lock()
+                .expect("relay state lock poisoned")
+                .daemons
+                .get(DAEMON_A)
+                .copied(),
+            Some(old_key.verifying_key())
         );
     }
 
@@ -2674,6 +3069,8 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         let body = serde_json::to_vec(&RegisterDaemonRequest {
             daemon_node_id: daemon.to_string(),
             public_key: BASE64.encode(key.verifying_key().to_bytes()),
+            nonce: None,
+            ts_ms: None,
         })
         .unwrap();
         test_app(state.clone())
@@ -2682,7 +3079,35 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
             .unwrap()
     }
 
+    async fn signed_register_daemon_response(
+        state: &RelayState,
+        daemon: &str,
+        new_key: &SigningKey,
+        signing_key: &SigningKey,
+        nonce: &str,
+    ) -> axum::response::Response {
+        let ts_ms = now_ms();
+        let body = serde_json::to_vec(&RegisterDaemonRequest {
+            daemon_node_id: daemon.to_string(),
+            public_key: BASE64.encode(new_key.verifying_key().to_bytes()),
+            nonce: Some(nonce.to_string()),
+            ts_ms: Some(ts_ms),
+        })
+        .unwrap();
+        signed_post(state, signing_key, "/v1/pair", body, nonce).await
+    }
+
     async fn register_token_for(state: &RelayState, daemon: &str, key: &SigningKey, nonce: &str) {
+        let response = register_token_response(state, daemon, key, nonce).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    async fn register_token_response(
+        state: &RelayState,
+        daemon: &str,
+        key: &SigningKey,
+        nonce: &str,
+    ) -> axum::response::Response {
         let body = serde_json::to_vec(&RegisterTokenRequest {
             daemon_node_id: daemon.to_string(),
             platform: PushPlatform::Apns,
@@ -2691,8 +3116,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
             ts_ms: now_ms(),
         })
         .unwrap();
-        let response = signed_post(state, key, "/v1/push/register-token", body, nonce).await;
-        assert_eq!(response.status(), StatusCode::CREATED);
+        signed_post(state, key, "/v1/push/register-token", body, nonce).await
     }
 
     fn push_body(nonce: &str, ts_ms: u64) -> Vec<u8> {
@@ -2785,6 +3209,15 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         .unwrap() as usize
     }
 
+    fn stored_nonce_count(state: &RelayState) -> usize {
+        let store = state.store.as_ref().expect("sqlite store");
+        let conn = store.conn.lock().expect("relay sqlite lock poisoned");
+        conn.query_row("SELECT COUNT(*) FROM seen_nonces", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap() as usize
+    }
+
     fn stored_token_updated_at(state: &RelayState, push_token: &str) -> u64 {
         let store = state.store.as_ref().expect("sqlite store");
         let conn = store.conn.lock().expect("relay sqlite lock poisoned");
@@ -2801,6 +3234,14 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
     async fn response_text(response: Response) -> String {
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    async fn bind_loopback_for_test() -> Option<tokio::net::TcpListener> {
+        match tokio::net::TcpListener::bind("127.0.0.1:0").await {
+            Ok(listener) => Some(listener),
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => None,
+            Err(error) => panic!("bind loopback test listener: {error}"),
+        }
     }
 
     #[cfg(unix)]

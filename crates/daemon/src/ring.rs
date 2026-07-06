@@ -1,18 +1,14 @@
 use std::collections::VecDeque;
 
-#[derive(Debug, Clone)]
-struct Chunk {
-    start: u64,
-    bytes: Vec<u8>,
-}
-
-#[derive(Debug, Clone)]
+// A flat byte deque rather than a deque of per-push chunks: interactive PTY
+// reads are often 1-3 bytes, so per-push allocations would cost ~32 bytes of
+// overhead per payload byte and make snapshot/replay O(#pushes).
+#[derive(Debug)]
 pub struct PtyRingBuffer {
     capacity: usize,
     start_seq: u64,
     next_seq: u64,
-    len: usize,
-    chunks: VecDeque<Chunk>,
+    data: VecDeque<u8>,
 }
 
 impl PtyRingBuffer {
@@ -21,8 +17,7 @@ impl PtyRingBuffer {
             capacity,
             start_seq: 0,
             next_seq: 0,
-            len: 0,
-            chunks: VecDeque::new(),
+            data: VecDeque::new(),
         }
     }
 
@@ -33,30 +28,26 @@ impl PtyRingBuffer {
         }
 
         let Some(next_seq) = self.next_seq.checked_add(bytes.len() as u64) else {
+            // Seq counter exhausted: poison the window so every replay_from()
+            // misses and clients fall back to a cold snapshot resync.
             self.next_seq = u64::MAX;
             self.start_seq = u64::MAX;
-            self.len = 0;
-            self.chunks.clear();
+            self.data.clear();
             return original_start;
         };
         self.next_seq = next_seq;
 
         let bytes = if bytes.len() > self.capacity {
-            bytes[bytes.len() - self.capacity..].to_vec()
+            &bytes[bytes.len() - self.capacity..]
         } else {
-            bytes.to_vec()
+            bytes
         };
-        let start = self.next_seq.saturating_sub(bytes.len() as u64);
-
-        if bytes.len() == self.capacity {
-            self.chunks.clear();
-            self.len = 0;
-            self.start_seq = self.next_seq - self.capacity as u64;
+        let overflow = (self.data.len() + bytes.len()).saturating_sub(self.capacity);
+        if overflow > 0 {
+            self.data.drain(..overflow);
         }
-
-        self.len += bytes.len();
-        self.chunks.push_back(Chunk { start, bytes });
-        self.evict();
+        self.data.extend(bytes);
+        self.start_seq = self.next_seq - self.data.len() as u64;
         original_start
     }
 
@@ -65,54 +56,28 @@ impl PtyRingBuffer {
             return None;
         }
 
-        let mut out = Vec::new();
-        for chunk in &self.chunks {
-            let chunk_end = chunk.start.saturating_add(chunk.bytes.len() as u64);
-            if chunk_end <= seq {
-                continue;
-            }
-            let offset = seq.saturating_sub(chunk.start) as usize;
-            out.extend_from_slice(&chunk.bytes[offset..]);
+        let offset = (seq - self.start_seq) as usize;
+        let (first, second) = self.data.as_slices();
+        let mut out = Vec::with_capacity(self.data.len() - offset);
+        if offset < first.len() {
+            out.extend_from_slice(&first[offset..]);
+            out.extend_from_slice(second);
+        } else {
+            out.extend_from_slice(&second[offset - first.len()..]);
         }
-
         Some((seq, out))
     }
 
     pub fn snapshot(&self) -> (u64, Vec<u8>) {
-        let mut out = Vec::with_capacity(self.len);
-        for chunk in &self.chunks {
-            out.extend_from_slice(&chunk.bytes);
-        }
+        let (first, second) = self.data.as_slices();
+        let mut out = Vec::with_capacity(self.data.len());
+        out.extend_from_slice(first);
+        out.extend_from_slice(second);
         (self.start_seq, out)
-    }
-
-    #[cfg(test)]
-    pub fn next_seq(&self) -> u64 {
-        self.next_seq
     }
 
     pub fn end_seq(&self) -> u64 {
         self.next_seq
-    }
-
-    fn evict(&mut self) {
-        while self.len > self.capacity {
-            let Some(front) = self.chunks.front_mut() else {
-                break;
-            };
-
-            let overflow = self.len - self.capacity;
-            if overflow >= front.bytes.len() {
-                let removed = self.chunks.pop_front().expect("front exists");
-                self.len -= removed.bytes.len();
-                self.start_seq = removed.start.saturating_add(removed.bytes.len() as u64);
-            } else {
-                front.bytes.drain(..overflow);
-                front.start = front.start.saturating_add(overflow as u64);
-                self.len -= overflow;
-                self.start_seq = front.start;
-            }
-        }
     }
 }
 
@@ -148,8 +113,23 @@ mod tests {
         let mut ring = PtyRingBuffer::new(8);
         ring.push(b"abc");
 
-        let (_, bytes) = ring.replay_from(ring.next_seq()).unwrap();
+        let (_, bytes) = ring.replay_from(ring.end_seq()).unwrap();
         assert!(bytes.is_empty());
+    }
+
+    #[test]
+    fn replays_after_eviction_wraps_storage() {
+        let mut ring = PtyRingBuffer::new(8);
+        ring.push(b"01234567");
+        ring.push(b"abcd");
+
+        let (start, bytes) = ring.snapshot();
+        assert_eq!(start, 4);
+        assert_eq!(bytes, b"4567abcd");
+        let (_, bytes) = ring.replay_from(6).unwrap();
+        assert_eq!(bytes, b"67abcd");
+        let (_, bytes) = ring.replay_from(9).unwrap();
+        assert_eq!(bytes, b"bcd");
     }
 
     #[test]
@@ -161,7 +141,7 @@ mod tests {
         let first_start = ring.push(b"abcd");
 
         assert_eq!(first_start, u64::MAX - 1);
-        assert_eq!(ring.next_seq(), u64::MAX);
+        assert_eq!(ring.end_seq(), u64::MAX);
         assert!(ring.replay_from(u64::MAX - 1).is_none());
         assert_eq!(ring.snapshot(), (u64::MAX, Vec::new()));
     }

@@ -230,7 +230,6 @@ pub struct ShellyClient {
     http: reqwest::Client,
     daemon: Mutex<Option<DaemonTarget>>,
     endpoint: Mutex<Option<Endpoint>>,
-    connected: Mutex<bool>,
     /// Daemon version from the most recent successful handshake, refreshed on every authenticated
     /// connect so the UI can reflect the *current* daemon rather than the snapshot taken at pairing.
     last_daemon_version: Mutex<Option<String>>,
@@ -332,7 +331,6 @@ impl ShellyClient {
             http,
             daemon: Mutex::new(daemon),
             endpoint: Mutex::new(None),
-            connected: Mutex::new(false),
             last_daemon_version: Mutex::new(None),
             last_host_name: Mutex::new(None),
         }))
@@ -407,34 +405,6 @@ impl ShellyClient {
             ))
         })?;
         self.pair_with_ticket(ticket).await
-    }
-
-    /// Connects to a previously paired daemon and verifies authorization with a ping.
-    pub async fn connect(self: Arc<Self>) -> Result<(), ShellyError> {
-        let target = self.daemon_target().await?;
-        let endpoint = self.endpoint(target.parsed_relay()?.as_ref()).await?;
-        let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
-        write_hello(&mut send, self.config.platform).await?;
-        let welcome = expect_welcome(&mut recv).await?;
-        *self.last_daemon_version.lock().await = Some(welcome.daemon_version);
-        *self.last_host_name.lock().await = Some(welcome.host_name);
-        write_msg(&mut send, &ClientToServerMsg::Ping { seq: 1 }).await?;
-        match read_msg::<ServerToClientMsg>(&mut recv).await? {
-            ServerToClientMsg::Pong { seq: 1 } => {
-                *self.connected.lock().await = true;
-                Ok(())
-            }
-            ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
-            other => Err(ShellyError::Protocol(format!(
-                "unexpected daemon response during connect: {other:?}"
-            ))),
-        }
-    }
-
-    /// Marks the client disconnected locally; active attach streams are closed by their owners.
-    pub async fn disconnect(self: Arc<Self>) -> Result<(), ShellyError> {
-        *self.connected.lock().await = false;
-        Ok(())
     }
 
     /// Fetches the current session list from the paired daemon.
@@ -532,7 +502,6 @@ impl ShellyClient {
                 send: Mutex::new(Some(send)),
                 recv: Mutex::new(Some(recv)),
                 initial_bytes: Mutex::new(Some(initial_bytes)),
-                initial_seq: seq,
                 last_seen_seq: AtomicU64::new(seq),
             })),
             ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
@@ -689,7 +658,6 @@ impl ShellyClient {
         match read_msg::<ServerToClientMsg>(&mut recv).await? {
             ServerToClientMsg::PairingComplete { daemon_node_id } => {
                 *self.daemon.lock().await = Some(target.clone());
-                *self.connected.lock().await = true;
                 Ok(DaemonInfo {
                     daemon_node_id,
                     relay_url: target.relay_url,
@@ -746,7 +714,6 @@ pub struct AttachedSession {
     send: Mutex<Option<SendStream>>,
     recv: Mutex<Option<RecvStream>>,
     initial_bytes: Mutex<Option<Vec<u8>>>,
-    initial_seq: u64,
     last_seen_seq: AtomicU64,
 }
 
@@ -816,11 +783,6 @@ impl AttachedSession {
         }
         let _ = send.finish();
         Ok(())
-    }
-
-    /// Returns the byte offset after the initial attach payload.
-    pub fn initial_seq(&self) -> u64 {
-        self.initial_seq
     }
 
     /// Returns the latest raw PTY byte offset observed by this attachment.
@@ -1445,7 +1407,6 @@ mod tests {
             send: tokio::sync::Mutex::new(None),
             recv: tokio::sync::Mutex::new(None),
             initial_bytes: tokio::sync::Mutex::new(None),
-            initial_seq: seq,
             last_seen_seq: std::sync::atomic::AtomicU64::new(seq),
         }
     }

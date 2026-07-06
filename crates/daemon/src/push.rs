@@ -1,3 +1,4 @@
+use crate::SERVICE;
 use crate::persistence::StoredDevice;
 use anyhow::{Context, Result, anyhow, bail};
 use backon::{BackoffBuilder, ExponentialBuilder};
@@ -11,13 +12,12 @@ use ed25519_dalek::{Signer, SigningKey};
 use reqwest::StatusCode;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use shelly_protocol::{PushPlatform, SessionId, now_ms};
+use shelly_protocol::{PushPlatform, SessionId, canonical_request, now_ms};
 use std::{error::Error as StdError, fmt, future::Future, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 use tokio::time::{Instant, sleep, timeout_at};
 use tracing::{debug, warn};
 
-const SERVICE: &str = "app.shelly";
 const RELAY_SIGNING_ACCOUNT: &str = "relay-signing-key-v1";
 const RELAY_CONTROL_URL_ENV: &str = "SHELLY_RELAY_CONTROL_URL";
 /// Optional base64 (no-pad) override for the relay signing key, mirroring
@@ -398,7 +398,7 @@ impl PushWorker {
         event_type: RelayPushEventType,
     ) -> Result<()> {
         let daemon_node_id = self.ensure_daemon_registered().await?;
-        let tokens: Vec<_> = self
+        let mut tokens: Vec<_> = self
             .devices
             .iter()
             .filter_map(|device| {
@@ -408,12 +408,14 @@ impl PushWorker {
                 ))
             })
             .collect();
+        tokens.sort_by(|left, right| left.1.cmp(&right.1));
 
+        let mut first_error = None;
         for (platform, recipient_token) in tokens {
             let session_id_hash = hash_for_push(&session_id.to_string());
             let session_name_hash = hash_for_push(session_name);
             let worker = &*self;
-            retry_relay_operation(self.retry, event_type.dispatch_operation(), || {
+            let result = retry_relay_operation(self.retry, event_type.dispatch_operation(), || {
                 let daemon_node_id = daemon_node_id.clone();
                 let recipient_token = recipient_token.clone();
                 let session_id_hash = session_id_hash.clone();
@@ -436,7 +438,14 @@ impl PushWorker {
                         .await
                 }
             })
-            .await?;
+            .await;
+            if let Err(error) = result {
+                warn!(%error, event_type = ?event_type, "push dispatch failed for one device");
+                first_error.get_or_insert(error);
+            }
+        }
+        if let Some(error) = first_error {
+            return Err(error).context("one or more push dispatches failed");
         }
         Ok(())
     }
@@ -677,13 +686,6 @@ fn sign(key: &SigningKey, path: &str, body: &[u8], nonce: &str, ts_ms: u64) -> S
     BASE64.encode(key.sign(canonical.as_bytes()).to_bytes())
 }
 
-fn canonical_request(method: &str, path: &str, body: &[u8], nonce: &str, ts_ms: u64) -> String {
-    format!(
-        "{method}\n{path}\n{}\n{nonce}\n{ts_ms}",
-        String::from_utf8_lossy(body)
-    )
-}
-
 fn hash_for_push(value: &str) -> String {
     let hash = Sha256::digest(value.as_bytes());
     let mut out = String::with_capacity(64);
@@ -777,6 +779,10 @@ mod tests {
         let signature = Signature::from_slice(&BASE64.decode(signature).unwrap()).unwrap();
         let canonical = canonical_request("POST", "/v1/push", body, "nonce-for-signature", 42);
 
+        assert_eq!(
+            canonical,
+            "POST\n/v1/push\n{\"nonce\":\"nonce-for-signature\",\"ts_ms\":42}\nnonce-for-signature\n42"
+        );
         key.verifying_key()
             .verify(canonical.as_bytes(), &signature)
             .unwrap();
@@ -865,7 +871,9 @@ mod tests {
             .route("/v1/push/register-token", post(capture_request))
             .route("/v1/push", post(capture_request))
             .with_state(Arc::clone(&captured));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
@@ -947,7 +955,9 @@ mod tests {
             .route("/v1/pair", post(capture_request))
             .route("/v1/push/unregister-token", post(capture_request))
             .with_state(Arc::clone(&captured));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
@@ -1008,6 +1018,80 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn worker_continues_push_dispatch_after_one_device_failure() {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let app = Router::new()
+            .route("/v1/pair", post(capture_request_with_bad_token))
+            .route("/v1/push", post(capture_request_with_bad_token))
+            .with_state(Arc::clone(&captured));
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let devices = Arc::new(DashMap::new());
+        let mut bad = StoredDevice::new("Bad Phone".to_string(), "device-node-bad".to_string());
+        bad.set_push_token(PushPlatform::Apns, "bad-token-for-device-a".to_string());
+        devices.insert(bad.device_node_id.clone(), bad);
+        let mut good = StoredDevice::new("Good Phone".to_string(), "device-node-good".to_string());
+        good.set_push_token(PushPlatform::Apns, "good-token-for-device-b".to_string());
+        devices.insert(good.device_node_id.clone(), good);
+
+        let (tx, rx) = mpsc::unbounded_channel();
+        let worker = PushWorker {
+            client: relay_http_client().unwrap(),
+            relay_url: format!("http://{addr}"),
+            signing_key: SigningKey::from_bytes(&[9; 32]),
+            daemon_node_id: None,
+            daemon_registered: false,
+            retry: RelayRetry::for_tests(),
+            devices,
+            rx,
+        };
+        tokio::spawn(worker.run());
+
+        tx.send(PushCommand::SetDaemonNodeId(
+            "daemon-node-a-1234567890".to_string(),
+        ))
+        .unwrap();
+        tx.send(PushCommand::AwaitingInput {
+            session_id: SessionId::new(),
+            session_name: "secret mixed push shell".to_string(),
+        })
+        .unwrap();
+
+        let requests = timeout(Duration::from_secs(2), async {
+            loop {
+                let snapshot = captured.lock().expect("capture lock poisoned").clone();
+                let pushed_tokens: Vec<_> = snapshot
+                    .iter()
+                    .filter(|request| request.path == "/v1/push")
+                    .filter_map(|request| request.body["recipient_token"].as_str())
+                    .collect();
+                if pushed_tokens.contains(&"bad-token-for-device-a")
+                    && pushed_tokens.contains(&"good-token-for-device-b")
+                {
+                    return snapshot;
+                }
+                sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("push worker should continue after one device failure");
+
+        let pushes: Vec<_> = requests
+            .iter()
+            .filter(|request| request.path == "/v1/push")
+            .collect();
+        assert_eq!(pushes.len(), 2);
+        assert_eq!(pushes[0].body["recipient_token"], "bad-token-for-device-a");
+        assert_eq!(pushes[1].body["recipient_token"], "good-token-for-device-b");
+    }
+
+    #[tokio::test]
     async fn worker_retries_transient_push_failures_with_fresh_nonces() {
         let captured = Arc::new(FailingCapture {
             push_failures: std::sync::atomic::AtomicUsize::new(1),
@@ -1017,7 +1101,9 @@ mod tests {
             .route("/v1/pair", post(capture_request_with_push_failure))
             .route("/v1/push", post(capture_request_with_push_failure))
             .with_state(Arc::clone(&captured));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
@@ -1186,6 +1272,43 @@ mod tests {
         (status, axum::Json(serde_json::json!({ "ok": true }))).into_response()
     }
 
+    async fn capture_request_with_bad_token(
+        State(captured): State<Arc<Mutex<Vec<CapturedRequest>>>>,
+        uri: Uri,
+        headers: HeaderMap,
+        body: Bytes,
+    ) -> impl IntoResponse {
+        let path = uri.path().to_string();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        captured
+            .lock()
+            .expect("capture lock poisoned")
+            .push(CapturedRequest {
+                path: path.clone(),
+                signature: headers
+                    .get("x-shelly-signature")
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_string),
+                body: body.clone(),
+            });
+
+        if path == "/v1/push" && body["recipient_token"].as_str() == Some("bad-token-for-device-a")
+        {
+            return (
+                StatusCode::FORBIDDEN,
+                axum::Json(serde_json::json!({ "error": "bad token" })),
+            )
+                .into_response();
+        }
+
+        let status = match path.as_str() {
+            "/v1/pair" => StatusCode::CREATED,
+            "/v1/push" => StatusCode::ACCEPTED,
+            _ => StatusCode::NOT_FOUND,
+        };
+        (status, axum::Json(serde_json::json!({ "ok": true }))).into_response()
+    }
+
     fn assert_lowercase_hex_hash(value: &str) {
         assert_eq!(value.len(), 64);
         assert!(
@@ -1193,5 +1316,13 @@ mod tests {
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
         );
+    }
+
+    async fn bind_loopback_for_test() -> Option<tokio::net::TcpListener> {
+        match tokio::net::TcpListener::bind("127.0.0.1:0").await {
+            Ok(listener) => Some(listener),
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => None,
+            Err(error) => panic!("bind loopback test listener: {error}"),
+        }
     }
 }

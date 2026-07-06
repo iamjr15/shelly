@@ -46,7 +46,6 @@ impl Write for PtyResponseWriter {
 
 pub struct TerminalModel {
     terminal: Terminal,
-    response_writer: SharedWriter,
 }
 
 #[cfg(test)]
@@ -80,40 +79,8 @@ impl TerminalTestState {
     }
 }
 
-#[derive(Clone)]
-struct SharedWriter {
-    inner: Arc<Mutex<Box<dyn Write + Send>>>,
-}
-
-impl SharedWriter {
-    fn new(writer: Box<dyn Write + Send>) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(writer)),
-        }
-    }
-}
-
-impl Write for SharedWriter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut writer = self
-            .inner
-            .lock()
-            .map_err(|_| io::Error::other("terminal response writer lock poisoned"))?;
-        writer.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        let mut writer = self
-            .inner
-            .lock()
-            .map_err(|_| io::Error::other("terminal response writer lock poisoned"))?;
-        writer.flush()
-    }
-}
-
 impl TerminalModel {
     pub fn new(size: ClientSize, writer: Box<dyn Write + Send>) -> Self {
-        let response_writer = SharedWriter::new(writer);
         let terminal = Terminal::new(
             TerminalSize {
                 rows: size.rows as usize,
@@ -125,22 +92,15 @@ impl TerminalModel {
             Arc::new(ShellyTermConfig),
             "Shelly",
             env!("CARGO_PKG_VERSION"),
-            Box::new(response_writer.clone()),
+            writer,
         );
-        Self {
-            terminal,
-            response_writer,
-        }
+        Self { terminal }
     }
 
+    // Terminal queries (DSR, DA1, ...) are answered by wezterm-term itself via
+    // the writer passed to Terminal::new, on its own writer thread.
     pub fn advance_bytes(&mut self, bytes: &[u8]) {
-        let mut remaining = bytes;
-        while let Some(index) = find_dsr_cursor_query(remaining) {
-            self.terminal.advance_bytes(&remaining[..index]);
-            self.write_cursor_position_response();
-            remaining = &remaining[index + DSR_CURSOR_QUERY.len()..];
-        }
-        self.terminal.advance_bytes(remaining);
+        self.terminal.advance_bytes(bytes);
     }
 
     pub fn resize(&mut self, size: ClientSize) {
@@ -203,14 +163,17 @@ impl TerminalModel {
         let screen = self.terminal.screen();
         let start = screen.phys_row(0);
         let end = screen.phys_row(size.rows as i64);
-        screen
-            .lines_in_phys_range(start..end)
-            .into_iter()
-            .rev()
-            .find_map(|line| {
-                let text = line.as_str().trim().to_string();
+        let mut result = None;
+        // Borrowed lines: this runs on every PTY chunk, and lines_in_phys_range
+        // would deep-clone the whole visible screen under the terminal lock.
+        screen.with_phys_lines(start..end, |lines| {
+            result = lines.iter().rev().find_map(|line| {
+                let text = line.as_str();
+                let text = text.trim();
                 (!text.is_empty()).then(|| text.chars().take(max_chars).collect())
-            })
+            });
+        });
+        result
     }
 
     #[cfg(test)]
@@ -268,23 +231,6 @@ impl Write for TestSink {
 
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
-    }
-}
-
-const DSR_CURSOR_QUERY: &[u8] = b"\x1b[6n";
-
-fn find_dsr_cursor_query(bytes: &[u8]) -> Option<usize> {
-    bytes
-        .windows(DSR_CURSOR_QUERY.len())
-        .position(|window| window == DSR_CURSOR_QUERY)
-}
-
-impl TerminalModel {
-    fn write_cursor_position_response(&mut self) {
-        let cursor = self.terminal.cursor_pos();
-        let response = format!("\x1b[{};{}R", cursor.y + 1, cursor.x + 1);
-        let _ = self.response_writer.write_all(response.as_bytes());
-        let _ = self.response_writer.flush();
     }
 }
 
@@ -356,6 +302,7 @@ mod tests {
     use shelly_protocol::ClientSize;
     use std::io::{self, Write};
     use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
 
     static TERMINAL_TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -436,7 +383,19 @@ mod tests {
 
         model.advance_bytes(b"\x1b[6n");
 
-        let bytes = captured.lock().expect("capture lock poisoned").clone();
-        assert_eq!(bytes, b"\x1b[1;1R");
+        // wezterm-term delivers query responses asynchronously on its own
+        // writer thread, so poll until the CPR reply lands.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let bytes = captured.lock().expect("capture lock poisoned").clone();
+            if bytes == b"\x1b[1;1R" {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "DSR response not written before timeout: {bytes:?}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 }

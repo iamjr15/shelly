@@ -16,6 +16,8 @@ mod transport_iroh;
 
 use anyhow::Result;
 
+pub(crate) const SERVICE: &str = "app.shelly";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     ensure_standard_fds_open()?;

@@ -58,7 +58,7 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
     }
 
     if let Some(value) = env_var("SHELLY_TELEMETRY_OPT_IN") {
-        config.telemetry.opt_in = parse_bool(&value)?;
+        config.telemetry.opt_in = parse_bool_with_name(&value, "SHELLY_TELEMETRY_OPT_IN")?;
     }
 
     if let Some(value) = env_var("SHELLY_SCROLLBACK_ENCRYPTION_ENABLED") {
@@ -83,10 +83,6 @@ fn env_var(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
         .filter(|value| !value.trim().is_empty())
-}
-
-fn parse_bool(value: &str) -> Result<bool> {
-    parse_bool_with_name(value, "SHELLY_TELEMETRY_OPT_IN")
 }
 
 fn parse_bool_with_name(value: &str, name: &str) -> Result<bool> {

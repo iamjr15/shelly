@@ -140,14 +140,7 @@ fn parse_bool_env(name: &str) -> Result<bool> {
 }
 
 fn parse_bool_value(name: &str, value: Option<std::ffi::OsString>) -> Result<bool> {
-    let Some(value) = value else {
-        return Ok(false);
-    };
-    match value.to_string_lossy().trim().to_ascii_lowercase().as_str() {
-        "" | "0" | "false" | "no" | "off" => Ok(false),
-        "1" | "true" | "yes" | "on" => Ok(true),
-        _ => bail!("{name} must be true or false"),
-    }
+    shelly_relay::parse_bool_env(name, value.as_deref(), false)
 }
 
 fn relay_mode() -> Result<RelayMode> {
@@ -190,6 +183,7 @@ mod tests {
         assert!(parse_bool_value("SHELLY_TEST_BOOL", Some("1".into())).unwrap());
         assert!(!parse_bool_value("SHELLY_TEST_BOOL", Some("off".into())).unwrap());
         assert!(!parse_bool_value("SHELLY_TEST_BOOL", Some("0".into())).unwrap());
+        assert!(!parse_bool_value("SHELLY_TEST_BOOL", Some("".into())).unwrap());
         assert!(!parse_bool_value("SHELLY_TEST_BOOL", None).unwrap());
         assert!(parse_bool_value("SHELLY_TEST_BOOL", Some("maybe".into())).is_err());
     }

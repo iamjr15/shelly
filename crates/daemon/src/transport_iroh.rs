@@ -1,3 +1,4 @@
+use crate::SERVICE;
 use crate::forward::{ForwardedEvent, output_was_replayed, recv_attached_event};
 use crate::ipc::{AppState, IrohEndpointInfo, create_session_for, kill_session_for};
 use crate::persistence::StoredDevice;
@@ -12,13 +13,12 @@ use shelly_protocol::{
 };
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, broadcast, watch};
 use tokio::time::{Duration, timeout};
 use tracing::{debug, error, info, warn};
 
 pub(crate) const SHELLY_ALPN: &[u8] = b"shelly/1";
 
-const SERVICE: &str = "app.shelly";
 const IROH_SECRET_ACCOUNT: &str = "iroh-secret-key-v1";
 const IROH_SECRET_KEY_ENV: &str = "SHELLY_IROH_SECRET_KEY_B64";
 
@@ -106,8 +106,8 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
     let remote_node_id = conn.remote_id().to_string();
     let (send, mut recv) = conn.accept_bi().await.context("accept iroh stream")?;
     let writer = Arc::new(Mutex::new(send));
-    let mut attach_task: Option<tokio::task::JoinHandle<()>> = None;
-    let mut session_list_task: Option<tokio::task::JoinHandle<()>> = None;
+    let mut attach_task: Option<ForwarderTask> = None;
+    let mut session_list_task: Option<ForwarderTask> = None;
 
     let hello: ClientToServerMsg = read_msg(&mut recv).await?;
     let (client_id, client_kind) = match hello {
@@ -166,13 +166,26 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
     };
 
     let mut paired = state.is_device_paired(&remote_node_id);
+    let mut revocation_rx = state.subscribe_device_revocation(&remote_node_id);
     if paired && let Err(error) = state.mark_device_seen(&remote_node_id) {
         warn!(%error, %remote_node_id, "failed to persist device last_seen");
     }
 
-    while let Ok(message) = read_msg::<_>(&mut recv).await {
+    loop {
+        let message = tokio::select! {
+            message = read_msg::<ClientToServerMsg>(&mut recv) => match message {
+                Ok(message) => message,
+                Err(_) => break,
+            },
+            _ = revocation_rx.changed(), if paired => break,
+        };
+        if paired && !state.is_device_paired(&remote_node_id) {
+            break;
+        }
         match message {
-            ClientToServerMsg::Hello { .. } => {}
+            ClientToServerMsg::Hello { .. } => {
+                // Retrying clients may replay Hello after the handshake, so keep it idempotent.
+            }
             ClientToServerMsg::PairWithCode {
                 code,
                 device_name,
@@ -193,6 +206,7 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                         state
                             .save_device(StoredDevice::new(device_name, remote_node_id.clone()))?;
                         paired = true;
+                        revocation_rx.borrow_and_update();
                         let daemon_node_id = state.iroh_node_id().unwrap_or_default();
                         write_msg(
                             &writer,
@@ -230,22 +244,15 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                     continue;
                 }
                 if let Some(task) = session_list_task.take() {
-                    task.abort();
+                    task.shutdown();
                 }
-                let (sessions, mut rx) = state.subscribe_session_list_with_initial();
+                let (sessions, rx) = state.subscribe_session_list_with_initial();
                 write_msg(&writer, &ServerToClientMsg::SessionList { sessions }).await?;
 
                 let writer = Arc::clone(&writer);
-                session_list_task = Some(tokio::spawn(async move {
-                    while rx.changed().await.is_ok() {
-                        let sessions = rx.borrow().clone();
-                        if write_msg(&writer, &ServerToClientMsg::SessionList { sessions })
-                            .await
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
+                let revocation = revocation_rx.clone();
+                session_list_task = Some(ForwarderTask::spawn(move |shutdown| async move {
+                    forward_session_list_updates(writer, rx, shutdown, revocation).await;
                 }));
             }
             ClientToServerMsg::AttachSession {
@@ -297,7 +304,7 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                 };
 
                 if let Some(task) = attach_task.take() {
-                    task.abort();
+                    task.shutdown();
                 }
                 let attachment = match session.attach_client(client_id, size) {
                     Ok(attachment) => attachment,
@@ -313,7 +320,7 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                         continue;
                     }
                 };
-                let mut rx = session.subscribe();
+                let rx = session.subscribe();
                 let (seq, initial_bytes) = session.attach_bytes(last_seen_seq);
                 write_msg(
                     &writer,
@@ -338,27 +345,11 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                 }
 
                 let writer = Arc::clone(&writer);
-                attach_task = Some(tokio::spawn(async move {
+                let revocation = revocation_rx.clone();
+                attach_task = Some(ForwarderTask::spawn(move |shutdown| async move {
                     let _attachment = attachment;
-                    loop {
-                        match recv_attached_event(&mut rx, session_id).await {
-                            ForwardedEvent::Message(event) => {
-                                if output_was_replayed(&event, seq) {
-                                    continue;
-                                }
-                                if write_msg(&writer, &event).await.is_err() {
-                                    break;
-                                }
-                            }
-                            ForwardedEvent::TerminalMessage(event) => {
-                                if write_msg(&writer, &event).await.is_err() {
-                                    break;
-                                }
-                                break;
-                            }
-                            ForwardedEvent::Closed => break,
-                        }
-                    }
+                    forward_attached_events(writer, rx, session_id, seq, shutdown, revocation)
+                        .await;
                 }));
             }
             ClientToServerMsg::Input { session_id, bytes } => {
@@ -487,13 +478,95 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
     }
 
     if let Some(task) = attach_task {
-        task.abort();
+        task.shutdown();
     }
     if let Some(task) = session_list_task {
-        task.abort();
+        task.shutdown();
     }
 
     Ok(())
+}
+
+struct ForwarderTask {
+    shutdown: watch::Sender<bool>,
+    handle: tokio::task::JoinHandle<()>,
+}
+
+impl ForwarderTask {
+    fn spawn<F>(build: impl FnOnce(watch::Receiver<bool>) -> F) -> Self
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let (shutdown, shutdown_rx) = watch::channel(false);
+        let handle = tokio::spawn(build(shutdown_rx));
+        Self { shutdown, handle }
+    }
+
+    fn shutdown(self) {
+        let _ = self.shutdown.send(true);
+        drop(self.handle);
+    }
+}
+
+async fn forward_session_list_updates<W>(
+    writer: Arc<Mutex<W>>,
+    mut rx: watch::Receiver<Vec<shelly_protocol::SessionSummary>>,
+    mut shutdown: watch::Receiver<bool>,
+    mut revocation: watch::Receiver<u64>,
+) where
+    W: AsyncWrite + Unpin,
+{
+    loop {
+        let changed = tokio::select! {
+            changed = rx.changed() => changed,
+            _ = shutdown.changed() => break,
+            _ = revocation.changed() => break,
+        };
+        if changed.is_err() {
+            break;
+        }
+        let sessions = rx.borrow_and_update().clone();
+        if write_msg(&writer, &ServerToClientMsg::SessionList { sessions })
+            .await
+            .is_err()
+        {
+            break;
+        }
+    }
+}
+
+async fn forward_attached_events<W>(
+    writer: Arc<Mutex<W>>,
+    mut rx: broadcast::Receiver<ServerToClientMsg>,
+    session_id: SessionId,
+    attached_seq: u64,
+    mut shutdown: watch::Receiver<bool>,
+    mut revocation: watch::Receiver<u64>,
+) where
+    W: AsyncWrite + Unpin,
+{
+    loop {
+        let event = tokio::select! {
+            event = recv_attached_event(&mut rx, session_id) => event,
+            _ = shutdown.changed() => break,
+            _ = revocation.changed() => break,
+        };
+        match event {
+            ForwardedEvent::Message(event) => {
+                if output_was_replayed(&event, attached_seq) {
+                    continue;
+                }
+                if write_msg(&writer, &event).await.is_err() {
+                    break;
+                }
+            }
+            ForwardedEvent::TerminalMessage(event) => {
+                let _ = write_msg(&writer, &event).await;
+                break;
+            }
+            ForwardedEvent::Closed => break,
+        }
+    }
 }
 
 async fn require_paired(writer: &Arc<Mutex<SendStream>>, paired: bool) -> Result<bool> {
@@ -666,9 +739,10 @@ where
     rmp_serde::from_slice(&payload).context("decode messagepack frame")
 }
 
-async fn write_msg<T>(writer: &Arc<Mutex<SendStream>>, message: &T) -> Result<()>
+async fn write_msg<T, W>(writer: &Arc<Mutex<W>>, message: &T) -> Result<()>
 where
     T: Serialize,
+    W: AsyncWrite + Unpin,
 {
     let mut writer = writer.lock().await;
     write_msg_to(&mut *writer, message).await
@@ -683,14 +757,11 @@ where
     if payload.len() > max_frame_len() {
         bail!("frame too large: {}", payload.len());
     }
-    writer
-        .write_all(&(payload.len() as u32).to_be_bytes())
-        .await
-        .context("write iroh frame length")?;
-    writer
-        .write_all(&payload)
-        .await
-        .context("write iroh frame payload")?;
+    let mut frame = Vec::with_capacity(4 + payload.len());
+    frame.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+    frame.extend_from_slice(&payload);
+    writer.write_all(&frame).await.context("write iroh frame")?;
+    writer.flush().await.context("flush iroh frame")?;
     Ok(())
 }
 
@@ -752,12 +823,17 @@ fn secret_key_from_env() -> Result<Option<SecretKey>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{IROH_SECRET_KEY_ENV, read_msg_from, secret_key_from_env, write_msg_to};
+    use super::{
+        IROH_SECRET_KEY_ENV, forward_attached_events, read_msg_from, secret_key_from_env,
+        write_msg_to,
+    };
     use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
-    use shelly_protocol::{ServerToClientMsg, max_frame_len};
+    use shelly_protocol::{ServerToClientMsg, SessionId, max_frame_len};
     use std::ffi::OsString;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use tokio::io::{AsyncWriteExt as _, duplex};
+    use tokio::sync::{Mutex as TokioMutex, broadcast, watch};
+    use tokio::time::{Duration, timeout};
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -823,6 +899,55 @@ mod tests {
         let decoded: ServerToClientMsg = read_msg_from(&mut reader).await.unwrap();
 
         assert_eq!(decoded, ServerToClientMsg::Pong { seq: 7 });
+    }
+
+    #[tokio::test]
+    async fn revoked_device_stops_attached_forwarder_without_another_request() {
+        let session_id = SessionId::new();
+        let (events, rx) = broadcast::channel(8);
+        let (_shutdown_tx, shutdown_rx) = watch::channel(false);
+        let (revocation_tx, revocation_rx) = watch::channel(0_u64);
+        let (mut reader, writer) = duplex(4096);
+        let writer = Arc::new(TokioMutex::new(writer));
+        let forwarder = tokio::spawn(forward_attached_events(
+            Arc::clone(&writer),
+            rx,
+            session_id,
+            0,
+            shutdown_rx,
+            revocation_rx,
+        ));
+
+        events
+            .send(ServerToClientMsg::Output {
+                session_id,
+                seq: 1,
+                bytes: b"before revoke".to_vec(),
+            })
+            .unwrap();
+        let before: ServerToClientMsg = read_msg_from(&mut reader).await.unwrap();
+        assert!(matches!(before, ServerToClientMsg::Output { seq: 1, .. }));
+
+        revocation_tx.send(1).unwrap();
+        timeout(Duration::from_secs(1), forwarder)
+            .await
+            .expect("revocation should stop the iroh attach forwarder")
+            .expect("forwarder should not panic");
+        let _ = events.send(ServerToClientMsg::Output {
+            session_id,
+            seq: 2,
+            bytes: b"after revoke".to_vec(),
+        });
+
+        let read_after = timeout(
+            Duration::from_millis(100),
+            read_msg_from::<ServerToClientMsg, _>(&mut reader),
+        )
+        .await;
+        assert!(!matches!(
+            read_after,
+            Ok(Ok(ServerToClientMsg::Output { seq: 2, .. }))
+        ));
     }
 
     #[tokio::test]

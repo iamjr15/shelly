@@ -7,7 +7,6 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 const APNS_JWT_TTL_SECONDS: u64 = 50 * 60;
 const DEFAULT_APNS_ENDPOINT: &str = "https://api.push.apple.com";
@@ -47,7 +46,7 @@ struct CachedJwt {
     generated_at_secs: u64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 struct ApnsClaims {
     iss: String,
     iat: u64,
@@ -58,7 +57,7 @@ struct ApnsErrorResponse {
     reason: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 struct ApnsPushPayload<'a> {
     aps: Aps<'a>,
     session_id_hash: &'a str,
@@ -66,14 +65,14 @@ struct ApnsPushPayload<'a> {
     event_type: &'a str,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 struct Aps<'a> {
     alert: Alert<'a>,
     #[serde(rename = "thread-id")]
     thread_id: &'a str,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 struct Alert<'a> {
     title: &'a str,
     body: &'a str,
@@ -108,10 +107,11 @@ impl ApnsCredentials {
 
 impl ApnsClient {
     pub(crate) fn new(credentials: ApnsCredentials) -> Result<Self> {
-        // reqwest is built with `rustls-no-provider`; ensure a default crypto
-        // provider exists before constructing the client. The relay serve path
-        // installs this, but unit tests build clients without it. Idempotent.
-        crate::install_default_rustls_provider();
+        let http = crate::provider_http_client().context("build APNs HTTP/2 client")?;
+        Self::new_with_http(credentials, http)
+    }
+
+    fn new_with_http(credentials: ApnsCredentials, http: reqwest::Client) -> Result<Self> {
         let jwt_cache = ApnsJwtCache::new(
             credentials.team_id,
             credentials.key_id,
@@ -121,12 +121,7 @@ impl ApnsClient {
             endpoint: credentials.endpoint.trim_end_matches('/').to_string(),
             topic: credentials.topic,
             jwt_cache: Arc::new(Mutex::new(jwt_cache)),
-            http: reqwest::Client::builder()
-                .http2_keep_alive_interval(Some(Duration::from_secs(60)))
-                .http2_keep_alive_timeout(Duration::from_secs(10))
-                .http2_keep_alive_while_idle(true)
-                .build()
-                .context("build APNs HTTP/2 client")?,
+            http,
         })
     }
 
@@ -294,6 +289,7 @@ mod tests {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use std::net::SocketAddr;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
 
     const TEST_P8: &str = r#"-----BEGIN PRIVATE KEY-----
 MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgYvZMv7/BK9KKJoOw
@@ -412,7 +408,9 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
     #[tokio::test]
     async fn apns_send_uses_provider_jwt_and_private_payload() {
         let state = MockState::default();
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
         let addr = listener.local_addr().unwrap();
         let app = Router::new()
             .route("/3/device/device-token", post(apns_handler))
@@ -458,7 +456,9 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
     #[tokio::test]
     async fn apns_send_reuses_persistent_provider_connection() {
         let state = MockState::default();
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
         let addr = listener.local_addr().unwrap();
         let app = Router::new()
             .route("/3/device/device-token", post(apns_handler))
@@ -493,6 +493,47 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         );
     }
 
+    #[tokio::test]
+    async fn apns_send_times_out_stalled_provider() {
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new().route(
+            "/3/device/device-token",
+            post(|| async {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                StatusCode::OK
+            }),
+        );
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let http = crate::provider_http_client_with_timeouts(
+            Duration::from_millis(50),
+            Duration::from_millis(50),
+        )
+        .unwrap();
+        let client = ApnsClient::new_with_http(
+            ApnsCredentials {
+                team_id: "TEAMID1234".to_string(),
+                key_id: "KEYID1234".to_string(),
+                topic: "app.shelly.ios".to_string(),
+                private_key_pem: TEST_P8.as_bytes().to_vec(),
+                endpoint: format!("http://{addr}"),
+            },
+            http,
+        )
+        .unwrap();
+
+        let result = tokio::time::timeout(Duration::from_secs(1), client.send(&delivery()))
+            .await
+            .expect("APNs timeout should be bounded by the provider client");
+
+        assert!(result.is_err());
+    }
+
     fn decode_segment<T: serde::de::DeserializeOwned>(jwt: &str, index: usize) -> T {
         let segment = jwt.split('.').nth(index).unwrap();
         let bytes = URL_SAFE_NO_PAD.decode(segment).unwrap();
@@ -508,6 +549,14 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
             .collect::<Vec<_>>();
         keys.sort();
         keys
+    }
+
+    async fn bind_loopback_for_test() -> Option<tokio::net::TcpListener> {
+        match tokio::net::TcpListener::bind("127.0.0.1:0").await {
+            Ok(listener) => Some(listener),
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => None,
+            Err(error) => panic!("bind loopback test listener: {error}"),
+        }
     }
 
     async fn apns_handler(

@@ -27,9 +27,6 @@ jni.workspace = true
 log.workspace = true
 ndk-context.workspace = true
 
-[build-dependencies]
-uniffi = { workspace = true, features = ["build"] }
-
 [[bin]]
 name = "uniffi-bindgen"
 path = "uniffi-bindgen.rs"

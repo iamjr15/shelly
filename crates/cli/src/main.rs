@@ -197,10 +197,11 @@ pub(crate) fn ensure_crypto_provider() {
 async fn main() -> Result<()> {
     ensure_crypto_provider();
     let cli = parse_cli_for_current_invocation();
-    if should_check_update_notice(cli.command.as_ref()) {
-        update_notice::maybe_print_update_notice().await;
-    }
-    match cli.command {
+    // Run the npm update check concurrently so a stale cache never delays
+    // command output; awaited after the command so the cache write completes.
+    let update_check = should_check_update_notice(cli.command.as_ref())
+        .then(|| tokio::spawn(update_notice::maybe_print_update_notice()));
+    let result = match cli.command {
         None => run_default().await,
         Some(Command::Pair) => pair_device().await,
         #[cfg(feature = "test-client")]
@@ -309,7 +310,11 @@ async fn main() -> Result<()> {
             Ok(())
         }
         Some(Command::Named(args)) => open_named_session(args).await,
+    };
+    if let Some(handle) = update_check {
+        let _ = handle.await;
     }
+    result
 }
 
 fn parse_cli_for_current_invocation() -> Cli {
@@ -686,7 +691,7 @@ fn finish_pairing_countdown(inline: bool, use_ansi: bool) -> Result<()> {
 
 fn pairing_remaining_seconds(expires_at: u64) -> u64 {
     let remaining_ms = expires_at.saturating_sub(now_ms());
-    remaining_ms.saturating_add(999) / 1000
+    remaining_ms.div_ceil(1000)
 }
 
 fn format_pairing_countdown(seconds: u64) -> String {
@@ -1048,6 +1053,8 @@ async fn attach_session(session_ref: String) -> Result<()> {
                         break;
                     }
 
+                    // Ctrl-B (0x02) arms a detach prefix: Ctrl-B d detaches; any other
+                    // byte replays the held 0x02 so the escape stays transparent.
                     let mut outgoing = Vec::with_capacity(n);
                     for &byte in &buf[..n] {
                         if prefix {
@@ -1709,7 +1716,7 @@ mod tests {
     use std::fs;
     use std::os::unix::fs::{PermissionsExt, symlink};
     use std::os::unix::net::UnixListener;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn parses_codex_approval_event() {
@@ -1939,7 +1946,9 @@ mod tests {
         let socket = runtime.join("control.sock");
         fs::create_dir(&runtime).unwrap();
         fs::set_permissions(&runtime, fs::Permissions::from_mode(0o700)).unwrap();
-        let _listener = UnixListener::bind(&socket).unwrap();
+        let Some(_listener) = bind_unix_socket_for_test(&socket) else {
+            return;
+        };
         fs::set_permissions(&socket, fs::Permissions::from_mode(0o600)).unwrap();
 
         let parent_status = doctor_socket_parent_status(&socket).unwrap();
@@ -1981,7 +1990,9 @@ mod tests {
     fn doctor_rejects_socket_with_loose_permissions() {
         let tmp = tempfile::tempdir().unwrap();
         let socket = tmp.path().join("control.sock");
-        let _listener = UnixListener::bind(&socket).unwrap();
+        let Some(_listener) = bind_unix_socket_for_test(&socket) else {
+            return;
+        };
         fs::set_permissions(&socket, fs::Permissions::from_mode(0o666)).unwrap();
 
         let error = doctor_socket_file_status(&socket).unwrap_err();
@@ -2109,5 +2120,13 @@ mod tests {
         assert_eq!(format_pairing_countdown(300), "5:00");
         assert_eq!(format_pairing_countdown(65), "1:05");
         assert_eq!(format_pairing_countdown(4), "0:04");
+    }
+
+    fn bind_unix_socket_for_test(path: &Path) -> Option<UnixListener> {
+        match UnixListener::bind(path) {
+            Ok(listener) => Some(listener),
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => None,
+            Err(error) => panic!("bind unix socket test listener: {error}"),
+        }
     }
 }

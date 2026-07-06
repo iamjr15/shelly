@@ -9,7 +9,6 @@ use ring::{
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 const FCM_SCOPE: &str = "https://www.googleapis.com/auth/firebase.messaging";
 const DEFAULT_FCM_ENDPOINT: &str = "https://fcm.googleapis.com";
@@ -62,7 +61,7 @@ struct GoogleJwtHeader<'a> {
     kid: Option<&'a str>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 struct GoogleClaims<'a> {
     iss: &'a str,
     scope: &'static str,
@@ -149,10 +148,11 @@ impl FcmCredentials {
 
 impl FcmClient {
     pub(crate) fn new(credentials: FcmCredentials) -> Result<Self> {
-        // reqwest is built with `rustls-no-provider`; ensure a default crypto
-        // provider exists before constructing the client. The relay serve path
-        // installs this, but unit tests build clients without it. Idempotent.
-        crate::install_default_rustls_provider();
+        let http = crate::provider_http_client().context("build FCM HTTP/2 client")?;
+        Self::new_with_http(credentials, http)
+    }
+
+    fn new_with_http(credentials: FcmCredentials, http: reqwest::Client) -> Result<Self> {
         Ok(Self {
             endpoint: credentials.endpoint.trim_end_matches('/').to_string(),
             project_id: credentials.project_id,
@@ -162,12 +162,7 @@ impl FcmClient {
                 credentials.private_key_id,
                 credentials.private_key_pem,
             )?)),
-            http: reqwest::Client::builder()
-                .http2_keep_alive_interval(Some(Duration::from_secs(60)))
-                .http2_keep_alive_timeout(Duration::from_secs(10))
-                .http2_keep_alive_while_idle(true)
-                .build()
-                .context("build FCM HTTP/2 client")?,
+            http,
         })
     }
 
@@ -432,6 +427,7 @@ mod tests {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
 
     const TEST_RSA_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCcJPiZGauoV7SA
@@ -591,7 +587,9 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
     #[tokio::test]
     async fn fcm_send_uses_cached_oauth_token_and_private_payload() {
         let state = MockState::default();
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
         let addr = listener.local_addr().unwrap();
         let app = Router::new()
             .route("/token", post(token_handler))
@@ -618,6 +616,63 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
         assert!(!requests[0].body.contains("claude"));
         assert!(!requests[0].body.contains("/Users/"));
         assert!(!requests[0].body.contains("last_line"));
+    }
+
+    #[tokio::test]
+    async fn fcm_send_times_out_stalled_provider() {
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new()
+            .route(
+                "/token",
+                post(|| async {
+                    (
+                        StatusCode::OK,
+                        axum::Json(json!({
+                            "access_token": "mock-access-token",
+                            "expires_in": 3600,
+                            "token_type": "Bearer"
+                        })),
+                    )
+                }),
+            )
+            .route(
+                "/v1/projects/test-project/messages:send",
+                post(|| async {
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    (StatusCode::OK, axum::Json(json!({"name": "mock-message"})))
+                }),
+            );
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let endpoint = format!("http://{addr}");
+        let http = crate::provider_http_client_with_timeouts(
+            Duration::from_millis(50),
+            Duration::from_millis(50),
+        )
+        .unwrap();
+        let client = FcmClient::new_with_http(
+            FcmCredentials {
+                project_id: "test-project".to_string(),
+                client_email: "shelly@example.iam.gserviceaccount.com".to_string(),
+                private_key_id: Some("private-key-id".to_string()),
+                private_key_pem: TEST_RSA_KEY.as_bytes().to_vec(),
+                token_uri: format!("{endpoint}/token"),
+                endpoint,
+            },
+            http,
+        )
+        .unwrap();
+
+        let result = tokio::time::timeout(Duration::from_secs(1), client.send(&delivery()))
+            .await
+            .expect("FCM timeout should be bounded by the provider client");
+
+        assert!(result.is_err());
     }
 
     fn fcm_client(endpoint: &str, token_uri: &str) -> FcmClient {
@@ -677,5 +732,13 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
             .collect::<Vec<_>>();
         keys.sort();
         keys
+    }
+
+    async fn bind_loopback_for_test() -> Option<tokio::net::TcpListener> {
+        match tokio::net::TcpListener::bind("127.0.0.1:0").await {
+            Ok(listener) => Some(listener),
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => None,
+            Err(error) => panic!("bind loopback test listener: {error}"),
+        }
     }
 }

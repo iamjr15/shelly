@@ -140,7 +140,7 @@ pub enum ServerToClientMsg {
         daemon_version: String,
         /// Feature flags active for this daemon.
         capabilities: Capabilities,
-        /// Human-readable host/computer name (e.g. "Jigyanshu's MacBook Pro"). Empty when sent by a
+        /// Human-readable host/computer name (e.g. "build-host.local"). Empty when sent by a
         /// daemon older than this field; clients fall back to a generic label.
         #[serde(default)]
         host_name: String,
@@ -196,6 +196,9 @@ pub enum ServerToClientMsg {
         /// Session whose output was skipped.
         session_id: SessionId,
         /// Number of broadcast messages skipped by the receiver.
+        ///
+        /// Misnomer frozen on the v1 MessagePack wire: counts skipped broadcast
+        /// messages, not bytes. Renaming would break paired mobile clients.
         skipped_bytes: u64,
     },
     /// Pairing ticket is ready for QR display and relay publication.
