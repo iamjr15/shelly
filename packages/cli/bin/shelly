@@ -45,6 +45,9 @@ child.on("error", (err) => {
 
 child.on("exit", (code, signal) => {
   if (signal) {
+    // Drop the forwarder first so the re-kill terminates this process with the
+    // child's signal instead of re-entering the handler and exiting 0.
+    process.removeAllListeners(signal);
     process.kill(process.pid, signal);
     return;
   }

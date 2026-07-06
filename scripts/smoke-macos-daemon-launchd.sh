@@ -7,7 +7,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-tmp="$(mktemp -d /tmp/fwld.XXXXXX)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/shelly-launchd-smoke.XXXXXX")"
 service_installed=0
 launchd_env_set=0
 
@@ -79,6 +79,8 @@ if [[ ! -x "$platform_dir/bin/shelly" || ! -x "$platform_dir/bin/shellyd" ]]; th
   exit 1
 fi
 
+# Kept in sync by hand with NPM_CONFIG_KEYS_TO_STRIP in
+# scripts/lib/npm-test-util.mjs (shell cannot import the mjs module).
 unset npm_config_supported_architectures npm_config_npm_globalconfig npm_config_verify_deps_before_run npm_config__jsr_registry
 
 pack_package() {

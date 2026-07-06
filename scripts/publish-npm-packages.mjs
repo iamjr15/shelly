@@ -5,6 +5,8 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 
+import { assertExecutablePackFile as assertExecutablePackFileOrThrow } from "./lib/npm-test-util.mjs";
+
 const root = process.cwd();
 const dryRun = process.argv.includes("--dry-run");
 const checkReady = process.argv.includes("--check-ready");
@@ -118,9 +120,11 @@ function assertNativeBinary(filePath, packageName) {
 }
 
 function assertExecutablePackFile(files, filePath, packageName) {
-  const entry = files.get(filePath);
-  assert(entry, `${packageName} pack is missing ${filePath}`);
-  assert((entry.mode & 0o111) !== 0, `${packageName} pack ${filePath} is not executable`);
+  try {
+    assertExecutablePackFileOrThrow(files, filePath, `${packageName} pack`);
+  } catch (error) {
+    fail(error.message);
+  }
 }
 
 function publish(packageDir) {

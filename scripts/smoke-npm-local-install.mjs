@@ -5,8 +5,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
-const root = path.resolve(new URL("..", import.meta.url).pathname);
+import {
+  assertIncludes,
+  cleanPackageManagerEnv,
+  packPackage,
+  requireExecutable,
+  run,
+} from "./lib/npm-test-util.mjs";
+
+const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const supportedHosts = new Set(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"]);
 const hostKey = `${process.platform}-${process.arch}`;
@@ -14,7 +23,7 @@ const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-npm-local-install
 
 try {
   if (!supportedHosts.has(hostKey)) {
-    fail(`unsupported v1 npm host: ${hostKey}`);
+    throw new Error(`unsupported v1 npm host: ${hostKey}`);
   }
 
   const platformDir = path.join(root, "packages", `cli-${hostKey}`);
@@ -36,8 +45,8 @@ try {
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(path.join(projectDir, "package.json"), `${JSON.stringify({ private: true }, null, 2)}\n`);
 
-  const platformPack = packPackage(platformDir, packDir);
-  const metaPack = packPackage(metaDir, packDir);
+  const platformPack = packPackage(npm, platformDir, packDir, { cwd: root });
+  const metaPack = packPackage(npm, metaDir, packDir, { cwd: root });
   run(
     npm,
     [
@@ -75,34 +84,15 @@ try {
   }
 
   console.log(`npm local install smoke ok: shellykit + shellykit-${hostKey}`);
+} catch (error) {
+  console.error(error.message);
+  process.exitCode = 1;
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }
 
-function packPackage(packageDir, packDir) {
-  const result = run(npm, ["pack", packageDir, "--pack-destination", packDir, "--json"], {
-    cwd: root,
-    env: cleanNpmEnv(process.env),
-  });
-  let packs;
-  try {
-    packs = JSON.parse(result.stdout);
-  } catch (error) {
-    fail(`could not parse npm pack JSON for ${packageDir}: ${error.message}\n${result.stdout}`);
-  }
-  const filename = packs?.[0]?.filename;
-  if (!filename) {
-    fail(`npm pack did not report a tarball filename for ${packageDir}`);
-  }
-  const tarball = path.join(packDir, filename);
-  if (!fs.existsSync(tarball)) {
-    fail(`npm pack tarball missing: ${tarball}`);
-  }
-  return tarball;
-}
-
 function isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) {
-  return cleanNpmEnv({
+  return cleanPackageManagerEnv({
     ...process.env,
     HOME: homeDir,
     XDG_RUNTIME_DIR: runtimeDir,
@@ -112,36 +102,10 @@ function isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) {
   });
 }
 
-function cleanNpmEnv(env) {
-  const cleaned = { ...env };
-  for (const key of [
-    "npm_config_supported_architectures",
-    "npm_config_npm_globalconfig",
-    "npm_config_verify_deps_before_run",
-    "npm_config__jsr_registry",
-  ]) {
-    delete cleaned[key];
-  }
-  return cleaned;
-}
-
-function requireExecutable(file) {
-  if (!fs.existsSync(file)) {
-    fail(`expected executable is missing: ${file}`);
-  }
-  const stat = fs.statSync(file);
-  if (!stat.isFile() && !stat.isSymbolicLink?.()) {
-    fail(`expected a file executable, got something else: ${file}`);
-  }
-  if ((stat.mode & 0o111) === 0) {
-    fail(`expected executable bit on ${file}`);
-  }
-}
-
 function rejectJsFallback(file) {
   const firstBytes = fs.readFileSync(file).subarray(0, 64).toString("utf8");
   if (firstBytes.startsWith("#!/usr/bin/env node")) {
-    fail(`${file} still contains the JS dispatcher fallback after postinstall`);
+    throw new Error(`${file} still contains the JS dispatcher fallback after postinstall`);
   }
 }
 
@@ -153,34 +117,6 @@ function assertDarwinTrust(file) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (quarantine.status === 0) {
-    fail(`${file} still has com.apple.quarantine metadata`);
+    throw new Error(`${file} still has com.apple.quarantine metadata`);
   }
-}
-
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: root,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    ...options,
-  });
-  if (result.error) {
-    fail(`${command} ${args.join(" ")} failed to start: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-    fail(`${command} ${args.join(" ")} failed with exit ${result.status}${output ? `\n${output}` : ""}`);
-  }
-  return result;
-}
-
-function assertIncludes(text, expected, label) {
-  if (!text.includes(expected)) {
-    fail(`${label} must include ${JSON.stringify(expected)}, got:\n${text}`);
-  }
-}
-
-function fail(message) {
-  console.error(message);
-  process.exit(1);
 }

@@ -3,7 +3,7 @@
 Shelly is built from `PLAN.md`. Keep implementation, tests, and docs synchronized with that plan. If implementation reality conflicts with the plan, update `PLAN.md` in the same change before continuing.
 
 By contributing to Shelly, you license your contribution under
-AGPL-3.0-or-later and the Apple App Store distribution additional permission in
+AGPL-3.0-or-later and the app-store distribution additional permission in
 `NOTICE`.
 
 ## Build
@@ -38,7 +38,9 @@ For release-milestone readiness, use the `Required Local Checks` section in
 
 - Stream raw PTY bytes, not cell-grid diffs.
 - Preserve arbitrary command support.
-- Reject session creation and killing from non-local clients.
+- Mobile session create is shell-only: the daemon ignores mobile-supplied
+  commands, working directories, and environments. Mobile clients may kill
+  sessions but never choose commands or emit agent-state events.
 - Keep the Rust host core narrow and the mobile UI native.
 - Keep daemon telemetry opt-in. Relay telemetry must be aggregate-only.
 - npm is the only v1 desktop install/update path.

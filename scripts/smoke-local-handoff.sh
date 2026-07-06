@@ -7,11 +7,34 @@ daemon_pid=""
 daemon_pid2=""
 subscribe_pid=""
 relay_pid=""
+pair_pid=""
+pairtest_pid=""
+pair_code_pid=""
+pairtest_code_pid=""
 host_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
 host_rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
 runtime_panic_pattern='thread .+ panicked|panicked at|task [0-9]+ was cancelled'
 
 cleanup() {
+  # Kill the pair/pair-test children before the daemons: `shelly pair` blocks on
+  # fifo stdin after printing 'approve?', so it never exits on its own if the
+  # script fails mid-flow.
+  if [[ -n "$pair_pid" ]]; then
+    kill "$pair_pid" 2>/dev/null || true
+    wait "$pair_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$pairtest_pid" ]]; then
+    kill "$pairtest_pid" 2>/dev/null || true
+    wait "$pairtest_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$pair_code_pid" ]]; then
+    kill "$pair_code_pid" 2>/dev/null || true
+    wait "$pair_code_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$pairtest_code_pid" ]]; then
+    kill "$pairtest_code_pid" 2>/dev/null || true
+    wait "$pairtest_code_pid" 2>/dev/null || true
+  fi
   if [[ -n "$daemon_pid" ]]; then
     kill "$daemon_pid" 2>/dev/null || true
     wait "$daemon_pid" 2>/dev/null || true
@@ -368,7 +391,9 @@ fi
 
 printf 'y\n' >&3
 wait "$pair_pid"
+pair_pid=""
 wait "$pairtest_pid"
+pairtest_pid=""
 pair_end_s="$(date +%s)"
 pair_duration_s=$((pair_end_s - pair_start_s))
 if (( pair_duration_s > 15 )); then
@@ -441,7 +466,9 @@ fi
 
 printf 'y\n' >&4
 wait "$pair_code_pid"
+pair_code_pid=""
 wait "$pairtest_code_pid"
+pairtest_code_pid=""
 
 if ! grep -q '^paired with daemon ' "$tmp/pairtest-code.log"; then
   echo "typed-code pair-test did not pair through the relay rendezvous" >&2

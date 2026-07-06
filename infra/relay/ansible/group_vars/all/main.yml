@@ -23,7 +23,7 @@ shelly_iroh_relay_upstream: "http://{{ shelly_iroh_relay_http_addr }}"
 shelly_iroh_relay_metrics_addr: 127.0.0.1:9091
 shelly_iroh_relay_cert_dir: /var/lib/shelly/acme
 shelly_iroh_relay_hostname: "relay.shelly.sh"
-shelly_iroh_relay_contact_email: "jigyanshu15@gmail.com"
+shelly_iroh_relay_contact_email: "ops@shelly.sh"
 shelly_iroh_relay_staging: "false"
 shelly_iroh_relay_http_only: "true"
 shelly_caddy_acme_email: "{{ shelly_iroh_relay_contact_email }}"

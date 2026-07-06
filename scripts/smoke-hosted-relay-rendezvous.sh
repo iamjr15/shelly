@@ -69,8 +69,15 @@ export XDG_STATE_HOME="$tmp/state"
 export CARGO_HOME="$host_cargo_home"
 export RUSTUP_HOME="$host_rustup_home"
 export SHELLY_RELAY_CONTROL_URL="$relay_control_url"
-export SHELLY_IROH_SECRET_KEY_B64="${SHELLY_IROH_SECRET_KEY_B64:-BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU}"
-export SHELLY_RELAY_SIGNING_KEY_B64="${SHELLY_RELAY_SIGNING_KEY_B64:-BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc}"
+# Throwaway smoke identities, not secrets: this smoke talks to a real hosted
+# relay, so generate a fresh random daemon identity/signing key per run instead
+# of a committed constant. Env overrides remain for reproducibility. The daemon
+# decodes these as unpadded standard base64 (32 bytes).
+random_key_b64() {
+  head -c 32 /dev/urandom | base64 | tr -d '=\n'
+}
+export SHELLY_IROH_SECRET_KEY_B64="${SHELLY_IROH_SECRET_KEY_B64:-$(random_key_b64)}"
+export SHELLY_RELAY_SIGNING_KEY_B64="${SHELLY_RELAY_SIGNING_KEY_B64:-$(random_key_b64)}"
 export SHELLY_SCROLLBACK_ENCRYPTION_ENABLED=false
 export PATH="$tmp/bin:$PATH"
 

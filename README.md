@@ -32,7 +32,7 @@ together, with native binaries for macOS (Apple Silicon and Intel) and Linux
 (x64 and arm64). Desktop distribution is npm-only by design — no Homebrew,
 `curl | sh`, or `cargo install`.
 
-Until the first npm release is published you can build from source:
+You can also build from source:
 
 ```sh
 cargo build --release --workspace
@@ -144,11 +144,12 @@ when updating the Android app and desktop at different times.
 
 ## Project status
 
-Shelly is approaching its v1.0 release. The Android client is active; the
-iOS client is parked source, deferred until after v1 ([`FUTURE.md`](FUTURE.md)
-tracks what comes later). Publishing to npm and the Play Store, production
-relay infrastructure, and physical-device release testing are tracked in
-[`PLAN.md`](PLAN.md) and [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+Shelly 1.0.x is released: the desktop CLI and daemon ship on npm as
+`shellykit`, and releases are cut from tags on `main`. The Android client is
+active with Play Store submission in progress; the iOS client is parked
+source, deferred until after v1 ([`FUTURE.md`](FUTURE.md) tracks what comes
+later). The v1 scope contract lives in [`PLAN.md`](PLAN.md) and the release
+and relay operations surface in [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
 ## Development
 

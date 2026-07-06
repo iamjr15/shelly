@@ -44,9 +44,9 @@ scripts/smoke-local-handoff.sh
 The smoke starts an isolated daemon, creates CLI-owned `claude`, `bash`, and
 `vim` sessions, verifies iroh rejects mismatched protocol versions and
 `LocalCli` handshakes, pairs a simulated mobile client through explicit desktop
-approval, attaches over iroh, sends mobile-originated input, rejects mobile
-session create/kill attempts, removes the device, and verifies daemon restart
-restore.
+approval, attaches over iroh, sends mobile-originated input, verifies mobile
+shell-only session create and kill succeed while mobile agent-state events are
+rejected, removes the device, and verifies daemon restart restore.
 
 The simulated mobile client is intentionally feature-gated. The smoke builds
 `shelly-cli` with `shelly-cli/test-client`; production CLI builds leave
@@ -95,6 +95,14 @@ node scripts/smoke-npm-local-install.mjs
 It packs the meta package plus the matching platform package, installs them into
 an isolated project, verifies `shelly` and `shellyd` entrypoints,
 and checks that Darwin binaries remain signed and unquarantined.
+
+## Open-Source Notices
+
+`docs/open-source-notices.json` is a curated list of bundled third-party
+components, not an automated dependency scan; when you add or remove a bundled
+component, update the JSON by hand. `node scripts/generate-oss-notices.mjs`
+regenerates the Android licenses screen from it, and CI runs the same script
+with `--check` to fail when the generated screen is stale.
 
 ## Relay
 

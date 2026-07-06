@@ -7,14 +7,18 @@ reporting, use the root [`SECURITY.md`](../SECURITY.md).
 
 Shelly v1 has four trust zones:
 
-- **Local desktop CLI**: trusted to create and kill sessions because it runs as
-  the same user as `shellyd` over the hardened Unix socket.
+- **Local desktop CLI**: trusted to create sessions running arbitrary commands
+  and to kill sessions because it runs as the same user as `shellyd` over the
+  hardened Unix socket.
 - **Daemon**: owns PTYs, device registry, scrollback, pairing approval, local
   state inference, relay-signing keys, and push-token registration dispatch.
 - **Paired mobile devices**: authenticated by long-lived Ed25519/iroh identity
   after pairing (scanning the QR ticket or typing the 5-character code). They can
-  list, subscribe, attach, send input, resize, detach, and register/unregister
-  push tokens. They cannot create sessions, kill sessions, or specify commands.
+  list, subscribe, create shell-only sessions, kill sessions, attach, send input,
+  resize, detach, and register/unregister push tokens. They cannot specify
+  commands: the daemon ignores any mobile-supplied command, working directory, or
+  environment and spawns the user's default shell. They also cannot administer
+  pairing, list/remove devices, or emit agent-state events.
 - **Relay**: sees daemon node IDs, daemon relay public keys, push tokens, opaque
   session hashes, source IPs, aggregate metrics, provider delivery status, and —
   only on the typed-code pairing path — short pairing codes mapped to opaque
@@ -32,7 +36,9 @@ The daemon control socket is local-only and user-owned:
   symlink.
 - Socket file mode is `0600`.
 - IPC uses length-prefixed bincode and rejects `CONTRACT_VERSION` mismatches.
-- `CreateSession` and `KillSession` are authorized only for `LocalCli`.
+- `CreateSession` and `KillSession` are authorized for `LocalCli` and for paired
+  mobile identities on the iroh transport; mobile creates are forced to the
+  user's default shell. `AgentStateEvent` is accepted from `LocalCli` only.
 
 ## Pairing And Device Auth
 
@@ -130,7 +136,11 @@ pnpm test:relay-tls
 pnpm test:relay-otlp
 ```
 
-The remaining release gates require real provider credentials, signed release
-artifacts, hosted relay deployment, npm provenance visibility, and physical
-Android devices. Notarized Mac app/pkg artifacts remain optional and deferred;
-the npm desktop path uses ad-hoc-signed CLI/daemon artifacts.
+Release verification additionally requires real provider credentials, signed
+release artifacts, hosted relay deployment, npm provenance visibility, and
+physical Android devices — including confirming that FCM payloads carry only
+generic lock-screen copy with no terminal data, and that `shelly devices remove`
+revokes real devices. FCM service-account JSON lives only on the relay host (the
+same boundary applies to the APNs `.p8` when the deferred iOS client resumes).
+Notarized Mac app/pkg artifacts remain optional and deferred; the npm desktop
+path uses ad-hoc-signed CLI/daemon artifacts.

@@ -38,10 +38,9 @@ The split exists so `PLAN.md` stays focused on what's actually being implemented
 
 - **Voice mode** — full-duplex via Whisper Realtime. Push-to-talk + ambient listening modes. Direct voice → agent input, streamed back as TTS with the option to read agent responses aloud.
 - **Teams** — shared session inboxes (whole team sees what the agent is doing), RBAC (who can attach to which agent), audit logs (every input + state change), SSO via OAuth providers.
-- **Cloud-sandbox option** — E2B integration. Users without their own host machine spin up an ephemeral Firecracker microVM with Claude Code pre-installed. Pay-per-minute compute charged through the Pro tier.
+- **Cloud-sandbox option** — E2B integration. Users without their own host machine spin up an ephemeral Firecracker microVM with Claude Code pre-installed.
 - **Hosted sandbox option** — user-facing packaging for the cloud-sandbox path above. v1 stays laptop-hosted; no hosted execution environment ships in the initial release.
 - **Plugin protocol** — formal extension API for third-party agents, custom UI panels, integrations. Probably WASM-based for cross-platform safety.
-- **Billing and paid Pro tier** ($5–10/mo): cloud sandbox credits, longer history retention (30 days vs 7), multi-device sync of pins/settings, priority push, organization workspace.
 
 ## 5. Long-term (12+ months out)
 
@@ -52,10 +51,8 @@ The split exists so `PLAN.md` stays focused on what's actually being implemented
 
 - **Native desktop GUI apps on macOS, Linux, or Windows.** The CLI + TUI is the desktop story. Phone is the GUI story. Adding a Mac/Linux/Windows GUI app would triple the maintained surface area without addressing a real user pain — desktop users already have their terminal. (Note: the **CLI** itself runs on all three desktop platforms; this is specifically about a SwiftUI/GTK/libcosmic/WinUI **GUI** app.)
 - **IDE or editor-overlay surfaces.** Shelly v1 is a universal terminal handoff product, not an IDE or editor overlay. Any IDE-specific surface would be a separate product decision after the terminal contract has real-device mileage.
-- **Homebrew tap, `curl | sh`, `cargo install`, `winget`, `scoop`, `apt` distribution.** npm-only by design. Discovery is solved via content marketing and integrations, not registry SEO.
+- **Homebrew tap, `curl | sh`, `cargo install`, `winget`, `scoop`, `apt` distribution.** npm-only by design.
 - **Mac Catalyst** for any future Mac surface. If a Mac GUI is ever built (which is out of scope per above), it would be fully native SwiftUI, not Catalyst.
-- **Zulip community** — Discord has the bigger indie-dev reach.
-- **Open Collective, Patreon** — GitHub Sponsors only.
 - **`napi-rs` distribution** — wrong abstraction for non-addon CLIs.
 - **cargo-dist's npm installer** — uses the deprecated postinstall-download pattern that esbuild abandoned in 2021.
 - **wasm-only fallback** — 10x slower per esbuild's docs; useless for an interactive CLI.

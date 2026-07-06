@@ -3,8 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
-const root = path.resolve(new URL("..", import.meta.url).pathname);
+const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const output = path.resolve(root, process.argv[2] ?? "docs/assets/shelly-demo-v1.mp4");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-demo-"));
 

@@ -4,8 +4,9 @@ import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const repo = path.resolve(new URL("..", import.meta.url).pathname);
+const repo = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const traceTimeoutMs = Number.parseInt(process.env.SHELLY_OTLP_SMOKE_TIMEOUT_MS ?? "15000", 10);
 const sensitiveSentinels = [
   "shelly-secret-terminal-bytes",

@@ -12,8 +12,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       <h1>Desktop first, phone second.</h1>
       <p class="lede">
         Shelly v1 distributes the desktop CLI and daemon through npm only.
-        Mobile apps attach to sessions created on the desktop; they do not create sessions
-        or choose commands.
+        Paired mobile apps can attach to desktop sessions, create shell-only
+        sessions, and kill sessions; they cannot choose commands.
       </p>
 
       <h2>npm install</h2>
@@ -24,11 +24,11 @@ shelly
 shelly refactoringjob
 shelly new --name shell bash</code></pre>
       <p>
-        `shelly` with no subcommand creates and attaches a default `claude` session
-        with a generated one-word name, even when other sessions already exist.
-        `shelly refactoringjob` attaches that named session if it exists, or creates
-        it as a default `claude` PTY. Mobile shows the same daemon session names
-        in its dashboard.
+        `shelly` with no subcommand creates and attaches a shell-backed session
+        (the user's `$SHELL`) with a generated one-word name, even when other
+        sessions already exist. `shelly refactoringjob` attaches that named session
+        if it exists, or creates it as a shell-backed PTY. Mobile shows the same
+        daemon session names in its dashboard.
       </p>
 
       <h2>Source build</h2>

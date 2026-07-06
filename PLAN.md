@@ -1,11 +1,9 @@
 # Shelly v1 Plan
 
-**Status**: local source hardening verified against local gates; manual release
-gates remain
-**Target**: v1.0 open-source release
-**Current boundary**: iOS implementation is deferred; physical Android
-release-device testing, store submission, final npm publish, and final signing
-remain manual or deferred until explicitly resumed.
+**Status**: shipped — 1.0.x is released on npm; this file is the maintained v1
+scope contract
+**Current boundary**: iOS implementation is deferred; Play Store submission and
+physical Android release-device testing remain operator-owned.
 
 This file is the v1 implementation contract. `FUTURE.md` is the boundary for
 deferred work. If source behavior and this plan diverge, update the code or this
@@ -317,16 +315,15 @@ direct `adb` screenshots/logcat inspection where needed.
 
 ## 12. Manual Release Gates
 
-These remain manual and are run deliberately by a maintainer, not by CI:
+Each release still involves deliberate maintainer steps outside CI:
 
-- real npm publish of `shellykit`
+- npm publish of `shellykit` through the release workflows
 - npm provenance confirmation
 - GitHub release finalization
 - production relay credential deployment
 - FCM real-device delivery
 - physical Android release-device pass
 - Android release signing and Play upload
-- DNS and public site final cutover
 
 The codebase should make these steps straightforward, but the final account,
 credential, and physical-device steps are operator-owned.

@@ -6,6 +6,8 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 
+import { assertExecutablePackFile } from "./lib/npm-test-util.mjs";
+
 const root = process.cwd();
 const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
 const platforms = [
@@ -130,12 +132,6 @@ function assertMetaPackagePack() {
 
 function filesByPath(packs) {
   return new Map((packs[0]?.files || []).map((file) => [file.path, file]));
-}
-
-function assertExecutablePackFile(files, filePath, label) {
-  const entry = files.get(filePath);
-  assert(entry, `${label} is missing ${filePath}`);
-  assert((entry.mode & 0o111) !== 0, `${label} ${filePath} is not executable`);
 }
 
 function writeExecutable(file, contents) {

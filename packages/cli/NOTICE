@@ -4,20 +4,21 @@ Shelly Notice
 Shelly is licensed under AGPL-3.0-or-later unless a file or bundled
 third-party notice says otherwise.
 
-Additional Permission for Apple App Store Distribution
------------------------------------------------------
+Additional Permission for App Store Distribution
+------------------------------------------------
 
-For Shelly iOS application binaries distributed by the Shelly maintainers
+For Shelly application binaries distributed by the Shelly maintainers
+through Google Play (including Play App Signing and Play testing tracks) or
 through Apple TestFlight or the Apple App Store, the Shelly copyright holders
 grant the additional permission, under GNU AGPLv3 section 7, to convey those
-unmodified binaries through Apple's standard TestFlight/App Store distribution
-mechanisms, including Apple's app signing, platform terms, and installation
-controls, provided recipients remain able to obtain the Corresponding Source
-under AGPL-3.0-or-later from:
+unmodified binaries through the store's standard distribution mechanisms,
+including the store's app signing, platform terms, and installation controls,
+provided recipients remain able to obtain the Corresponding Source under
+AGPL-3.0-or-later from:
 
 https://github.com/iamjr15/shelly
 
-This additional permission applies only to Shelly iOS binaries distributed
-by the Shelly maintainers. It does not waive AGPL source-availability
+This additional permission applies only to Shelly binaries distributed by
+the Shelly maintainers. It does not waive AGPL source-availability
 obligations, permit relicensing of modified versions, or apply to third-party
 components except where their own licenses allow.

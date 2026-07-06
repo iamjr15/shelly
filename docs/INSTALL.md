@@ -1,6 +1,6 @@
 # Install
 
-The v1 production install path will be:
+Install the desktop CLI and daemon from npm:
 
 ```sh
 npm i -g shellykit
@@ -16,11 +16,9 @@ Before a live test, run `shelly doctor` to check the local CLI, daemon binary,
 Unix-socket hardening/protocol handshake, visible sessions, telemetry setting, and
 scrollback-encryption setting.
 
-The npm package scaffold is implemented under `packages/`. The unscoped package
-family is already reserved on npm with operator-controlled `0.0.0` placeholder
-publishes, but the real Changesets-managed `1.0.0` packages are not released
-until signed release artifacts, provenance, and release credentials are ready.
-For current local development:
+The npm packages live under `packages/`; `shellykit` is the meta package and
+pulls the matching platform package through optional dependencies. When
+developing from source, run the debug binaries directly instead:
 
 ```sh
 cargo build --workspace
@@ -53,7 +51,7 @@ Current remote-pairing development flow:
 scripts/smoke-local-handoff.sh
 ```
 
-The smoke script starts an isolated daemon, creates an explicit `claude` session through a temp stub command, a desktop `bash` session, and a `vim` TUI session, verifies the iroh transport rejects a mismatched protocol version before pairing, verifies iroh rejects `LocalCli` before `Welcome`, pairs the hidden iroh client through explicit desktop approval, lists and attaches to those sessions, starts a mobile session-list subscription before creating another desktop session, verifies that subscribed session appears, sends mobile-originated input into `bash`, `claude`, and the subscribed desktop-created session, checks that switched sessions do not receive each other's output markers, verifies the paired mobile client cannot create sessions, kill sessions, or emit agent-state hook events, removes the simulated device, verifies the reused identity is unauthorized, restarts the daemon, and checks last-known session restore. The iroh transport accepts mobile client kinds only; desktop CLI clients use the local Unix socket. `shelly pair` (or `shelly pair`) starts the daemon if needed, prints a compact high-contrast terminal QR plus the 5-character code when the whole QR fits the current terminal pane, and requires explicit `y` approval before a device is stored. If the pane is too small, it omits the oversized QR and keeps the typed code visible. The active pairing code is invalidated after use.
+The smoke script starts an isolated daemon, creates an explicit `claude` session through a temp stub command, a desktop `bash` session, and a `vim` TUI session, verifies the iroh transport rejects a mismatched protocol version before pairing, verifies iroh rejects `LocalCli` before `Welcome`, pairs the hidden iroh client through explicit desktop approval, lists and attaches to those sessions, starts a mobile session-list subscription before creating another desktop session, verifies that subscribed session appears, sends mobile-originated input into `bash`, `claude`, and the subscribed desktop-created session, checks that switched sessions do not receive each other's output markers, verifies the paired mobile client can create a shell-only session and kill a session but cannot emit agent-state hook events, removes the simulated device, verifies the reused identity is unauthorized, restarts the daemon, and checks last-known session restore. The iroh transport accepts mobile client kinds only; desktop CLI clients use the local Unix socket. `shelly pair` starts the daemon if needed, prints a compact high-contrast terminal QR plus the 5-character code when the whole QR fits the current terminal pane, and requires explicit `y` approval before a device is stored. If the pane is too small, it omits the oversized QR and keeps the typed code visible. The active pairing code is invalidated after use.
 
 Optional local daemon service install while developing:
 
@@ -124,7 +122,7 @@ SHELLY_RELAY_CONTROL_URL=http://127.0.0.1:8443 target/debug/shellyd
 
 The relay gateway persists daemon keys, push-token ownership, and recent replay nonces in SQLite, then validates daemon signatures and privacy-preserving push requests locally. Set `SHELLY_RELAY_DB_PATH=off` for a purely in-memory local smoke test. Real FCM delivery requires relay-only Firebase credentials and physical-device verification, so it is not part of the local install flow. APNs delivery is parked with the deferred iOS path.
 
-The production relay deploy scaffold lives under `infra/relay/ansible`. Override `shelly_relay_binary` when running the playbook. The default group variables set the HTTPS control listener to `0.0.0.0:8443`, the control metrics listener to `127.0.0.1:9090`, the relay OTLP endpoint to Honeycomb, the trace sample rate to `0.01`, and the SQLite path to `/var/lib/shelly/relay.db`. The same binary is also deployed as `shelly-iroh-relay.service` with `SHELLY_RELAY_MODE=iroh-relay`, ACME-backed HTTPS on `0.0.0.0:443`, HTTP challenge/probe handling on `0.0.0.0:80`, QUIC address discovery on `0.0.0.0:7842`, and iroh relay metrics on `127.0.0.1:9091`. The playbook creates the relay data directory as `0700`; the relay process enforces `0600` on the SQLite database and sidecar files. Control-plane TLS cert/key paths, FCM service-account JSON, and Honeycomb API-key paths are passed to the control-plane unit via `LoadCredential` and must exist only on the relay host. FCM delivery reads `shelly_relay_fcm_credential`, uses `shelly_relay_fcm_endpoint`, and caches the Google OAuth token returned from the service-account JWT exchange.
+The production relay deploy scaffold lives under `infra/relay/ansible`. Override `shelly_relay_binary` when running the playbook. The default group variables keep both relay services loopback-only behind Caddy: the control listener on `127.0.0.1:8443`, the control metrics listener on `127.0.0.1:9090`, the trace sample rate at `0.01`, and the SQLite path at `/var/lib/shelly/relay.db`. The same binary is also deployed as `shelly-iroh-relay.service` with `SHELLY_RELAY_MODE=iroh-relay` running loopback HTTP only (`shelly_iroh_relay_http_only`) with iroh relay metrics on `127.0.0.1:9091`. Caddy terminates ACME-backed TLS for `relay.shelly.sh` on 443, routes `/v1/*` and `/healthz` to the control plane, `/metrics` to the metrics listener, and everything else to the iroh relay. The playbook creates the relay data directory as `0700`; the relay process enforces `0600` on the SQLite database and sidecar files. Control-plane TLS cert/key paths, FCM service-account JSON, and Honeycomb API-key paths are passed to the control-plane unit via `LoadCredential` and must exist only on the relay host. FCM delivery reads `shelly_relay_fcm_credential`, uses `shelly_relay_fcm_endpoint`, and caches the Google OAuth token returned from the service-account JWT exchange.
 
 Current npm packaging checks:
 
@@ -157,10 +155,9 @@ before publish. The artifact-pack test creates synthetic release artifacts
 locally so the package-preparation and dry-run behavior can be checked without
 publishing. It also proves a missing platform/target artifact directory is
 rejected before a package can accidentally receive another platform's binaries.
-The unscoped `shellykit` meta package is operator-owned, and the platform child
-package names are reserved by operator-controlled placeholder publishes. The
-remaining external npm gate is the real Changesets-managed `1.0.0` publish with
-npm provenance.
+The unscoped `shellykit` meta package and its platform child packages are
+operator-owned and published with npm provenance through the release
+workflows.
 
 `scripts/test-bun-install.mjs` packs the local Shelly meta package plus each
 v1 platform package, installs them with Bun for the four supported host tuples,
@@ -191,4 +188,4 @@ pnpm check:site
 pnpm build:site
 ```
 
-Cloudflare Pages deployment is handled by `.github/workflows/deploy-site.yml` once the `shelly.sh` domain and `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets exist.
+Cloudflare Pages deployment is handled by `.github/workflows/deploy-site.yml` using the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets.

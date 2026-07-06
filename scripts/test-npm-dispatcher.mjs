@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const metaDir = path.join(root, "packages/cli");
@@ -23,6 +23,10 @@ for (const platformCase of platformCases) {
 }
 
 verifyDispatcherSpawnError(platformCases[0]);
+
+if (process.platform !== "win32") {
+  await verifySignalPassthrough(platformCases[0]);
+}
 
 fs.rmSync(path.join(metaDir, "node_modules"), { recursive: true, force: true });
 let result = spawnSync(process.execPath, [dispatcher], {
@@ -193,6 +197,55 @@ function verifyDispatcherSpawnError({ platform, arch, key }) {
   });
   assert(result.status === 1, `${key} shellyd dispatcher should fail clearly on a non-executable native binary`);
   assert(result.stderr.includes("failed to start native binary"), `${key} shellyd dispatcher should report spawn failure`);
+}
+
+// The dispatcher must die by the child's death signal (not exit 0) so shells
+// and supervisors like launchd see faithful Ctrl+C/TERM status.
+async function verifySignalPassthrough({ platform, arch, key }) {
+  const fakePackageDir = path.join(metaDir, "node_modules", `shellykit-${key}`);
+  fs.rmSync(path.join(metaDir, "node_modules"), { recursive: true, force: true });
+  fs.mkdirSync(path.join(fakePackageDir, "bin"), { recursive: true });
+  fs.writeFileSync(
+    path.join(fakePackageDir, "package.json"),
+    JSON.stringify({ name: `shellykit-${key}`, version: "0.0.0-test" }),
+  );
+  for (const name of ["shelly", "shellyd"]) {
+    fs.writeFileSync(
+      path.join(fakePackageDir, "bin", name),
+      "#!/usr/bin/env node\nconsole.log('ready');\nsetTimeout(() => {}, 60000);\n",
+    );
+    fs.chmodSync(path.join(fakePackageDir, "bin", name), 0o755);
+  }
+
+  for (const binPath of [dispatcher, daemonDispatcher]) {
+    const name = path.basename(binPath);
+    const child = spawn(process.execPath, [binPath], {
+      cwd: root,
+      env: {
+        ...process.env,
+        SHELLY_NPM_PLATFORM: platform,
+        SHELLY_NPM_ARCH: arch,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    await new Promise((resolve, reject) => {
+      child.stdout.on("data", (chunk) => {
+        if (chunk.toString().includes("ready")) {
+          resolve();
+        }
+      });
+      child.on("error", reject);
+      child.on("exit", () => reject(new Error(`${name} dispatcher exited before its child was ready`)));
+    });
+    const [code, signal] = await new Promise((resolve) => {
+      child.on("exit", (exitCode, exitSignal) => resolve([exitCode, exitSignal]));
+      child.kill("SIGTERM");
+    });
+    assert(
+      signal === "SIGTERM" && code === null,
+      `${name} dispatcher must die by SIGTERM when its child does, got code=${code} signal=${signal}`,
+    );
+  }
 }
 
 function assert(condition, message) {

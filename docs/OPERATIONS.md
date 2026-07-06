@@ -30,20 +30,24 @@ provenance visibility.
 
 The relay infrastructure scaffold lives under `infra/lightsail` and
 `infra/relay/ansible`. The active Mumbai relay runs on AWS Lightsail as
-`dock-relay` with static IP `3.7.138.203`. Production relay deployment still
-needs operator-owned DNS/TLS and relay-only credentials.
+`dock-relay` with static IP `3.7.138.203`, behind the DNS A record
+`relay.shelly.sh` → `3.7.138.203` (DNS-only, not Cloudflare-proxied, so TLS
+terminates on the host).
 
-The committed Ansible defaults now target production for the iroh relay:
+The committed Ansible defaults describe the production topology:
 
-- the iroh relay serves ACME-issued TLS on port 443 (HTTP on 80 for the ACME
-  challenge, QUIC address discovery on 7842) using hostname `relay.shelly.sh` and
-  contact `jigyanshu15@gmail.com`. This requires a DNS **A record
-  `relay.shelly.sh` → `3.7.138.203`**, set **DNS-only (not Cloudflare-proxied)** so
-  the relay's own TLS and QUIC reach it directly. Until that record exists ACME
-  cannot issue and the iroh relay service will not come up cleanly.
-- the control plane listens on port 8443 without mandatory TLS credentials until
-  `shelly_relay_control_require_tls` and the cert/key credential paths are
-  set.
+- Caddy owns TLS. It serves ACME-issued certificates for `relay.shelly.sh` on
+  443 (HTTP on 80 for the ACME challenge and captive-portal probe) with ACME
+  contact `ops@shelly.sh`, and reverse-proxies `/v1/*` and `/healthz` to the
+  control plane, `/metrics` to the control metrics listener, and everything
+  else to the iroh relay.
+- both relay services are loopback-only backends: the control plane listens on
+  `127.0.0.1:8443` plain HTTP (`shelly_relay_control_require_tls` stays
+  `false` because it is never exposed directly), and the iroh relay runs with
+  `shelly_iroh_relay_http_only: "true"` on `127.0.0.1:8080`.
+- `shelly_relay_trust_forwarded_for` defaults to `true` because Caddy fronts
+  the control plane and overwrites `X-Forwarded-For`, so rate-limit identity
+  uses the real client hop.
 - FCM, APNs, and Honeycomb credentials are optional; missing files disable those
   integrations instead of preventing the relay from starting.
 
@@ -58,7 +62,8 @@ Abuse/cost posture: the iroh relay forwards encrypted QUIC for any NodeID —
 pairing and identity are enforced end-to-end at the app layer, so an open relay
 URL does not weaken authentication; the practical risk is bandwidth/connection
 abuse. Bound it at the Lightsail firewall (restrict and monitor inbound on
-`80/443/7842`) and watch the relay's aggregate metrics on `127.0.0.1:9091`.
+`80/443`; `7842/udp` matters only if the direct iroh TLS path is ever enabled)
+and watch the relay's aggregate metrics on `127.0.0.1:9091`.
 Per-client iroh-level rate limits can be added if abuse appears.
 
 `.github/workflows/deploy-relay.yml` deploys the relay automatically from
@@ -110,21 +115,19 @@ Relay-only secrets must stay on the relay host:
 Do not commit those files or copy them into CLI, daemon, npm package, mobile, or
 site directories.
 
-When DNS is cut over to `dock-relay`, switch
-`shelly_iroh_relay_http_only` to `false`, set
-`shelly_iroh_relay_hostname` and `shelly_iroh_relay_contact_email`, and
-enable Terraform's `enable_iroh_tls_ports` variable before opening 443/tcp and
-7842/udp. For the control plane, install the TLS cert/key under
-`/etc/shelly/secrets/`, set their Ansible paths, and set
-`shelly_relay_control_require_tls` to `true`.
+Serving the iroh relay's own TLS directly (bypassing Caddy) is not the deployed
+model; if it is ever needed, switch `shelly_iroh_relay_http_only` to `false`,
+enable Terraform's `enable_iroh_tls_ports` variable, and open 443/tcp and
+7842/udp to the relay process instead of Caddy.
 
 APNs credentials and environment are only configured when the deferred iOS
 client resumes; Ansible omits the APNs env vars and `apns.p8` credential while
 `shelly_relay_apns_team_id` is empty.
 
-`SHELLY_RELAY_TRUST_FORWARDED_FOR` is off by default, so rate-limit identity
-uses the socket peer address. Set it only when the relay sits behind a trusted
-proxy that overwrites `X-Forwarded-For`.
+`SHELLY_RELAY_TRUST_FORWARDED_FOR` is off in the relay binary's own default,
+which keys rate limits on the socket peer address. Only set it — as the Ansible
+defaults do — when the relay sits behind a trusted proxy that overwrites
+`X-Forwarded-For`.
 
 ## Android Release
 

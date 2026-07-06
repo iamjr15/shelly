@@ -6,6 +6,14 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
+import {
+  assertIncludes,
+  cleanPackageManagerEnv,
+  packPackage,
+  requireExecutable,
+  run,
+} from "./lib/npm-test-util.mjs";
+
 const root = process.cwd();
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-bun-install-"));
@@ -30,11 +38,11 @@ try {
 
   const packDir = path.join(tempRoot, "packs");
   fs.mkdirSync(packDir, { recursive: true });
-  const metaPack = packPackage(path.join(root, "packages", "cli"), packDir);
+  const metaPack = packPackage(npm, path.join(root, "packages", "cli"), packDir, { cwd: root });
   const platformPacks = new Map(
     cases.map((testCase) => [
       testCase.key,
-      packPackage(path.join(root, "packages", `cli-${testCase.key}`), packDir),
+      packPackage(npm, path.join(root, "packages", `cli-${testCase.key}`), packDir, { cwd: root }),
     ]),
   );
 
@@ -174,28 +182,6 @@ function runCase({ platform, arch, key }, metaPack, platformPack) {
   }
 }
 
-function packPackage(packageDir, packDir) {
-  const result = run(npm, ["pack", packageDir, "--pack-destination", packDir, "--json"], {
-    cwd: root,
-    env: cleanPackageManagerEnv(process.env),
-  });
-  let packs;
-  try {
-    packs = JSON.parse(result.stdout);
-  } catch (error) {
-    fail(`could not parse npm pack JSON for ${packageDir}: ${error.message}\n${result.stdout}`);
-  }
-  const filename = packs?.[0]?.filename;
-  if (!filename) {
-    fail(`npm pack did not report a tarball filename for ${packageDir}`);
-  }
-  const tarball = path.join(packDir, filename);
-  if (!fs.existsSync(tarball)) {
-    fail(`npm pack tarball missing: ${tarball}`);
-  }
-  return tarball;
-}
-
 function isolatedEnv({ platform, arch, homeDir, runtimeDir, configDir, stateDir }) {
   return cleanPackageManagerEnv({
     ...process.env,
@@ -208,32 +194,6 @@ function isolatedEnv({ platform, arch, homeDir, runtimeDir, configDir, stateDir 
     SHELLY_NPM_ARCH: arch,
     SHELLY_SCROLLBACK_ENCRYPTION_ENABLED: "false",
   });
-}
-
-function cleanPackageManagerEnv(env) {
-  const cleaned = { ...env };
-  for (const key of [
-    "npm_config_supported_architectures",
-    "npm_config_npm_globalconfig",
-    "npm_config_verify_deps_before_run",
-    "npm_config__jsr_registry",
-  ]) {
-    delete cleaned[key];
-  }
-  return cleaned;
-}
-
-function requireExecutable(file) {
-  if (!fs.existsSync(file)) {
-    fail(`expected executable is missing: ${file}`);
-  }
-  const stat = fs.statSync(file);
-  if (!stat.isFile() && !stat.isSymbolicLink?.()) {
-    fail(`expected a file executable, got something else: ${file}`);
-  }
-  if ((stat.mode & 0o111) === 0) {
-    fail(`expected executable bit on ${file}`);
-  }
 }
 
 function isJsFallback(file) {
@@ -309,31 +269,6 @@ function assertMachOArch(file, expectedArch, label) {
 function writeExecutable(file, contents) {
   fs.writeFileSync(file, contents);
   fs.chmodSync(file, 0o755);
-}
-
-function run(command, args, options) {
-  const result = spawnSync(command, args, {
-    ...options,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (result.error?.code === "ENOENT") {
-    fail(`${command} is required on PATH`);
-  }
-  if (result.error) {
-    fail(`${command} failed to start: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    const rendered = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-    fail(`${command} ${args.join(" ")} failed with exit ${result.status}${rendered ? `\n${rendered}` : ""}`);
-  }
-  return result;
-}
-
-function assertIncludes(text, expected, label) {
-  if (!text.includes(expected)) {
-    fail(`${label} must include ${JSON.stringify(expected)}, got:\n${text}`);
-  }
 }
 
 function fail(message) {

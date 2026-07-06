@@ -57,10 +57,12 @@ to stop all current sessions.
 completion script for the `shelly` command.
 
 The default desktop command is the user's shell, and arbitrary PTY commands are
-supported. Mobile clients can pair, list sessions, attach, send input, resize,
-detach, and register push tokens. Mobile clients cannot create or kill sessions.
-The desktop CLI talks to the daemon over the local Unix socket; iroh is reserved
-for paired mobile clients.
+supported. Mobile clients can pair, list sessions, create (shell only: the
+daemon ignores any requested command and spawns your default shell), kill,
+attach, send input, resize, detach, and register push tokens. Create and kill
+are authorized by the paired device identity in the daemon, and only
+agent-state events stay desktop-CLI-only. The desktop CLI talks to the daemon
+over the local Unix socket; iroh is reserved for paired mobile clients.
 
 ## Package Layout
 
