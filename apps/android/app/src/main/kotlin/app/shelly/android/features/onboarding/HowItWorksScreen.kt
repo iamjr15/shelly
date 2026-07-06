@@ -3,13 +3,14 @@ package app.shelly.android.features.onboarding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import app.shelly.android.ui.components.ShellyScreen
 
 @Composable
 fun HowItWorksScreen(
     onContinue: () -> Unit = {},
     onSkip: () -> Unit = {},
 ) {
-    OnboardingShell(
+    ShellyScreen(
         hero = {
             OnboardingHero(
                 eyebrow = "WHAT HAPPENS THE MOMENT\nYOU PAIR A LAPTOP",

@@ -42,14 +42,11 @@ object FcmTokenRegistrar {
             .apply()
     }
 
-    suspend fun currentToken(context: Context): String? {
-        val appContext = context.applicationContext
-        if (FirebaseApp.getApps(appContext).isEmpty()) {
-            return null
+    suspend fun currentToken(context: Context, enableAutoInit: Boolean = false): String? {
+        val messaging = messagingOrNull(context) ?: return null
+        if (enableAutoInit) {
+            messaging.isAutoInitEnabled = true
         }
-
-        val messaging = FirebaseMessaging.getInstance()
-        messaging.isAutoInitEnabled = true
 
         return suspendCancellableCoroutine { continuation ->
             val task = messaging.token
@@ -60,6 +57,30 @@ object FcmTokenRegistrar {
                 continuation.resume(if (completed.isSuccessful) completed.result else null)
             }
         }
+    }
+
+    fun restorePrivacyDefault(context: Context) {
+        messagingOrNull(context)?.isAutoInitEnabled = false
+    }
+
+    suspend fun deleteCurrentToken(context: Context) {
+        val messaging = messagingOrNull(context) ?: return
+        suspendCancellableCoroutine { continuation ->
+            val task = messaging.deleteToken()
+            task.addOnCompleteListener {
+                if (continuation.isActive) {
+                    continuation.resume(Unit)
+                }
+            }
+        }
+    }
+
+    private fun messagingOrNull(context: Context): FirebaseMessaging? {
+        val appContext = context.applicationContext
+        if (FirebaseApp.getApps(appContext).isEmpty()) {
+            return null
+        }
+        return FirebaseMessaging.getInstance()
     }
 
     private fun Context.pushTokenPreferences() =

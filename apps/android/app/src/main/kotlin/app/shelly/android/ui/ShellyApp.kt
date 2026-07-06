@@ -1,5 +1,9 @@
 package app.shelly.android.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -7,6 +11,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -28,6 +33,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,10 +47,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.shelly.android.BuildConfig
 import app.shelly.android.core.AndroidBiometricGate
 import app.shelly.android.core.ConnectionState
 import app.shelly.android.core.MobileSession
 import app.shelly.android.core.MobileTelemetry
+import app.shelly.android.core.PairedDaemonRecord
 import app.shelly.android.core.ShellyAlertMessage
 import app.shelly.android.core.ShellyUiState
 import app.shelly.android.core.ShellyViewModel
@@ -70,6 +79,7 @@ import app.shelly.android.features.settings.AboutScreen
 import app.shelly.android.features.settings.AppearanceScreen
 import app.shelly.android.features.settings.DaemonDetailScreen
 import app.shelly.android.features.settings.LicensesScreen
+import app.shelly.android.features.settings.licenseDependencyCount
 import app.shelly.android.features.settings.NotificationsScreen
 import app.shelly.android.features.settings.OpenSourceLicensesScreen
 import app.shelly.android.features.settings.SecurityScreen
@@ -79,6 +89,9 @@ import app.shelly.android.ui.theme.ShellyMotion
 import app.shelly.android.ui.theme.ShellyTheme
 import kotlinx.coroutines.launch
 import kotlin.math.max
+
+private const val SHELLY_REPOSITORY_URL = "https://github.com/iamjr15/shelly"
+private const val PROTOCOL_VERSION_FALLBACK = "v3"
 
 @Composable
 fun ShellyApp(
@@ -94,16 +107,21 @@ fun ShellyApp(
     val lifecycleOwner = LocalLifecycleOwner.current
     val systemDark = isSystemInDarkTheme()
 
-    var onboarded by remember { mutableStateOf(uiPrefs.readOnboarded()) }
-    var onboardingStack by remember { mutableStateOf(listOf(ShellyOnboardingStep.Welcome)) }
+    var onboarded by rememberSaveable { mutableStateOf(uiPrefs.readOnboarded()) }
+    var onboardingStack by rememberSaveable(
+        stateSaver = listSaver<List<ShellyOnboardingStep>, String>(
+            save = { stack -> stack.map(ShellyOnboardingStep::name) },
+            restore = { names -> names.map(ShellyOnboardingStep::valueOf) },
+        ),
+    ) { mutableStateOf(listOf(ShellyOnboardingStep.Welcome)) }
     val settings = remember(uiPrefs) { ShellySettings(uiPrefs) }
-    var route by remember { mutableStateOf(ShellyRoute.Sessions) }
-    var commandPaletteVisible by remember { mutableStateOf(false) }
-    var searchRequestToken by remember { mutableStateOf(0) }
-    var showUnpairSheet by remember { mutableStateOf(false) }
-    var notificationPromptVisible by remember { mutableStateOf(false) }
-    var notificationPromptSeenThisLaunch by remember { mutableStateOf(false) }
-    var telemetryEnabled by remember { mutableStateOf(MobileTelemetry.isDiagnosticsEnabled(context)) }
+    var route by rememberSaveable { mutableStateOf(ShellyRoute.Sessions) }
+    var commandPaletteVisible by rememberSaveable { mutableStateOf(false) }
+    var searchRequestToken by rememberSaveable { mutableStateOf(0) }
+    var showUnpairSheet by rememberSaveable { mutableStateOf(false) }
+    var notificationPromptVisible by rememberSaveable { mutableStateOf(false) }
+    var notificationPromptSeenThisLaunch by rememberSaveable { mutableStateOf(false) }
+    var telemetryEnabled by rememberSaveable { mutableStateOf(MobileTelemetry.isDiagnosticsEnabled(context)) }
     var unlockUnavailableMessage by remember { mutableStateOf(biometricGate.unlockUnavailableMessage()) }
 
     val activeTerminalSession = state.activeTerminalSessionId?.let { id ->
@@ -129,7 +147,7 @@ fun ShellyApp(
     }
 
     LaunchedEffect(onboarded) {
-        if (onboarded) {
+        if (onboarded && !state.unlocked) {
             viewModel.setUnlocked(biometricGate.unlock("Unlock Shelly"))
         }
     }
@@ -192,9 +210,15 @@ fun ShellyApp(
             ),
         ) {
             Box(Modifier.fillMaxSize().background(c.screen)) {
+                val motionEnabled = ShellyTheme.motionEnabled
                 AnimatedContent(
                     targetState = surface,
-                    transitionSpec = { shellyHorizontalTransform(targetState.motionDepth >= initialState.motionDepth) },
+                    transitionSpec = {
+                        shellyHorizontalTransform(
+                            forward = targetState.motionDepth >= initialState.motionDepth,
+                            motionEnabled = motionEnabled,
+                        )
+                    },
                     modifier = Modifier.fillMaxSize(),
                     label = "shellySurfaceTransition",
                 ) { targetSurface ->
@@ -223,10 +247,10 @@ fun ShellyApp(
                         )
                         ShellySurface.RestoringPairing -> CenterSpinner()
                         ShellySurface.Pairing -> PairingScreen(
-                            padding = PaddingValues(0.dp),
                             pairing = state.loading,
                             onPair = viewModel::pair,
                             onPairWithCode = viewModel::pairWithCode,
+                            onCancelPairing = viewModel::cancelPairing,
                             uiState = state.pairingError?.let {
                                 PairingUiState.Error(message = it.message, detail = it.detail)
                             } ?: PairingUiState.Idle,
@@ -252,6 +276,7 @@ fun ShellyApp(
                             biometricGate = biometricGate,
                             connectionState = state.connectionState,
                             sessions = state.sessions,
+                            pairedDaemon = state.pairedDaemon,
                             laptopName = state.pairedDaemon.displayName(),
                             onRoute = { route = it },
                             onToggleTelemetry = onToggleTelemetry,
@@ -287,7 +312,6 @@ fun ShellyApp(
                             commandPaletteVisible = false
                             viewModel.setUnlocked(false)
                         },
-                        onCopyLastOutput = { commandPaletteVisible = false },
                         onOpenSettings = {
                             commandPaletteVisible = false
                             route = ShellyRoute.Settings
@@ -374,6 +398,7 @@ private fun RoutedContent(
     biometricGate: AndroidBiometricGate,
     connectionState: ConnectionState,
     sessions: List<MobileSession>,
+    pairedDaemon: PairedDaemonRecord?,
     laptopName: String,
     onRoute: (ShellyRoute) -> Unit,
     onToggleTelemetry: () -> Unit,
@@ -381,6 +406,7 @@ private fun RoutedContent(
     searchRequestToken: Int,
     onUnpair: () -> Unit,
 ) {
+    val context = LocalContext.current
     when (route) {
         ShellyRoute.Sessions -> SessionsScreen(
             viewModel = viewModel,
@@ -397,6 +423,10 @@ private fun RoutedContent(
                 padding = PaddingValues(0.dp),
                 viewModel = viewModel,
                 themeModeLabel = settings.themeMode.label.uppercase(),
+                notificationsLabel = if (settings.pushEnabled) "ON" else "OFF",
+                securityLabel = settings.autoLock.label.uppercase(),
+                aboutVersionLabel = "V${BuildConfig.VERSION_NAME}",
+                telemetryEnabled = telemetryEnabled,
                 onBackToSessions = { onRoute(ShellyRoute.Sessions) },
                 onOpenAppearance = { onRoute(ShellyRoute.Appearance) },
                 onOpenNotifications = { onRoute(ShellyRoute.Notifications) },
@@ -464,22 +494,24 @@ private fun RoutedContent(
             BackHandler { onRoute(ShellyRoute.Settings) }
             AboutScreen(
                 onBack = { onRoute(ShellyRoute.Settings) },
-                onOpenSource = { onRoute(ShellyRoute.OpenSourceLicenses) },
+                version = BuildConfig.VERSION_NAME,
+                build = BuildConfig.VERSION_CODE.toString(),
+                protocol = protocolLabel(pairedDaemon),
+                dependencyCount = licenseDependencyCount,
+                onOpenSource = { openUrl(context, SHELLY_REPOSITORY_URL) },
                 onOpenLicenses = { onRoute(ShellyRoute.Licenses) },
             )
         }
         ShellyRoute.DaemonDetail -> {
             BackHandler { onRoute(ShellyRoute.Settings) }
-            val daemonRecord = viewModel.state.value.pairedDaemon
             DaemonDetailScreen(
                 onBack = { onRoute(ShellyRoute.Settings) },
-                hostName = daemonRecord.displayName(),
-                pairedAge = pairedAgeLabel(daemonRecord?.pairedAtMillis),
-                daemon = daemonRecord?.daemonVersion?.takeIf { it.isNotBlank() }
+                hostName = pairedDaemon.displayName(),
+                pairedAge = pairedAgeLabel(pairedDaemon?.pairedAtMillis),
+                daemon = pairedDaemon?.daemonVersion?.takeIf { it.isNotBlank() }
                     ?.let { "shellyd $it" } ?: "shellyd",
-                protocol = daemonRecord?.protocolVersion?.takeIf { it != 0 }
-                    ?.let { "v$it" } ?: "v3",
-                transport = if (daemonRecord?.relayUrl != null) "iroh QUIC (relay)" else "iroh QUIC",
+                protocol = protocolLabel(pairedDaemon),
+                transport = if (pairedDaemon?.relayUrl != null) "iroh QUIC (relay)" else "iroh QUIC",
                 onUnpair = onUnpair,
             )
         }
@@ -487,6 +519,7 @@ private fun RoutedContent(
             BackHandler { onRoute(ShellyRoute.About) }
             LicensesScreen(
                 onBack = { onRoute(ShellyRoute.About) },
+                dependencyCount = licenseDependencyCount,
                 onOpenLicense = { onRoute(ShellyRoute.OpenSourceLicenses) },
             )
         }
@@ -538,9 +571,15 @@ private fun OnboardingFlow(
     onComplete: () -> Unit,
 ) {
     BackHandler(enabled = canGoBack, onBack = onBack)
+    val motionEnabled = ShellyTheme.motionEnabled
     AnimatedContent(
         targetState = step,
-        transitionSpec = { shellyHorizontalTransform(targetState.ordinal >= initialState.ordinal) },
+        transitionSpec = {
+            shellyHorizontalTransform(
+                forward = targetState.ordinal >= initialState.ordinal,
+                motionEnabled = motionEnabled,
+            )
+        },
         modifier = Modifier.fillMaxSize(),
         label = "onboardingStepTransition",
     ) { targetStep ->
@@ -579,11 +618,12 @@ private fun ShellyModalOverlay(
     content: @Composable () -> Unit,
 ) {
     BackHandler(enabled = visible, onBack = onDismiss)
+    val motionEnabled = ShellyTheme.motionEnabled
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         AnimatedVisibility(
             visible = visible,
-            enter = fadeIn(animationSpec = ShellyMotion.fastTween()),
-            exit = fadeOut(animationSpec = ShellyMotion.fastTween()),
+            enter = fadeIn(animationSpec = ShellyMotion.fastSpec()),
+            exit = fadeOut(animationSpec = ShellyMotion.fastSpec()),
         ) {
             Box(
                 Modifier
@@ -595,13 +635,13 @@ private fun ShellyModalOverlay(
         AnimatedVisibility(
             visible = visible,
             enter = slideInVertically(
-                animationSpec = ShellyMotion.routeTween(),
+                animationSpec = if (motionEnabled) ShellyMotion.routeTween() else snap(),
                 initialOffsetY = { it / 3 },
-            ) + fadeIn(animationSpec = ShellyMotion.fastTween()),
+            ) + fadeIn(animationSpec = ShellyMotion.fastSpec()),
             exit = slideOutVertically(
-                animationSpec = ShellyMotion.routeTween(),
+                animationSpec = if (motionEnabled) ShellyMotion.routeTween() else snap(),
                 targetOffsetY = { it / 3 },
-            ) + fadeOut(animationSpec = ShellyMotion.fastTween()),
+            ) + fadeOut(animationSpec = ShellyMotion.fastSpec()),
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
             Box(
@@ -680,7 +720,12 @@ private val ShellyRoute.motionDepth: Int
         ShellyRoute.OpenSourceLicenses -> 4
     }
 
-private fun <S> AnimatedContentTransitionScope<S>.shellyHorizontalTransform(forward: Boolean) =
+private fun <S> AnimatedContentTransitionScope<S>.shellyHorizontalTransform(
+    forward: Boolean,
+    motionEnabled: Boolean,
+) = if (!motionEnabled) {
+    fadeIn(animationSpec = snap()).togetherWith(fadeOut(animationSpec = snap())).using(SizeTransform(clip = false))
+} else {
     (
         fadeIn(animationSpec = ShellyMotion.fastTween()) +
             slideIntoContainer(
@@ -702,6 +747,7 @@ private fun <S> AnimatedContentTransitionScope<S>.shellyHorizontalTransform(forw
                 animationSpec = ShellyMotion.routeTween(),
             ),
     ).using(SizeTransform(clip = false))
+}
 
 private fun attachFirstSession(
     sessions: List<MobileSession>,
@@ -730,5 +776,16 @@ private fun pairedAgeLabel(pairedAtMillis: Long?): String {
         days > 0 -> "${days}d"
         hours > 0 -> "${hours}h"
         else -> "today"
+    }
+}
+
+private fun protocolLabel(record: PairedDaemonRecord?): String =
+    record?.protocolVersion?.takeIf { it != 0 }?.let { "v$it" } ?: PROTOCOL_VERSION_FALLBACK
+
+private fun openUrl(context: Context, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }.recoverCatching { error ->
+        if (error !is ActivityNotFoundException) throw error
     }
 }

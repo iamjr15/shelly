@@ -29,8 +29,6 @@ class MobileTelemetryTest {
 
     @Test
     fun diagnosticsDefaultsOffAndConsentPromptIsEligible() {
-        MobileTelemetry.sync(context)
-
         assertFalse(MobileTelemetry.isDiagnosticsEnabled(context))
         assertTrue(MobileTelemetry.shouldShowConsentPrompt(context))
     }

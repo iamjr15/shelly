@@ -66,6 +66,7 @@ class ShellyViewModelTest {
 
         assertEquals(listOf("queued-token", "current-token"), repository.registeredFcmTokens)
         assertEquals(listOf("queued-token"), fcmTokens.clearedMatchingTokens)
+        assertEquals(listOf(true), fcmTokens.currentTokenAutoInitRequests)
         assertNull(fcmTokens.pendingToken(context))
     }
 
@@ -117,6 +118,8 @@ class ShellyViewModelTest {
         drainMainLooper()
 
         assertEquals(1, fcmTokens.clearAllCalls)
+        assertEquals(1, fcmTokens.restorePrivacyDefaultCalls)
+        assertEquals(1, fcmTokens.deleteCurrentTokenCalls)
         assertEquals(1, repository.clearCalls)
         assertNull(fcmTokens.pendingToken(context))
         assertFalse(viewModel.state.value.restoringPairing)
@@ -141,6 +144,9 @@ class ShellyViewModelTest {
 
         assertEquals(listOf("queued-token", "current-token"), repository.unregisteredFcmTokens)
         assertEquals(1, fcmTokens.clearAllCalls)
+        assertEquals(1, fcmTokens.restorePrivacyDefaultCalls)
+        assertEquals(1, fcmTokens.deleteCurrentTokenCalls)
+        assertEquals(listOf(true, false), fcmTokens.currentTokenAutoInitRequests)
         assertEquals(1, repository.clearCalls)
         assertNull(fcmTokens.pendingToken(context))
         assertFalse(viewModel.state.value.paired)
@@ -162,9 +168,26 @@ class ShellyViewModelTest {
 
         assertEquals(listOf("current-token"), repository.unregisteredFcmTokens)
         assertEquals(1, fcmTokens.clearAllCalls)
+        assertEquals(1, fcmTokens.restorePrivacyDefaultCalls)
+        assertEquals(1, fcmTokens.deleteCurrentTokenCalls)
         assertEquals(1, repository.clearCalls)
         assertFalse(viewModel.state.value.paired)
         assertFalse(viewModel.state.value.restoringPairing)
+    }
+
+    @Test
+    fun disablingPushUnregistersTokenDeletesLocalTokenAndRestoresPrivacyDefault() {
+        val repository = FakeRepository(restoredPairing = testPairing())
+        val fcmTokens = FakeFcmTokenSource(pending = "queued-token", current = "current-token")
+        val viewModel = testViewModel(repository, fcmTokens)
+
+        viewModel.setPushEnabled(false)
+        drainMainLooper()
+
+        assertEquals(listOf("queued-token", "current-token"), repository.unregisteredFcmTokens)
+        assertEquals(1, fcmTokens.deleteCurrentTokenCalls)
+        assertEquals(1, fcmTokens.restorePrivacyDefaultCalls)
+        assertEquals(listOf(false), fcmTokens.currentTokenAutoInitRequests)
     }
 
     @Test
@@ -1148,12 +1171,28 @@ class ShellyViewModelTest {
         private val current: String?,
     ) : FcmTokenSource {
         val clearedMatchingTokens = mutableListOf<String>()
+        val currentTokenAutoInitRequests = mutableListOf<Boolean>()
         var clearAllCalls = 0
+            private set
+        var restorePrivacyDefaultCalls = 0
+            private set
+        var deleteCurrentTokenCalls = 0
             private set
 
         override fun pendingToken(context: Context): String? = pending
 
-        override suspend fun currentToken(context: Context): String? = current
+        override suspend fun currentToken(context: Context, enableAutoInit: Boolean): String? {
+            currentTokenAutoInitRequests += enableAutoInit
+            return current
+        }
+
+        override fun restorePrivacyDefault(context: Context) {
+            restorePrivacyDefaultCalls += 1
+        }
+
+        override suspend fun deleteCurrentToken(context: Context) {
+            deleteCurrentTokenCalls += 1
+        }
 
         override fun clearPendingToken(context: Context, token: String) {
             if (pending == token) {
@@ -1306,8 +1345,6 @@ class ShellyViewModelTest {
         override suspend fun detach() = Unit
 
         override fun destroy() = Unit
-
-        override fun initialSeq(): ULong = lastSeenSeq
 
         override fun lastSeenSeq(): ULong = lastSeenSeq
 

@@ -9,6 +9,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,7 +29,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -67,9 +67,22 @@ import app.shelly.android.ui.theme.ShellyDimens
 import app.shelly.android.ui.theme.ShellyMotion
 import app.shelly.android.ui.theme.ShellyTheme
 import app.shelly.android.ui.theme.ShellyType
+import app.shelly.android.ui.theme.ink
 import app.shelly.android.ui.theme.shellyPressScale
 import kotlin.math.PI
 import kotlin.math.sin
+
+/**
+ * Measures caps-only wordmarks unbounded so Inter Black never clips, then reports the tight
+ * Paper line-box footprint while centering the full glyph in the overflow.
+ */
+fun Modifier.wordmarkFootprint(size: TextUnit): Modifier = layout { measurable, _ ->
+    val placeable = measurable.measure(Constraints())
+    val footprint = (size.value * 0.9f).dp.roundToPx()
+    layout(placeable.width, footprint) {
+        placeable.place(0, (footprint - placeable.height) / 2)
+    }
+}
 
 /**
  * The Shelly screen frame: a black background with a single rounded card stack
@@ -132,10 +145,6 @@ fun ColumnScope.HeroBody(
     Spacer(Modifier.weight(1f).heightIn(min = 8.dp))
     Text(eyebrow, style = ShellyType.eyebrow, color = c.textPrimary)
     Spacer(Modifier.height(18.dp))
-    // Caps-only wordmark: measured UNBOUNDED so the glyph never clips (real-device Inter Black is
-    // taller/wider than a constrained box would allow), then reported with a tight 0.9em footprint
-    // (the Paper line box), full glyph centered in it. The empty ascent/descent leading overflows
-    // harmlessly into the 18dp gaps above/below.
     Text(
         wordmark,
         style = ShellyType.wordmark.copy(fontSize = wordmarkSize, lineHeight = wordmarkSize),
@@ -143,13 +152,7 @@ fun ColumnScope.HeroBody(
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Visible,
-        modifier = Modifier.layout { measurable, _ ->
-            val placeable = measurable.measure(Constraints())
-            val footprint = (wordmarkSize.value * 0.9f).dp.roundToPx()
-            layout(placeable.width, footprint) {
-                placeable.place(0, (footprint - placeable.height) / 2)
-            }
-        },
+        modifier = Modifier.wordmarkFootprint(wordmarkSize),
     )
     if (below != null) {
         Spacer(Modifier.height(18.dp))
@@ -249,7 +252,7 @@ fun StatusDot(state: AgentState, size: Dp = 10.dp) {
     val c = ShellyTheme.colors
     val pulseProgress = if (ShellyTheme.motionEnabled && (state == AgentState.Working || state == AgentState.AwaitingInput)) {
         val pulse = rememberInfiniteTransition(label = "statusDotPulse")
-        val progress by pulse.animateFloat(
+        pulse.animateFloat(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
@@ -261,20 +264,20 @@ fun StatusDot(state: AgentState, size: Dp = 10.dp) {
             ),
             label = "statusDotProgress",
         )
-        progress
     } else {
-        0f
+        null
     }
     androidx.compose.foundation.Canvas(Modifier.size(size)) {
+        val progress = pulseProgress?.value ?: 0f
         val r = this.size.minDimension / 2f
         val center = Offset(this.size.width / 2f, this.size.height / 2f)
         when (state) {
             AgentState.AwaitingInput -> {
-                drawStatusPulse(c.statusAwaiting, center, r, pulseProgress, maxRadiusDelta = 4.dp.toPx(), maxAlpha = 0.12f)
+                drawStatusPulse(c.statusAwaiting, center, r, progress, maxRadiusDelta = 4.dp.toPx(), maxAlpha = 0.12f)
                 drawCircle(c.statusAwaiting, r, center)
             }
             AgentState.Working -> {
-                drawStatusPulse(c.statusWorking, center, r, pulseProgress, maxRadiusDelta = 6.dp.toPx(), maxAlpha = 0.18f)
+                drawStatusPulse(c.statusWorking, center, r, progress, maxRadiusDelta = 6.dp.toPx(), maxAlpha = 0.18f)
                 drawCircle(c.statusWorking, r, center)
             }
             AgentState.Crashed -> drawCircle(c.statusCrashed, r, center)
@@ -289,8 +292,18 @@ fun DoubleChevron(color: Color = ShellyTheme.colors.textMuted, size: Dp = 22.dp)
 }
 
 @Composable
-fun Chevron(color: Color = ShellyTheme.colors.textMuted, size: Dp = 20.dp) {
-    Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = color, modifier = Modifier.size(size))
+fun DoubleChevronGlyph(color: Color, modifier: Modifier = Modifier, size: Dp = 26.dp) {
+    Canvas(modifier.size(size)) {
+        val sx = this.size.width / 24f
+        val sy = this.size.height / 24f
+        val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        fun chevron(left: Float, right: Float) {
+            drawLine(color, Offset(left * sx, 6f * sy), Offset(right * sx, 12f * sy), strokeWidth = stroke.width, cap = stroke.cap)
+            drawLine(color, Offset(right * sx, 12f * sy), Offset(left * sx, 18f * sy), strokeWidth = stroke.width, cap = stroke.cap)
+        }
+        chevron(6f, 12f)
+        chevron(13f, 19f)
+    }
 }
 
 /** Session list row: status dot · name + subtitle · trailing chevron. */
@@ -298,6 +311,7 @@ fun Chevron(color: Color = ShellyTheme.colors.textMuted, size: Dp = 20.dp) {
 fun SessionRow(
     session: MobileSession,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     showDivider: Boolean = true,
 ) {
     val c = ShellyTheme.colors
@@ -310,10 +324,11 @@ fun SessionRow(
                 scaleX = scale
                 scaleY = scale
             }
-            .clickable(
+            .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
+                onLongClick = onLongClick,
             )
             .then(if (showDivider) Modifier.drawBehind {
                 val y = this.size.height - 0.5.dp.toPx()
@@ -352,22 +367,22 @@ fun StateChip(
     val c = ShellyTheme.colors
     val background by animateColorAsState(
         targetValue = if (active) c.accent else c.surfaceSubtle,
-        animationSpec = ShellyMotion.standardTween(),
+        animationSpec = ShellyMotion.standardSpec(),
         label = "stateChipBackground",
     )
     val foreground by animateColorAsState(
         targetValue = if (active) c.onAccent else c.textPrimary,
-        animationSpec = ShellyMotion.standardTween(),
+        animationSpec = ShellyMotion.standardSpec(),
         label = "stateChipForeground",
     )
     val secondary by animateColorAsState(
         targetValue = if (active) c.onAccent.copy(alpha = 0.7f) else c.textPrimary.copy(alpha = 0.55f),
-        animationSpec = ShellyMotion.standardTween(),
+        animationSpec = ShellyMotion.standardSpec(),
         label = "stateChipSecondary",
     )
     val elevation by animateDpAsState(
         targetValue = if (active) 0.75.dp else 0.dp,
-        animationSpec = ShellyMotion.standardTween(),
+        animationSpec = ShellyMotion.standardSpec(),
         label = "stateChipElevation",
     )
     val interactionSource = remember { MutableInteractionSource() }
@@ -431,7 +446,7 @@ fun ColumnScope.SettingsHeroBody(
     onStatusClick: (() -> Unit)? = null,
 ) {
     val c = ShellyTheme.colors
-    val heroForeground = if (c.isDark) c.textPrimary else c.heroWordmark
+    val heroForeground = c.ink
     Row(
         modifier
             .fillMaxWidth()
@@ -457,13 +472,7 @@ fun ColumnScope.SettingsHeroBody(
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Visible,
-        modifier = Modifier.layout { measurable, _ ->
-            val placeable = measurable.measure(Constraints())
-            val footprint = (wordmarkSize.value * 0.9f).dp.roundToPx()
-            layout(placeable.width, footprint) {
-                placeable.place(0, (footprint - placeable.height) / 2)
-            }
-        },
+        modifier = Modifier.wordmarkFootprint(wordmarkSize),
     )
     Spacer(Modifier.height(20.dp))
     Row(
@@ -534,7 +543,7 @@ fun SettingsListRow(
     onClick: (() -> Unit)? = null,
 ) {
     val c = ShellyTheme.colors
-    val primary = settingsPrimaryColor(c)
+    val primary = c.ink
     val iconColor = if (c.isDark) c.textMuted else primary
     val valueColor = if (c.isDark) c.textMuted.copy(alpha = 0.55f) else primary.copy(alpha = 0.55f)
     val interactionSource = remember { MutableInteractionSource() }
@@ -585,20 +594,10 @@ fun SettingsListRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        SettingsChevron(color = iconColor)
+        if (onClick != null) {
+            SettingsChevron(color = iconColor)
+        }
     }
-}
-
-@Composable
-fun SettingsSectionLabel(text: String, modifier: Modifier = Modifier) {
-    val c = ShellyTheme.colors
-    val primary = settingsPrimaryColor(c)
-    Text(
-        text = text.uppercase(),
-        style = ShellyType.microLabel,
-        color = if (c.isDark) c.textMuted.copy(alpha = 0.55f) else primary.copy(alpha = 0.55f),
-        modifier = modifier.padding(top = 18.dp, bottom = 8.dp),
-    )
 }
 
 @Composable
@@ -609,7 +608,7 @@ fun SettingsFooterAction(
     destructive: Boolean = true,
 ) {
     val c = ShellyTheme.colors
-    val color = if (destructive) c.statusCrashed else settingsPrimaryColor(c)
+    val color = if (destructive) c.statusCrashed else c.ink
     val interactionSource = remember { MutableInteractionSource() }
     val scale = shellyPressScale(interactionSource, pressedScale = 0.985f)
     Column(modifier.fillMaxWidth().padding(top = 10.dp)) {
@@ -640,7 +639,7 @@ fun SettingsFooterAction(
                 color = color,
                 textDecoration = TextDecoration.Underline,
             )
-            SettingsDoubleChevron(color = color)
+            DoubleChevronGlyph(color = color)
         }
     }
 }
@@ -798,26 +797,6 @@ private fun SettingsChevron(color: Color) {
         drawPath(path, color = color, style = stroke)
     }
 }
-
-@Composable
-private fun SettingsDoubleChevron(color: Color) {
-    Canvas(Modifier.size(26.dp)) {
-        val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-        fun chevron(left: Float, right: Float) {
-            val path = Path().apply {
-                moveTo(size.width * left, size.height * 0.25f)
-                lineTo(size.width * right, size.height * 0.5f)
-                lineTo(size.width * left, size.height * 0.75f)
-            }
-            drawPath(path, color = color, style = stroke)
-        }
-        chevron(0.25f, 0.5f)
-        chevron(0.54f, 0.79f)
-    }
-}
-
-private fun settingsPrimaryColor(c: app.shelly.android.ui.theme.ShellyColors): Color =
-    if (c.isDark) c.textPrimary else c.heroWordmark
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStatusPulse(
     color: Color,

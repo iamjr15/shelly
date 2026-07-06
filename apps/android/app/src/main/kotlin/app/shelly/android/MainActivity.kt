@@ -40,7 +40,7 @@ class MainActivity : FragmentActivity() {
                 factory = remember { shellyViewModelFactory(applicationContext) },
             )
             LaunchedEffect(viewModel) {
-                ShellyPushNotifications.sessionIdHash(intent)?.let(viewModel::handlePushIntent)
+                consumePushSessionHash(intent)?.let(viewModel::handlePushIntent)
                 pushSessionHashes.collect(viewModel::handlePushIntent)
             }
             ShellyApp(
@@ -57,7 +57,13 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        ShellyPushNotifications.sessionIdHash(intent)?.let(pushSessionHashes::tryEmit)
+        consumePushSessionHash(intent)?.let(pushSessionHashes::tryEmit)
+    }
+
+    private fun consumePushSessionHash(intent: Intent): String? {
+        val hash = ShellyPushNotifications.sessionIdHash(intent) ?: return null
+        intent.removeExtra(ShellyPushNotifications.EXTRA_SESSION_ID_HASH)
+        return hash
     }
 }
 

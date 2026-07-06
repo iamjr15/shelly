@@ -9,6 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +21,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicReference
+import uniffi.shelly_mobile_core.AttachedSession
 
 data class ShellyUiState(
     val unlocked: Boolean = false,
@@ -38,14 +41,19 @@ data class ShellyUiState(
 
 internal interface FcmTokenSource {
     fun pendingToken(context: Context): String?
-    suspend fun currentToken(context: Context): String?
+    suspend fun currentToken(context: Context, enableAutoInit: Boolean = false): String?
+    fun restorePrivacyDefault(context: Context)
+    suspend fun deleteCurrentToken(context: Context)
     fun clearPendingToken(context: Context, token: String)
     fun clearPendingToken(context: Context)
 }
 
 private object AndroidFcmTokenSource : FcmTokenSource {
     override fun pendingToken(context: Context): String? = FcmTokenRegistrar.pendingToken(context)
-    override suspend fun currentToken(context: Context): String? = FcmTokenRegistrar.currentToken(context)
+    override suspend fun currentToken(context: Context, enableAutoInit: Boolean): String? =
+        FcmTokenRegistrar.currentToken(context, enableAutoInit)
+    override fun restorePrivacyDefault(context: Context) = FcmTokenRegistrar.restorePrivacyDefault(context)
+    override suspend fun deleteCurrentToken(context: Context) = FcmTokenRegistrar.deleteCurrentToken(context)
     override fun clearPendingToken(context: Context, token: String) = FcmTokenRegistrar.clearPendingToken(context, token)
     override fun clearPendingToken(context: Context) = FcmTokenRegistrar.clearPendingToken(context)
 }
@@ -73,6 +81,7 @@ class ShellyViewModel internal constructor(
     // no-op unless the subscription loop is currently parked in awaitRetryOrTimeout().
     private val retrySignal = Channel<Unit>(Channel.RENDEZVOUS)
     private var restoreJob: Job? = null
+    private var pairJob: Job? = null
     private var unpairJob: Job? = null
     private var backgroundDetachJob: Job? = null
     private var restoreGeneration = 0
@@ -128,7 +137,7 @@ class ShellyViewModel internal constructor(
                 pairingError = null,
             )
         }
-        viewModelScope.launch {
+        pairJob = viewModelScope.launch {
             try {
                 unpairJob?.join()
                 unpairJob = null
@@ -163,6 +172,12 @@ class ShellyViewModel internal constructor(
                 _state.update { it.copy(loading = false) }
             }
         }
+    }
+
+    fun cancelPairing() {
+        pairJob?.cancel()
+        pairJob = null
+        _state.update { it.copy(loading = false, pairingError = null) }
     }
 
     fun refreshSessions() {
@@ -220,22 +235,33 @@ class ShellyViewModel internal constructor(
         session: MobileSession,
         inputGate: suspend () -> Boolean,
     ): TerminalController {
-        val attached = withContext(repositoryDispatcher) {
-            repository.attach(session.id)
-        }
-        return TerminalController(
-            session = session,
-            initialAttachedSession = attached,
-            scope = viewModelScope,
-            inputGate = inputGate,
-            reattach = { lastSeenSeq ->
-                withContext(repositoryDispatcher) {
-                    repository.attach(session.id, lastSeenSeq)
+        val pendingAttach = AtomicReference<AttachedSession?>(null)
+        try {
+            val attached = withContext(repositoryDispatcher) {
+                repository.attach(session.id).also { pendingAttach.set(it) }
+            }
+            return TerminalController(
+                session = session,
+                initialAttachedSession = attached,
+                scope = viewModelScope,
+                inputGate = inputGate,
+                reattach = { lastSeenSeq ->
+                    withContext(repositoryDispatcher) {
+                        repository.attach(session.id, lastSeenSeq)
+                    }
+                },
+                recordLastSeenSeq = { seq -> repository.recordLastSeenSeq(session.id, seq) },
+                recordTelemetryExperience = ::recordTelemetryExperience,
+            ).also { it.start() }
+        } catch (error: CancellationException) {
+            pendingAttach.get()?.let { attached ->
+                withContext(NonCancellable + repositoryDispatcher) {
+                    runCatching { attached.detach() }
+                    attached.destroy()
                 }
-            },
-            recordLastSeenSeq = { seq -> repository.recordLastSeenSeq(session.id, seq) },
-            recordTelemetryExperience = ::recordTelemetryExperience,
-        ).also { it.start() }
+            }
+            throw error
+        }
     }
 
     fun unpair() {
@@ -259,9 +285,11 @@ class ShellyViewModel internal constructor(
                         for (token in tokens) {
                             unregisterFcmTokenQuietly(token)
                         }
+                        fcmTokens.deleteCurrentToken(appContext)
                     }
                 }
             } finally {
+                fcmTokens.restorePrivacyDefault(appContext)
                 fcmTokens.clearPendingToken(appContext)
                 repository.clear()
             }
@@ -319,7 +347,7 @@ class ShellyViewModel internal constructor(
         }
         viewModelScope.launch {
             val pendingToken = fcmTokens.pendingToken(appContext)
-            val tokens = listOfNotNull(pendingToken, fcmTokens.currentToken(appContext))
+            val tokens = listOfNotNull(pendingToken, fcmTokens.currentToken(appContext, enableAutoInit = true))
                 .distinct()
             for (token in tokens) {
                 try {
@@ -351,9 +379,14 @@ class ShellyViewModel internal constructor(
         }
         val pendingToken = fcmTokens.pendingToken(appContext)
         viewModelScope.launch {
-            val tokens = listOfNotNull(pendingToken, currentFcmTokenOrNull()).distinct()
-            for (token in tokens) {
-                unregisterFcmTokenQuietly(token)
+            try {
+                val tokens = listOfNotNull(pendingToken, currentFcmTokenOrNull()).distinct()
+                for (token in tokens) {
+                    unregisterFcmTokenQuietly(token)
+                }
+                fcmTokens.deleteCurrentToken(appContext)
+            } finally {
+                fcmTokens.restorePrivacyDefault(appContext)
             }
         }
     }
@@ -364,7 +397,7 @@ class ShellyViewModel internal constructor(
 
     private suspend fun currentFcmTokenOrNull(): String? {
         return try {
-            fcmTokens.currentToken(appContext)
+            fcmTokens.currentToken(appContext, enableAutoInit = false)
         } catch (error: Throwable) {
             if (error is CancellationException) {
                 throw error

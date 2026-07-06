@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,31 +34,25 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import app.shelly.android.ui.components.ShellyScreen
+import app.shelly.android.BuildConfig
+import app.shelly.android.ui.components.DoubleChevronGlyph
 import app.shelly.android.ui.components.TriangleLogo
+import app.shelly.android.ui.components.wordmarkFootprint
 import app.shelly.android.ui.theme.ShellyTheme
 import app.shelly.android.ui.theme.ShellyType
+import app.shelly.android.ui.theme.ink
+import app.shelly.android.ui.theme.mutedInk
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private val WordmarkSize = 96.sp
-
-@Composable
-internal fun OnboardingShell(
-    hero: @Composable ColumnScope.() -> Unit,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    ShellyScreen(
-        hero = hero,
-        content = content,
-    )
-}
 
 @Composable
 internal fun ColumnScope.WelcomeHero(
@@ -65,6 +60,9 @@ internal fun ColumnScope.WelcomeHero(
 ) {
     val heroForeground = onboardingHeroForeground()
     val heroMuted = onboardingHeroMuted()
+    val now = remember { Date() }
+    val date = remember(now) { SimpleDateFormat("MMM d", Locale.getDefault()).format(now) }
+    val day = remember(now) { SimpleDateFormat("EEE", Locale.getDefault()).format(now) }
 
     OnboardingBrandRow(
         trailing = {
@@ -73,7 +71,7 @@ internal fun ColumnScope.WelcomeHero(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = "May 28",
+                    text = date,
                     style = ShellyType.brand.copy(
                         fontWeight = FontWeight(500),
                         letterSpacing = 0.em,
@@ -82,7 +80,7 @@ internal fun ColumnScope.WelcomeHero(
                     modifier = Modifier.clickable(onClick = onDateClick),
                 )
                 Text(
-                    text = "Thu",
+                    text = day,
                     style = ShellyType.brand.copy(
                         fontSize = 13.sp,
                         lineHeight = 16.sp,
@@ -105,7 +103,7 @@ internal fun ColumnScope.WelcomeHero(
     Spacer(Modifier.height(18.dp))
     OnboardingStatusRow(
         icon = OnboardingStatusIcon.Phone,
-        text = "shelly for android · v1.0.0",
+        text = "shelly for android · v${BuildConfig.VERSION_NAME}",
         iconColor = heroMuted,
         textColor = heroForeground,
         modifier = Modifier.padding(bottom = 4.dp),
@@ -183,13 +181,7 @@ private fun OnboardingWordmark(text: String) {
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Visible,
-        modifier = Modifier.layout { measurable, _ ->
-            val placeable = measurable.measure(Constraints())
-            val footprint = (WordmarkSize.value * 0.9f).dp.roundToPx()
-            layout(placeable.width, footprint) {
-                placeable.place(0, (footprint - placeable.height) / 2)
-            }
-        },
+        modifier = Modifier.wordmarkFootprint(WordmarkSize),
     )
 }
 
@@ -488,43 +480,25 @@ private fun FooterClickRow(
             color = onboardingPrimary(),
             textDecoration = TextDecoration.Underline,
         )
-        OnboardingDoubleChevron(color = onboardingMuted(), size = 26.dp)
-    }
-}
-
-@Composable
-private fun OnboardingDoubleChevron(color: Color, size: androidx.compose.ui.unit.Dp) {
-    Canvas(Modifier.size(size)) {
-        val sx = this.size.width / 24f
-        val sy = this.size.height / 24f
-        val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-        fun polyline(points: List<Offset>) {
-            val path = Path().apply {
-                moveTo(points.first().x, points.first().y)
-                points.drop(1).forEach { lineTo(it.x, it.y) }
-            }
-            drawPath(path, color = color, style = stroke)
-        }
-        polyline(listOf(Offset(6f * sx, 6f * sy), Offset(12f * sx, 12f * sy), Offset(6f * sx, 18f * sy)))
-        polyline(listOf(Offset(13f * sx, 6f * sy), Offset(19f * sx, 12f * sy), Offset(13f * sx, 18f * sy)))
+        DoubleChevronGlyph(color = onboardingMuted(), size = 26.dp)
     }
 }
 
 @Composable
 internal fun onboardingPrimary(): Color =
-    if (ShellyTheme.colors.isDark) ShellyTheme.colors.textPrimary else ShellyTheme.colors.heroWordmark
+    ShellyTheme.colors.ink
 
 @Composable
 internal fun onboardingMuted(): Color =
-    if (ShellyTheme.colors.isDark) ShellyTheme.colors.textMuted else ShellyTheme.colors.heroWordmark
+    ShellyTheme.colors.mutedInk
 
 @Composable
 private fun onboardingHeroForeground(): Color =
-    if (ShellyTheme.colors.isDark) ShellyTheme.colors.textPrimary else ShellyTheme.colors.heroWordmark
+    ShellyTheme.colors.ink
 
 @Composable
 private fun onboardingHeroMuted(): Color =
-    if (ShellyTheme.colors.isDark) ShellyTheme.colors.textMuted else ShellyTheme.colors.heroWordmark
+    ShellyTheme.colors.mutedInk
 
 @Composable
 private fun strongFooterDivider(): Color =

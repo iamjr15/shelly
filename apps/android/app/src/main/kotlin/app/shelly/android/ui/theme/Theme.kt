@@ -2,13 +2,16 @@ package app.shelly.android.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -90,8 +93,11 @@ private val DarkShellyColors = ShellyColors(
     destructive = Color(0xFFD0584B),
 )
 
-val LocalShellyColors = staticCompositionLocalOf { DarkShellyColors }
+val LocalShellyColors = compositionLocalOf { DarkShellyColors }
 val LocalShellyMotionEnabled = staticCompositionLocalOf { true }
+
+val ShellyColors.ink: Color get() = if (isDark) textPrimary else heroWordmark
+val ShellyColors.mutedInk: Color get() = if (isDark) textMuted else heroWordmark
 
 object ShellyTheme {
     val colors: ShellyColors
@@ -143,13 +149,15 @@ fun ShellyTheme(
     animationsEnabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val colors = animatedShellyColors(if (darkTheme) DarkShellyColors else LightShellyColors)
+    val target = if (darkTheme) DarkShellyColors else LightShellyColors
+    val colors = animatedShellyColors(target, animationsEnabled)
+    val materialColors = remember(darkTheme) { materialScheme(target) }
     androidx.compose.runtime.CompositionLocalProvider(
         LocalShellyColors provides colors,
         LocalShellyMotionEnabled provides animationsEnabled,
     ) {
         MaterialTheme(
-            colorScheme = materialScheme(colors),
+            colorScheme = materialColors,
             typography = ShellyTypography,
             content = content,
         )
@@ -157,26 +165,27 @@ fun ShellyTheme(
 }
 
 @Composable
-private fun animatedShellyColors(target: ShellyColors): ShellyColors {
-    val screen by animateColorAsState(target.screen, ShellyMotion.standardTween(), label = "shellyScreen")
-    val hero by animateColorAsState(target.hero, ShellyMotion.standardTween(), label = "shellyHero")
-    val heroWordmark by animateColorAsState(target.heroWordmark, ShellyMotion.standardTween(), label = "shellyHeroWordmark")
-    val content by animateColorAsState(target.content, ShellyMotion.standardTween(), label = "shellyContent")
-    val insetCard by animateColorAsState(target.insetCard, ShellyMotion.standardTween(), label = "shellyInsetCard")
-    val modalCard by animateColorAsState(target.modalCard, ShellyMotion.standardTween(), label = "shellyModalCard")
-    val textPrimary by animateColorAsState(target.textPrimary, ShellyMotion.standardTween(), label = "shellyTextPrimary")
-    val textMuted by animateColorAsState(target.textMuted, ShellyMotion.standardTween(), label = "shellyTextMuted")
-    val accent by animateColorAsState(target.accent, ShellyMotion.standardTween(), label = "shellyAccent")
-    val onAccent by animateColorAsState(target.onAccent, ShellyMotion.standardTween(), label = "shellyOnAccent")
-    val divider by animateColorAsState(target.divider, ShellyMotion.standardTween(), label = "shellyDivider")
-    val surfaceSubtle by animateColorAsState(target.surfaceSubtle, ShellyMotion.standardTween(), label = "shellySurfaceSubtle")
-    val statusAwaiting by animateColorAsState(target.statusAwaiting, ShellyMotion.standardTween(), label = "shellyStatusAwaiting")
-    val statusWorking by animateColorAsState(target.statusWorking, ShellyMotion.standardTween(), label = "shellyStatusWorking")
-    val statusIdle by animateColorAsState(target.statusIdle, ShellyMotion.standardTween(), label = "shellyStatusIdle")
-    val statusCrashed by animateColorAsState(target.statusCrashed, ShellyMotion.standardTween(), label = "shellyStatusCrashed")
-    val buttonPrimary by animateColorAsState(target.buttonPrimary, ShellyMotion.standardTween(), label = "shellyButtonPrimary")
-    val onButtonPrimary by animateColorAsState(target.onButtonPrimary, ShellyMotion.standardTween(), label = "shellyOnButtonPrimary")
-    val destructive by animateColorAsState(target.destructive, ShellyMotion.standardTween(), label = "shellyDestructive")
+private fun animatedShellyColors(target: ShellyColors, animationsEnabled: Boolean): ShellyColors {
+    val spec = if (animationsEnabled) ShellyMotion.standardTween<Color>() else snap()
+    val screen by animateColorAsState(target.screen, spec, label = "shellyScreen")
+    val hero by animateColorAsState(target.hero, spec, label = "shellyHero")
+    val heroWordmark by animateColorAsState(target.heroWordmark, spec, label = "shellyHeroWordmark")
+    val content by animateColorAsState(target.content, spec, label = "shellyContent")
+    val insetCard by animateColorAsState(target.insetCard, spec, label = "shellyInsetCard")
+    val modalCard by animateColorAsState(target.modalCard, spec, label = "shellyModalCard")
+    val textPrimary by animateColorAsState(target.textPrimary, spec, label = "shellyTextPrimary")
+    val textMuted by animateColorAsState(target.textMuted, spec, label = "shellyTextMuted")
+    val accent by animateColorAsState(target.accent, spec, label = "shellyAccent")
+    val onAccent by animateColorAsState(target.onAccent, spec, label = "shellyOnAccent")
+    val divider by animateColorAsState(target.divider, spec, label = "shellyDivider")
+    val surfaceSubtle by animateColorAsState(target.surfaceSubtle, spec, label = "shellySurfaceSubtle")
+    val statusAwaiting by animateColorAsState(target.statusAwaiting, spec, label = "shellyStatusAwaiting")
+    val statusWorking by animateColorAsState(target.statusWorking, spec, label = "shellyStatusWorking")
+    val statusIdle by animateColorAsState(target.statusIdle, spec, label = "shellyStatusIdle")
+    val statusCrashed by animateColorAsState(target.statusCrashed, spec, label = "shellyStatusCrashed")
+    val buttonPrimary by animateColorAsState(target.buttonPrimary, spec, label = "shellyButtonPrimary")
+    val onButtonPrimary by animateColorAsState(target.onButtonPrimary, spec, label = "shellyOnButtonPrimary")
+    val destructive by animateColorAsState(target.destructive, spec, label = "shellyDestructive")
 
     return target.copy(
         screen = screen,

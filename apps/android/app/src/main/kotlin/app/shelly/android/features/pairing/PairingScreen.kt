@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -70,6 +69,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
@@ -109,14 +109,13 @@ sealed interface PairingUiState {
     ) : PairingUiState
 }
 
-@Suppress("UNUSED_PARAMETER")
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun PairingScreen(
-    padding: PaddingValues,
     pairing: Boolean,
     onPair: (String) -> Unit,
     onPairWithCode: (String) -> Unit,
+    onCancelPairing: () -> Unit = {},
     uiState: PairingUiState = PairingUiState.Idle,
 ) {
     val context = LocalContext.current
@@ -154,6 +153,7 @@ fun PairingScreen(
         showCamera = true,
         pairing = pairing,
         uiState = resolvedState,
+        onCancelPairing = onCancelPairing,
         onPair = { payload ->
             val trimmed = payload.trim()
             if (!pairing && trimmed.isNotEmpty()) onPair(trimmed)
@@ -171,6 +171,7 @@ private fun PairingContent(
     showCamera: Boolean,
     pairing: Boolean,
     uiState: PairingUiState,
+    onCancelPairing: () -> Unit,
     onPair: (String) -> Unit,
     onPairWithCode: (String) -> Unit,
 ) {
@@ -228,7 +229,7 @@ private fun PairingContent(
             ) { targetState ->
                 Column(Modifier.fillMaxSize()) {
                 when (targetState) {
-                    PairingUiState.Connecting -> ConnectingBody()
+                    PairingUiState.Connecting -> ConnectingBody(onCancelPairing)
                     PairingUiState.Idle -> ManualPairingBody(
                         code = code,
                         onCodeChange = onCodeChange,
@@ -354,11 +355,11 @@ private fun ColumnScope.ManualPairingBody(
 }
 
 @Composable
-private fun ColumnScope.ConnectingBody() {
+private fun ColumnScope.ConnectingBody(onCancelPairing: () -> Unit) {
     ConnectingViewport()
     LinkChecklist()
     Spacer(Modifier.weight(1f))
-    GhostPairingAction("Cancel pairing")
+    GhostPairingAction("Cancel pairing", onClick = onCancelPairing)
 }
 
 @Composable
@@ -520,7 +521,7 @@ private fun ConnectingViewport() {
             color = Color(0xFFF0EDE6),
         )
         Text(
-            "node_01k9c4f3hg",
+            "Opening secure link",
             style = ShellyType.monoSmall.copy(
                 fontWeight = FontWeight(500),
                 lineHeight = 15.sp,
@@ -729,9 +730,7 @@ private fun PairingStatusPill(text: String) {
 @Composable
 private fun LinkChecklist() {
     Column {
-        LinkChecklistRow("Node found", "12ms", completed = true, active = false)
-        LinkChecklistRow("Keys verified", "Ed25519", completed = true, active = false)
-        LinkChecklistRow("Opening tunnel…", "iroh", completed = false, active = true)
+        LinkChecklistRow("Opening tunnel…", "secure", completed = false, active = true)
     }
 }
 
@@ -827,12 +826,14 @@ private fun ChecklistStatusIcon(completed: Boolean) {
 }
 
 @Composable
-private fun GhostPairingAction(text: String, modifier: Modifier = Modifier) {
+private fun GhostPairingAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = ShellyTheme.colors
     Row(
         modifier
             .fillMaxWidth()
             .offset(y = 2.dp)
+            .height(48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(15.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -1121,6 +1122,7 @@ internal fun PairingContentPreview(uiState: PairingUiState = PairingUiState.Idle
         uiState = uiState,
         onPair = {},
         onPairWithCode = {},
+        onCancelPairing = {},
     )
 }
 

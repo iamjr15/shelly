@@ -57,7 +57,6 @@ fun CommandPaletteScreen(
     onNewSession: () -> Unit = {},
     onSearchSessions: () -> Unit = {},
     onLockNow: () -> Unit = {},
-    onCopyLastOutput: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     onShowGroupedSessions: () -> Unit = {},
     onShowReconnecting: () -> Unit = {},
@@ -69,7 +68,6 @@ fun CommandPaletteScreen(
         onNewSession = onNewSession,
         onSearchSessions = onSearchSessions,
         onLockNow = onLockNow,
-        onCopyLastOutput = onCopyLastOutput,
         onOpenSettings = onOpenSettings,
         onShowGroupedSessions = onShowGroupedSessions,
         onShowReconnecting = onShowReconnecting,
@@ -378,19 +376,6 @@ private fun CommandGlyphIcon(glyph: CommandGlyph, color: Color, fillColor: Color
                 )
                 line(16f, 7f, 16f, 11f)
             }
-            CommandGlyph.Copy -> {
-                roundRect(9f, 9f, 11f, 11f, 2f)
-                strokedPath {
-                    moveTo(x(5f), y(15f))
-                    lineTo(x(4f), y(15f))
-                    cubicTo(x(2.9f), y(15f), x(2f), y(14.1f), x(2f), y(13f))
-                    lineTo(x(2f), y(4f))
-                    cubicTo(x(2f), y(2.9f), x(2.9f), y(2f), x(4f), y(2f))
-                    lineTo(x(13f), y(2f))
-                    cubicTo(x(14.1f), y(2f), x(15f), y(2.9f), x(15f), y(4f))
-                    lineTo(x(15f), y(5f))
-                }
-            }
             CommandGlyph.Settings -> {
                 line(4f, 8f, 20f, 8f)
                 line(4f, 16f, 20f, 16f)
@@ -426,7 +411,7 @@ private data class PaletteCommand(
     val hiddenUntilQuery: Boolean = false,
 ) {
     fun matches(query: String): Boolean {
-        val normalized = query.trim().removeSuffix("█").lowercase()
+        val normalized = query.trim().lowercase()
         if (normalized.isBlank()) return !hiddenUntilQuery
         return title.lowercase().contains(normalized) || searchTerms.any { it.lowercase().contains(normalized) }
     }
@@ -437,7 +422,6 @@ private enum class CommandGlyph {
     New,
     Search,
     Lock,
-    Copy,
     Settings,
 }
 
@@ -446,7 +430,6 @@ private fun commandPaletteCommands(
     onNewSession: () -> Unit,
     onSearchSessions: () -> Unit,
     onLockNow: () -> Unit,
-    onCopyLastOutput: () -> Unit,
     onOpenSettings: () -> Unit,
     onShowGroupedSessions: () -> Unit,
     onShowReconnecting: () -> Unit,
@@ -523,20 +506,31 @@ private fun commandPaletteCommands(
 
 @Composable
 internal fun CommandPaletteContentPreview() {
+    val previewQuery = "attach█"
     val visibleCommands = commandPaletteCommands(
         onAttachSession = {},
         onNewSession = {},
         onSearchSessions = {},
         onLockNow = {},
-        onCopyLastOutput = {},
         onOpenSettings = {},
         onShowGroupedSessions = {},
         onShowReconnecting = {},
         onShowDaemonUnreachable = {},
-    ).filterNot { it.hiddenUntilQuery }
+    ).filter { it.matches(previewQuery.removeSuffix("█")) }.ifEmpty {
+        commandPaletteCommands(
+            onAttachSession = {},
+            onNewSession = {},
+            onSearchSessions = {},
+            onLockNow = {},
+            onOpenSettings = {},
+            onShowGroupedSessions = {},
+            onShowReconnecting = {},
+            onShowDaemonUnreachable = {},
+        ).filterNot { it.hiddenUntilQuery }
+    }
 
     CommandPaletteContent(
-        query = "attach█",
+        query = previewQuery,
         onQueryChange = {},
         commands = visibleCommands,
         onBack = {},

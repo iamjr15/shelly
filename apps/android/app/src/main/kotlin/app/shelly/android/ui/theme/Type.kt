@@ -35,7 +35,7 @@ val JetBrainsMono = FontFamily(
     mono(400), mono(500), mono(600), mono(700),
 )
 
-private val TrimBoth = LineHeightStyle(
+private val CenteredLineBox = LineHeightStyle(
     alignment = LineHeightStyle.Alignment.Center,
     trim = LineHeightStyle.Trim.None,
 )
@@ -82,7 +82,7 @@ object ShellyType {
         fontWeight = FontWeight(700),
         fontSize = 17.sp,
         lineHeight = 22.sp,
-        lineHeightStyle = TrimBoth,
+        lineHeightStyle = CenteredLineBox,
     )
 
     // Settings / list-item title — slightly larger, medium weight.

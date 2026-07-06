@@ -15,7 +15,7 @@ import java.io.FileOutputStream
 
 /**
  * Shared JVM screenshot renderer. Hosts a composable in a ComposeView on a Robolectric activity,
- * pumps the main looper, and draws the view to a PNG under apps/android/screenshots/.
+ * pumps the main looper, and draws the view to build/screenshots unless shelly.screenshotDir is set.
  *
  * Bypasses the compose-ui-test idling machinery (which never settles under Robolectric).
  * Per-screen test classes call [render] — keep this the single source of the render logic so

@@ -6,18 +6,31 @@ import app.shelly.android.ui.components.SettingsHeroBody
 import app.shelly.android.ui.components.SettingsListRow
 import app.shelly.android.ui.components.ShellyScreen
 
-private val defaultLicenseRows = listOf(
-    "iroh" to "Apache-2.0",
-    "wezterm-term" to "MIT",
+internal val defaultLicenseRows = listOf(
+    "Shelly" to "AGPL-3.0-or-later",
+    "AndroidX" to "Apache-2.0",
+    "Firebase Android SDK" to "Apache-2.0",
+    "CameraX" to "Apache-2.0",
+    "ML Kit Barcode Scanning" to "Apache-2.0",
+    "Java Native Access (JNA)" to "Apache-2.0 OR LGPL-2.1-or-later",
+    "kotlinx.coroutines" to "Apache-2.0",
+    "ConnectBot termlib" to "Apache-2.0",
+    "iroh" to "MIT OR Apache-2.0",
     "tokio" to "MIT",
-    "ed25519-dalek" to "BSD-3",
-    "serde" to "MIT",
+    "UniFFI" to "MPL-2.0",
+    "wezterm-term" to "MIT",
+    "portable-pty" to "MIT",
+    "redb" to "MIT OR Apache-2.0",
+    "serde" to "MIT OR Apache-2.0",
+    "rustls" to "Apache-2.0 OR ISC OR MIT",
 )
+
+internal val licenseDependencyCount = "${defaultLicenseRows.size} notices"
 
 @Composable
 fun LicensesScreen(
     onBack: () -> Unit,
-    dependencyCount: String = "47 deps",
+    dependencyCount: String = licenseDependencyCount,
     appLicense: String = "AGPL-3.0-or-later",
     rows: List<Pair<String, String>> = defaultLicenseRows,
     onOpenLicense: (String) -> Unit = {},
@@ -67,7 +80,7 @@ private fun LicensesContent(
 internal fun LicensesContentPreview() {
     LicensesContent(
         onBack = {},
-        dependencyCount = "47 deps",
+        dependencyCount = licenseDependencyCount,
         appLicense = "AGPL-3.0-or-later",
         rows = defaultLicenseRows,
         onOpenLicense = {},

@@ -33,6 +33,7 @@ val buildRustMobileCore = tasks.register<Exec>("buildRustMobileCore") {
     inputs.dir(repoRoot.resolve("crates/protocol"))
     inputs.file(repoRoot.resolve("Cargo.toml"))
     inputs.file(repoRoot.resolve("Cargo.lock"))
+    inputs.file(rootProject.file("scripts/build-rust.sh"))
     outputs.dir(rootProject.file("generated"))
     outputs.dir(project.file("src/main/jniLibs"))
 }
@@ -60,6 +61,12 @@ android {
     sourceSets {
         getByName("main") {
             kotlin.srcDir("../generated")
+        }
+    }
+
+    packaging {
+        jniLibs {
+            excludes += listOf("**/libiroh-*.so", "**/libiroh_relay-*.so")
         }
     }
 
@@ -98,6 +105,12 @@ android {
         getByName("release") {
             buildConfigField("boolean", "SHELLY_BIOMETRIC_BYPASS", "false")
             buildConfigField("String", "SHELLY_DEBUG_PAIRING_CODE", "\"\"")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }

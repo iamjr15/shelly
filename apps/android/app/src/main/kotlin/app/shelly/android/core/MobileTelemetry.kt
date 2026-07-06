@@ -23,6 +23,7 @@ object MobileTelemetry {
             .apply()
     }
 
+    // Intentional no-op: diagnostics consent is local-only in v1; no telemetry transport exists.
     fun sync(context: Context) = Unit
 
     private fun Context.telemetryPreferences() =

@@ -3,12 +3,13 @@ package app.shelly.android.features.onboarding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import app.shelly.android.ui.components.ShellyScreen
 
 @Composable
 fun GetStartedScreen(
     onPairLaptop: () -> Unit = {},
 ) {
-    OnboardingShell(
+    ShellyScreen(
         hero = {
             OnboardingHero(
                 eyebrow = "YOU'RE SET — LET'S\nPAIR YOUR LAPTOP",

@@ -3,7 +3,6 @@ package app.shelly.android.features.settings
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import app.shelly.android.ui.components.SettingsFooterAction
 import app.shelly.android.ui.components.SettingsGlyph
 import app.shelly.android.ui.components.SettingsHeroBody
 import app.shelly.android.ui.components.SettingsListRow
@@ -18,10 +17,8 @@ fun SecurityScreen(
     blockOnBackgroundOn: Boolean = true,
     onToggleBiometricLock: () -> Unit = {},
     onCycleAutoLock: () -> Unit = {},
-    onOpenScrollback: () -> Unit = {},
     onToggleBlockOnBackground: () -> Unit = {},
     onToggleTelemetry: () -> Unit = {},
-    onRevokeAllKeys: () -> Unit = {},
 ) {
     SecurityContent(
         onBack = onBack,
@@ -31,10 +28,8 @@ fun SecurityScreen(
         blockOnBackgroundOn = blockOnBackgroundOn,
         onToggleBiometricLock = onToggleBiometricLock,
         onCycleAutoLock = onCycleAutoLock,
-        onOpenScrollback = onOpenScrollback,
         onToggleBlockOnBackground = onToggleBlockOnBackground,
         onToggleTelemetry = onToggleTelemetry,
-        onRevokeAllKeys = onRevokeAllKeys,
     )
 }
 
@@ -47,10 +42,8 @@ private fun SecurityContent(
     blockOnBackgroundOn: Boolean,
     onToggleBiometricLock: () -> Unit,
     onCycleAutoLock: () -> Unit,
-    onOpenScrollback: () -> Unit,
     onToggleBlockOnBackground: () -> Unit,
     onToggleTelemetry: () -> Unit,
-    onRevokeAllKeys: () -> Unit,
 ) {
     ShellyScreen(
         hero = {
@@ -66,7 +59,7 @@ private fun SecurityContent(
         content = {
             SettingsListRow("Biometric lock", if (biometricLockOn) "On" else "Off", onClick = onToggleBiometricLock)
             SettingsListRow("Auto-lock", autoLockLabel, onClick = onCycleAutoLock)
-            SettingsListRow("Scrollback", "Encrypted", onClick = onOpenScrollback)
+            SettingsListRow("Scrollback", "Encrypted")
             SettingsListRow("Block on background", if (blockOnBackgroundOn) "On" else "Off", onClick = onToggleBlockOnBackground)
             SettingsListRow(
                 "Telemetry",
@@ -75,7 +68,6 @@ private fun SecurityContent(
                 onClick = onToggleTelemetry,
             )
             Spacer(Modifier.weight(1f))
-            SettingsFooterAction("Revoke all keys", onClick = onRevokeAllKeys)
         },
     )
 }
@@ -90,9 +82,7 @@ internal fun SecurityContentPreview() {
         blockOnBackgroundOn = true,
         onToggleBiometricLock = {},
         onCycleAutoLock = {},
-        onOpenScrollback = {},
         onToggleBlockOnBackground = {},
         onToggleTelemetry = {},
-        onRevokeAllKeys = {},
     )
 }

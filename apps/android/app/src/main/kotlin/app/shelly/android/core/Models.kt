@@ -46,6 +46,9 @@ enum class AgentState(val sortRank: Int) {
     Crashed(3),
 }
 
+internal val sessionOrderComparator =
+    compareBy<MobileSession> { it.state.sortRank }.thenByDescending { it.lastActivity }
+
 data class PairedDaemonRecord(
     val daemonNodeId: String,
     val relayUrl: String?,

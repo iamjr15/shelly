@@ -44,7 +44,7 @@ class TerminalControllerTest {
         controller.modifierManager.toggleAlt()
         controller.sendInput(byteArrayOf('x'.code.toByte()))
 
-        assertEquals("Locked", controller.state.value.status)
+        assertEquals(TerminalPhase.Locked, controller.state.value.phase)
         assertNull(attached.lastInput)
         assertEquals(false, controller.modifierManager.ctrl)
         assertEquals(false, controller.modifierManager.alt)
@@ -69,7 +69,7 @@ class TerminalControllerTest {
         lockedController.modifierManager.toggleCtrl()
         lockedController.sendAccessory(byteArrayOf(0x03))
 
-        assertEquals("Locked", lockedController.state.value.status)
+        assertEquals(TerminalPhase.Locked, lockedController.state.value.phase)
         assertNull(lockedAttachment.lastInput)
         assertEquals(false, lockedController.modifierManager.ctrl)
 
@@ -123,7 +123,7 @@ class TerminalControllerTest {
         assertEquals(listOf(42UL, 42UL), recordedOffsets)
         assertEquals(1, oldAttachment.detachCalls)
         assertEquals(1, oldAttachment.destroyCalls)
-        assertEquals("Attached", controller.state.value.status)
+        assertEquals(TerminalPhase.Attached, controller.state.value.phase)
         assertEquals(1, newAttachment.subscribeCalls)
         scope.cancel()
     }
@@ -163,7 +163,7 @@ class TerminalControllerTest {
         assertEquals(listOf(64UL), recordedOffsets)
         assertEquals(1, oldAttachment.detachCalls)
         assertEquals(1, oldAttachment.destroyCalls)
-        assertEquals("Attached", controller.state.value.status)
+        assertEquals(TerminalPhase.Attached, controller.state.value.phase)
         assertEquals(1, oldAttachment.subscribeCalls)
         assertEquals(1, newAttachment.subscribeCalls)
         scope.cancel()
@@ -191,7 +191,10 @@ class TerminalControllerTest {
         controller.onLag(1UL)
         withTimeout(1_000) { reattachAttempted.await() }
 
-        assertEquals("Connection lost", controller.state.value.status)
+        assertEquals(
+            TerminalPhase.Error(TerminalErrorKind.ConnectionLost),
+            controller.state.value.phase,
+        )
         scope.cancel()
     }
 
@@ -212,7 +215,7 @@ class TerminalControllerTest {
 
         controller.onLag(1UL)
 
-        assertEquals("Resyncing after 1 updates", controller.state.value.status)
+        assertEquals(TerminalPhase.Resyncing(1UL), controller.state.value.phase)
         assertEquals(1, attached.detachCalls)
         assertEquals(1, attached.destroyCalls)
         scope.cancel()
@@ -268,7 +271,10 @@ class TerminalControllerTest {
         controller.sendInput(byteArrayOf('x'.code.toByte()))
         controller.onOutput("1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n".encodeToByteArray())
 
-        assertEquals("Session ended", controller.state.value.status)
+        assertEquals(
+            TerminalPhase.Error(TerminalErrorKind.SessionEnded),
+            controller.state.value.phase,
+        )
         assertNull(attached.lastInput)
         assertEquals(false, controller.modifierManager.ctrl)
         assertEquals(false, controller.modifierManager.alt)
@@ -307,7 +313,7 @@ class TerminalControllerTest {
 
         assertEquals(17UL, withTimeout(1_000) { reattachedFrom.await() })
         withTimeout(1_000) { newSubscribed.await() }
-        assertEquals("Attached", controller.state.value.status)
+        assertEquals(TerminalPhase.Attached, controller.state.value.phase)
         assertNull(attached.lastInput)
         assertEquals(1, attached.detachCalls)
         assertEquals(1, attached.destroyCalls)
@@ -366,7 +372,7 @@ class TerminalControllerTest {
         assertEquals(1, oldAttachment.destroyCalls)
         assertEquals(0, newAttachment.destroyCalls)
         assertEquals(1, newAttachment.subscribeCalls)
-        assertEquals("Attached", controller.state.value.status)
+        assertEquals(TerminalPhase.Attached, controller.state.value.phase)
         scope.cancel()
     }
 
@@ -411,7 +417,10 @@ class TerminalControllerTest {
 
         controller.requestResize(rows = 40, columns = 120)
 
-        assertEquals("Session ended", controller.state.value.status)
+        assertEquals(
+            TerminalPhase.Error(TerminalErrorKind.SessionEnded),
+            controller.state.value.phase,
+        )
         assertEquals(emptyList<Pair<UShort, UShort>>(), attached.resizeCalls)
         scope.cancel()
     }
@@ -447,7 +456,7 @@ class TerminalControllerTest {
 
         assertEquals(18UL, withTimeout(1_000) { reattachedFrom.await() })
         withTimeout(1_000) { newSubscribed.await() }
-        assertEquals("Attached", controller.state.value.status)
+        assertEquals(TerminalPhase.Attached, controller.state.value.phase)
         assertEquals(emptyList<Pair<UShort, UShort>>(), attached.resizeCalls)
         assertEquals(1, attached.detachCalls)
         assertEquals(1, attached.destroyCalls)
@@ -537,7 +546,7 @@ class TerminalControllerTest {
         assertEquals(0, inputGateCalls)
         assertNull(attached.lastInput)
         assertEquals(emptyList<ByteArray>(), terminalWrites)
-        assertEquals("Attached", controller.state.value.status)
+        assertEquals(TerminalPhase.Attached, controller.state.value.phase)
         assertEquals(AgentState.Idle, controller.state.value.agentState)
         assertNull(controller.state.value.exitedCode)
         assertEquals(1, attached.detachCalls)
@@ -611,8 +620,6 @@ class TerminalControllerTest {
         override fun destroy() {
             destroyCalls += 1
         }
-
-        override fun initialSeq(): ULong = lastSeenSeq
 
         override fun lastSeenSeq(): ULong = lastSeenSeq
 

@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 out_dir="$repo_root/apps/android/generated"
+jni_libs_dir="$repo_root/apps/android/app/src/main/jniLibs"
 cargo_target_dir="${CARGO_TARGET_DIR:-$repo_root/target}"
 if [[ "$cargo_target_dir" != /* ]]; then
   cargo_target_dir="$repo_root/$cargo_target_dir"
@@ -37,13 +38,16 @@ fi
 
 rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 
+rm -rf "$jni_libs_dir"
 cargo ndk \
   --manifest-path "$repo_root/Cargo.toml" \
   -t arm64-v8a \
   -t armeabi-v7a \
   -t x86_64 \
-  -o "$repo_root/apps/android/app/src/main/jniLibs" \
+  -o "$jni_libs_dir" \
   build -p shelly-mobile-core --release
+
+find "$jni_libs_dir" -name '*.so' ! -name 'libshelly_mobile_core.so' -delete
 
 rm -rf "$out_dir"
 mkdir -p "$out_dir"

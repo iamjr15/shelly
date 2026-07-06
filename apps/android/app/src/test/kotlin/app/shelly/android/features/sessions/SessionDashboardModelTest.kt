@@ -2,29 +2,30 @@ package app.shelly.android.features.sessions
 
 import app.shelly.android.core.AgentState
 import app.shelly.android.core.MobileSession
+import app.shelly.android.core.sessionOrderComparator
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class SessionDashboardModelTest {
     @Test
-    fun sectionsPrioritizeSessionStateAndRecentActivity() {
-        val sections = sessionDashboardSections(
-            listOf(
-                testSession("idle-old", AgentState.Idle, lastActivity = 10uL),
-                testSession("working-old", AgentState.Working, lastActivity = 20uL),
-                testSession("awaiting", AgentState.AwaitingInput, lastActivity = 5uL),
-                testSession("working-new", AgentState.Working, lastActivity = 30uL),
-                testSession("crashed", AgentState.Crashed, lastActivity = 40uL),
-            ),
-        )
+    fun sessionOrderPrioritizesSessionStateAndRecentActivity() {
+        val ordered = listOf(
+            testSession("idle-old", AgentState.Idle, lastActivity = 10uL),
+            testSession("working-old", AgentState.Working, lastActivity = 20uL),
+            testSession("awaiting", AgentState.AwaitingInput, lastActivity = 5uL),
+            testSession("working-new", AgentState.Working, lastActivity = 30uL),
+            testSession("crashed", AgentState.Crashed, lastActivity = 40uL),
+        ).sortedWith(sessionOrderComparator)
 
         assertEquals(
-            listOf(AgentState.AwaitingInput, AgentState.Working, AgentState.Idle, AgentState.Crashed),
-            sections.map { it.state },
-        )
-        assertEquals(
-            listOf("working-new", "working-old"),
-            sections.first { it.state == AgentState.Working }.sessions.map { it.id },
+            listOf(
+                "awaiting",
+                "working-new",
+                "working-old",
+                "idle-old",
+                "crashed",
+            ),
+            ordered.map { it.id },
         )
     }
 

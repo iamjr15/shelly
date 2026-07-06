@@ -8,8 +8,6 @@ import uniffi.shelly_mobile_core.ShellyException
 class TerminalAttachModelTest {
     @Test
     fun attachStatusCopyIsStableAndPrivate() {
-        assertEquals("Attaching", TERMINAL_ATTACHING_TITLE)
-        assertEquals("Opening the live PTY stream from your laptop.", TERMINAL_ATTACHING_BODY)
         assertEquals("Retry", TERMINAL_ATTACH_RETRY)
     }
 

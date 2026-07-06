@@ -1,47 +1,54 @@
 package app.shelly.android.features.lock
 
-import androidx.compose.foundation.Canvas
+import android.content.Context
+import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.shelly.android.ui.components.HeroBody
+import app.shelly.android.ui.components.DoubleChevronGlyph
+import app.shelly.android.ui.components.SettingsGlyph
+import app.shelly.android.ui.components.SettingsGlyphIcon
 import app.shelly.android.ui.components.ShellyScreen
 import app.shelly.android.ui.theme.LocalShellyColors
 import app.shelly.android.ui.theme.ShellyColors
 import app.shelly.android.ui.theme.ShellyTheme
 import app.shelly.android.ui.theme.ShellyType
+import app.shelly.android.ui.theme.ink
 import app.shelly.android.ui.theme.shellyPressScale
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlinx.coroutines.delay
 
 @Composable
 fun LockedScreen(
@@ -82,7 +89,15 @@ private fun ColumnScope.LockedHero() {
 
 @Composable
 private fun LockedDate(primary: Color, muted: Color) {
-    val (clockTime, clockDay) = remember { currentClock() }
+    val context = LocalContext.current
+    var clock by remember(context) { mutableStateOf(currentClock(context)) }
+    LaunchedEffect(context) {
+        while (true) {
+            clock = currentClock(context)
+            delay(60_000L - (System.currentTimeMillis() % 60_000L))
+        }
+    }
+    val (clockTime, clockDay) = clock
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -188,51 +203,6 @@ private fun ActivityCard(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ActivityRow(
-    dot: Color,
-    title: String,
-    subtitle: String,
-    primary: Color,
-    muted: Color,
-) {
-    Row(
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Box(
-            Modifier
-                .padding(top = 6.dp)
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(dot),
-        )
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = ShellyType.rowTitle.copy(
-                    fontSize = 14.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                ),
-                color = primary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                subtitle,
-                style = ShellyType.monoSmall.copy(
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                ),
-                color = muted.copy(alpha = 0.6f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-@Composable
 private fun UnlockButton(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
     val c = ShellyTheme.colors
     val background = lockedButtonBackground(c)
@@ -263,7 +233,7 @@ private fun UnlockButton(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            FingerprintIcon(color = leadingIcon, modifier = Modifier.size(22.dp))
+            SettingsGlyphIcon(SettingsGlyph.Fingerprint, color = leadingIcon, size = 22.dp)
             Text(
                 "Unlock now",
                 style = ShellyType.button.copy(
@@ -274,84 +244,19 @@ private fun UnlockButton(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
                 color = foreground,
             )
         }
-        DoubleChevronIcon(color = foreground, modifier = Modifier.size(22.dp))
+        DoubleChevronGlyph(color = foreground, size = 22.dp)
     }
 }
 
-@Composable
-private fun FingerprintIcon(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val sx = size.width / 24f
-        val sy = size.height / 24f
-        fun x(value: Float) = value * sx
-        fun y(value: Float) = value * sy
-        fun path(block: Path.() -> Unit) {
-            drawPath(
-                Path().apply(block),
-                color = color,
-                style = Stroke(
-                    width = 2f * sx,
-                    cap = StrokeCap.Round,
-                    join = StrokeJoin.Round,
-                ),
-            )
-        }
-
-        path {
-            moveTo(x(2f), y(12f))
-            cubicTo(x(2f), y(6.5f), x(6.5f), y(2f), x(12f), y(2f))
-            cubicTo(x(15.2f), y(2f), x(18f), y(3.5f), x(20f), y(6f))
-        }
-        path {
-            moveTo(x(5f), y(19.5f))
-            cubicTo(x(5.5f), y(18f), x(6f), y(15f), x(6f), y(12f))
-            cubicTo(x(6f), y(11.3f), x(6.12f), y(10.63f), x(6.34f), y(10f))
-        }
-        path {
-            moveTo(x(14f), y(13.12f))
-            cubicTo(x(14f), y(15.5f), x(14f), y(19.5f), x(13f), y(22f))
-        }
-        path {
-            moveTo(x(9f), y(6.8f))
-            cubicTo(x(10f), y(6.3f), x(11f), y(6f), x(12f), y(6f))
-            cubicTo(x(15.3f), y(6f), x(18f), y(8.7f), x(18f), y(12f))
-            cubicTo(x(18f), y(12.47f), x(18f), y(13.17f), x(17.98f), y(14f))
-        }
-    }
-}
-
-@Composable
-private fun DoubleChevronIcon(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val stroke = Stroke(
-            width = 2.dp.toPx(),
-            cap = StrokeCap.Round,
-            join = StrokeJoin.Round,
-        )
-
-        fun polyline(firstX: Float, secondX: Float, thirdX: Float) {
-            val path = Path().apply {
-                moveTo(firstX / 24f * size.width, 6f / 24f * size.height)
-                lineTo(secondX / 24f * size.width, 12f / 24f * size.height)
-                lineTo(thirdX / 24f * size.width, 18f / 24f * size.height)
-            }
-            drawPath(path, color = color, style = stroke)
-        }
-
-        polyline(6f, 12f, 6f)
-        polyline(13f, 19f, 13f)
-    }
-}
-
-private fun currentClock(): Pair<String, String> {
-    val now = java.util.Date()
-    val time = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(now)
-    val day = java.text.SimpleDateFormat("EEE", java.util.Locale.US).format(now)
+private fun currentClock(context: Context): Pair<String, String> {
+    val now = Date()
+    val time = DateFormat.getTimeFormat(context).format(now)
+    val day = SimpleDateFormat("EEE", Locale.getDefault()).format(now).uppercase(Locale.getDefault())
     return time to day
 }
 
 private fun lockedHeroForeground(c: ShellyColors): Color =
-    if (c.isDark) c.textPrimary else c.heroWordmark
+    c.ink
 
 private fun lockedHeroDateMuted(c: ShellyColors, primary: Color): Color =
     if (c.isDark) c.textMuted.copy(alpha = 0.6f) else primary.copy(alpha = 0.6f)
@@ -360,7 +265,7 @@ private fun lockedHeroStatusMuted(c: ShellyColors, primary: Color): Color =
     if (c.isDark) c.textMuted.copy(alpha = 0.7f) else primary.copy(alpha = 0.7f)
 
 private fun lockedContentPrimary(c: ShellyColors): Color =
-    if (c.isDark) c.textPrimary else c.heroWordmark
+    c.ink
 
 private fun lockedContentMuted(c: ShellyColors, primary: Color): Color =
     if (c.isDark) c.textMuted else primary

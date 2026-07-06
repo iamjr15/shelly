@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.shelly.android.ui.components.ShellyScreen
 
 @Composable
 fun WelcomeScreen(
@@ -15,7 +16,7 @@ fun WelcomeScreen(
     onHowItWorks: () -> Unit = {},
     onPrivacy: () -> Unit = {},
 ) {
-    OnboardingShell(
+    ShellyScreen(
         hero = {
             WelcomeHero()
         },
@@ -23,7 +24,6 @@ fun WelcomeScreen(
             Spacer(Modifier.height(2.dp))
             Column(
                 verticalArrangement = Arrangement.spacedBy(20.dp),
-                modifier = Modifier.height(124.dp),
             ) {
                 WelcomeMenuRow("Pair your laptop", onPairLaptop)
                 WelcomeMenuRow("How it works", onHowItWorks)

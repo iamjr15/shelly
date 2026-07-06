@@ -13,9 +13,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,6 +49,8 @@ import app.shelly.android.ui.components.ShellyScreen
 import app.shelly.android.ui.theme.Inter
 import app.shelly.android.ui.theme.JetBrainsMono
 import app.shelly.android.ui.theme.ShellyTheme
+import app.shelly.android.ui.theme.ink
+import app.shelly.android.ui.theme.mutedInk
 import app.shelly.android.ui.theme.shellyPressScale
 
 private val PaperDanger = Color(0xFFA12E27)
@@ -130,13 +133,12 @@ internal fun ShellyModalCard(
     primaryIcon: (@Composable () -> Unit)? = null,
 ) {
     val c = ShellyTheme.colors
-    val blackInk = c.heroWordmark
-    val modalInk = if (c.isDark) c.textPrimary else blackInk
-    val mutedInk = if (c.isDark) c.textMuted else blackInk
+    val modalInk = c.ink
+    val mutedInk = c.mutedInk
     val primaryBackground = when {
         destructive -> PaperDanger
         c.isDark -> c.buttonPrimary
-        else -> blackInk
+        else -> c.ink
     }
     val primaryForeground = if (destructive) Color.White else c.onButtonPrimary
     val primaryInteractionSource = remember { MutableInteractionSource() }
@@ -146,7 +148,9 @@ internal fun ShellyModalCard(
 
     Column(
         modifier
-            .width(356.dp)
+            .padding(horizontal = 16.dp)
+            .widthIn(max = 356.dp)
+            .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(c.modalCard)
             .padding(horizontal = 24.dp, vertical = 26.dp),
@@ -167,7 +171,7 @@ internal fun ShellyModalCard(
                 overflow = TextOverflow.Clip,
             )
         }
-        Box(Modifier.fillMaxWidth().height(84.dp)) {
+        Box(Modifier.fillMaxWidth().heightIn(min = 84.dp)) {
             Text(
                 text = title,
                 style = ModalTitleStyle,
@@ -355,7 +359,7 @@ private fun ModalBackdrop() {
             SettingsHeroBody(
                 eyebrow = "YOUR PREFERENCES\nLIVE ON THIS DEVICE",
                 wordmark = "PREFS",
-                status = "paired with node_01k9c4f3hg...",
+                status = "paired with dev-macbook",
                 statusGlyph = SettingsGlyph.Monitor,
                 backLabel = "Sessions",
                 onBack = {},
@@ -366,7 +370,7 @@ private fun ModalBackdrop() {
             SettingsListRow("Notifications", "ON", glyph = SettingsGlyph.Bell, onClick = {})
             SettingsListRow("Security", "5 MIN", glyph = SettingsGlyph.Lock, onClick = {})
             SettingsListRow("Privacy", "OPT-OUT", glyph = SettingsGlyph.Shield, onClick = {})
-            SettingsListRow("About", "V1.0.0", glyph = SettingsGlyph.Info, showDivider = false, onClick = {})
+            SettingsListRow("About", "V1.0", glyph = SettingsGlyph.Info, showDivider = false, onClick = {})
             Spacer(Modifier.weight(1f))
             SettingsFooterAction("Unpair this device", onClick = {})
         },

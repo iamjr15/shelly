@@ -6,11 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import app.shelly.android.core.MobileTelemetry
 import app.shelly.android.core.PairedDaemonRecord
 import app.shelly.android.core.ShellyViewModel
 import app.shelly.android.core.displayName
@@ -25,6 +21,10 @@ fun SettingsScreen(
     padding: PaddingValues,
     viewModel: ShellyViewModel,
     themeModeLabel: String = "SYSTEM",
+    notificationsLabel: String = "OFF",
+    securityLabel: String = "5 MIN",
+    aboutVersionLabel: String = "V1.0",
+    telemetryEnabled: Boolean = false,
     onBackToSessions: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
@@ -34,16 +34,17 @@ fun SettingsScreen(
     onOpenDaemonDetail: () -> Unit = {},
     onUnpair: () -> Unit = {},
 ) {
-    val context = LocalContext.current
     val state by viewModel.state.collectAsState()
-    val telemetry by remember { mutableStateOf(MobileTelemetry.isDiagnosticsEnabled(context)) }
 
     SettingsContent(
         modifier = Modifier.padding(padding),
         paired = state.paired,
         pairedDaemon = state.pairedDaemon,
         themeModeLabel = themeModeLabel,
-        telemetryEnabled = telemetry,
+        notificationsLabel = notificationsLabel,
+        securityLabel = securityLabel,
+        aboutVersionLabel = aboutVersionLabel,
+        telemetryEnabled = telemetryEnabled,
         onBackToSessions = onBackToSessions,
         onOpenAppearance = onOpenAppearance,
         onOpenNotifications = onOpenNotifications,
@@ -61,6 +62,9 @@ private fun SettingsContent(
     paired: Boolean,
     pairedDaemon: PairedDaemonRecord?,
     themeModeLabel: String,
+    notificationsLabel: String,
+    securityLabel: String,
+    aboutVersionLabel: String,
     telemetryEnabled: Boolean,
     onBackToSessions: () -> Unit,
     onOpenAppearance: () -> Unit,
@@ -87,15 +91,15 @@ private fun SettingsContent(
         },
         content = {
             SettingsListRow("Appearance", themeModeLabel, glyph = SettingsGlyph.Sun, onClick = onOpenAppearance)
-            SettingsListRow("Notifications", "ON", glyph = SettingsGlyph.Bell, onClick = onOpenNotifications)
-            SettingsListRow("Security", "5 MIN", glyph = SettingsGlyph.Lock, onClick = onOpenSecurity)
+            SettingsListRow("Notifications", notificationsLabel, glyph = SettingsGlyph.Bell, onClick = onOpenNotifications)
+            SettingsListRow("Security", securityLabel, glyph = SettingsGlyph.Lock, onClick = onOpenSecurity)
             SettingsListRow(
                 "Privacy",
                 if (telemetryEnabled) "OPT-IN" else "OPT-OUT",
                 glyph = SettingsGlyph.Shield,
                 onClick = onOpenPrivacy,
             )
-            SettingsListRow("About", "V1.0.0", glyph = SettingsGlyph.Info, showDivider = false, onClick = onOpenAbout)
+            SettingsListRow("About", aboutVersionLabel, glyph = SettingsGlyph.Info, showDivider = false, onClick = onOpenAbout)
             Spacer(Modifier.weight(1f))
             if (paired) {
                 SettingsFooterAction("Unpair this device", onClick = onUnpair)
@@ -109,17 +113,20 @@ internal fun SettingsContentPreview() {
     SettingsContent(
         paired = true,
         pairedDaemon = PairedDaemonRecord(
-            daemonNodeId = "node_01k9c4f3hg7z",
+            daemonNodeId = "preview-daemon",
             relayUrl = null,
             addrs = emptyList(),
-            deviceNodeId = "device-node",
+            deviceNodeId = "preview-device",
             deviceSecretKey = ByteArray(0),
             pairedAtMillis = 0L,
             daemonVersion = "1.0.0",
-            hostName = "Jigyansu's MacBook",
+            hostName = "dev-macbook",
             protocolVersion = 3,
         ),
         themeModeLabel = "SYSTEM",
+        notificationsLabel = "OFF",
+        securityLabel = "5 MIN",
+        aboutVersionLabel = "V1.0",
         telemetryEnabled = false,
         onBackToSessions = {},
         onOpenAppearance = {},

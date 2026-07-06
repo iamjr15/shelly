@@ -104,7 +104,7 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
         debugLog("listSessions returned ${summaries.size} sessions")
         return summaries
             .map(::toMobileSession)
-            .sortedWith(compareBy<MobileSession> { it.state.sortRank }.thenByDescending { it.lastActivity })
+            .sortedWith(sessionOrderComparator)
     }
 
     override suspend fun subscribeSessions(onUpdate: (List<MobileSession>) -> Unit) {
@@ -113,18 +113,15 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
                 onUpdate(
                     sessions
                         .map(::toMobileSession)
-                        .sortedWith(
-                            compareBy<MobileSession> { it.state.sortRank }
-                                .thenByDescending { it.lastActivity },
-                        ),
+                        .sortedWith(sessionOrderComparator),
                 )
             }
         })
     }
 
-    override suspend fun liveDaemonVersion(): String? = client?.daemonVersion()
+    override suspend fun liveDaemonVersion(): String? = currentClient()?.daemonVersion()
 
-    override suspend fun liveDaemonHostName(): String? = client?.daemonHostName()
+    override suspend fun liveDaemonHostName(): String? = currentClient()?.daemonHostName()
 
     override suspend fun createSession(name: String?): MobileSession {
         val summary = requireClient().createSession(name)
@@ -190,6 +187,8 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
         }
         return winner
     }
+
+    private fun currentClient(): ShellyClient? = synchronized(stateLock) { client }
 
     private fun cachedLastSeenSeq(sessionId: String): ULong? {
         return synchronized(stateLock) {

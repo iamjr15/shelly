@@ -21,8 +21,24 @@ import uniffi.shelly_mobile_core.ByteStreamSink
 import uniffi.shelly_mobile_core.ShellyException
 import java.util.concurrent.atomic.AtomicBoolean
 
+sealed interface TerminalPhase {
+    data object Attached : TerminalPhase
+    data object Locked : TerminalPhase
+    data class Reconnecting(val attempt: Int? = null) : TerminalPhase
+    data class Resyncing(val skippedBytes: ULong) : TerminalPhase
+    data class Exited(val code: Int) : TerminalPhase
+    data class Error(val kind: TerminalErrorKind) : TerminalPhase
+}
+
+enum class TerminalErrorKind {
+    SessionEnded,
+    Unpaired,
+    Denied,
+    ConnectionLost,
+}
+
 data class TerminalUiState(
-    val status: String = "Attached",
+    val phase: TerminalPhase = TerminalPhase.Attached,
     val agentState: AgentState = AgentState.Idle,
     val exitedCode: Int? = null,
 )
@@ -83,7 +99,7 @@ class TerminalController(
                 if (error is CancellationException) {
                     throw error
                 }
-                recoverAttachment(current, "Reconnecting")
+                recoverAttachment(current, TerminalPhase.Reconnecting())
             }
         }
     }
@@ -92,7 +108,7 @@ class TerminalController(
         if (detached.get()) return
         if (bytes.isEmpty()) return
         if (!inputGate()) {
-            _state.update { it.copy(status = "Locked") }
+            _state.update { it.copy(phase = TerminalPhase.Locked) }
             modifierManager.clearTransients()
             return
         }
@@ -104,9 +120,9 @@ class TerminalController(
                 throw error
             }
             if (!detached.get() && shouldRecoverAttachment(error)) {
-                recoverAttachment(current, "Reconnecting")
+                recoverAttachment(current, TerminalPhase.Reconnecting())
             } else if (!detached.get()) {
-                _state.update { it.copy(status = terminalCommandErrorStatus(error)) }
+                _state.update { it.copy(phase = terminalCommandErrorPhase(error)) }
             }
             modifierManager.clearTransients()
             return
@@ -141,9 +157,9 @@ class TerminalController(
                         throw error
                     }
                     if (!detached.get() && shouldRecoverAttachment(error)) {
-                        recoverAttachment(current, "Reconnecting")
+                        recoverAttachment(current, TerminalPhase.Reconnecting())
                     } else if (!detached.get()) {
-                        _state.update { it.copy(status = terminalCommandErrorStatus(error)) }
+                        _state.update { it.copy(phase = terminalCommandErrorPhase(error)) }
                     }
                 }
             }
@@ -164,13 +180,11 @@ class TerminalController(
 
     override fun onInitialBytes(bytes: ByteArray) {
         if (detached.get()) return
-        recordCurrentSeq()
         terminalWriter(bytes)
     }
 
     override fun onOutput(bytes: ByteArray) {
         if (detached.get()) return
-        recordCurrentSeq()
         trackTelemetryExperienceOutput(bytes)
         terminalWriter(bytes)
     }
@@ -187,24 +201,25 @@ class TerminalController(
     override fun onLag(skippedBytes: ULong) {
         if (detached.get()) return
         recordCurrentSeq()
-        _state.update { it.copy(status = "Resyncing after $skippedBytes updates") }
+        val phase = TerminalPhase.Resyncing(skippedBytes)
+        _state.update { it.copy(phase = phase) }
         val current = attachedSession
         scope.launch {
-            recoverAttachment(current, "Resyncing after $skippedBytes updates")
+            recoverAttachment(current, phase)
         }
     }
 
     override fun onSessionExited(code: Int) {
         if (detached.get()) return
         recordCurrentSeq()
-        _state.update { it.copy(status = "Exited $code", exitedCode = code) }
+        _state.update { it.copy(phase = TerminalPhase.Exited(code), exitedCode = code) }
     }
 
     private fun recordCurrentSeq() {
         recordLastSeenSeq(attachedSession.lastSeenSeq())
     }
 
-    private suspend fun recoverAttachment(failed: AttachedSession, reason: String) {
+    private suspend fun recoverAttachment(failed: AttachedSession, initialPhase: TerminalPhase) {
         recoveryMutex.withLock {
             if (detached.get() || failed !== attachedSession) {
                 return
@@ -216,15 +231,15 @@ class TerminalController(
 
             var attempt = 0
             while (!detached.get()) {
-                val status = when {
-                    attempt == 0 -> reason
-                    else -> "Reconnecting (${attempt + 1})"
+                val phase = when {
+                    attempt == 0 -> initialPhase
+                    else -> TerminalPhase.Reconnecting(attempt + 1)
                 }
-                _state.update { it.copy(status = status) }
+                _state.update { it.copy(phase = phase) }
                 try {
                     attachedSession = reattach(lastSeenSeq)
                     if (!detached.get()) {
-                        _state.update { it.copy(status = "Attached") }
+                        _state.update { it.copy(phase = TerminalPhase.Attached) }
                         launchSubscribe(cancelExisting = false)
                     }
                     return
@@ -232,7 +247,7 @@ class TerminalController(
                     if (error is CancellationException) {
                         throw error
                     }
-                    _state.update { it.copy(status = terminalCommandErrorStatus(error)) }
+                    _state.update { it.copy(phase = terminalCommandErrorPhase(error)) }
                 }
                 attempt += 1
                 delay(reconnectDelayMillis(attempt))

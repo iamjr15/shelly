@@ -1,7 +1,7 @@
 <resources>
     <style name="Theme.Shelly" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:navigationBarColor">#111111</item>
+        <item name="android:navigationBarColor">@color/shelly_black</item>
         <item name="android:windowBackground">#FFFAFAF7</item>
     </style>
 </resources>

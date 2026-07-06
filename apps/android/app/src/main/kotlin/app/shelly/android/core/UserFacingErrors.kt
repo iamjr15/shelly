@@ -219,22 +219,12 @@ internal fun terminalAttachErrorMessage(error: Throwable): TerminalAttachErrorMe
     }
 }
 
-internal fun terminalCommandErrorStatus(error: Throwable): String {
+internal fun terminalCommandErrorPhase(error: Throwable): TerminalPhase {
     return when (error) {
-        is ShellyException.NotFound -> "Session ended"
-        is ShellyException.Unauthorized -> "Pair again"
-        is ShellyException.Forbidden -> "Action denied"
-        else -> "Connection lost"
-    }
-}
-
-internal fun terminalHeaderStatusForError(status: String): String? {
-    return when (status) {
-        "Session ended" -> "GONE"
-        "Pair again" -> "UNPAIRED"
-        "Action denied" -> "DENIED"
-        "Connection lost" -> "OFFLINE"
-        else -> null
+        is ShellyException.NotFound -> TerminalPhase.Error(TerminalErrorKind.SessionEnded)
+        is ShellyException.Unauthorized -> TerminalPhase.Error(TerminalErrorKind.Unpaired)
+        is ShellyException.Forbidden -> TerminalPhase.Error(TerminalErrorKind.Denied)
+        else -> TerminalPhase.Error(TerminalErrorKind.ConnectionLost)
     }
 }
 

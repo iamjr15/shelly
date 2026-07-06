@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
@@ -63,7 +62,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -76,18 +74,13 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -97,6 +90,7 @@ import app.shelly.android.core.ConnectionState
 import app.shelly.android.core.MobileSession
 import app.shelly.android.core.ShellyViewModel
 import app.shelly.android.core.displayName
+import app.shelly.android.core.sessionOrderComparator
 import app.shelly.android.ui.components.BrandRow
 import app.shelly.android.ui.components.DoubleChevron
 import app.shelly.android.ui.components.HeroBody
@@ -105,14 +99,12 @@ import app.shelly.android.ui.components.StatusDot
 import app.shelly.android.ui.components.SessionRow
 import app.shelly.android.ui.components.ShellyScreen
 import app.shelly.android.ui.components.StateChip
+import app.shelly.android.ui.components.wordmarkFootprint
 import app.shelly.android.ui.theme.ShellyMotion
 import app.shelly.android.ui.theme.ShellyTheme
 import app.shelly.android.ui.theme.ShellyType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -164,7 +156,7 @@ fun SessionsScreen(
         val byState = if (stateFilter == null) all else all.filter { it.state == stateFilter }
         if (searchActive) filterSessions(byState, search.text) else byState
     }
-    val ordered = sessionDashboardSections(visible).flatMap { it.sessions }
+    val ordered = visible.sortedWith(sessionOrderComparator)
     val openSession: (MobileSession) -> Unit = { session ->
         scope.launch { if (biometricGate.unlock("Open terminal session")) onOpenSession(session) }
     }
@@ -239,6 +231,7 @@ fun SessionsScreen(
         menuSession?.let { session ->
             SessionActionsSheet(
                 session = session,
+                laptopName = laptopName,
                 onDismiss = { menuSession = null },
                 onAttach = { menuSession = null; openSession(session) },
                 onCopyId = {
@@ -295,7 +288,7 @@ private fun RefreshCircleButton(onRefresh: () -> Unit) {
                 rotation.snapTo(rotation.value % 360f)
             }
         },
-        iconModifier = Modifier.rotate(rotation.value),
+        iconModifier = Modifier.graphicsLayer { rotationZ = rotation.value },
     )
 }
 
@@ -401,14 +394,14 @@ private fun SessionList(
                     ),
             ) {
                 Box(
-                    Modifier
-                        .animateItem(placementSpec = ShellyMotion.standardTween())
-                        .combinedClickable(
-                            onClick = { onOpen(session) },
-                            onLongClick = { onLongPress(session) },
-                        ),
+                    Modifier.animateItem(placementSpec = ShellyMotion.standardTween()),
                 ) {
-                    SessionRow(session = session, onClick = { onOpen(session) }, showDivider = session != sessions.last())
+                    SessionRow(
+                        session = session,
+                        onClick = { onOpen(session) },
+                        onLongClick = { onLongPress(session) },
+                        showDivider = session != sessions.last(),
+                    )
                 }
             }
         }
@@ -458,6 +451,7 @@ private fun CenteredHint(loading: Boolean, text: String) {
 @Composable
 private fun SessionActionsSheet(
     session: MobileSession,
+    laptopName: String,
     onDismiss: () -> Unit,
     onAttach: () -> Unit,
     onCopyId: () -> Unit,
@@ -501,7 +495,7 @@ private fun SessionActionsSheet(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        session.sheetSubtitle(),
+                        session.sheetSubtitle(laptopName),
                         style = ShellyType.monoSmall.copy(fontWeight = FontWeight(500), lineHeight = 15.sp),
                         color = c.textMuted.copy(alpha = 0.5f),
                         maxLines = 1,
@@ -577,13 +571,11 @@ private fun ConfirmKillSheet(session: MobileSession, laptopName: String, onDismi
 @Composable
 internal fun SessionsContentPreview(sessions: List<MobileSession>, loading: Boolean) {
     val c = ShellyTheme.colors
-    val preview = if (!loading && sessions.isNotEmpty()) previewSessions() else sessions
-    val counts = AgentState.values().associateWith { st -> preview.count { it.state == st } }
-    val ordered = preview
+    val counts = AgentState.values().associateWith { st -> sessions.count { it.state == st } }
     ShellyScreen(
         hero = {
             HeroBody(
-                eyebrow = sessionsEyebrow(preview.size),
+                eyebrow = sessionsEyebrow(sessions.size),
                 wordmark = "SES",
                 wordmarkSize = 132.sp,
                 brandTrailing = {
@@ -598,9 +590,9 @@ internal fun SessionsContentPreview(sessions: List<MobileSession>, loading: Bool
         },
         content = {
             when {
-                preview.isEmpty() && loading -> CenteredHint(true, "Connecting to your laptop…")
-                preview.isEmpty() -> CenteredHint(false, "No sessions running.\nStart one from your laptop.")
-                else -> SessionsDashboardPreviewList(ordered)
+                sessions.isEmpty() && loading -> CenteredHint(true, "Connecting to your laptop…")
+                sessions.isEmpty() -> CenteredHint(false, "No sessions running.\nStart one from your laptop.")
+                else -> SessionsDashboardPreviewList(sessions)
             }
         },
     )
@@ -682,15 +674,17 @@ private fun SearchResultsContent(
     onLongPress: (MobileSession) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        matches.forEachIndexed { index, session ->
-            SearchResultRow(
-                session = session,
-                showDivider = true,
-                onOpen = { onOpen(session) },
-                onLongPress = { onLongPress(session) },
-            )
+        LazyColumn(Modifier.weight(1f)) {
+            items(matches, key = { it.id }) { session ->
+                SearchResultRow(
+                    session = session,
+                    showDivider = true,
+                    onOpen = { onOpen(session) },
+                    onLongPress = { onLongPress(session) },
+                )
+            }
         }
-        Spacer(Modifier.weight(1f).heightIn(min = 24.dp))
+        Spacer(Modifier.height(24.dp))
         RecentSearchesFooter(totalSessions = totalSessions, totalDevices = totalDevices)
     }
 }
@@ -717,7 +711,7 @@ private fun SearchResultRow(
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                highlightedSearchTitle(session.name),
+                session.name,
                 style = ShellyType.rowTitle,
                 color = c.textPrimary,
                 maxLines = 1,
@@ -732,18 +726,6 @@ private fun SearchResultRow(
             )
         }
         DoubleChevron()
-    }
-}
-
-@Composable
-private fun highlightedSearchTitle(title: String) = buildAnnotatedString {
-    val c = ShellyTheme.colors
-    val prefix = "shelly"
-    if (title.startsWith(prefix, ignoreCase = true)) {
-        withStyle(SpanStyle(color = c.accent)) { append(title.take(prefix.length)) }
-        append(title.drop(prefix.length))
-    } else {
-        append(title)
     }
 }
 
@@ -775,19 +757,6 @@ private fun RecentSearchesFooter(totalSessions: Int, totalDevices: Int) {
                 color = (if (c.isDark) c.textMuted else c.textPrimary).copy(alpha = 0.35f),
             )
         }
-    }
-}
-
-@Composable
-private fun RecentSearchChip(text: String) {
-    val c = ShellyTheme.colors
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(100.dp))
-            .background(c.insetCard)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-    ) {
-        Text(text, style = ShellyType.mono.copy(fontSize = 13.sp, lineHeight = 16.sp), color = c.textPrimary)
     }
 }
 
@@ -847,19 +816,21 @@ private fun SessionsEmptyStateContent() {
             )
             PlaceholderSessionRow()
         }
-        Spacer(Modifier.weight(1f))
-        FooterLink("Pair another device")
     }
 }
 
 @Composable
 private fun CommandCopyRow(command: String, action: String) {
     val c = ShellyTheme.colors
+    val clipboard = LocalClipboardManager.current
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(c.insetCard)
+            .clickable {
+                clipboard.setText(AnnotatedString(command.removePrefix("$ ")))
+            }
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1075,11 +1046,15 @@ private fun DaemonUnreachableContent(
 @Composable
 private fun CommandCheckRow(command: String, action: String) {
     val c = ShellyTheme.colors
+    val clipboard = LocalClipboardManager.current
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(c.insetCard)
+            .clickable {
+                clipboard.setText(AnnotatedString(command.removePrefix("$ ")))
+            }
             .padding(horizontal = 16.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1139,13 +1114,7 @@ private fun ColumnScope.ReconnectingHero(reconnecting: ConnectionState.Reconnect
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Visible,
-        modifier = Modifier.layout { measurable, _ ->
-            val placeable = measurable.measure(Constraints())
-            val footprint = (96 * 0.9f).dp.roundToPx()
-            layout(placeable.width, footprint) {
-                placeable.place(0, (footprint - placeable.height) / 2)
-            }
-        },
+        modifier = Modifier.wordmarkFootprint(96.sp),
     )
     Spacer(Modifier.height(18.dp))
     Text(
@@ -1316,29 +1285,6 @@ private fun PrimaryActionButton(
 }
 
 @Composable
-private fun FooterLink(text: String) {
-    val c = ShellyTheme.colors
-    Column(Modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(c.divider))
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(top = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text,
-                style = ShellyType.heading.copy(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight(600)),
-                color = c.textPrimary,
-                textDecoration = TextDecoration.Underline,
-            )
-            DoubleChevron(color = c.textMuted, size = 26.dp)
-        }
-    }
-}
-
-@Composable
 private fun PaperHeroActions(
     onRefresh: () -> Unit = {},
     onToggleTheme: () -> Unit = {},
@@ -1408,9 +1354,9 @@ private fun ViewAllButton() {
     }
 }
 
-private fun MobileSession.sheetSubtitle(): String {
-    val seconds = lastActivity.toString()
-    return "${state.sessionStateLabel().lowercase()} · ${seconds}s · macbook-pro"
+private fun MobileSession.sheetSubtitle(laptopName: String): String {
+    val ago = formatRelativeAgo(System.currentTimeMillis() - lastActivity.toLong())
+    return "${state.sessionStateLabel().lowercase()} · $ago · $laptopName"
 }
 
 private fun Modifier.drawBottomRule(color: Color): Modifier = drawBehind {
@@ -1643,6 +1589,7 @@ internal fun SessionsLongPressPreview() {
         LongPressBaseScaffold(sessions)
         SessionActionsSheet(
             session = sessions.first(),
+            laptopName = "dev-macbook",
             onDismiss = {},
             onAttach = {},
             onCopyId = {},

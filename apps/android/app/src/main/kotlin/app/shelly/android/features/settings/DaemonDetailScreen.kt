@@ -15,11 +15,11 @@ fun DaemonDetailScreen(
     hostName: String = "your laptop",
     pairedAge: String = "14d",
     daemon: String = "shellyd 1.0.0",
-    protocol: String = "v3",
+    protocol: String = "unknown",
     transport: String = "iroh QUIC",
-    onOpenDaemon: () -> Unit = {},
-    onOpenProtocol: () -> Unit = {},
-    onOpenTransport: () -> Unit = {},
+    onOpenDaemon: (() -> Unit)? = null,
+    onOpenProtocol: (() -> Unit)? = null,
+    onOpenTransport: (() -> Unit)? = null,
     onUnpair: () -> Unit = {},
 ) {
     DaemonDetailContent(
@@ -44,9 +44,9 @@ private fun DaemonDetailContent(
     daemon: String,
     protocol: String,
     transport: String,
-    onOpenDaemon: () -> Unit,
-    onOpenProtocol: () -> Unit,
-    onOpenTransport: () -> Unit,
+    onOpenDaemon: (() -> Unit)?,
+    onOpenProtocol: (() -> Unit)?,
+    onOpenTransport: (() -> Unit)?,
     onUnpair: () -> Unit,
 ) {
     ShellyScreen(
@@ -74,14 +74,14 @@ private fun DaemonDetailContent(
 internal fun DaemonDetailContentPreview() {
     DaemonDetailContent(
         onBack = {},
-        hostName = "macbook-pro",
+        hostName = "dev-macbook",
         pairedAge = "14d",
         daemon = "shellyd 1.0.0",
         protocol = "v3",
         transport = "iroh QUIC",
-        onOpenDaemon = {},
-        onOpenProtocol = {},
-        onOpenTransport = {},
+        onOpenDaemon = null,
+        onOpenProtocol = null,
+        onOpenTransport = null,
         onUnpair = {},
     )
 }

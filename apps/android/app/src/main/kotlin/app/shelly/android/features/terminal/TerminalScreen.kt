@@ -72,10 +72,11 @@ import app.shelly.android.core.AndroidBiometricGate
 import app.shelly.android.core.MobileSession
 import app.shelly.android.core.ShellyViewModel
 import app.shelly.android.core.TerminalController
+import app.shelly.android.core.TerminalErrorKind
+import app.shelly.android.core.TerminalPhase
 import app.shelly.android.core.TerminalAttachErrorMessage
 import app.shelly.android.core.TerminalUiState
 import app.shelly.android.core.terminalAttachErrorMessage
-import app.shelly.android.core.terminalHeaderStatusForError
 import app.shelly.android.ui.theme.ShellyTheme
 import app.shelly.android.ui.theme.ShellyType
 import kotlinx.coroutines.CancellationException
@@ -117,6 +118,7 @@ fun TerminalScreen(
 
     LaunchedEffect(controller) {
         if (controller != null) {
+            // The AndroidView terminal needs a layout pass before focus requests stick.
             delay(100)
             runCatching { terminalFocusRequester.requestFocus() }
             keyboardController?.show()
@@ -148,13 +150,13 @@ fun TerminalScreen(
     }
 
     val terminalState by currentController.state.collectAsState()
-    LaunchedEffect(terminalState.status) {
-        if (terminalState.status != "Locked") {
+    LaunchedEffect(terminalState.phase) {
+        if (terminalState.phase !is TerminalPhase.Locked) {
             lockedDismissed = false
         }
     }
 
-    val locked = terminalState.status == "Locked" && !lockedDismissed
+    val locked = terminalState.phase is TerminalPhase.Locked && !lockedDismissed
     TerminalChrome(
         title = session.name,
         status = terminalHeaderStatus(session, terminalState),
@@ -459,14 +461,7 @@ private fun AttachStatus(
         )
         Spacer(Modifier.height(20.dp))
         if (error == null) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                TerminalLine("daemon reached · 14ms", color = TerminalMuted, lineHeight = 17, fill = false)
-                TerminalLine("replaying 256 KB scrollback", color = TerminalMutedStrong, lineHeight = 17, fill = false)
-                TerminalLine("restoring 80×24 viewport", color = TerminalMuted, lineHeight = 17, fill = false)
-            }
+            TerminalLine("opening terminal stream", color = TerminalMuted, lineHeight = 17, fill = false)
         } else {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -503,7 +498,7 @@ private fun LockedStatus(onUnlock: () -> Unit) {
                 color = TerminalFg,
             )
             TerminalLine(
-                "keystrokes blocked · backgrounded 5m ago",
+                "keystrokes blocked",
                 color = TerminalMuted,
                 lineHeight = 17,
                 fill = false,
@@ -719,7 +714,6 @@ private fun ApprovalPanel() {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(width = 0.dp, color = Color.Transparent)
                 .padding(horizontal = 12.dp, vertical = 9.dp),
         ) {
             TerminalLine("Apply this change to token.rs?", color = TerminalFg, lineHeight = 18)
@@ -869,13 +863,25 @@ private fun ChevronGlyph(up: Boolean, modifier: Modifier = Modifier) {
 }
 
 private fun terminalHeaderStatus(session: MobileSession, state: TerminalUiState): String {
-    terminalHeaderStatusForError(state.status)?.let { return it }
-    return when {
-        state.exitedCode != null -> "EXITED"
-        state.status == "Locked" -> "LOCKED"
-        state.status.startsWith("Reconnecting") || state.status.startsWith("Resyncing") -> "ATTACHING"
-        state.agentState == AgentState.Working && (session.model != null || session.name.contains("claude", ignoreCase = true)) -> "THINKING"
-        else -> "ATTACHED"
+    return when (val phase = state.phase) {
+        TerminalPhase.Attached -> {
+            // Older daemons did not send a model label, but CLI-created Claude sessions keep the name.
+            if (state.agentState == AgentState.Working && (session.model != null || session.name.contains("claude", ignoreCase = true))) {
+                "THINKING"
+            } else {
+                "ATTACHED"
+            }
+        }
+        TerminalPhase.Locked -> "LOCKED"
+        is TerminalPhase.Reconnecting,
+        is TerminalPhase.Resyncing -> "ATTACHING"
+        is TerminalPhase.Exited -> "EXITED"
+        is TerminalPhase.Error -> when (phase.kind) {
+            TerminalErrorKind.SessionEnded -> "GONE"
+            TerminalErrorKind.Unpaired -> "UNPAIRED"
+            TerminalErrorKind.Denied -> "DENIED"
+            TerminalErrorKind.ConnectionLost -> "OFFLINE"
+        }
     }
 }
 

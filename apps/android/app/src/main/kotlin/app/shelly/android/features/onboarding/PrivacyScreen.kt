@@ -3,6 +3,7 @@ package app.shelly.android.features.onboarding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import app.shelly.android.ui.components.ShellyScreen
 
 @Composable
 fun PrivacyScreen(
@@ -10,7 +11,7 @@ fun PrivacyScreen(
     onSkip: () -> Unit = {},
     inSettings: Boolean = false,
 ) {
-    OnboardingShell(
+    ShellyScreen(
         hero = {
             OnboardingHero(
                 eyebrow = "WHERE YOUR KEYS AND\nBYTES ACTUALLY LIVE",
