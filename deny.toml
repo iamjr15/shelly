@@ -21,6 +21,15 @@ ignore = [
   # postcard --dry-run` currently has no compatible lockfile move, and
   # Shelly does not use atomic-polyfill APIs directly.
   "RUSTSEC-2023-0089",
+  # Two quick-xml advisories (unbounded namespace-resolver allocation, and
+  # quadratic duplicate-attribute checking) that only bite when parsing
+  # untrusted XML. Pulled transitively via plist (service-manager launchd
+  # plists, netdev's local network config) — Shelly only feeds plist local,
+  # trusted files, never attacker-controlled XML. Both are fixed in quick-xml
+  # >=0.41, but plist v1.9.0 pins ^0.39 so there is no compatible lockfile move;
+  # revisit when plist releases against quick-xml 0.41.
+  "RUSTSEC-2026-0194",
+  "RUSTSEC-2026-0195",
 ]
 # cargo audit also warns on RUSTSEC-2026-0002 for lru 0.12.5 through
 # tattoy-wezterm-term. cargo-deny treats it as a warning, not an ignored
