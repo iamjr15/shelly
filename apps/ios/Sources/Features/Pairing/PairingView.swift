@@ -163,7 +163,10 @@ final class QRScannerViewController: UIViewController, AVCaptureMetadataOutputOb
 
     private let session = AVCaptureSession()
     private var previewLayer: AVCaptureVideoPreviewLayer?
-    private var didEmitPayload = false
+    /// Debounce instead of a one-shot latch so a failed pairing can be retried
+    /// without leaving the view; identical in-frame codes are dropped for 2s.
+    private var lastPayload: String?
+    private var lastEmitTime = Date.distantPast
     private var isConfigured = false
     private var wantsSessionRunning = false
 
@@ -180,7 +183,8 @@ final class QRScannerViewController: UIViewController, AVCaptureMetadataOutputOb
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        didEmitPayload = false
+        lastPayload = nil
+        lastEmitTime = .distantPast
         wantsSessionRunning = true
         startSessionIfReady()
     }
@@ -274,14 +278,18 @@ final class QRScannerViewController: UIViewController, AVCaptureMetadataOutputOb
         didOutput metadataObjects: [AVMetadataObject],
         from connection: AVCaptureConnection
     ) {
-        guard !didEmitPayload,
-              let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+        guard let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
               object.type == .qr,
               let value = object.stringValue
         else {
             return
         }
-        didEmitPayload = true
+        let now = Date()
+        guard value != lastPayload || now.timeIntervalSince(lastEmitTime) > 2 else {
+            return
+        }
+        lastPayload = value
+        lastEmitTime = now
         onPayload?(value)
     }
 }

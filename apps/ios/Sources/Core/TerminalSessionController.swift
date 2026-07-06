@@ -3,7 +3,8 @@ import Combine
 
 @MainActor
 final class TerminalSessionController: ObservableObject {
-    @Published private(set) var fallbackText = ""
+    /// Bumped per output chunk purely to trigger updateUIView, which drains
+    /// pendingChunks into SwiftTerm.
     @Published private(set) var outputRevision: UInt64 = 0
     @Published private(set) var status = "Connecting"
     @Published private(set) var agentState: MobileSession.State
@@ -153,12 +154,6 @@ final class TerminalSessionController: ObservableObject {
     private func append(_ bytes: Data) {
         pendingChunks.append(bytes)
         outputRevision &+= 1
-        if let text = String(data: bytes, encoding: .utf8) {
-            fallbackText.append(text)
-            if fallbackText.count > 16_384 {
-                fallbackText.removeFirst(fallbackText.count - 16_384)
-            }
-        }
     }
 
     private func recordCurrentSeq() {

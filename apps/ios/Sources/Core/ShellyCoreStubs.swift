@@ -1,3 +1,5 @@
+// Hand-written stand-ins for the generated UniFFI bindings so the UI can be
+// built without the Rust core; see apps/ios/README.md for the invocation.
 #if SHELLY_STUBS
 import Foundation
 
@@ -38,6 +40,9 @@ struct DaemonInfo {
     let addrs: [String]
     let deviceNodeId: String
     let deviceSecretKey: Data
+    let daemonVersion: String
+    let protocolVersion: UInt32
+    let hostName: String
 }
 
 struct SessionSummaryFfi {
@@ -66,54 +71,34 @@ protocol SessionListSink: AnyObject, Sendable {
 
 final class ShellyClient: @unchecked Sendable {
     private let config: ClientConfig
-    private let initError: Error?
 
     init(config: ClientConfig) throws {
         self.config = config
-        self.initError = nil
-    }
-
-    private init(error: Error) {
-        self.config = ClientConfig(
-            deviceName: "Stub",
-            platform: .ios,
-            deviceSecretKey: nil,
-            pairedDaemon: nil,
-            relayControlUrl: nil
-        )
-        self.initError = error
-    }
-
-    static func stub(error: Error) -> ShellyClient {
-        ShellyClient(error: error)
     }
 
     func pairWithQr(qrPayload: String) async throws -> DaemonInfo {
-        try stubDaemonInfo()
+        stubDaemonInfo()
     }
 
     func pairWithCode(code: String) async throws -> DaemonInfo {
-        try stubDaemonInfo()
+        stubDaemonInfo()
     }
 
-    private func stubDaemonInfo() throws -> DaemonInfo {
-        if let initError {
-            throw initError
-        }
-        return DaemonInfo(
+    private func stubDaemonInfo() -> DaemonInfo {
+        DaemonInfo(
             daemonNodeId: "stub-daemon",
             relayUrl: nil,
             addrs: ["127.0.0.1:0"],
             deviceNodeId: "stub-device",
-            deviceSecretKey: Data(repeating: 1, count: 32)
+            deviceSecretKey: Data(repeating: 1, count: 32),
+            daemonVersion: "stub",
+            protocolVersion: 1,
+            hostName: "Stub Mac"
         )
     }
 
     func listSessions() async throws -> [SessionSummaryFfi] {
-        if let initError {
-            throw initError
-        }
-        return [
+        [
             SessionSummaryFfi(
                 id: "018f0000-0000-7000-8000-000000000001",
                 name: "claude",
@@ -148,10 +133,7 @@ final class ShellyClient: @unchecked Sendable {
     }
 
     func attachSessionFrom(id: String, lastSeenSeq: UInt64?) async throws -> AttachedSession {
-        if let initError {
-            throw initError
-        }
-        return AttachedSession()
+        AttachedSession()
     }
 
     func registerPushToken(platform: PushPlatform, token: String) async throws {}
@@ -161,7 +143,6 @@ final class AttachedSession: @unchecked Sendable {
     func sendInput(bytes: Data) async throws {}
     func resize(cols: UInt16, rows: UInt16) async throws {}
     func detach() async throws {}
-    func initialSeq() -> UInt64 { 0 }
     func lastSeenSeq() -> UInt64 { 0 }
     func subscribe(sink: ByteStreamSink) async throws {
         sink.onInitialBytes(bytes: Data("shelly stub terminal\r\n$ ".utf8))

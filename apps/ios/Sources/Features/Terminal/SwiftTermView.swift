@@ -1,11 +1,10 @@
 import SwiftUI
 import UIKit
-
-#if canImport(SwiftTerm)
 import SwiftTerm
 
 struct TerminalRenderer: UIViewRepresentable {
     @ObservedObject var controller: TerminalSessionController
+    @Binding var ctrlPending: Bool
 
     func makeUIView(context: Context) -> ShellyTerminalView {
         let view = ShellyTerminalView()
@@ -17,10 +16,14 @@ struct TerminalRenderer: UIViewRepresentable {
         view.onResize = { cols, rows in
             controller.resize(cols: UInt16(max(cols, 1)), rows: UInt16(max(rows, 1)))
         }
+        view.onCtrlConsumed = {
+            ctrlPending = false
+        }
         return view
     }
 
     func updateUIView(_ uiView: ShellyTerminalView, context: Context) {
+        uiView.pendingCtrl = ctrlPending
         for chunk in controller.drainPendingOutput() {
             uiView.feed(data: chunk)
         }
@@ -30,6 +33,8 @@ struct TerminalRenderer: UIViewRepresentable {
 final class ShellyTerminalView: TerminalView, TerminalViewDelegate {
     var onInput: (Data) -> Void = { _ in }
     var onResize: (Int, Int) -> Void = { _, _ in }
+    var onCtrlConsumed: () -> Void = {}
+    var pendingCtrl = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -63,6 +68,15 @@ final class ShellyTerminalView: TerminalView, TerminalViewDelegate {
     }
 
     func send(source: TerminalView, data: ArraySlice<UInt8>) {
+        // Compose a pending accessory-bar Ctrl with the next single printable
+        // byte (e.g. Ctrl+C -> 0x03); multi-byte sequences such as arrow keys
+        // or composed IME input pass through untouched.
+        if pendingCtrl, data.count == 1, let byte = data.first, (0x40...0x7e).contains(byte) {
+            pendingCtrl = false
+            onCtrlConsumed()
+            onInput(Data([byte & 0x1f]))
+            return
+        }
         onInput(Data(data))
     }
 
@@ -81,22 +95,3 @@ final class ShellyTerminalView: TerminalView, TerminalViewDelegate {
 
     func rangeChanged(source: SwiftTerm.TerminalView, startY: Int, endY: Int) {}
 }
-
-#else
-
-struct TerminalRenderer: View {
-    @ObservedObject var controller: TerminalSessionController
-
-    var body: some View {
-        ScrollView {
-            Text(controller.fallbackText)
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.green)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-        }
-        .background(.black)
-    }
-}
-
-#endif

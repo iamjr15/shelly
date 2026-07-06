@@ -11,7 +11,7 @@ struct TerminalScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             if let controller {
-                TerminalRenderer(controller: controller)
+                TerminalRenderer(controller: controller, ctrlPending: $ctrlPending)
                     .ignoresSafeArea(.keyboard, edges: .bottom)
                 AccessoryBar(ctrlPending: $ctrlPending) { key in
                     Task {
@@ -30,13 +30,7 @@ struct TerminalScreen: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if let controller {
-                    HStack(spacing: 8) {
-                        Image(systemName: controller.agentState.symbolName)
-                            .foregroundStyle(controller.agentState.tint)
-                        Text(controller.status)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    StatusBadge(controller: controller)
                 }
             }
         }
@@ -49,7 +43,10 @@ struct TerminalScreen: View {
             isAttaching = false
         }
         .onDisappear {
+            // Detach permanently kills the controller's subscription, so drop it;
+            // .task rebuilds one when a tab switch brings this view back.
             controller?.detach()
+            controller = nil
         }
     }
 
@@ -65,6 +62,22 @@ struct TerminalScreen: View {
             ctrlPending = false
         }
         await controller.send(data)
+    }
+}
+
+/// Observes the controller so @Published status/agentState changes actually
+/// re-render; the parent holds the controller in plain @State.
+private struct StatusBadge: View {
+    @ObservedObject var controller: TerminalSessionController
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: controller.agentState.symbolName)
+                .foregroundStyle(controller.agentState.tint)
+            Text(controller.status)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

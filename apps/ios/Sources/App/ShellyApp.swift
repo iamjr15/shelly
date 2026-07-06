@@ -95,13 +95,29 @@ struct RootView: View {
                     }
                 }
             } else {
-                LockedOverlay {
+                LockedOverlay(message: model.lockMessage) {
                     Task {
                         await model.unlock(reason: "Unlock Shelly")
                     }
                 }
             }
         }
+        // Single status alert for the whole hierarchy: pairing failures happen
+        // while SessionsListView (and its old alert) is not mounted.
+        .alert("Shelly", isPresented: statusBinding) {
+            Button("OK", role: .cancel) {
+                model.statusMessage = nil
+            }
+        } message: {
+            Text(model.statusMessage ?? "")
+        }
+    }
+
+    private var statusBinding: Binding<Bool> {
+        Binding(
+            get: { model.statusMessage != nil },
+            set: { if !$0 { model.statusMessage = nil } }
+        )
     }
 }
 
@@ -111,6 +127,7 @@ private enum AppTab {
 }
 
 private struct LockedOverlay: View {
+    let message: String?
     let unlock: () -> Void
 
     var body: some View {
@@ -120,6 +137,12 @@ private struct LockedOverlay: View {
                 .foregroundStyle(.tint)
             Text("Shelly Locked")
                 .font(.title2.weight(.semibold))
+            if let message {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
             Button(action: unlock) {
                 Label("Unlock", systemImage: "faceid")
                     .font(.headline)

@@ -57,20 +57,6 @@ struct SessionsListView: View {
             selectedSession = target
             model.consumeTargetSession()
         }
-        .alert("Shelly", isPresented: statusBinding) {
-            Button("OK", role: .cancel) {
-                model.statusMessage = nil
-            }
-        } message: {
-            Text(model.statusMessage ?? "")
-        }
-    }
-
-    private var statusBinding: Binding<Bool> {
-        Binding(
-            get: { model.statusMessage != nil },
-            set: { if !$0 { model.statusMessage = nil } }
-        )
     }
 
     private func hide(_ session: MobileSession) {

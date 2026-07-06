@@ -8,6 +8,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var sessions: [MobileSession] = []
     @Published private(set) var targetSession: MobileSession?
     @Published var statusMessage: String?
+    @Published private(set) var lockMessage: String?
     @Published var isRefreshing = false
     @Published var showsTelemetryConsentPrompt = false
 
@@ -17,6 +18,10 @@ final class AppModel: ObservableObject {
     private var lastApnsToken: Data?
     private var pendingPushSessionIdHash: String?
     private var sessionSubscriptionTask: Task<Void, Never>?
+    /// Rows the user swiped away; filtered out of every daemon-provided list so
+    /// pushed updates do not resurrect them. In-memory only, cleared on unpair.
+    private var hiddenSessionIds: Set<String> = []
+    private var allSessions: [MobileSession] = []
 
     init(service: ShellyCoreService = ShellyCoreService()) {
         self.service = service
@@ -47,6 +52,7 @@ final class AppModel: ObservableObject {
     func unlock(reason: String) async {
         let wasUnlocked = isUnlocked
         isUnlocked = await securityGate.unlockIfNeeded(reason: reason)
+        lockMessage = isUnlocked ? nil : securityGate.unavailabilityReason
         if isUnlocked, isPaired, (!wasUnlocked || sessions.isEmpty || pendingPushSessionIdHash != nil) {
             await activatePairedSessionServices()
         }
@@ -82,20 +88,21 @@ final class AppModel: ObservableObject {
 
     func refreshSessions() async {
         guard isPaired else {
+            allSessions = []
             sessions = []
             return
         }
         isRefreshing = true
         defer { isRefreshing = false }
         do {
-            sessions = try await service.listSessions().sortedForDisplay()
-            resolvePendingPushTarget()
+            applySessions(try await service.listSessions().sortedForDisplay())
         } catch {
             statusMessage = error.localizedDescription
         }
     }
 
     func hideSession(id: String) {
+        hiddenSessionIds.insert(id)
         sessions.removeAll { $0.id == id }
     }
 
@@ -176,6 +183,8 @@ final class AppModel: ObservableObject {
         targetSession = nil
         service.clearPairing()
         isPaired = false
+        hiddenSessionIds = []
+        allSessions = []
         sessions = []
         statusMessage = "Unpaired"
     }
@@ -218,8 +227,7 @@ final class AppModel: ObservableObject {
             }
             do {
                 try await service.subscribeSessions { [weak self] sessions in
-                    self?.sessions = sessions
-                    self?.resolvePendingPushTarget()
+                    self?.applySessions(sessions)
                 }
             } catch is CancellationError {
             } catch {
@@ -230,14 +238,25 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func applySessions(_ list: [MobileSession]) {
+        allSessions = list
+        hiddenSessionIds.formIntersection(Set(list.map(\.id)))
+        sessions = list.filter { !hiddenSessionIds.contains($0.id) }
+        resolvePendingPushTarget()
+    }
+
     private func resolvePendingPushTarget() {
         guard let pendingPushSessionIdHash else {
             return
         }
-        guard let session = sessions.first(where: { sha256Hex($0.id) == pendingPushSessionIdHash }) else {
+        // Match against the unfiltered list so a push tap can reach a hidden session.
+        guard let session = allSessions.first(where: { sha256Hex($0.id) == pendingPushSessionIdHash }) else {
             return
         }
         self.pendingPushSessionIdHash = nil
+        if hiddenSessionIds.remove(session.id) != nil {
+            sessions = allSessions.filter { !hiddenSessionIds.contains($0.id) }
+        }
         targetSession = session
     }
 }

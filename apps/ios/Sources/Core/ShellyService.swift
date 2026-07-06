@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 
 struct MobileSession: Identifiable, Hashable {
-    enum State: String, Codable, Hashable {
+    enum State: Hashable {
         case idle
         case working
         case awaitingInput
@@ -122,10 +122,10 @@ final class ShellyCoreService {
         recordTelemetryExperience: @escaping () -> Void
     ) async throws -> TerminalSessionController {
         let client = try requireClient()
-        let initialSeq = lastSeenSeqBySession[session.id]
+        let lastSeenSeq = lastSeenSeqBySession[session.id]
         let attached: AttachedSession
-        if let initialSeq {
-            attached = try await client.attachSessionFrom(id: session.id, lastSeenSeq: initialSeq)
+        if let lastSeenSeq {
+            attached = try await client.attachSessionFrom(id: session.id, lastSeenSeq: lastSeenSeq)
         } else {
             attached = try await client.attachSession(id: session.id)
         }

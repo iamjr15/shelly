@@ -39,7 +39,10 @@ struct SettingsView: View {
             }
 
             Section("About") {
-                LabeledContent("Version", value: "1.0")
+                LabeledContent(
+                    "Version",
+                    value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
+                )
                 NavigationLink {
                     OpenSourceLicensesView()
                 } label: {
