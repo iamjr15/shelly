@@ -29,12 +29,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -68,6 +71,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -86,8 +91,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.shelly.android.BuildConfig
+import app.shelly.android.ui.components.BrandRow
 import app.shelly.android.ui.components.HeroBody
 import app.shelly.android.ui.components.ShellyScreen
+import app.shelly.android.ui.theme.ShellyDimens
 import app.shelly.android.ui.theme.ShellyMotion
 import app.shelly.android.ui.theme.ShellyTheme
 import app.shelly.android.ui.theme.ShellyType
@@ -177,13 +184,17 @@ private fun PairingContent(
 ) {
     val c = ShellyTheme.colors
     val codeFocusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val compactForIme = WindowInsets.ime.getBottom(LocalDensity.current) > 0 && !pairing
     val requestCodeFocus: () -> Unit = {
         codeFocusRequester.requestFocus()
         keyboardController?.show()
     }
     val submitCode: () -> Unit = {
         if (isCompletePairingCode(code.text) && !pairing) {
+            keyboardController?.hide()
+            focusManager.clearFocus()
             onPairWithCode(code.text)
         } else {
             requestCodeFocus()
@@ -193,29 +204,56 @@ private fun PairingContent(
     val hero = pairingHeroSpec(uiState)
 
     ShellyScreen(
+        modifier = if (compactForIme) {
+            Modifier.windowInsetsPadding(WindowInsets.ime)
+        } else {
+            Modifier
+        },
+        heroHeight = if (compactForIme) 132.dp else ShellyDimens.heroHeight,
         hero = {
-            Crossfade(
-                targetState = hero,
-                animationSpec = ShellyMotion.standardTween(),
-                label = "pairingHeroCrossfade",
-                modifier = Modifier.weight(1f),
-            ) { targetHero ->
-                Column(Modifier.fillMaxSize()) {
-                    HeroBody(
-                        eyebrow = targetHero.eyebrow,
-                        wordmark = targetHero.wordmark,
-                        wordmarkSize = 132.sp,
-                        brandTrailing = {
-                            Text(
-                                targetHero.trailing,
-                                style = ShellyType.monoSmall.copy(
-                                    fontWeight = FontWeight(600),
-                                    letterSpacing = 0.04.em,
-                                ),
-                                color = c.textPrimary,
-                            )
-                        },
-                    )
+            if (compactForIme) {
+                BrandRow(
+                    trailing = {
+                        Text(
+                            hero.trailing,
+                            style = ShellyType.monoSmall.copy(
+                                fontWeight = FontWeight(600),
+                                letterSpacing = 0.04.em,
+                            ),
+                            color = c.textPrimary,
+                        )
+                    },
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "ENTER YOUR 5-CHAR CODE",
+                    style = ShellyType.eyebrow,
+                    color = c.textPrimary,
+                )
+            } else {
+                Crossfade(
+                    targetState = hero,
+                    animationSpec = ShellyMotion.standardTween(),
+                    label = "pairingHeroCrossfade",
+                    modifier = Modifier.weight(1f),
+                ) { targetHero ->
+                    Column(Modifier.fillMaxSize()) {
+                        HeroBody(
+                            eyebrow = targetHero.eyebrow,
+                            wordmark = targetHero.wordmark,
+                            wordmarkSize = 132.sp,
+                            brandTrailing = {
+                                Text(
+                                    targetHero.trailing,
+                                    style = ShellyType.monoSmall.copy(
+                                        fontWeight = FontWeight(600),
+                                        letterSpacing = 0.04.em,
+                                    ),
+                                    color = c.textPrimary,
+                                )
+                            },
+                        )
+                    }
                 }
             }
         },
@@ -239,6 +277,7 @@ private fun PairingContent(
                         cameraGranted = cameraGranted,
                         showCamera = showCamera,
                         onPair = onPair,
+                        compactForIme = compactForIme,
                     )
                     PairingUiState.CameraDenied -> ManualPairingBody(
                         code = code,
@@ -251,6 +290,7 @@ private fun PairingContent(
                         onPair = onPair,
                         viewport = PairingViewport.CameraDenied,
                         codeLabel = "ENTER THE 5-CHAR CODE",
+                        compactForIme = compactForIme,
                     )
                     is PairingUiState.Error -> ManualPairingBody(
                         code = code,
@@ -264,6 +304,7 @@ private fun PairingContent(
                         viewport = PairingViewport.Error(targetState.message, targetState.detail),
                         codeLabel = "ENTER THE NEW CODE",
                         hint = "use the fresh 5-char code from your laptop",
+                        compactForIme = compactForIme,
                     )
                 }
                 }
@@ -321,23 +362,26 @@ private fun ColumnScope.ManualPairingBody(
     viewport: PairingViewport = PairingViewport.Camera,
     codeLabel: String = "CAN'T SCAN? ENTER THE CODE",
     hint: String = "shelly pair shows the QR + code",
+    compactForIme: Boolean = false,
 ) {
-    Crossfade(
-        targetState = viewport,
-        animationSpec = ShellyMotion.standardTween(),
-        label = "pairingViewportCrossfade",
-    ) { targetViewport ->
-        when (targetViewport) {
-            PairingViewport.Camera -> CameraViewport(
-                cameraGranted = cameraGranted,
-                showCamera = showCamera,
-                onPayload = onPair,
-            )
-            PairingViewport.CameraDenied -> CameraDeniedViewport()
-            is PairingViewport.Error -> ErrorViewport(targetViewport.message, targetViewport.detail)
+    if (!compactForIme) {
+        Crossfade(
+            targetState = viewport,
+            animationSpec = ShellyMotion.standardTween(),
+            label = "pairingViewportCrossfade",
+        ) { targetViewport ->
+            when (targetViewport) {
+                PairingViewport.Camera -> CameraViewport(
+                    cameraGranted = cameraGranted,
+                    showCamera = showCamera,
+                    onPayload = onPair,
+                )
+                PairingViewport.CameraDenied -> CameraDeniedViewport()
+                is PairingViewport.Error -> ErrorViewport(targetViewport.message, targetViewport.detail)
+            }
         }
+        Spacer(Modifier.height(16.dp))
     }
-    Spacer(Modifier.height(16.dp))
     CodeLabelRow(label = codeLabel)
     PairingCodeCells(
         code = code,
