@@ -40,6 +40,10 @@ shelly kill-all
 shelly completion bash
 ```
 
+On macOS, the first daemon start may display Keychain prompts for Shelly's local
+encryption and device-identity keys. Shelly explains this while it waits; approve
+the prompts to continue pairing.
+
 `shelly pair` starts QR pairing. Running `shelly` with no subcommand
 creates and attaches a new shell-backed Shelly session every time, with a
 generated one-word name like `waffle` or `kazoo` even when other sessions already
@@ -73,10 +77,9 @@ This meta-package depends on exactly one platform package at install time:
 - `shellykit-linux-arm64`
 - `shellykit-linux-x64`
 
-When postinstall scripts are allowed, the matching platform package swaps
-`bin/shelly` and `bin/shellyd` to native binaries. When scripts are
-disabled, the shipped dispatchers still run the matching platform binaries. v1
-Windows host support is through the Linux package inside WSL2.
+The `shelly` and `shellyd` commands are small JavaScript dispatchers that run
+the matching platform package. Installation does not execute lifecycle scripts.
+v1 Windows host support is through the Linux package inside WSL2.
 
 Local persistence is encrypted by default with an OS-keychain-held key unless
 the user explicitly opts out. Keychain prompts are only for local key material;

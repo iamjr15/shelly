@@ -61,6 +61,7 @@ console.log(`npm publish order ${dryRun ? "dry-run " : ""}ok: ${expectedNames.jo
 function verifyPackageGraph() {
   const meta = readJson("packages/cli/package.json");
   assert(meta.name === "shellykit", "meta package name must be shellykit");
+  assert(!meta.scripts, "shellykit must not use lifecycle scripts");
 
   const optional = meta.optionalDependencies || {};
   for (let index = 0; index < publishOrder.length; index += 1) {
@@ -87,7 +88,7 @@ function dryRunPack(packageDir) {
   if (packageName === "shellykit") {
     assertExecutablePackFile(files, "bin/shelly", packageName);
     assertExecutablePackFile(files, "bin/shellyd", packageName);
-    assert(files.has("install.js"), `${packageName} pack is missing install.js`);
+    assert(!files.has("install.js"), `${packageName} pack must not contain install.js`);
     assert(files.has("README.md"), `${packageName} pack is missing README.md`);
   } else {
     assertExecutablePackFile(files, "bin/shelly", packageName);

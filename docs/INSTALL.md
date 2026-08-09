@@ -103,6 +103,12 @@ encryption key, the daemon's iroh identity key for pairing, and, when relay push
 is enabled, the relay-signing key. Terminal output, keystrokes, commands, paths,
 session names, and push tokens are not stored in Keychain.
 
+The CLI prints a startup notice before launching `shellyd`. In an interactive
+terminal it keeps waiting while the daemon is alive, prints a Keychain reminder
+every 10 seconds, and lets the user cancel with Ctrl+C. Non-interactive runs keep
+a bounded 15-second timeout so automation cannot hang indefinitely. If the
+daemon exits during startup, the CLI reports its actual error.
+
 If OS keychain-backed encryption is unavailable and you explicitly accept
 plaintext local persistence, use:
 
@@ -134,14 +140,12 @@ node scripts/test-bun-install.mjs
 npm pack ./packages/cli --dry-run --json
 ```
 
-`shellykit` is the meta package. It exposes `shelly` and `shellyd`.
-Postinstall swaps the CLI
-and daemon commands to native binaries when scripts are allowed, and the shipped
-dispatchers run the matching platform package when postinstall is skipped. On
-macOS, postinstall also ad-hoc signs the copied `shelly` and `shellyd`
-binaries and removes `com.apple.quarantine` only from those two verified
-executables, so the npm desktop path does not require Apple Developer ID
-notarization.
+`shellykit` is the meta package. It exposes `shelly` and `shellyd` through
+small JavaScript dispatchers that run the matching native platform package.
+Installation does not execute lifecycle scripts. Darwin release artifacts are
+ad-hoc signed before they are packed, and npm does not preserve quarantine
+extended attributes in its package archives, so the npm desktop path does not
+require Apple Developer ID notarization.
 Running `shelly` with no subcommand uses the no-args fast path: create
 and attach a new shell-backed Shelly session with an auto-generated one-word
 display name that mobile apps show from the daemon session list, even when other
@@ -161,12 +165,9 @@ workflows.
 
 `scripts/test-bun-install.mjs` packs the local Shelly meta package plus each
 v1 platform package, installs them with Bun for the four supported host tuples,
-and verifies that the selected optional platform package is present. Bun blocks
-dependency postinstall scripts by default unless the root project trusts them,
-so the smoke accepts both install modes: native binary swap when scripts run and
-the shipped JS dispatcher fallback when postinstall stays blocked. On the current
-host, it also executes `shelly` and `shellyd` from Bun's `.bin`
-directory.
+and verifies that the dispatchers resolve the selected optional platform
+package. On the current host, it also executes `shelly` and `shellyd` from
+Bun's `.bin` directory.
 
 Current Android development flow:
 

@@ -252,6 +252,11 @@ private fun PairingContent(
                                     color = c.textPrimary,
                                 )
                             },
+                            below = if (targetHero.showDesktopSetup) {
+                                { DesktopSetupCommand() }
+                            } else {
+                                null
+                            },
                         )
                     }
                 }
@@ -317,13 +322,34 @@ private data class PairingHeroSpec(
     val eyebrow: String,
     val wordmark: String,
     val trailing: String,
+    val showDesktopSetup: Boolean = false,
 )
+
+@Composable
+private fun DesktopSetupCommand() {
+    val c = ShellyTheme.colors
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
+            MonitorGlyph(c.textPrimary.copy(alpha = 0.72f))
+        }
+        Text(
+            text = "npm i -g shellykit  →  shelly pair",
+            style = ShellyType.monoSmall.copy(fontWeight = FontWeight(600)),
+            color = c.textPrimary,
+            maxLines = 1,
+        )
+    }
+}
 
 private fun pairingHeroSpec(uiState: PairingUiState): PairingHeroSpec = when (uiState) {
     PairingUiState.Idle -> PairingHeroSpec(
         eyebrow = "RUN SHELLY PAIR ON YOUR\nLAPTOP · POINT YOUR PHONE",
         wordmark = "PAIR",
         trailing = "STEP 1 / 2",
+        showDesktopSetup = true,
     )
     PairingUiState.Connecting -> PairingHeroSpec(
         eyebrow = "SECURING THE TUNNEL —\nALMOST THERE",
@@ -334,6 +360,7 @@ private fun pairingHeroSpec(uiState: PairingUiState): PairingHeroSpec = when (ui
         eyebrow = "CAMERA'S BLOCKED —\nTYPE THE CODE INSTEAD",
         wordmark = "PAIR",
         trailing = "PAIRING",
+        showDesktopSetup = true,
     )
     is PairingUiState.Error -> PairingHeroSpec(
         eyebrow = "THAT CODE EXPIRED —\nGET A FRESH ONE",
@@ -361,7 +388,7 @@ private fun ColumnScope.ManualPairingBody(
     onPair: (String) -> Unit,
     viewport: PairingViewport = PairingViewport.Camera,
     codeLabel: String = "CAN'T SCAN? ENTER THE CODE",
-    hint: String = "shelly pair shows the QR + code",
+    hint: String? = null,
     compactForIme: Boolean = false,
 ) {
     if (!compactForIme) {
@@ -390,7 +417,9 @@ private fun ColumnScope.ManualPairingBody(
         requestFocus = requestCodeFocus,
         submit = submitCode,
     )
-    CodeHintRow(hint = hint)
+    if (hint != null) {
+        CodeHintRow(hint = hint)
+    }
     Spacer(Modifier.weight(1f))
     PairButton(
         onClick = submitCode,
@@ -1061,7 +1090,7 @@ private data class PairingCodeCellState(
 )
 
 @Composable
-private fun ColumnScope.CodeHintRow(hint: String = "shelly pair shows the QR + code") {
+private fun ColumnScope.CodeHintRow(hint: String) {
     val c = ShellyTheme.colors
     val hintBase = if (c.isDark) c.textMuted else c.textPrimary
     Row(

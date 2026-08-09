@@ -267,6 +267,7 @@ async fn main() -> Result<()> {
         Some(Command::Daemon { command }) => {
             match command.unwrap_or(DaemonCommand::Status) {
                 DaemonCommand::Install => {
+                    ipc::print_daemon_starting();
                     service::install()?;
                     if let Err(error) = ipc::wait_for_existing_daemon().await {
                         let _ = service::uninstall();
@@ -289,6 +290,7 @@ async fn main() -> Result<()> {
                     );
                 }
                 DaemonCommand::Restart => {
+                    ipc::print_daemon_starting();
                     service::restart()?;
                     ipc::wait_for_existing_daemon()
                         .await
@@ -466,46 +468,43 @@ async fn pair_device() -> Result<()> {
     let encoded = ticket.encode().context("encode pairing ticket")?;
     let qr = QrCode::new(encoded.as_bytes()).context("build pairing QR")?;
     let terminal = terminal_size();
-    let use_ansi = ansi_output_enabled();
+    let depth = color_depth();
+    let use_ansi = depth != ColorDepth::Plain;
+    let live = use_ansi && terminal_cursor_control_enabled();
 
-    println!("{}", style_bold("Shelly pairing", use_ansi));
-    println!();
-    if let Some(image) = render_pairing_qr_for_terminal(&qr, terminal, use_ansi) {
-        println!("{image}");
-        println!();
-    } else {
-        let (cols, rows) = pairing_qr_terminal_dimensions(qr.width());
-        println!(
-            "{}",
-            style_dim(
-                &format!(
-                    "QR hidden for this pane. It needs {cols}x{rows}; widen the terminal and run `shelly pair` again."
-                ),
-                use_ansi
-            )
-        );
-        println!();
-    }
-    println!(
-        "{}",
-        style_dim(
-            "Scan the QR with the Shelly app — or enter this code:",
-            use_ansi
-        )
-    );
-    println!(
-        "    {}",
-        style_pairing_code(&group_code(&ticket.code), use_ansi)
-    );
-    let inline_countdown = std::io::stdout().is_terminal();
-    if !print_pairing_countdown(ticket.expires_at, use_ansi, inline_countdown, true)? {
-        if inline_countdown {
-            println!();
-        }
+    if pairing_remaining_seconds(ticket.expires_at) == 0 {
         bail!("pairing code expired. Run `shelly pair` again.");
     }
-    let mut countdown = tokio::time::interval(Duration::from_secs(1));
+
+    let qr_image = render_pairing_qr_for_terminal(&qr, terminal, use_ansi);
+    if live {
+        draw_pairing_screen(
+            &ticket.code,
+            qr_image.as_deref(),
+            qr.width(),
+            terminal,
+            depth,
+            pairing_remaining_seconds(ticket.expires_at),
+        )?;
+    } else {
+        draw_pairing_screen_plain(
+            &ticket.code,
+            qr_image.as_deref(),
+            qr.width(),
+            depth,
+            use_ansi,
+        );
+        print_pairing_countdown(ticket.expires_at, use_ansi, true)?;
+    }
+
+    let tick = if live {
+        Duration::from_millis(80)
+    } else {
+        Duration::from_secs(1)
+    };
+    let mut countdown = tokio::time::interval_at(tokio::time::Instant::now() + tick, tick);
     countdown.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut spinner_frame = 0usize;
 
     loop {
         let message = {
@@ -515,10 +514,17 @@ async fn pair_device() -> Result<()> {
                 tokio::select! {
                     message = &mut read => break message?,
                     _ = countdown.tick() => {
-                        if !print_pairing_countdown(ticket.expires_at, use_ansi, inline_countdown, false)? {
-                            if inline_countdown {
-                                println!();
+                        let remaining = pairing_remaining_seconds(ticket.expires_at);
+                        if live {
+                            if remaining == 0 {
+                                clear_pairing_status_row()?;
+                                println!("{} Code expired", style_ansi("✗", true, ANSI_RED));
+                                println!("  {}", style_dim("shelly pair — open a new window", true));
+                                std::process::exit(1);
                             }
+                            spinner_frame = spinner_frame.wrapping_add(1);
+                            redraw_pairing_status(spinner_frame, remaining, depth, terminal)?;
+                        } else if !print_pairing_countdown(ticket.expires_at, use_ansi, false)? {
                             bail!("pairing code expired. Run `shelly pair` again.");
                         }
                     }
@@ -532,11 +538,23 @@ async fn pair_device() -> Result<()> {
                 device_name,
                 device_node_id,
             } => {
-                finish_pairing_countdown(inline_countdown, use_ansi)?;
-                println!(
-                    "Pair request from device \"{device_name}\" ({}) — approve? [y/N]",
-                    short_node_id(&device_node_id)
-                );
+                let name = sanitize_device_name(&device_name);
+                if live {
+                    clear_pairing_status_row()?;
+                    println!(
+                        "{} {} wants to pair  {}",
+                        style_ansi("●", true, ANSI_AMBER),
+                        style_bold(&name, true),
+                        style_dim(&format!("key {}", short_node_id(&device_node_id)), true)
+                    );
+                    print!("  Approve this device? {} ", style_dim("[y/N]", true));
+                    std::io::stdout().flush().context("flush pairing prompt")?;
+                } else {
+                    println!(
+                        "Pair request from device \"{name}\" ({}) — approve? [y/N]",
+                        short_node_id(&device_node_id)
+                    );
+                }
                 let mut answer = String::new();
                 std::io::stdin()
                     .read_line(&mut answer)
@@ -550,10 +568,28 @@ async fn pair_device() -> Result<()> {
                     },
                 )
                 .await?;
-                if approved {
-                    println!("Approved. Device is paired.");
-                } else {
-                    println!("Denied. Pairing code has been consumed.");
+                match (approved, live) {
+                    (true, true) => {
+                        println!(
+                            "{} Paired {}",
+                            style_ansi("✓", true, ANSI_GREEN),
+                            style_bold(&name, true)
+                        );
+                        println!(
+                            "  {}",
+                            style_dim("shelly devices — list and manage paired devices", true)
+                        );
+                    }
+                    (true, false) => println!("Approved. Device is paired."),
+                    (false, true) => {
+                        println!(
+                            "{} Denied {}",
+                            style_ansi("✗", true, ANSI_RED),
+                            style_dim("— code retired", true)
+                        );
+                        println!("  {}", style_dim("shelly pair — open a new window", true));
+                    }
+                    (false, false) => println!("Denied. Pairing code has been consumed."),
                 }
                 return Ok(());
             }
@@ -609,10 +645,34 @@ fn group_code(code: &str) -> String {
 const ANSI_RESET: &str = "\x1b[0m";
 const ANSI_BOLD: &str = "\x1b[1m";
 const ANSI_DIM: &str = "\x1b[2m";
-const ANSI_PAIRING_CODE: &str = "\x1b[1;36m";
+const ANSI_AMBER: &str = "\x1b[33m";
+const ANSI_RED: &str = "\x1b[31m";
+const ANSI_GREEN: &str = "\x1b[32m";
 const ANSI_QR_LIGHT_PANEL: &str = "\x1b[30;107m";
 const QR_QUIET_ZONE_MODULES: usize = 4;
-const PAIRING_TEXT_ROWS: usize = 6;
+/// Rows the pairing screen needs besides the QR panel itself.
+const PAIRING_TEXT_ROWS: usize = 10;
+/// Brand accent; must stay in sync with ShellyOrange in the Android app theme.
+const SHELLY_ORANGE_RGB: (u8, u8, u8) = (232, 93, 41);
+/// Nearest xterm-256 index to ShellyOrange for terminals without truecolor.
+const SHELLY_ORANGE_ANSI256: u8 = 166;
+const PAIRING_COUNTDOWN_AMBER_SECS: u64 = 120;
+const PAIRING_COUNTDOWN_RED_SECS: u64 = 30;
+const PAIRING_SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const PAIRING_STATUS_LABEL: &str = "waiting for device";
+/// Rows between the live status line and the cursor parked below the hint.
+const PAIRING_STATUS_ROWS_ABOVE: usize = 3;
+/// Slanted ASCII wordmark shown when the pane can spare the rows; ASCII-only
+/// so it renders wherever a shell does.
+const PAIRING_WORDMARK: [&str; 6] = [
+    "         __         ____",
+    "   _____/ /_  ___  / / /_  __",
+    "  / ___/ __ \\/ _ \\/ / / / / /",
+    " (__  ) / / /  __/ / / /_/ /",
+    "/____/_/ /_/\\___/_/_/\\__, /",
+    "                    /____/",
+];
+const PAIRING_WORDMARK_COLS: usize = 29;
 
 fn ansi_output_enabled() -> bool {
     if std::env::var_os("NO_COLOR").is_some() {
@@ -628,16 +688,19 @@ fn ansi_output_enabled() -> bool {
             .unwrap_or(true)
 }
 
+fn terminal_cursor_control_enabled() -> bool {
+    std::io::stdout().is_terminal()
+        && std::env::var("TERM")
+            .map(|term| term != "dumb")
+            .unwrap_or(true)
+}
+
 fn style_bold(text: &str, use_ansi: bool) -> String {
     style_ansi(text, use_ansi, ANSI_BOLD)
 }
 
 fn style_dim(text: &str, use_ansi: bool) -> String {
     style_ansi(text, use_ansi, ANSI_DIM)
-}
-
-fn style_pairing_code(text: &str, use_ansi: bool) -> String {
-    style_ansi(text, use_ansi, ANSI_PAIRING_CODE)
 }
 
 fn style_ansi(text: &str, use_ansi: bool, code: &str) -> String {
@@ -648,12 +711,274 @@ fn style_ansi(text: &str, use_ansi: bool, code: &str) -> String {
     }
 }
 
-fn print_pairing_countdown(
-    expires_at: u64,
+/// Terminal color capability for the pairing screen's brand accent.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ColorDepth {
+    Plain,
+    Ansi16,
+    Ansi256,
+    TrueColor,
+}
+
+fn color_depth() -> ColorDepth {
+    if !ansi_output_enabled() {
+        return ColorDepth::Plain;
+    }
+    color_depth_from_env(
+        std::env::var("TERM").ok().as_deref(),
+        std::env::var("COLORTERM").ok().as_deref(),
+    )
+}
+
+/// Picks the deepest color support advertised by TERM/COLORTERM; callers gate
+/// on [`ansi_output_enabled`] first.
+fn color_depth_from_env(term: Option<&str>, colorterm: Option<&str>) -> ColorDepth {
+    if colorterm
+        .is_some_and(|ct| ct.eq_ignore_ascii_case("truecolor") || ct.eq_ignore_ascii_case("24bit"))
+    {
+        return ColorDepth::TrueColor;
+    }
+    if term.is_some_and(|t| t.contains("256color")) {
+        return ColorDepth::Ansi256;
+    }
+    ColorDepth::Ansi16
+}
+
+fn style_brand(text: &str, depth: ColorDepth) -> String {
+    let (r, g, b) = SHELLY_ORANGE_RGB;
+    let code = match depth {
+        ColorDepth::Plain => return text.to_string(),
+        ColorDepth::Ansi16 => ANSI_AMBER.to_string(),
+        ColorDepth::Ansi256 => format!("\x1b[38;5;{SHELLY_ORANGE_ANSI256}m"),
+        ColorDepth::TrueColor => format!("\x1b[38;2;{r};{g};{b}m"),
+    };
+    format!("{code}{text}{ANSI_RESET}")
+}
+
+/// Black-on-orange background for the code keycaps, one step per color depth.
+fn keycap_style_code(depth: ColorDepth) -> Option<String> {
+    let (r, g, b) = SHELLY_ORANGE_RGB;
+    match depth {
+        ColorDepth::Plain => None,
+        ColorDepth::Ansi16 => Some("\x1b[30;43m".to_string()),
+        ColorDepth::Ansi256 => Some(format!("\x1b[30;48;5;{SHELLY_ORANGE_ANSI256}m")),
+        ColorDepth::TrueColor => Some(format!("\x1b[30;48;2;{r};{g};{b}m")),
+    }
+}
+
+/// Renders the pairing code as keycap chips (grouped 2+3); returns the styled
+/// row and its visible width in columns.
+fn keycap_row(code: &str, depth: ColorDepth) -> (String, usize) {
+    let grouped = group_code(code);
+    let Some(chip) = keycap_style_code(depth) else {
+        let cols = grouped.chars().count();
+        return (grouped, cols);
+    };
+    let mut styled = String::new();
+    let mut visible = 0usize;
+    let mut group_gap = false;
+    for ch in grouped.chars() {
+        if ch == ' ' {
+            group_gap = true;
+            continue;
+        }
+        if visible > 0 {
+            let gap = if group_gap { "   " } else { " " };
+            styled.push_str(gap);
+            visible += gap.len();
+            group_gap = false;
+        }
+        styled.push_str(&chip);
+        styled.push(' ');
+        styled.push(ch);
+        styled.push(' ');
+        styled.push_str(ANSI_RESET);
+        visible += 3;
+    }
+    (styled, visible)
+}
+
+/// One line of live status: spinner, label, and a countdown that escalates
+/// dim → amber (≤2:00) → red (≤0:30).
+fn render_pairing_status(frame: usize, remaining_secs: u64, depth: ColorDepth) -> (String, usize) {
+    let spinner = PAIRING_SPINNER_FRAMES[frame % PAIRING_SPINNER_FRAMES.len()];
+    let countdown = format!("expires in {}", format_pairing_countdown(remaining_secs));
+    let visible = 2 + PAIRING_STATUS_LABEL.chars().count() + 5 + countdown.chars().count();
+    let urgency = if remaining_secs <= PAIRING_COUNTDOWN_RED_SECS {
+        ANSI_RED
+    } else if remaining_secs <= PAIRING_COUNTDOWN_AMBER_SECS {
+        ANSI_AMBER
+    } else {
+        ANSI_DIM
+    };
+    let styled = format!(
+        "{} {PAIRING_STATUS_LABEL}  {}  {}",
+        style_brand(spinner, depth),
+        style_dim("·", true),
+        style_ansi(&countdown, true, urgency)
+    );
+    (styled, visible)
+}
+
+fn centered_line(styled: &str, visible_cols: usize, terminal_cols: u16) -> String {
+    let pad = " ".repeat(centered_padding(visible_cols, terminal_cols));
+    format!("{pad}{styled}")
+}
+
+fn redraw_pairing_status(
+    frame: usize,
+    remaining_secs: u64,
+    depth: ColorDepth,
+    terminal: ClientSize,
+) -> Result<()> {
+    let (status, visible) = render_pairing_status(frame, remaining_secs, depth);
+    let line = centered_line(&status, visible, terminal.cols);
+    print!("\x1b[{PAIRING_STATUS_ROWS_ABOVE}A\r\x1b[2K{line}\x1b[{PAIRING_STATUS_ROWS_ABOVE}B\r");
+    std::io::stdout().flush().context("redraw pairing status")
+}
+
+fn clear_pairing_status_row() -> Result<()> {
+    print!("\x1b[{PAIRING_STATUS_ROWS_ABOVE}A\r\x1b[2K\x1b[{PAIRING_STATUS_ROWS_ABOVE}B\r");
+    std::io::stdout().flush().context("clear pairing status")
+}
+
+/// Untrusted remote device names: strip control characters (ANSI injection),
+/// trim, and cap length so the prompt stays one line.
+fn sanitize_device_name(name: &str) -> String {
+    let cleaned: String = name.chars().filter(|c| !c.is_control()).collect();
+    let trimmed: String = cleaned.trim().chars().take(48).collect();
+    if trimmed.is_empty() {
+        "device".to_string()
+    } else {
+        trimmed
+    }
+}
+
+/// The wordmark costs its rows minus the one-line header it replaces, and is
+/// the first thing dropped when the pane is tight.
+fn pairing_wordmark_fits(qr_modules: usize, terminal: ClientSize) -> bool {
+    let (_, qr_rows) = pairing_qr_terminal_dimensions(qr_modules);
+    usize::from(terminal.cols) >= PAIRING_WORDMARK_COLS
+        && usize::from(terminal.rows) >= qr_rows + PAIRING_TEXT_ROWS + (PAIRING_WORDMARK.len() - 1)
+}
+
+/// Draws the full centered pairing ceremony for capable terminals. The final
+/// three rows (status, blank, hint) are the live region; the cursor parks on
+/// the row after the hint so redraws can address the status line.
+fn draw_pairing_screen(
+    code: &str,
+    qr_image: Option<&str>,
+    qr_modules: usize,
+    terminal: ClientSize,
+    depth: ColorDepth,
+    remaining_secs: u64,
+) -> Result<()> {
+    let cols = terminal.cols;
+    if qr_image.is_some() && pairing_wordmark_fits(qr_modules, terminal) {
+        for line in PAIRING_WORDMARK {
+            println!(
+                "{}",
+                centered_line(&style_brand(line, depth), PAIRING_WORDMARK_COLS, cols)
+            );
+        }
+    } else {
+        let header = format!(
+            "{} {}",
+            style_brand("▸", depth),
+            style_bold("shelly pair", true)
+        );
+        println!(
+            "{}",
+            centered_line(&header, "▸ shelly pair".chars().count(), cols)
+        );
+    }
+    println!();
+    match qr_image {
+        Some(image) => {
+            println!("{image}");
+            println!();
+            let scan = "Scan with the Shelly app — or enter this code:";
+            println!(
+                "{}",
+                centered_line(&style_dim(scan, true), scan.chars().count(), cols)
+            );
+        }
+        None => {
+            let enter = "Enter this code in the Shelly app:";
+            println!(
+                "{}",
+                centered_line(&style_dim(enter, true), enter.chars().count(), cols)
+            );
+        }
+    }
+    println!();
+    let (keys, keys_cols) = keycap_row(code, depth);
+    println!("{}", centered_line(&keys, keys_cols, cols));
+    println!();
+    if qr_image.is_none() {
+        let (need_cols, need_rows) = pairing_qr_terminal_dimensions(qr_modules);
+        let note = format!(
+            "Pane is too small for the QR (needs {need_cols}×{})",
+            need_rows + PAIRING_TEXT_ROWS
+        );
+        println!(
+            "{}",
+            centered_line(&style_dim(&note, true), note.chars().count(), cols)
+        );
+        println!();
+    }
+    let (status, status_cols) = render_pairing_status(0, remaining_secs, depth);
+    println!("{}", centered_line(&status, status_cols, cols));
+    println!();
+    let hint = "ctrl+c cancel";
+    println!(
+        "{}",
+        centered_line(&style_dim(hint, true), hint.chars().count(), cols)
+    );
+    std::io::stdout().flush().context("flush pairing screen")
+}
+
+/// Plain fallback (NO_COLOR, dumb terminals, pipes): stable left-aligned text.
+fn draw_pairing_screen_plain(
+    code: &str,
+    qr_image: Option<&str>,
+    qr_modules: usize,
+    depth: ColorDepth,
     use_ansi: bool,
-    inline: bool,
-    force: bool,
-) -> Result<bool> {
+) {
+    println!("{}", style_bold("Shelly pairing", use_ansi));
+    println!();
+    match qr_image {
+        Some(image) => {
+            println!("{image}");
+            println!();
+        }
+        None => {
+            let (need_cols, need_rows) = pairing_qr_terminal_dimensions(qr_modules);
+            println!(
+                "{}",
+                style_dim(
+                    &format!(
+                        "QR hidden for this pane. It needs {need_cols}x{}; widen the terminal and run `shelly pair` again.",
+                        need_rows + PAIRING_TEXT_ROWS
+                    ),
+                    use_ansi
+                )
+            );
+            println!();
+        }
+    }
+    println!(
+        "{}",
+        style_dim(
+            "Scan the QR with the Shelly app — or enter this code:",
+            use_ansi
+        )
+    );
+    println!("    {}", style_brand(&group_code(code), depth));
+}
+
+fn print_pairing_countdown(expires_at: u64, use_ansi: bool, force: bool) -> Result<bool> {
     let remaining_secs = pairing_remaining_seconds(expires_at);
     let active = remaining_secs > 0;
     let text = if active {
@@ -661,32 +986,10 @@ fn print_pairing_countdown(
     } else {
         "Expired. Run `shelly pair` again.".to_string()
     };
-
-    if inline {
-        let padded = format!("{text:<48}");
-        print!("\r{}", style_dim(&padded, use_ansi));
-        std::io::stdout()
-            .flush()
-            .context("flush pairing countdown")?;
-    } else if force || !active {
+    if force || !active {
         println!("{}", style_dim(&text, use_ansi));
     }
-
     Ok(active)
-}
-
-fn finish_pairing_countdown(inline: bool, use_ansi: bool) -> Result<()> {
-    if inline {
-        if use_ansi {
-            print!("\r\x1b[2K");
-        } else {
-            print!("\r{:<48}\r", "");
-        }
-        std::io::stdout()
-            .flush()
-            .context("flush pairing countdown")?;
-    }
-    Ok(())
 }
 
 fn pairing_remaining_seconds(expires_at: u64) -> u64 {
@@ -1701,13 +2004,16 @@ impl Drop for RawMode {
 #[cfg(test)]
 mod tests {
     use super::{
-        ANSI_QR_LIGHT_PANEL, ANSI_RESET, Cli, ClientSize, Command, HookCommand, MacosSignatureKind,
-        PAIRING_TEXT_ROWS, centered_padding, cli_command_with_bin_name, codex_state_from_json,
-        codex_states_from_payload, completion_bin_name_with_override, default_shell_from_env,
-        doctor_socket_file_status, doctor_socket_parent_status, format_pairing_countdown,
-        format_pairing_qr_image, macos_trust_mode_from_signature_kinds, normalize_session_name,
-        pairing_qr_fits_terminal, pairing_qr_terminal_dimensions, parse_macos_signature_kind,
-        parse_named_shortcut_args, requested_session_name, should_check_update_notice,
+        ANSI_AMBER, ANSI_DIM, ANSI_QR_LIGHT_PANEL, ANSI_RED, ANSI_RESET, Cli, ClientSize,
+        ColorDepth, Command, HookCommand, MacosSignatureKind, PAIRING_TEXT_ROWS, PAIRING_WORDMARK,
+        PAIRING_WORDMARK_COLS, centered_padding, cli_command_with_bin_name, codex_state_from_json,
+        codex_states_from_payload, color_depth_from_env, completion_bin_name_with_override,
+        default_shell_from_env, doctor_socket_file_status, doctor_socket_parent_status,
+        format_pairing_countdown, format_pairing_qr_image, keycap_row,
+        macos_trust_mode_from_signature_kinds, normalize_session_name, pairing_qr_fits_terminal,
+        pairing_qr_terminal_dimensions, parse_macos_signature_kind, parse_named_shortcut_args,
+        render_pairing_status, requested_session_name, sanitize_device_name,
+        should_check_update_notice,
     };
     use clap::Parser;
     use clap_complete::Shell;
@@ -2120,6 +2426,83 @@ mod tests {
         assert_eq!(format_pairing_countdown(300), "5:00");
         assert_eq!(format_pairing_countdown(65), "1:05");
         assert_eq!(format_pairing_countdown(4), "0:04");
+    }
+
+    #[test]
+    fn color_depth_prefers_colorterm_then_term() {
+        assert_eq!(
+            color_depth_from_env(Some("xterm-256color"), Some("truecolor")),
+            ColorDepth::TrueColor
+        );
+        assert_eq!(
+            color_depth_from_env(None, Some("24bit")),
+            ColorDepth::TrueColor
+        );
+        assert_eq!(
+            color_depth_from_env(Some("xterm-256color"), None),
+            ColorDepth::Ansi256
+        );
+        assert_eq!(
+            color_depth_from_env(Some("xterm"), None),
+            ColorDepth::Ansi16
+        );
+        assert_eq!(color_depth_from_env(None, None), ColorDepth::Ansi16);
+    }
+
+    #[test]
+    fn keycap_row_falls_back_to_grouped_text_when_plain() {
+        assert_eq!(
+            keycap_row("KW7F4", ColorDepth::Plain),
+            ("KW 7F4".to_string(), 6)
+        );
+    }
+
+    #[test]
+    fn keycap_row_renders_chips_with_wider_group_gap() {
+        let (styled, cols) = keycap_row("KW7F4", ColorDepth::Ansi16);
+        assert_eq!(cols, 21);
+        assert_eq!(styled.matches("\x1b[30;43m").count(), 5);
+        assert_eq!(styled.matches(ANSI_RESET).count(), 5);
+        assert!(styled.contains("   "));
+    }
+
+    #[test]
+    fn pairing_wordmark_is_ascii_and_sized() {
+        assert_eq!(PAIRING_WORDMARK.len(), 6);
+        assert!(PAIRING_WORDMARK.iter().all(|line| line.is_ascii()));
+        assert_eq!(
+            PAIRING_WORDMARK
+                .iter()
+                .map(|line| line.chars().count())
+                .max(),
+            Some(PAIRING_WORDMARK_COLS)
+        );
+    }
+
+    #[test]
+    fn pairing_status_countdown_escalates_with_urgency() {
+        let (calm, cols) = render_pairing_status(0, 872, ColorDepth::TrueColor);
+        assert!(calm.contains("\x1b[38;2;232;93;41m"));
+        assert!(calm.contains("expires in 14:32"));
+        assert!(calm.contains(ANSI_DIM));
+        assert!(!calm.contains(ANSI_AMBER));
+        assert_eq!(
+            cols,
+            "⠋ waiting for device  ·  expires in 14:32".chars().count()
+        );
+
+        let (amber, _) = render_pairing_status(0, 120, ColorDepth::TrueColor);
+        assert!(amber.contains(ANSI_AMBER));
+        let (red, _) = render_pairing_status(0, 30, ColorDepth::TrueColor);
+        assert!(red.contains(ANSI_RED));
+    }
+
+    #[test]
+    fn sanitize_device_name_strips_control_and_caps_length() {
+        assert_eq!(sanitize_device_name("  Pixel 9 Pro \n"), "Pixel 9 Pro");
+        assert_eq!(sanitize_device_name("\x1b[31mPixel\x07"), "[31mPixel");
+        assert_eq!(sanitize_device_name("\x1b\x07 \n"), "device");
+        assert_eq!(sanitize_device_name(&"n".repeat(64)).chars().count(), 48);
     }
 
     fn bind_unix_socket_for_test(path: &Path) -> Option<UnixListener> {

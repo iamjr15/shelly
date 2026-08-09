@@ -47,7 +47,7 @@ try {
 
   const platformPack = packPackage(npm, platformDir, packDir, { cwd: root });
   const metaPack = packPackage(npm, metaDir, packDir, { cwd: root });
-  run(
+  const install = run(
     npm,
     [
       "install",
@@ -59,14 +59,24 @@ try {
     ],
     { cwd: projectDir, env: isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) },
   );
+  const installOutput = `${install.stdout}\n${install.stderr}`;
+  if (installOutput.includes("allow-scripts")) {
+    throw new Error(`npm install emitted an allow-scripts warning:\n${installOutput}`);
+  }
 
   const installedBinDir = path.join(projectDir, "node_modules", "shellykit", "bin");
   const installedShelly = path.join(installedBinDir, "shelly");
   const installedDaemon = path.join(installedBinDir, "shellyd");
   requireExecutable(installedShelly);
   requireExecutable(installedDaemon);
-  rejectJsFallback(installedShelly);
-  rejectJsFallback(installedDaemon);
+  requireJsDispatcher(installedShelly);
+  requireJsDispatcher(installedDaemon);
+
+  const platformBinDir = path.join(projectDir, "node_modules", `shellykit-${hostKey}`, "bin");
+  const nativeShelly = path.join(platformBinDir, "shelly");
+  const nativeDaemon = path.join(platformBinDir, "shellyd");
+  requireExecutable(nativeShelly);
+  requireExecutable(nativeDaemon);
 
   const binDir = path.join(projectDir, "node_modules", ".bin");
   const shellyBin = path.join(binDir, "shelly");
@@ -79,8 +89,8 @@ try {
   assertIncludes(run(daemonBin, ["--help"], { cwd: projectDir, env: isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) }).stdout, "Usage:", "shellyd help");
 
   if (process.platform === "darwin") {
-    assertDarwinTrust(installedShelly);
-    assertDarwinTrust(installedDaemon);
+    assertDarwinTrust(nativeShelly);
+    assertDarwinTrust(nativeDaemon);
   }
 
   console.log(`npm local install smoke ok: shellykit + shellykit-${hostKey}`);
@@ -102,10 +112,10 @@ function isolatedEnv({ homeDir, runtimeDir, configDir, stateDir }) {
   });
 }
 
-function rejectJsFallback(file) {
+function requireJsDispatcher(file) {
   const firstBytes = fs.readFileSync(file).subarray(0, 64).toString("utf8");
-  if (firstBytes.startsWith("#!/usr/bin/env node")) {
-    throw new Error(`${file} still contains the JS dispatcher fallback after postinstall`);
+  if (!firstBytes.startsWith("#!/usr/bin/env node")) {
+    throw new Error(`${file} is not the expected lifecycle-free JS dispatcher`);
   }
 }
 

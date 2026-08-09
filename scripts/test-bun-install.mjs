@@ -196,13 +196,13 @@ function isolatedEnv({ platform, arch, homeDir, runtimeDir, configDir, stateDir 
   });
 }
 
-function isJsFallback(file) {
+function isJsDispatcher(file) {
   const firstBytes = fs.readFileSync(file).subarray(0, 64).toString("utf8");
   return firstBytes.startsWith("#!/usr/bin/env node");
 }
 
 function assertInstallPath(actual, expected, platformCase, label) {
-  if (isJsFallback(actual)) {
+  if (isJsDispatcher(actual)) {
     assertDispatcherCanResolvePlatformPackage(actual, platformCase, label);
     return;
   }

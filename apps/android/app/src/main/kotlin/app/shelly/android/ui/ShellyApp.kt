@@ -146,8 +146,8 @@ fun ShellyApp(
         biometricGate.configure(settings.autoLock.millis, settings.biometricLock)
     }
 
-    LaunchedEffect(onboarded) {
-        if (onboarded && !state.unlocked) {
+    LaunchedEffect(onboarded, state.paired, state.restoringPairing) {
+        if (shouldUseBiometricGate(onboarded, state) && !state.unlocked) {
             viewModel.setUnlocked(biometricGate.unlock("Unlock Shelly"))
         }
     }
@@ -185,7 +185,10 @@ fun ShellyApp(
                 Lifecycle.Event.ON_RESUME -> {
                     unlockUnavailableMessage = biometricGate.unlockUnavailableMessage()
                     viewModel.onAppForegrounded()
-                    if (onboarded && biometricGate.shouldLockOnResume) {
+                    if (
+                        shouldUseBiometricGate(onboarded, viewModel.state.value) &&
+                        biometricGate.shouldLockOnResume
+                    ) {
                         viewModel.setUnlocked(false)
                         scope.launch { viewModel.setUnlocked(biometricGate.unlock("Unlock Shelly")) }
                     }
@@ -655,7 +658,7 @@ private fun ShellyModalOverlay(
     }
 }
 
-private sealed interface ShellySurface {
+internal sealed interface ShellySurface {
     val motionDepth: Int
 
     data object Onboarding : ShellySurface {
@@ -683,15 +686,15 @@ private sealed interface ShellySurface {
     }
 }
 
-private fun shellySurfaceFor(
+internal fun shellySurfaceFor(
     onboarded: Boolean,
     state: ShellyUiState,
     route: ShellyRoute,
 ): ShellySurface = when {
     !onboarded -> ShellySurface.Onboarding
-    !state.unlocked -> ShellySurface.Locked
     state.restoringPairing -> ShellySurface.RestoringPairing
     !state.paired -> ShellySurface.Pairing
+    !state.unlocked -> ShellySurface.Locked
     // Terminal keeps priority: never interrupt an attached session with a connection screen.
     state.activeTerminalSessionId != null -> ShellySurface.Terminal(state.activeTerminalSessionId)
     state.connectionState is ConnectionState.Unreachable ->
@@ -700,6 +703,9 @@ private fun shellySurfaceFor(
         ShellySurface.Routed(ShellyRoute.SessionsReconnecting)
     else -> ShellySurface.Routed(route)
 }
+
+internal fun shouldUseBiometricGate(onboarded: Boolean, state: ShellyUiState): Boolean =
+    onboarded && !state.restoringPairing && state.paired
 
 private val ShellyRoute.motionDepth: Int
     get() = when (this) {

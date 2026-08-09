@@ -124,7 +124,7 @@ function assertMetaPackagePack() {
   const files = filesByPath(packs);
   assertExecutablePackFile(files, "bin/shelly", "meta pack");
   assertExecutablePackFile(files, "bin/shellyd", "meta pack");
-  assert(files.has("install.js"), "meta pack is missing install.js");
+  assert(!files.has("install.js"), "meta pack must not contain install.js");
   assert(files.has("README.md"), "meta pack is missing README.md");
   assert(files.has("LICENSE"), "meta pack is missing LICENSE");
   assert(files.has("NOTICE"), "meta pack is missing NOTICE");

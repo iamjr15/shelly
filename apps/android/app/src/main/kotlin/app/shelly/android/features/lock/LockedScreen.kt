@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,7 +57,9 @@ fun LockedScreen(
     onUnlock: () -> Unit = {},
     unavailableMessage: String? = null,
 ) {
+    val c = ShellyTheme.colors
     ShellyScreen(
+        contentBackground = lockedContentBackground(c),
         hero = { LockedHero() },
         content = { LockedContent(onUnlock = onUnlock, unavailableMessage = unavailableMessage) },
     )
@@ -68,19 +72,13 @@ private fun ColumnScope.LockedHero() {
 
     CompositionLocalProvider(LocalShellyColors provides c.copy(textPrimary = heroForeground)) {
         HeroBody(
-            eyebrow = "UNLOCK TO PICK UP\nWHERE YOU LEFT OFF",
+            eyebrow = "PRIVATE ON THIS PHONE\nUNTIL YOU UNLOCK",
             wordmark = "LOCK",
             wordmarkSize = 96.sp,
             brandTrailing = {
                 LockedDate(
                     primary = heroForeground,
                     muted = lockedHeroDateMuted(c, heroForeground),
-                )
-            },
-            below = {
-                LockedHeroStatus(
-                    primary = heroForeground,
-                    muted = lockedHeroStatusMuted(c, heroForeground),
                 )
             },
         )
@@ -126,34 +124,10 @@ private fun LockedDate(primary: Color, muted: Color) {
 }
 
 @Composable
-private fun LockedHeroStatus(primary: Color, muted: Color) {
-    Text(
-        "SESSIONS HELD ON YOUR LAPTOP",
-        style = ShellyType.monoSmall.copy(
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.06.em,
-        ),
-        color = muted,
-        modifier = Modifier.padding(bottom = 6.dp),
-    )
-    Text(
-        "Backgrounded · keystrokes blocked until biometric refresh",
-        style = ShellyType.itemTitle.copy(
-            fontSize = 17.sp,
-            lineHeight = 24.sp,
-            fontWeight = FontWeight.Medium,
-        ),
-        color = primary,
-    )
-    Spacer(Modifier.height(6.6.dp))
-}
-
-@Composable
 private fun ColumnScope.LockedContent(onUnlock: () -> Unit, unavailableMessage: String?) {
-    Spacer(Modifier.height(4.dp))
-    Spacer(Modifier.height(76.dp))
-    ActivityCard(Modifier.padding(top = 16.dp))
-    Spacer(Modifier.weight(1f))
+    Spacer(Modifier.weight(0.38f))
+    LockedMessage()
+    Spacer(Modifier.weight(0.62f))
     unavailableMessage?.let {
         Text(
             text = it,
@@ -168,37 +142,40 @@ private fun ColumnScope.LockedContent(onUnlock: () -> Unit, unavailableMessage: 
 }
 
 @Composable
-private fun ActivityCard(modifier: Modifier = Modifier) {
+private fun LockedMessage() {
     val c = ShellyTheme.colors
-    val primary = lockedContentPrimary(c)
-    val muted = lockedContentMuted(c, primary)
-
-    Column(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(lockedActivityCardColor(c))
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            "WHILE YOU WERE AWAY",
-            style = ShellyType.microLabel.copy(
-                fontSize = 10.sp,
-                lineHeight = 12.sp,
-                letterSpacing = 0.06.em,
-            ),
-            color = muted,
+        Box(
+            Modifier
+                .width(3.dp)
+                .height(88.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(c.accent),
         )
-        Text(
-            "Your sessions kept running on your laptop.\nUnlock to see where they're at.",
-            style = ShellyType.itemTitle.copy(
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                fontWeight = FontWeight.Medium,
-            ),
-            color = primary,
-        )
+        Column {
+            Text(
+                "SHELLY IS LOCKED",
+                style = ShellyType.microLabel.copy(
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp,
+                    letterSpacing = 0.08.em,
+                ),
+                color = c.accent,
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Authenticate\nto continue.",
+                style = ShellyType.heading.copy(
+                    fontSize = 28.sp,
+                    lineHeight = 31.sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
+                color = c.ink,
+            )
+        }
     }
 }
 
@@ -261,17 +238,8 @@ private fun lockedHeroForeground(c: ShellyColors): Color =
 private fun lockedHeroDateMuted(c: ShellyColors, primary: Color): Color =
     if (c.isDark) c.textMuted.copy(alpha = 0.6f) else primary.copy(alpha = 0.6f)
 
-private fun lockedHeroStatusMuted(c: ShellyColors, primary: Color): Color =
-    if (c.isDark) c.textMuted.copy(alpha = 0.7f) else primary.copy(alpha = 0.7f)
-
-private fun lockedContentPrimary(c: ShellyColors): Color =
-    c.ink
-
-private fun lockedContentMuted(c: ShellyColors, primary: Color): Color =
-    if (c.isDark) c.textMuted else primary
-
-private fun lockedActivityCardColor(c: ShellyColors): Color =
-    if (c.isDark) c.insetCard else Color(0xFFF5F5F0)
+private fun lockedContentBackground(c: ShellyColors): Color =
+    if (c.isDark) c.content else Color(0xFFF1EFE8)
 
 private fun lockedButtonBackground(c: ShellyColors): Color =
     if (c.isDark) c.buttonPrimary else c.heroWordmark

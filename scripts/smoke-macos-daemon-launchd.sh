@@ -100,11 +100,18 @@ pack_package() {
 platform_pack="$(pack_package "$platform_dir")"
 meta_pack="$(pack_package "$meta_dir")"
 npm install --prefix "$tmp/project" --package-lock=false --no-audit --no-fund "$platform_pack" "$meta_pack" >"$tmp/artifacts/npm-install.txt" 2>&1
+if grep -Fq "allow-scripts" "$tmp/artifacts/npm-install.txt"; then
+  echo "npm install emitted an allow-scripts warning" >&2
+  cat "$tmp/artifacts/npm-install.txt" >&2
+  exit 1
+fi
 
-shelly="$tmp/project/node_modules/shellykit/bin/shelly"
-shellyd="$tmp/project/node_modules/shellykit/bin/shellyd"
+shelly="$tmp/project/node_modules/.bin/shelly"
+shellyd="$tmp/project/node_modules/.bin/shellyd"
+native_shelly="$tmp/project/node_modules/shellykit-$host_key/bin/shelly"
+native_shellyd="$tmp/project/node_modules/shellykit-$host_key/bin/shellyd"
 
-for binary in "$shelly" "$shellyd"; do
+for binary in "$shelly" "$shellyd" "$native_shelly" "$native_shellyd"; do
   if [[ ! -x "$binary" ]]; then
     echo "expected installed executable is missing: $binary" >&2
     exit 1
@@ -112,13 +119,13 @@ for binary in "$shelly" "$shellyd"; do
 done
 
 {
-  codesign --verify --verbose=2 "$shelly"
-  codesign --verify --verbose=2 "$shellyd"
-  if xattr -p com.apple.quarantine "$shelly" >/dev/null 2>&1; then
+  codesign --verify --verbose=2 "$native_shelly"
+  codesign --verify --verbose=2 "$native_shellyd"
+  if xattr -p com.apple.quarantine "$native_shelly" >/dev/null 2>&1; then
     echo "shelly still has com.apple.quarantine metadata" >&2
     exit 1
   fi
-  if xattr -p com.apple.quarantine "$shellyd" >/dev/null 2>&1; then
+  if xattr -p com.apple.quarantine "$native_shellyd" >/dev/null 2>&1; then
     echo "shellyd still has com.apple.quarantine metadata" >&2
     exit 1
   fi

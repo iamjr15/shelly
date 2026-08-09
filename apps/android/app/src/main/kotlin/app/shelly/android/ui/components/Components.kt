@@ -92,6 +92,7 @@ fun Modifier.wordmarkFootprint(size: TextUnit): Modifier = layout { measurable, 
 fun ShellyScreen(
     modifier: Modifier = Modifier,
     heroHeight: Dp = ShellyDimens.heroHeight,
+    contentBackground: Color? = null,
     hero: @Composable ColumnScope.() -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -117,7 +118,7 @@ fun ShellyScreen(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .background(c.content)
+                    .background(contentBackground ?: c.content)
                     .padding(horizontal = ShellyDimens.contentPaddingH)
                     .padding(top = 18.dp, bottom = 24.dp),
                 content = content,
