@@ -11,6 +11,7 @@
     "generate:oss-notices": "node scripts/generate-oss-notices.mjs",
     "publish:npm": "node scripts/publish-npm-packages.mjs",
     "render:demo-video": "node scripts/render-demo-video.mjs",
+    "sync:release-version": "node scripts/sync-release-version.mjs",
     "test:android-unit": "apps/android/gradlew --no-daemon :app:testDebugUnitTest",
     "test:bun-install": "node scripts/test-bun-install.mjs",
     "test:cli-doctor": "scripts/smoke-cli-doctor.sh",

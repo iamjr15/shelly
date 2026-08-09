@@ -45,6 +45,7 @@ jobs:
 
       - name: Verify package version matches release tag
         run: |
+          node scripts/sync-release-version.mjs --check
           tag="${{ steps.release_tag.outputs.tag }}"
           case "$tag" in
             v[0-9]*) ;;

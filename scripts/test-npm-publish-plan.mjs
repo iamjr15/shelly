@@ -59,6 +59,7 @@ function assertTrustedPublishingWorkflow() {
   assert(workflow.includes("id-token: write"), "npm release workflow must request an OIDC identity token");
   assert(workflow.includes("package-manager-cache: false"), "npm release workflow must disable package-manager caching");
   assert(workflow.includes("npm@11.17.0"), "npm release workflow must pin an OIDC-capable npm CLI");
+  assert(workflow.includes("node scripts/sync-release-version.mjs --check"), "npm release workflow must reject Rust/npm version mismatches");
   assert(!workflow.includes("NPM_TOKEN"), "npm release workflow must not use an npm publishing token");
   assert(!workflow.includes("NODE_AUTH_TOKEN"), "npm release workflow must not inject npm token authentication");
 }

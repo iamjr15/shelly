@@ -123,6 +123,7 @@ jobs:
       - run: bash -lc 'for script in scripts/*.mjs; do node --check "$script" >/dev/null || exit 1; done; printf "node script syntax ok\n"'
       - run: bash -lc 'for script in scripts/*.sh apps/android/scripts/*.sh; do bash -n "$script" || exit 1; done; printf "shell script syntax ok\n"'
       - run: node scripts/test-npm-dispatcher.mjs
+      - run: node scripts/sync-release-version.mjs --check
       - run: node scripts/test-npm-publish-plan.mjs
       - run: node scripts/test-bun-install.mjs
       - run: node scripts/test-npm-artifact-pack.mjs
