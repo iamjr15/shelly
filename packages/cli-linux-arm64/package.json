@@ -1,6 +1,6 @@
 {
   "name": "shellykit-linux-arm64",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Shelly CLI and daemon binaries for Linux arm64.",
   "os": [
     "linux"

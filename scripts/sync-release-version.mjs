@@ -3,7 +3,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const checkOnly = process.argv.includes("--check");
@@ -24,7 +23,7 @@ assert(/^\d+\.\d+\.\d+$/.test(releaseVersion), `expected a stable semver release
 if (!checkOnly) {
   syncRootPackage(releaseVersion);
   syncCargoManifest(releaseVersion);
-  refreshCargoLock();
+  syncCargoLock(releaseVersion);
 }
 
 checkVersions(releaseVersion);
@@ -45,17 +44,17 @@ function syncCargoManifest(version) {
   fs.writeFileSync(filePath, original.replace(versionPattern, `$1${version}$2`));
 }
 
-function refreshCargoLock() {
-  const result = spawnSync("cargo", ["metadata", "--format-version", "1", "--no-deps"], {
-    cwd: root,
-    encoding: "utf8",
-  });
+function syncCargoLock(version) {
+  const filePath = path.join(root, "Cargo.lock");
+  let lockfile = fs.readFileSync(filePath, "utf8");
 
-  if (result.status !== 0) {
-    process.stdout.write(result.stdout || "");
-    process.stderr.write(result.stderr || "");
-    fail("cargo metadata could not refresh Cargo.lock");
+  for (const packageName of workspacePackages) {
+    const versionPattern = new RegExp(`(\\[\\[package\\]\\]\\nname = "${packageName}"\\nversion = ")[^"]+("$)`, "m");
+    assert(versionPattern.test(lockfile), `Cargo.lock is missing workspace package ${packageName}`);
+    lockfile = lockfile.replace(versionPattern, `$1${version}$2`);
   }
+
+  fs.writeFileSync(filePath, lockfile);
 }
 
 function checkVersions(version) {

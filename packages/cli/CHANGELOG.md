@@ -1,5 +1,11 @@
 # shellykit
 
+## 1.0.4
+
+### Patch Changes
+
+- [`70dfaf8`](https://github.com/iamjr15/shelly/commit/70dfaf877cfe1549b7e81ad06f7e10803712f1f7) Thanks [@iamjr15](https://github.com/iamjr15)! - Keep Rust binaries, npm packages, and release tags on one version. This makes `shelly --version` report the installed release correctly and blocks future mismatched publishes.
+
 ## 1.0.3
 
 ### Patch Changes
