@@ -1,5 +1,11 @@
 # shellykit
 
+## 1.0.5
+
+### Patch Changes
+
+- [`1bf5491`](https://github.com/iamjr15/shelly/commit/1bf5491dff70b0fe3e8e30d47fcb5c1d5d8cecda) Thanks [@iamjr15](https://github.com/iamjr15)! - Make interactive pairing resize-safe with an alternate-screen UI, clean Ctrl+C cancellation, and explicit high-contrast colors for the QR panel and pairing-code keycaps.
+
 ## 1.0.4
 
 ### Patch Changes
