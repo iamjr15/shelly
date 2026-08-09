@@ -1,10 +1,19 @@
 {
   "name": "shellykit-darwin-arm64",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Shelly CLI and daemon binaries for macOS arm64.",
-  "os": ["darwin"],
-  "cpu": ["arm64"],
-  "files": ["bin/shelly", "bin/shellyd", "LICENSE", "NOTICE"],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/shelly",
+    "bin/shellyd",
+    "LICENSE",
+    "NOTICE"
+  ],
   "license": "AGPL-3.0-or-later",
   "publishConfig": {
     "access": "public"
