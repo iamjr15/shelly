@@ -28,10 +28,6 @@ const expectedNames = [
   "shellykit",
 ];
 
-if (!dryRun && !checkReady && !printPublishPlanJson && !process.env.NODE_AUTH_TOKEN) {
-  fail("NODE_AUTH_TOKEN is required for npm publish");
-}
-
 verifyPackageGraph();
 
 if (printPublishPlanJson) {

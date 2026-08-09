@@ -9,7 +9,10 @@ through CI workflows, not through repository capture scripts.
 The publish flow is npm-only for desktop.
 
 1. Build Rust release artifacts with `.github/workflows/release-rust.yml`.
-2. Run `.github/workflows/release-npm.yml` with `NPM_TOKEN` configured.
+2. Run `.github/workflows/release-npm.yml` from the matching release tag. Each
+   npm package trusts the `iamjr15/shelly` GitHub repository and the
+   `release-npm.yml` workflow for `npm publish` through OIDC; no npm publishing
+   token is stored in GitHub.
 3. The workflow downloads release archives, checks `.sha256` files with
    `shasum`, stages platform package binaries with
    `scripts/prepare-npm-artifacts.mjs`, and publishes through
@@ -167,7 +170,8 @@ Domain ownership and Cloudflare project setup are operator-owned.
 
 Before a public v1 release, manually confirm:
 
-- npm package ownership and token freshness.
+- npm package ownership and trusted-publisher configuration for all five
+  packages.
 - GitHub Release archives, checksums, and provenance bundles are present.
 - macOS npm-installed binaries launch without quarantine issues.
 - Relay host uses production DNS/TLS and relay-only credentials.

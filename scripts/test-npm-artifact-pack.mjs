@@ -100,7 +100,6 @@ function publishBlockedEnv() {
   return {
     ...process.env,
     HOME: home,
-    NODE_AUTH_TOKEN: "shelly-test-token",
     NPM_CONFIG_REGISTRY: "http://127.0.0.1:9",
     NPM_CONFIG_USERCONFIG: userconfig,
   };

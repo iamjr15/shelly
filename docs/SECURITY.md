@@ -106,8 +106,10 @@ Honeycomb TLS follows the host OS trust store; relay OTLP loopback coverage
 guards the Shelly-owned telemetry path against leaking terminal, session, or
 token sentinels.
 
-NPM publish credentials (`NPM_TOKEN` / `NODE_AUTH_TOKEN`) live only in the
-operator environment or GitHub Secrets. Do not commit repository `.npmrc` files,
+npm releases use npm trusted publishing: the registry exchanges GitHub's
+short-lived workflow OIDC identity for publish authorization scoped to
+`iamjr15/shelly` and `.github/workflows/release-npm.yml`. No long-lived npm
+publishing token is stored in GitHub. Do not commit repository `.npmrc` files,
 literal npm token strings, npm auth-token environment assignments, FCM
 service-account JSON, or Honeycomb API keys.
 

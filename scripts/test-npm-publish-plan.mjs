@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import fs from "node:fs";
-import os from "node:os";
 import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
@@ -18,7 +17,7 @@ const expected = [
 const env = { ...process.env };
 delete env.NODE_AUTH_TOKEN;
 
-assertMissingTokenFailsBeforeNpm();
+assertTrustedPublishingWorkflow();
 
 const result = spawnSync(process.execPath, ["scripts/publish-npm-packages.mjs", "--publish-plan-json"], {
   cwd: root,
@@ -55,46 +54,13 @@ for (let index = 0; index < expected.length; index += 1) {
 
 console.log("npm publish plan ok: children first, provenance enabled, public access");
 
-function assertMissingTokenFailsBeforeNpm() {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-no-token-publish-"));
-  const fakeNpm = path.join(temp, process.platform === "win32" ? "npm.cmd" : "npm");
-  const marker = path.join(temp, "npm-invoked");
-
-  try {
-    fs.writeFileSync(
-      fakeNpm,
-      process.platform === "win32"
-        ? `@echo off\r\ntype nul > "${marker}"\r\nexit /b 9\r\n`
-        : `#!/bin/sh\n: > "${marker}"\nexit 9\n`,
-      { mode: 0o755 },
-    );
-
-    const result = spawnSync(process.execPath, ["scripts/publish-npm-packages.mjs"], {
-      cwd: root,
-      encoding: "utf8",
-      env: {
-        ...env,
-        PATH: `${temp}${path.delimiter}${env.PATH || ""}`,
-      },
-    });
-
-    if (result.status === 0) {
-      console.error("publish without NODE_AUTH_TOKEN unexpectedly passed");
-      process.exit(1);
-    }
-    if (!result.stderr.includes("NODE_AUTH_TOKEN is required for npm publish")) {
-      console.error(result.stdout);
-      console.error(result.stderr);
-      console.error("publish without NODE_AUTH_TOKEN must fail with the token guard");
-      process.exit(1);
-    }
-    if (fs.existsSync(marker)) {
-      console.error("publish without NODE_AUTH_TOKEN invoked npm before failing");
-      process.exit(1);
-    }
-  } finally {
-    fs.rmSync(temp, { recursive: true, force: true });
-  }
+function assertTrustedPublishingWorkflow() {
+  const workflow = fs.readFileSync(path.join(root, ".github/workflows/release-npm.yml"), "utf8");
+  assert(workflow.includes("id-token: write"), "npm release workflow must request an OIDC identity token");
+  assert(workflow.includes("package-manager-cache: false"), "npm release workflow must disable package-manager caching");
+  assert(workflow.includes("npm@11.17.0"), "npm release workflow must pin an OIDC-capable npm CLI");
+  assert(!workflow.includes("NPM_TOKEN"), "npm release workflow must not use an npm publishing token");
+  assert(!workflow.includes("NODE_AUTH_TOKEN"), "npm release workflow must not inject npm token authentication");
 }
 
 function assert(condition, message) {
