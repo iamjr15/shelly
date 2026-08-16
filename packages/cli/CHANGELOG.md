@@ -1,5 +1,11 @@
 # shellykit
 
+## 1.0.6
+
+### Patch Changes
+
+- [`3181a2a`](https://github.com/iamjr15/shelly/commit/3181a2a99a70ced19adc3a4dc3d3238f03998955) Thanks [@iamjr15](https://github.com/iamjr15)! - Upgrade terminal handoff across the desktop CLI, daemon, and Android app. Desktop attach now preserves a stable session status row while rendering terminal output through a VT parser; pairing authorizes the first valid phone connection while the local command is active; session termination is durably acknowledged by protocol v4; and the Android client gains more reliable session recovery, terminal input, navigation, notifications, and lifecycle handling.
+
 ## 1.0.5
 
 ### Patch Changes
