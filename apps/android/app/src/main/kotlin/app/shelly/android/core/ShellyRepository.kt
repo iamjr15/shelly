@@ -131,7 +131,7 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
 
     override suspend fun killSession(sessionId: String) {
         requireClient().killSession(sessionId)
-        debugLog("killSession sent for $sessionId")
+        debugLog("killSession confirmed for $sessionId")
         synchronized(stateLock) {
             lastSeenSeqBySession.remove(sessionId)
         }

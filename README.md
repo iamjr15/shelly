@@ -13,7 +13,7 @@ phone gets a push notification that never contains terminal content.
 
 ![Shelly CLI install and session list](docs/assets/shelly-cli-flow.svg)
 
-![Shelly QR pairing with explicit desktop approval](docs/assets/shelly-pairing.svg)
+![Shelly QR pairing from an active desktop command](docs/assets/shelly-pairing.svg)
 
 ![Shelly mobile sessions and terminal attach](docs/assets/shelly-mobile-session.svg)
 
@@ -44,10 +44,9 @@ bundled Gradle wrapper while Play Store submission is pending.
 
 ## Quick start
 
-1. **Pair your phone.** Run `shelly pair` on your laptop. Scan the QR code with the
-   Shelly Android app (or type the 5-character code), then approve the
-   device on your laptop. Pairing codes are single-use, expire after 5
-   minutes, and always require explicit desktop approval.
+1. **Pair your phone.** Run `shelly pair` on your laptop, then scan the QR code
+   with the Shelly Android app (or type the 5-character code). The active
+   desktop command authorizes that single pairing; codes expire after 5 minutes.
 2. **Start a session.** Run `shelly` with no arguments to create and attach an
    auto-named shell session, or `shelly new claude`, `shelly new bash`, `shelly new vim` to
    run a specific command. `shelly refactoringjob` is the named-session fast path:
@@ -57,6 +56,11 @@ bundled Gradle wrapper while Play Store submission is pending.
    resize, detach.
 4. **Come back.** Detach on the desktop with `Ctrl-B` then `D`. Reattach any
    time with `shelly attach <session>` — the process never stopped.
+
+While attached, Shelly keeps a compact green status row at the bottom of the
+terminal with the current session name. The row belongs to the local client,
+not the remote shell, so full-screen programs receive the remaining terminal
+rows and cannot overwrite it.
 
 A Shelly session is agent-agnostic: inside one session you can start Claude
 Code, exit it, start Codex, drop back to a shell, or run any other TUI without
@@ -121,7 +125,8 @@ Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
   cannot choose commands or emit agent-state events. Create/kill are authorized by
   the paired device identity in the daemon, not by the app.
 - Pairing: single active 5-character code, 5-minute TTL, invalidated after 5
-  wrong attempts, single-use, explicit desktop approval, no password fallback.
+  wrong attempts, single-use, authorized by an active local pairing command,
+  no password fallback.
   Lost devices are revoked with `shelly devices remove`.
 - At rest: session scrollback and paired-device records are encrypted with
   XChaCha20-Poly1305 using an OS-keychain-held key. On Android, the pairing

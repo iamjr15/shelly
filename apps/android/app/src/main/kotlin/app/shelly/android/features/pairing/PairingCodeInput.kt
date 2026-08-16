@@ -4,7 +4,7 @@ package app.shelly.android.features.pairing
 internal const val PAIRING_CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 internal const val PAIRING_CODE_LENGTH = 5
 internal const val PAIRING_CAMERA_DENIED_BODY =
-    "Camera access is off. Enter the pairing code from your laptop instead."
+    "Camera access is off. Enter the pairing code from your computer instead."
 internal const val PAIRING_CAMERA_DENIED_ACTION = "Enter code instead"
 
 /** Normalizes manual pairing-code input to the daemon's accepted Crockford form. */

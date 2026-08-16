@@ -145,7 +145,7 @@ const TICKET_PREFIX: &str = "sh1";
 /// ticket via the relay rendezvous endpoint. Serialize with [`Self::encode`]
 /// for transport and recover with [`Self::decode`].
 pub struct PairingTicket {
-    /// Short pairing code; the only credential, still gated by desktop approval.
+    /// Short pairing code; the credential authorized by the active desktop pairing command.
     pub code: String,
     /// Daemon iroh node id.
     pub node_id: String,

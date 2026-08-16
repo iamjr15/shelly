@@ -18,6 +18,7 @@ fun PrivacyScreen(
                 wordmark = "SAFE",
                 trailing = if (inSettings) "Settings" else "SKIP",
                 onTrailingClick = onSkip,
+                trailingAsEscape = inSettings,
                 status = OnboardingStatus(
                     icon = OnboardingStatusIcon.Lock,
                     text = "end-to-end encrypted",

@@ -33,8 +33,6 @@ internal class ShellySettings(private val prefs: ShellyUiPreferences) {
         private set
     var notifyBuildFinished by mutableStateOf(prefs.readNotifyBuildFinished())
         private set
-    var quietHours by mutableStateOf(prefs.readQuietHours())
-        private set
 
     fun cycleTheme() {
         val next = themeMode.next()
@@ -96,9 +94,4 @@ internal class ShellySettings(private val prefs: ShellyUiPreferences) {
         prefs.writeNotifyBuildFinished(next)
     }
 
-    fun cycleQuietHours() {
-        val next = quietHours.next()
-        quietHours = next
-        prefs.writeQuietHours(next)
-    }
 }

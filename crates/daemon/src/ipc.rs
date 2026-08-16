@@ -623,7 +623,8 @@ where
                     write_forbidden(&writer, "client cannot kill sessions").await?;
                     continue;
                 }
-                kill_session_for(&state, session_id);
+                let response = kill_session_response(&state, session_id);
+                write_msg(&writer, &response).await?;
             }
             ClientToServerMsg::Input { session_id, bytes } => {
                 let Some(session) = state
@@ -981,20 +982,48 @@ pub(crate) fn create_session_for(
     }
 }
 
-/// Kills a session and removes any persisted copy. Missing sessions are treated
-/// as already-killed (idempotent), matching the local-CLI behavior. Shared by the
-/// local IPC and iroh transports.
-pub(crate) fn kill_session_for(state: &Arc<AppState>, session_id: SessionId) {
-    if let Some((_, session)) = state.sessions.remove(&session_id) {
-        let _ = session.kill();
+/// Commits session termination across the live registry and persistence. Missing
+/// sessions are treated as already killed, making retries idempotent. Callers may
+/// acknowledge the command only after this returns successfully.
+pub(crate) fn kill_session_for(state: &Arc<AppState>, session_id: SessionId) -> Result<()> {
+    if let Some(session) = state
+        .sessions
+        .get(&session_id)
+        .map(|entry| Arc::clone(&entry))
+    {
+        session
+            .kill()
+            .with_context(|| format!("kill session {session_id}"))?;
+        state.sessions.remove(&session_id);
     }
     state.restored.remove(&session_id);
-    if let Some(persistence) = &state.persistence
-        && let Err(error) = persistence.remove_session(session_id)
-    {
-        warn!(%error, %session_id, "failed to remove persisted session");
-    }
+    let persistence_result = state.persistence.as_ref().map_or(Ok(()), |persistence| {
+        persistence
+            .remove_session(session_id)
+            .with_context(|| format!("remove persisted session {session_id}"))
+    });
+    // The live registry is authoritative even when durable cleanup fails, so
+    // subscribers must receive the committed in-memory state before the error is
+    // returned. The missing acknowledgement tells the caller not to claim full
+    // success, and a retry can complete the idempotent persistence deletion.
     state.publish_session_list();
+    persistence_result
+}
+
+/// Protocol adapter for the termination use case. Both local IPC and iroh use
+/// this boundary so acknowledgement and error semantics cannot drift between
+/// desktop and mobile clients.
+pub(crate) fn kill_session_response(
+    state: &Arc<AppState>,
+    session_id: SessionId,
+) -> ServerToClientMsg {
+    match kill_session_for(state, session_id) {
+        Ok(()) => ServerToClientMsg::SessionKilled { session_id },
+        Err(error) => ServerToClientMsg::Error {
+            code: ErrorCode::Internal,
+            message: error.to_string(),
+        },
+    }
 }
 
 /// The default session command for daemon-created sessions: the user's login
@@ -1380,14 +1409,18 @@ mod tests {
             other => panic!("expected SessionCreated, got {other:?}"),
         };
 
-        // Kill is fire-and-forget (no response). Verify removal via ListSessions;
-        // the handler processes messages in order, so the kill lands first.
+        // Kill is acknowledged only after the daemon has committed removal.
         write_msg(
             &client_writer,
             &ClientToServerMsg::KillSession { session_id },
         )
         .await
         .unwrap();
+        let killed: ServerToClientMsg = read_msg(&mut client_reader).await.unwrap();
+        assert_eq!(killed, ServerToClientMsg::SessionKilled { session_id });
+
+        // The acknowledgement is the transaction boundary; an immediate list
+        // on the same stream must already reflect the committed state.
         write_msg(&client_writer, &ClientToServerMsg::ListSessions)
             .await
             .unwrap();
@@ -1435,7 +1468,7 @@ mod tests {
                 summary,
             } => {
                 assert_eq!(summary.command, default_session_command());
-                kill_session_for(&state, session_id);
+                kill_session_for(&state, session_id).unwrap();
             }
             other => panic!("expected SessionCreated, got {other:?}"),
         }
@@ -1460,7 +1493,7 @@ mod tests {
                 summary,
             } => {
                 assert_eq!(summary.command, command);
-                kill_session_for(&state, session_id);
+                kill_session_for(&state, session_id).unwrap();
             }
             other => panic!("expected SessionCreated, got {other:?}"),
         }

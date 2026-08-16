@@ -17,6 +17,7 @@ fun AboutScreen(
     onOpenVersion: (() -> Unit)? = null,
     onOpenBuild: (() -> Unit)? = null,
     onOpenProtocol: (() -> Unit)? = null,
+    onOpenPrivacy: () -> Unit = {},
     onOpenSource: () -> Unit = {},
     onOpenLicenses: () -> Unit = {},
 ) {
@@ -30,6 +31,7 @@ fun AboutScreen(
         onOpenVersion = onOpenVersion,
         onOpenBuild = onOpenBuild,
         onOpenProtocol = onOpenProtocol,
+        onOpenPrivacy = onOpenPrivacy,
         onOpenSource = onOpenSource,
         onOpenLicenses = onOpenLicenses,
     )
@@ -46,6 +48,7 @@ private fun AboutContent(
     onOpenVersion: (() -> Unit)?,
     onOpenBuild: (() -> Unit)?,
     onOpenProtocol: (() -> Unit)?,
+    onOpenPrivacy: () -> Unit,
     onOpenSource: () -> Unit,
     onOpenLicenses: () -> Unit,
 ) {
@@ -56,7 +59,6 @@ private fun AboutContent(
                 wordmark = "ABOUT",
                 status = "shelly for android",
                 statusGlyph = SettingsGlyph.Phone,
-                backLabel = "Settings",
                 onBack = onBack,
             )
         },
@@ -64,6 +66,7 @@ private fun AboutContent(
             SettingsListRow("Version", version, onClick = onOpenVersion)
             SettingsListRow("Build", build, onClick = onOpenBuild)
             SettingsListRow("Protocol", protocol, onClick = onOpenProtocol)
+            SettingsListRow("Privacy & encryption", onClick = onOpenPrivacy)
             SettingsListRow("Source", source, onClick = onOpenSource)
             SettingsListRow("Licenses", dependencyCount, showDivider = false, onClick = onOpenLicenses)
         },
@@ -82,6 +85,7 @@ internal fun AboutContentPreview() {
         onOpenVersion = null,
         onOpenBuild = null,
         onOpenProtocol = null,
+        onOpenPrivacy = {},
         onOpenSource = {},
         onOpenLicenses = {},
     )

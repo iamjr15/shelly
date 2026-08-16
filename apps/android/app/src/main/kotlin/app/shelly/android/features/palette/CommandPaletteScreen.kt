@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.shelly.android.ui.components.HeroBody
+import app.shelly.android.ui.components.HeroEscapeButton
 import app.shelly.android.ui.components.ShellyScreen
 import app.shelly.android.ui.theme.ShellyTheme
 import app.shelly.android.ui.theme.ShellyType
@@ -103,7 +104,7 @@ private fun CommandPaletteContent(
                 wordmark = "CMD",
                 wordmarkSize = 96.sp,
                 brandTrailing = {
-                    HeroShortcutKey("ESC", onBack)
+                    HeroEscapeButton(onClick = onBack, contentDescription = "Close command menu")
                 },
             )
         },
@@ -222,21 +223,6 @@ private fun CommandRow(command: PaletteCommand, selected: Boolean) {
             muted = !selected,
         )
     }
-}
-
-@Composable
-private fun HeroShortcutKey(label: String, onClick: () -> Unit) {
-    val c = ShellyTheme.colors
-    val foreground = if (c.isDark) c.textPrimary else c.heroWordmark
-    ShortcutKey(
-        label = label,
-        color = foreground,
-        borderColor = foreground.copy(alpha = if (c.isDark) 0.10f else 0.32f),
-        horizontalPadding = 8.dp,
-        verticalPadding = 3.dp,
-        letterSpacing = 0.08.em,
-        onClick = onClick,
-    )
 }
 
 @Composable

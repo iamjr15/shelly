@@ -2,7 +2,7 @@ use crate::persistence::{Persistence, StoredSession};
 use crate::push::PushDispatcher;
 use crate::ring::PtyRingBuffer;
 use crate::state_infer::{self, CommandKind};
-use crate::terminal_model::{PtyResponseWriter, TerminalModel};
+use crate::terminal_model::{PtyResponseWriter, TerminalProjection, TerminalProjectionFailure};
 use anyhow::{Context, Result, anyhow, bail};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use shelly_protocol::{
@@ -40,7 +40,7 @@ pub struct Session {
     child: Mutex<Box<dyn Child + Send + Sync>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
-    terminal: Mutex<TerminalModel>,
+    terminal: Mutex<TerminalProjection>,
     attached_sizes: Mutex<HashMap<ClientId, ClientSize>>,
     subscribers: broadcast::Sender<ServerToClientMsg>,
     summary_updates: broadcast::Sender<bool>,
@@ -103,7 +103,7 @@ impl Session {
         let (summary_updates, _) = broadcast::channel(128);
         let (resize_tx, resize_rx) = mpsc::channel();
         let terminal =
-            TerminalModel::new(size, Box::new(PtyResponseWriter::new(Arc::clone(&writer))));
+            TerminalProjection::new(size, Box::new(PtyResponseWriter::new(Arc::clone(&writer))));
         let session = Arc::new(Self {
             id,
             name,
@@ -173,20 +173,41 @@ impl Session {
     }
 
     pub fn attach_bytes(&self, last_seen_seq: Option<u64>) -> (u64, Vec<u8>) {
-        let ring = self.ring.lock().expect("ring lock poisoned");
-        if let Some(seq) = last_seen_seq
-            && let Some((start_seq, replay)) = ring.replay_from(seq)
-        {
-            return (start_seq.saturating_add(replay.len() as u64), replay);
-        }
-        let end_seq = ring.end_seq();
+        let (end_seq, raw_scrollback) = {
+            let ring = self.ring.lock().expect("ring lock poisoned");
+            if let Some(seq) = last_seen_seq
+                && let Some((start_seq, replay)) = ring.replay_from(seq)
+            {
+                return (start_seq.saturating_add(replay.len() as u64), replay);
+            }
+            let end_seq = ring.end_seq();
+            let (_, raw_scrollback) = ring.snapshot();
+            (end_seq, raw_scrollback)
+        };
 
         let snapshot = self
             .terminal
             .lock()
-            .expect("terminal lock poisoned")
-            .render_snapshot();
-        (end_seq, snapshot)
+            .expect("terminal projection lock poisoned")
+            .snapshot();
+        match snapshot {
+            Ok(snapshot) => (end_seq, snapshot),
+            Err(failure) => {
+                self.log_projection_failure(failure, "render attach snapshot");
+                if failure.invalidated_model() {
+                    self.rebuild_terminal_projection(&raw_scrollback);
+                    let rebuilt = self
+                        .terminal
+                        .lock()
+                        .expect("terminal projection lock poisoned")
+                        .snapshot()
+                        .unwrap_or(raw_scrollback);
+                    (end_seq, rebuilt)
+                } else {
+                    (end_seq, raw_scrollback)
+                }
+            }
+        }
     }
 
     pub fn attach_client(
@@ -252,23 +273,35 @@ impl Session {
                 pixel_height: 0,
             })
             .context("resize PTY")?;
-        self.terminal
+        let projection_resize = self
+            .terminal
             .lock()
-            .map_err(|_| anyhow!("terminal lock poisoned"))?
+            .map_err(|_| anyhow!("terminal projection lock poisoned"))?
             .resize(size);
+        if let Err(failure) = projection_resize {
+            self.log_projection_failure(failure, "resize terminal projection");
+            self.rebuild_terminal_projection_from_ring();
+        }
         Ok(())
     }
 
     pub fn kill(&self) -> Result<()> {
-        // Mark as explicitly killed so the post-exit reader thread and the periodic
-        // persistence loop stop persisting it. KillSession removes the session from
-        // storage, and it must not reappear as a crashed session after a restart.
-        self.killed.store(true, Ordering::Release);
         let mut child = self
             .child
             .lock()
             .map_err(|_| anyhow!("PTY child lock poisoned"))?;
-        child.kill().context("kill PTY child")
+        if child
+            .try_wait()
+            .context("check PTY child status")?
+            .is_none()
+        {
+            child.kill().context("kill PTY child")?;
+        }
+        // Publish the explicit-kill state while still holding the child lock. The
+        // reader cannot reap and persist an exit between successful termination
+        // and this flag becoming visible.
+        self.killed.store(true, Ordering::Release);
+        Ok(())
     }
 
     pub fn apply_agent_state_event(
@@ -445,16 +478,28 @@ impl Session {
     }
 
     fn record_output(&self, bytes: &[u8]) {
-        let (seq, last_line) = {
+        let seq = {
             let mut ring = self.ring.lock().expect("ring lock poisoned");
-            let seq = ring.push(bytes).saturating_add(bytes.len() as u64);
-            // Keep the ring offset and terminal model synchronized for stale attaches.
-            let last_line = {
-                let mut terminal = self.terminal.lock().expect("terminal lock poisoned");
-                terminal.advance_bytes(bytes);
-                terminal.last_non_empty_line(80)
-            };
-            (seq, last_line)
+            ring.push(bytes).saturating_add(bytes.len() as u64)
+        };
+        // The terminal model is a derived projection. Raw capture and fan-out must
+        // continue even if a TUI exposes a parser bug in that projection.
+        let projection_update = {
+            let mut terminal = self
+                .terminal
+                .lock()
+                .expect("terminal projection lock poisoned");
+            terminal.ingest(bytes)
+        };
+        let last_line = match projection_update {
+            Ok(last_line) => last_line,
+            Err(failure) => {
+                self.log_projection_failure(failure, "ingest PTY output");
+                failure
+                    .invalidated_model()
+                    .then(|| self.rebuild_terminal_projection_from_ring())
+                    .flatten()
+            }
         };
         *self
             .last_activity
@@ -490,6 +535,39 @@ impl Session {
             bytes: bytes.to_vec(),
         });
         self.persist_dirty.store(true, Ordering::Release);
+    }
+
+    fn rebuild_terminal_projection_from_ring(&self) -> Option<String> {
+        let (_, scrollback) = self.ring.lock().expect("ring lock poisoned").snapshot();
+        self.rebuild_terminal_projection(&scrollback)
+    }
+
+    fn rebuild_terminal_projection(&self, scrollback: &[u8]) -> Option<String> {
+        let writer = Box::new(PtyResponseWriter::new(Arc::clone(&self.writer)));
+        match self
+            .terminal
+            .lock()
+            .expect("terminal projection lock poisoned")
+            .rebuild(scrollback, writer)
+        {
+            Ok(last_line) => {
+                tracing::info!(session_id = %self.id, "rebuilt terminal projection from raw scrollback");
+                last_line
+            }
+            Err(failure) => {
+                self.log_projection_failure(failure, "rebuild terminal projection");
+                None
+            }
+        }
+    }
+
+    fn log_projection_failure(&self, failure: TerminalProjectionFailure, operation: &'static str) {
+        tracing::warn!(
+            session_id = %self.id,
+            ?failure,
+            operation,
+            "terminal projection failed; raw PTY transport remains active"
+        );
     }
 
     fn set_state(&self, state: AgentState, last_line: Option<String>) {

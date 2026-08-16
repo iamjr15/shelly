@@ -105,6 +105,7 @@ import java.util.concurrent.Executors
 import kotlin.math.PI
 import kotlin.math.hypot
 import kotlin.math.sin
+import kotlinx.coroutines.delay
 
 sealed interface PairingUiState {
     data object Idle : PairingUiState
@@ -112,7 +113,7 @@ sealed interface PairingUiState {
     data object CameraDenied : PairingUiState
     data class Error(
         val message: String = "That pairing code expired or was already used.",
-        val detail: String = "Run `shelly pair` on your laptop for a fresh code.",
+        val detail: String = "Run `shelly pair` on your computer for a fresh code.",
     ) : PairingUiState
 }
 
@@ -241,7 +242,7 @@ private fun PairingContent(
                         HeroBody(
                             eyebrow = targetHero.eyebrow,
                             wordmark = targetHero.wordmark,
-                            wordmarkSize = 132.sp,
+                            wordmarkSize = 124.sp,
                             brandTrailing = {
                                 Text(
                                     targetHero.trailing,
@@ -308,7 +309,6 @@ private fun PairingContent(
                         onPair = onPair,
                         viewport = PairingViewport.Error(targetState.message, targetState.detail),
                         codeLabel = "ENTER THE NEW CODE",
-                        hint = "use the fresh 5-char code from your laptop",
                         compactForIme = compactForIme,
                     )
                 }
@@ -346,7 +346,7 @@ private fun DesktopSetupCommand() {
 
 private fun pairingHeroSpec(uiState: PairingUiState): PairingHeroSpec = when (uiState) {
     PairingUiState.Idle -> PairingHeroSpec(
-        eyebrow = "RUN SHELLY PAIR ON YOUR\nLAPTOP · POINT YOUR PHONE",
+        eyebrow = "RUN SHELLY PAIR ON YOUR\nCOMPUTER · POINT YOUR PHONE",
         wordmark = "PAIR",
         trailing = "STEP 1 / 2",
         showDesktopSetup = true,
@@ -388,7 +388,6 @@ private fun ColumnScope.ManualPairingBody(
     onPair: (String) -> Unit,
     viewport: PairingViewport = PairingViewport.Camera,
     codeLabel: String = "CAN'T SCAN? ENTER THE CODE",
-    hint: String? = null,
     compactForIme: Boolean = false,
 ) {
     if (!compactForIme) {
@@ -417,10 +416,11 @@ private fun ColumnScope.ManualPairingBody(
         requestFocus = requestCodeFocus,
         submit = submitCode,
     )
-    if (hint != null) {
-        CodeHintRow(hint = hint)
+    if (compactForIme) {
+        Spacer(Modifier.height(18.dp))
+    } else {
+        Spacer(Modifier.weight(1f))
     }
-    Spacer(Modifier.weight(1f))
     PairButton(
         onClick = submitCode,
         modifier = Modifier.offset(y = 2.dp),
@@ -429,10 +429,29 @@ private fun ColumnScope.ManualPairingBody(
 
 @Composable
 private fun ColumnScope.ConnectingBody(onCancelPairing: () -> Unit) {
-    ConnectingViewport()
+    var takingLong by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(8_000)
+        takingLong = true
+    }
+
+    ConnectingSummary()
+    Spacer(Modifier.height(24.dp))
     LinkChecklist()
     Spacer(Modifier.weight(1f))
-    GhostPairingAction("Cancel pairing", onClick = onCancelPairing)
+    Text(
+        text = if (takingLong) {
+            "Taking longer than usual — keep `shelly pair` open."
+        } else {
+            "Usually takes only a few seconds."
+        },
+        style = ShellyType.monoSmall.copy(lineHeight = 16.sp),
+        color = ShellyTheme.colors.textMuted,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
+    Spacer(Modifier.height(4.dp))
+    GhostPairingAction("Cancel", onClick = onCancelPairing)
 }
 
 @Composable
@@ -580,27 +599,31 @@ private fun Reticle(color: Color, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ConnectingViewport() {
-    PairingStatusViewport(gap = 16.dp) {
+private fun ConnectingSummary() {
+    val c = ShellyTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         ProgressRing()
-        Text(
-            "Handshaking with your laptop",
-            style = ShellyType.button.copy(
-                fontSize = 16.sp,
-                lineHeight = 20.sp,
-                fontWeight = FontWeight(600),
-                letterSpacing = 0.em,
-            ),
-            color = Color(0xFFF0EDE6),
-        )
-        Text(
-            "Opening secure link",
-            style = ShellyType.monoSmall.copy(
-                fontWeight = FontWeight(500),
-                lineHeight = 15.sp,
-            ),
-            color = Color(0xFF9AA29B),
-        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text(
+                "PAIRING IN PROGRESS",
+                style = ShellyType.microLabel.copy(letterSpacing = 0.09.em),
+                color = c.accent,
+            )
+            Text(
+                "Connecting securely",
+                style = ShellyType.heading,
+                color = c.textPrimary,
+            )
+        }
     }
 }
 
@@ -694,11 +717,12 @@ private fun ProgressRing(modifier: Modifier = Modifier) {
     } else {
         0f
     }
-    Canvas(modifier.size(60.dp).rotate(rotation)) {
-        val strokeWidth = 5.dp.toPx()
+    Canvas(modifier.size(40.dp).rotate(rotation)) {
+        val strokeWidth = 3.25.dp.toPx()
+        val inset = strokeWidth / 2f
         drawCircle(
             color = accent.copy(alpha = 0.22f),
-            radius = 26.dp.toPx(),
+            radius = size.minDimension / 2f - inset,
             center = Offset(size.width / 2f, size.height / 2f),
             style = Stroke(width = strokeWidth),
         )
@@ -707,8 +731,11 @@ private fun ProgressRing(modifier: Modifier = Modifier) {
             startAngle = -90f,
             sweepAngle = 123f,
             useCenter = false,
-            topLeft = Offset(4.dp.toPx(), 4.dp.toPx()),
-            size = androidx.compose.ui.geometry.Size(52.dp.toPx(), 52.dp.toPx()),
+            topLeft = Offset(inset, inset),
+            size = androidx.compose.ui.geometry.Size(
+                size.width - strokeWidth,
+                size.height - strokeWidth,
+            ),
             style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
         )
     }
@@ -802,24 +829,41 @@ private fun PairingStatusPill(text: String) {
 
 @Composable
 private fun LinkChecklist() {
-    Column {
-        LinkChecklistRow("Opening tunnel…", "secure", completed = false, active = true)
+    Column(Modifier.fillMaxWidth()) {
+        LinkChecklistRow(
+            label = "Code received",
+            detail = "Complete",
+            state = PairingStepState.Complete,
+        )
+        LinkChecklistDivider()
+        LinkChecklistRow(
+            label = "Opening secure tunnel",
+            detail = "In progress",
+            state = PairingStepState.Active,
+        )
+        LinkChecklistDivider()
+        LinkChecklistRow(
+            label = "Saving this computer",
+            detail = "Waiting",
+            state = PairingStepState.Pending,
+        )
     }
 }
+
+private enum class PairingStepState { Complete, Active, Pending }
 
 @Composable
 private fun LinkChecklistRow(
     label: String,
-    trailing: String,
-    completed: Boolean,
-    active: Boolean,
+    detail: String,
+    state: PairingStepState,
 ) {
     val c = ShellyTheme.colors
-    val pulse = if (active && ShellyTheme.motionEnabled) {
+    val pulse = if (state == PairingStepState.Active && ShellyTheme.motionEnabled) {
         val transition = rememberInfiniteTransition(label = "pairingChecklistPulse")
         val alpha by transition.animateFloat(
             initialValue = 1f,
-            targetValue = 0.68f,
+            targetValue = 0.45f,
             animationSpec = infiniteRepeatable(
                 animation = androidx.compose.animation.core.tween(
                     durationMillis = 900,
@@ -836,64 +880,94 @@ private fun LinkChecklistRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .graphicsLayer { alpha = pulse }
-            .padding(vertical = 11.dp),
+            .padding(horizontal = 4.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        ChecklistStatusIcon(completed = completed)
-        Text(
-            label,
-            style = ShellyType.rowTitle.copy(
-                fontWeight = FontWeight(if (active) 600 else 500),
-                lineHeight = 22.sp,
-            ),
-            color = c.textPrimary,
+        ChecklistStatusIcon(state = state, pulse = pulse)
+        Column(
             modifier = Modifier.weight(1f),
-        )
-        Text(
-            trailing,
-            style = ShellyType.monoSmall.copy(fontWeight = FontWeight(if (active) 700 else 500)),
-            color = if (active) c.accent else {
-                (if (c.isDark) c.textMuted else c.textPrimary).copy(alpha = 0.4f)
-            },
-        )
+            verticalArrangement = Arrangement.spacedBy(1.dp),
+        ) {
+            Text(
+                label,
+                style = ShellyType.rowTitle.copy(
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight(if (state == PairingStepState.Active) 700 else 600),
+                    lineHeight = 19.sp,
+                ),
+                color = if (state == PairingStepState.Pending) c.textMuted else c.textPrimary,
+            )
+            Text(
+                detail,
+                style = ShellyType.monoSmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = if (state == PairingStepState.Active) c.accent else c.textMuted,
+            )
+        }
     }
 }
 
 @Composable
-private fun ChecklistStatusIcon(completed: Boolean) {
+private fun LinkChecklistDivider() {
     val c = ShellyTheme.colors
-    Canvas(Modifier.size(20.dp)) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 40.dp)
+            .height(1.dp)
+            .background(c.divider),
+    )
+}
+
+@Composable
+private fun ChecklistStatusIcon(state: PairingStepState, pulse: Float) {
+    val c = ShellyTheme.colors
+    Canvas(Modifier.size(22.dp)) {
         val sx = size.width / 24f
         val sy = size.height / 24f
-        if (completed) {
-            drawCircle(
-                color = c.textPrimary,
-                radius = 10f * sx,
-                center = Offset(12f * sx, 12f * sy),
-            )
-            val check = Path().apply {
-                moveTo(8f * sx, 12f * sy)
-                lineTo(11f * sx, 15f * sy)
-                lineTo(16f * sx, 9f * sy)
+        when (state) {
+            PairingStepState.Complete -> {
+                drawCircle(
+                    color = c.textPrimary,
+                    radius = 10f * sx,
+                    center = Offset(12f * sx, 12f * sy),
+                )
+                val check = Path().apply {
+                    moveTo(8f * sx, 12f * sy)
+                    lineTo(11f * sx, 15f * sy)
+                    lineTo(16f * sx, 9f * sy)
+                }
+                drawPath(
+                    path = check,
+                    color = c.accent,
+                    style = Stroke(
+                        width = 2.2f * sx,
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round,
+                    ),
+                )
             }
-            drawPath(
-                path = check,
-                color = c.accent,
-                style = Stroke(
-                    width = 2.2f * sx,
-                    cap = StrokeCap.Round,
-                    join = StrokeJoin.Round,
-                ),
-            )
-        } else {
-            drawCircle(
-                color = c.accent,
-                radius = 10f * sx,
-                center = Offset(12f * sx, 12f * sy),
-                style = Stroke(width = 2.2f * sx),
-            )
+            PairingStepState.Active -> {
+                drawCircle(
+                    color = c.accent,
+                    radius = 10f * sx,
+                    center = Offset(12f * sx, 12f * sy),
+                    style = Stroke(width = 2.2f * sx),
+                )
+                drawCircle(
+                    color = c.accent.copy(alpha = pulse),
+                    radius = 4f * sx,
+                    center = Offset(12f * sx, 12f * sy),
+                )
+            }
+            PairingStepState.Pending -> {
+                drawCircle(
+                    color = c.textMuted.copy(alpha = 0.34f),
+                    radius = 10f * sx,
+                    center = Offset(12f * sx, 12f * sy),
+                    style = Stroke(width = 1.7f * sx),
+                )
+            }
         }
     }
 }
@@ -904,22 +978,21 @@ private fun GhostPairingAction(text: String, onClick: () -> Unit, modifier: Modi
     Row(
         modifier
             .fillMaxWidth()
-            .offset(y = 2.dp)
             .height(48.dp)
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(15.dp),
+            .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text,
             style = ShellyType.button.copy(
-                fontSize = 16.sp,
-                lineHeight = 20.sp,
+                fontSize = 14.sp,
+                lineHeight = 18.sp,
                 fontWeight = FontWeight(600),
                 letterSpacing = 0.em,
             ),
-            color = c.textPrimary.copy(alpha = 0.55f),
+            color = c.textMuted,
         )
     }
 }
@@ -1090,26 +1163,6 @@ private data class PairingCodeCellState(
 )
 
 @Composable
-private fun ColumnScope.CodeHintRow(hint: String) {
-    val c = ShellyTheme.colors
-    val hintBase = if (c.isDark) c.textMuted else c.textPrimary
-    Row(
-        Modifier.padding(top = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(Modifier.size(15.dp), contentAlignment = Alignment.Center) {
-            MonitorGlyph(hintBase.copy(alpha = 0.55f))
-        }
-        Text(
-            hint,
-            style = ShellyType.monoSmall.copy(fontWeight = FontWeight(500)),
-            color = hintBase.copy(alpha = 0.55f),
-        )
-    }
-}
-
-@Composable
 private fun MonitorGlyph(color: Color) {
     Canvas(Modifier.size(15.dp)) {
         val strokeWidth = 1.25.dp.toPx()
@@ -1214,7 +1267,7 @@ internal fun PairingErrorContentPreview() {
     PairingContentPreview(
         uiState = PairingUiState.Error(
             message = "That pairing code expired or was already used.",
-            detail = "Run `shelly pair` on your laptop for a fresh code.",
+            detail = "Run `shelly pair` on your computer for a fresh code.",
         ),
     )
 }

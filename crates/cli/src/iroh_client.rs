@@ -278,7 +278,7 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
             other => bail!("expected SessionCreated for mobile create, got {other:?}"),
         };
 
-        // Kill is allowed and fire-and-forget; confirm the session is gone.
+        // Kill is allowed and durably acknowledged before the session disappears.
         write_msg(
             &mut send,
             &ClientToServerMsg::KillSession {
@@ -286,6 +286,13 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
             },
         )
         .await?;
+        match read_msg::<ServerToClientMsg>(&mut recv).await? {
+            ServerToClientMsg::SessionKilled { session_id } if session_id == created_id => {}
+            ServerToClientMsg::SessionKilled { session_id } => bail!(
+                "KillSession acknowledgement id mismatch: requested {created_id}, got {session_id}"
+            ),
+            other => bail!("expected SessionKilled for mobile kill, got {other:?}"),
+        }
         let remaining = list_sessions(&mut send, &mut recv, false)
             .await?
             .unwrap_or_default();

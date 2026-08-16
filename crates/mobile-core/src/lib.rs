@@ -452,19 +452,18 @@ impl ShellyClient {
         }
     }
 
-    /// Kills a session on the paired daemon.
+    /// Kills a session on the paired daemon and waits for the committed result.
     ///
-    /// Fire-and-forget: the daemon sends no response and treats a missing session
-    /// as already killed, so this returns once the request is flushed. The
-    /// session-list subscription reflects the removal.
+    /// The daemon acknowledges only after live and persisted session state have
+    /// both been removed. Missing sessions are idempotent successes, so callers
+    /// may safely retry a request whose response was lost.
     pub async fn kill_session(self: Arc<Self>, id: String) -> Result<(), ShellyError> {
         let session_id = id
             .parse::<SessionId>()
             .map_err(|error| ShellyError::InvalidConfig(format!("invalid session id: {error}")))?;
-        let (mut send, _recv) = self.open_authenticated_stream().await?;
+        let (mut send, mut recv) = self.open_authenticated_stream().await?;
         write_msg(&mut send, &ClientToServerMsg::KillSession { session_id }).await?;
-        let _ = send.finish();
-        Ok(())
+        confirm_session_killed(read_msg::<ServerToClientMsg>(&mut recv).await?, session_id)
     }
 
     /// Attaches to a session by id.
@@ -1063,6 +1062,22 @@ fn error_from_server(code: ErrorCode, message: String) -> ShellyError {
     }
 }
 
+fn confirm_session_killed(
+    response: ServerToClientMsg,
+    requested_id: SessionId,
+) -> Result<(), ShellyError> {
+    match response {
+        ServerToClientMsg::SessionKilled { session_id } if session_id == requested_id => Ok(()),
+        ServerToClientMsg::SessionKilled { session_id } => Err(ShellyError::Protocol(format!(
+            "KillSession acknowledgement id mismatch: requested {requested_id}, got {session_id}"
+        ))),
+        ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
+        other => Err(ShellyError::Protocol(format!(
+            "unexpected daemon response to KillSession: {other:?}"
+        ))),
+    }
+}
+
 #[cfg(target_os = "android")]
 mod android_context {
     use jni::objects::JObject;
@@ -1168,6 +1183,47 @@ mod tests {
     use super::*;
     use std::sync::Mutex as StdMutex;
     use tokio::io::duplex;
+
+    #[test]
+    fn kill_confirmation_requires_the_requested_session_id() {
+        let requested_id = SessionId::new();
+        assert!(
+            confirm_session_killed(
+                ServerToClientMsg::SessionKilled {
+                    session_id: requested_id,
+                },
+                requested_id,
+            )
+            .is_ok()
+        );
+
+        let wrong_id = SessionId::new();
+        assert!(matches!(
+            confirm_session_killed(
+                ServerToClientMsg::SessionKilled {
+                    session_id: wrong_id,
+                },
+                requested_id,
+            ),
+            Err(ShellyError::Protocol(message)) if message.contains("id mismatch")
+        ));
+    }
+
+    #[test]
+    fn kill_confirmation_propagates_daemon_errors() {
+        let result = confirm_session_killed(
+            ServerToClientMsg::Error {
+                code: ErrorCode::Internal,
+                message: "persistence delete failed".to_string(),
+            },
+            SessionId::new(),
+        );
+
+        assert!(matches!(
+            result,
+            Err(ShellyError::Internal(message)) if message == "persistence delete failed"
+        ));
+    }
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     enum SinkEvent {

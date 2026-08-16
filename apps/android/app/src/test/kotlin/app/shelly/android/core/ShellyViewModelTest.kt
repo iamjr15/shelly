@@ -295,10 +295,11 @@ class ShellyViewModelTest {
 
         assertEquals(first.id, viewModel.state.value.activeTerminalSessionId)
         assertEquals(listOf(updated), viewModel.state.value.sessions)
+        assertEquals(listOf(updated), viewModel.state.value.terminalTabs)
     }
 
     @Test
-    fun activeTerminalSessionClearsWhenSessionDisappears() {
+    fun openTerminalTabSurvivesSessionListRemovalUntilUserClosesIt() {
         val session = testSession(id = "018f0000-0000-7000-8000-0000000000a2")
         val repository = FakeRepository(
             restoredPairing = testPairing(),
@@ -311,11 +312,63 @@ class ShellyViewModelTest {
         viewModel.openTerminalSession(session)
         repository.emitSessions(emptyList())
 
-        assertNull(viewModel.state.value.activeTerminalSessionId)
+        assertEquals(session.id, viewModel.state.value.activeTerminalSessionId)
+        assertEquals(listOf(session), viewModel.state.value.terminalTabs)
+        assertTrue(viewModel.state.value.sessions.isEmpty())
     }
 
     @Test
-    fun setLockedClearsActiveTerminalSession() {
+    fun openingAndSwitchingTerminalTabsPreservesOrderWithoutDuplicates() {
+        val first = testSession(id = "018f0000-0000-7000-8000-0000000000a4").copy(name = "first")
+        val second = testSession(id = "018f0000-0000-7000-8000-0000000000a5").copy(name = "second")
+        val viewModel = testViewModel(FakeRepository(restoredPairing = testPairing()))
+
+        viewModel.openTerminalSession(first)
+        viewModel.openTerminalSession(second)
+        viewModel.openTerminalSession(first.copy(lastLine = "updated"))
+
+        assertEquals(listOf(first.id, second.id), viewModel.state.value.terminalTabs.map(MobileSession::id))
+        assertEquals("updated", viewModel.state.value.terminalTabs.first().lastLine)
+        assertEquals(first.id, viewModel.state.value.activeTerminalSessionId)
+    }
+
+    @Test
+    fun closingActiveTerminalTabSelectsTheAdjacentTab() {
+        val first = testSession(id = "018f0000-0000-7000-8000-0000000000a6")
+        val second = testSession(id = "018f0000-0000-7000-8000-0000000000a7")
+        val third = testSession(id = "018f0000-0000-7000-8000-0000000000a8")
+        val viewModel = testViewModel(FakeRepository(restoredPairing = testPairing()))
+        viewModel.openTerminalSession(first)
+        viewModel.openTerminalSession(second)
+        viewModel.openTerminalSession(third)
+        viewModel.openTerminalSession(second)
+
+        viewModel.closeTerminalTab(second.id)
+
+        assertEquals(listOf(first.id, third.id), viewModel.state.value.terminalTabs.map(MobileSession::id))
+        assertEquals(third.id, viewModel.state.value.activeTerminalSessionId)
+
+        viewModel.closeTerminalTab(third.id)
+
+        assertEquals(first.id, viewModel.state.value.activeTerminalSessionId)
+    }
+
+    @Test
+    fun closingInactiveTerminalTabKeepsTheActiveTab() {
+        val first = testSession(id = "018f0000-0000-7000-8000-0000000000a9")
+        val second = testSession(id = "018f0000-0000-7000-8000-0000000000aa")
+        val viewModel = testViewModel(FakeRepository(restoredPairing = testPairing()))
+        viewModel.openTerminalSession(first)
+        viewModel.openTerminalSession(second)
+
+        viewModel.closeTerminalTab(first.id)
+
+        assertEquals(listOf(second), viewModel.state.value.terminalTabs)
+        assertEquals(second.id, viewModel.state.value.activeTerminalSessionId)
+    }
+
+    @Test
+    fun setLockedClearsTheTerminalWorkspace() {
         val session = testSession(id = "018f0000-0000-7000-8000-0000000000a3")
         val repository = FakeRepository(
             restoredPairing = testPairing(),
@@ -327,6 +380,7 @@ class ShellyViewModelTest {
         viewModel.setUnlocked(false)
 
         assertNull(viewModel.state.value.activeTerminalSessionId)
+        assertTrue(viewModel.state.value.terminalTabs.isEmpty())
     }
 
     @Test
@@ -346,6 +400,7 @@ class ShellyViewModelTest {
 
         assertEquals(listOf("work"), repository.createdNames)
         assertEquals(created.id, viewModel.state.value.activeTerminalSessionId)
+        assertEquals(listOf(created), viewModel.state.value.terminalTabs)
         assertTrue(viewModel.state.value.sessions.any { it.id == created.id })
         assertNull(viewModel.state.value.message)
     }
@@ -368,6 +423,48 @@ class ShellyViewModelTest {
         assertEquals(listOf(session.id), repository.killedSessionIds)
         assertNull(viewModel.state.value.activeTerminalSessionId)
         assertFalse(viewModel.state.value.sessions.any { it.id == session.id })
+    }
+
+    @Test
+    fun killSessionKeepsSessionVisibleUntilDaemonConfirmsRemoval() {
+        val session = testSession(id = "018f0000-0000-7000-8000-0000000000c3")
+        val confirmation = CompletableDeferred<Unit>()
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            sessions = listOf(session),
+            killConfirmation = confirmation,
+        )
+        val viewModel = testViewModel(repository)
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        viewModel.killSession(session.id)
+        drainMainLooper()
+
+        assertEquals(listOf(session.id), repository.killedSessionIds)
+        assertTrue(viewModel.state.value.sessions.any { it.id == session.id })
+
+        confirmation.complete(Unit)
+        waitForState { viewModel.state.value.sessions.none { it.id == session.id } }
+    }
+
+    @Test
+    fun killSessionFailureLeavesAuthoritativeSessionVisible() {
+        val session = testSession(id = "018f0000-0000-7000-8000-0000000000c4")
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            sessions = listOf(session),
+            killFailure = RuntimeException("daemon did not confirm termination"),
+        )
+        val viewModel = testViewModel(repository)
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        viewModel.killSession(session.id)
+        drainMainLooper()
+
+        assertTrue(viewModel.state.value.sessions.any { it.id == session.id })
+        assertEquals("CLOSE", viewModel.state.value.message?.title)
     }
 
     @Test
@@ -787,7 +884,7 @@ class ShellyViewModelTest {
             viewModel.state.value.pairingError?.message,
         )
         assertEquals(
-            "Run `shelly pair` on your laptop for a fresh code.",
+            "Run `shelly pair` on your computer for a fresh code.",
             viewModel.state.value.pairingError?.detail,
         )
     }
@@ -884,7 +981,7 @@ class ShellyViewModelTest {
             viewModel.state.value.pairingError?.message,
         )
         assertEquals(
-            "Pair again from your laptop if your sessions do not appear.",
+            "Pair again from your computer if your sessions do not appear.",
             viewModel.state.value.pairingError?.detail,
         )
     }
@@ -961,7 +1058,7 @@ class ShellyViewModelTest {
         assertEquals("SESSION REFRESH FAILED", viewModel.state.value.message?.kicker)
         assertEquals("SYNC", viewModel.state.value.message?.title)
         assertEquals(
-            "Shelly could not refresh sessions because Android reported an unexpected error. Try again; if it continues, run `shelly doctor` on your laptop.",
+            "Shelly could not refresh sessions because Android reported an unexpected error. Try again; if it continues, run `shelly doctor` on your computer.",
             viewModel.state.value.message?.body,
         )
     }
@@ -1225,6 +1322,8 @@ class ShellyViewModelTest {
         private val onUnregisterFcmToken: ((String) -> Unit)? = null,
         private val createResult: MobileSession? = null,
         private val onKill: ((String) -> Unit)? = null,
+        private val killConfirmation: CompletableDeferred<Unit>? = null,
+        private val killFailure: Throwable? = null,
     ) : ShellyRepositoryClient {
         override var savedPairing: PairedDaemonRecord? = null
             private set
@@ -1293,6 +1392,8 @@ class ShellyViewModelTest {
         override suspend fun killSession(sessionId: String) {
             killedSessionIds += sessionId
             onKill?.invoke(sessionId)
+            killConfirmation?.await()
+            killFailure?.let { throw it }
         }
 
         override suspend fun subscribeSessions(onUpdate: (List<MobileSession>) -> Unit) {

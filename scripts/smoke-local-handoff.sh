@@ -16,9 +16,8 @@ host_rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
 runtime_panic_pattern='thread .+ panicked|panicked at|task [0-9]+ was cancelled'
 
 cleanup() {
-  # Kill the pair/pair-test children before the daemons: `shelly pair` blocks on
-  # fifo stdin after printing 'approve?', so it never exits on its own if the
-  # script fails mid-flow.
+  # Kill the pair/pair-test children before the daemons so a failed flow cannot
+  # leave a pairing command waiting for its remote client.
   if [[ -n "$pair_pid" ]]; then
     kill "$pair_pid" 2>/dev/null || true
     wait "$pair_pid" 2>/dev/null || true
@@ -51,7 +50,11 @@ cleanup() {
     kill "$relay_pid" 2>/dev/null || true
     wait "$relay_pid" 2>/dev/null || true
   fi
-  rm -rf "$tmp"
+  if [[ "${SHELLY_SMOKE_KEEP_TMP:-}" == "1" ]]; then
+    echo "kept smoke temp dir: $tmp" >&2
+  else
+    rm -rf "$tmp"
+  fi
 }
 trap cleanup EXIT
 
@@ -278,12 +281,23 @@ run_shelly_new "$tmp/new-tui.log" "${tui_command[@]}"
 tui_created="$(cat "$tmp/new-tui.log")"
 tui_id="$(awk 'NR == 1 { print $2 }' "$tmp/new-tui.log")"
 
+# Let initial PTY output inference settle before asserting that an explicit
+# agent hook becomes the latest state transition.
+sleep 0.2
 "$shelly" hook claude-stop \
   --session "$claude_id" \
   --last-line "smoke approval requested" \
   >"$tmp/hook-claude.log" 2>&1
-"$shelly" ls >"$tmp/hook-list.log"
-if ! awk -F '\t' -v id="$claude_id" '$1 == id && $3 == "AwaitingInput" { found = 1 } END { exit(found ? 0 : 1) }' "$tmp/hook-list.log"; then
+hook_updated=false
+for _ in $(seq 1 20); do
+  "$shelly" ls >"$tmp/hook-list.log"
+  if awk -F '\t' -v id="$claude_id" '$1 == id && $3 == "AwaitingInput" { found = 1 } END { exit(found ? 0 : 1) }' "$tmp/hook-list.log"; then
+    hook_updated=true
+    break
+  fi
+  sleep 0.05
+done
+if [[ "$hook_updated" != true ]]; then
   echo "Claude hook did not update the matching session state" >&2
   cat "$tmp/hook-claude.log" "$tmp/hook-list.log" >&2 || true
   exit 1
@@ -301,9 +315,7 @@ fi
 
 pair_start_s="$(date +%s)"
 publish_baseline_qr="$(relay_publish_count)"
-mkfifo "$tmp/pair.in"
-exec 3<>"$tmp/pair.in"
-"$shelly" pair <"$tmp/pair.in" >"$tmp/pair.log" 2>&1 &
+"$shelly" pair </dev/null >"$tmp/pair.log" 2>&1 &
 pair_pid=$!
 
 # The v2 `shelly pair` prints a compact QR plus a human pairing CODE; the raw
@@ -376,20 +388,6 @@ fi
   >"$tmp/pairtest.log" 2>&1 &
 pairtest_pid=$!
 
-for _ in $(seq 1 100); do
-  if grep -q 'approve?' "$tmp/pair.log"; then
-    break
-  fi
-  sleep 0.1
-done
-if ! grep -q 'approve?' "$tmp/pair.log"; then
-  echo "shelly pair did not request desktop approval" >&2
-  cat "$tmp/pair.log" >&2 || true
-  cat "$tmp/pairtest.log" >&2 || true
-  exit 1
-fi
-
-printf 'y\n' >&3
 wait "$pair_pid"
 pair_pid=""
 wait "$pairtest_pid"
@@ -418,11 +416,10 @@ fi
 # multiple active codes), the daemon publishes it to the relay, and the phone
 # simulator resolves reachability purely from the typed code via the relay
 # rendezvous — never touching the QR/ticket. This exercises the relay-hosted leg
-# end to end while desktop approval stays the final gate.
+# end to end while the active desktop pairing command remains the local
+# authorization gate.
 publish_baseline="$(relay_publish_count)"
-mkfifo "$tmp/pair-code.in"
-exec 4<>"$tmp/pair-code.in"
-"$shelly" pair <"$tmp/pair-code.in" >"$tmp/pair-code.log" 2>&1 &
+"$shelly" pair </dev/null >"$tmp/pair-code.log" 2>&1 &
 pair_code_pid=$!
 
 typed_code="$(capture_pair_code "$tmp/pair-code.log" || true)"
@@ -451,20 +448,6 @@ fi
   >"$tmp/pairtest-code.log" 2>&1 &
 pairtest_code_pid=$!
 
-for _ in $(seq 1 100); do
-  if grep -q 'approve?' "$tmp/pair-code.log"; then
-    break
-  fi
-  sleep 0.1
-done
-if ! grep -q 'approve?' "$tmp/pair-code.log"; then
-  echo "typed-code shelly pair did not request desktop approval" >&2
-  cat "$tmp/pair-code.log" >&2 || true
-  cat "$tmp/pairtest-code.log" >&2 || true
-  exit 1
-fi
-
-printf 'y\n' >&4
 wait "$pair_code_pid"
 pair_code_pid=""
 wait "$pairtest_code_pid"

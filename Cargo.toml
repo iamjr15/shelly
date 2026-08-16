@@ -72,7 +72,9 @@ tracing-appender = "0.2"
 tracing-opentelemetry = { version = "0.32", default-features = false }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uniffi = { version = "=0.31.1", features = ["tokio"] }
+unicode-width = "0.2"
 uuid = { version = "1", features = ["serde", "v7"] }
+vt100 = "0.16.2"
 webpki-roots = "1"
 wezterm-term = { package = "tattoy-wezterm-term", version = "=0.1.0-fork.5" }
 whoami = "1.5"

@@ -43,8 +43,8 @@ scripts/smoke-local-handoff.sh
 
 The smoke starts an isolated daemon, creates CLI-owned `claude`, `bash`, and
 `vim` sessions, verifies iroh rejects mismatched protocol versions and
-`LocalCli` handshakes, pairs a simulated mobile client through explicit desktop
-approval, attaches over iroh, sends mobile-originated input, verifies mobile
+`LocalCli` handshakes, pairs a simulated mobile client through an active local
+pairing command, attaches over iroh, sends mobile-originated input, verifies mobile
 shell-only session create and kill succeed while mobile agent-state events are
 rejected, removes the device, and verifies daemon restart restore.
 

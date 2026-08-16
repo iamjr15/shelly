@@ -1,3 +1,4 @@
+mod attach_ui;
 mod ipc;
 #[cfg(feature = "test-client")]
 mod iroh_client;
@@ -561,67 +562,30 @@ async fn pair_device() -> Result<()> {
             ServerToClientMsg::PairingApprovalRequested {
                 request_id,
                 device_name,
-                device_node_id,
+                ..
             } => {
                 let name = sanitize_device_name(&device_name);
-                if live {
-                    draw_pairing_approval_prompt(
-                        status_row,
-                        &name,
-                        short_node_id(&device_node_id),
-                        screen_size,
-                    )?;
-                } else {
-                    println!(
-                        "Pair request from device \"{name}\" ({}) — approve? [y/N]",
-                        short_node_id(&device_node_id)
-                    );
-                }
-                let stdin_read = tokio::task::spawn_blocking(|| {
-                    let mut answer = String::new();
-                    std::io::stdin().read_line(&mut answer).map(|_| answer)
-                });
-                let answer = tokio::select! {
-                    joined = stdin_read => joined
-                        .context("join pairing approval read")?
-                        .context("read pairing approval")?,
-                    _ = &mut ctrl_c => {
-                        drop(alt_screen.take());
-                        std::process::exit(130);
-                    }
-                };
-                let approved = matches!(answer.trim(), "y" | "Y" | "yes" | "YES");
                 ipc::write_msg(
                     &mut conn,
                     &ClientToServerMsg::ApprovePairing {
                         request_id,
-                        approved,
+                        approved: true,
                     },
                 )
                 .await?;
                 drop(alt_screen.take());
-                match (approved, live) {
-                    (true, true) => {
-                        println!(
-                            "{} Paired {}",
-                            style_ansi("✓", true, ANSI_GREEN),
-                            style_bold(&name, true)
-                        );
-                        println!(
-                            "  {}",
-                            style_dim("shelly devices — list and manage paired devices", true)
-                        );
-                    }
-                    (true, false) => println!("Approved. Device is paired."),
-                    (false, true) => {
-                        println!(
-                            "{} Denied {}",
-                            style_ansi("✗", true, ANSI_RED),
-                            style_dim("— code retired", true)
-                        );
-                        println!("  {}", style_dim("shelly pair — open a new window", true));
-                    }
-                    (false, false) => println!("Denied. Pairing code has been consumed."),
+                if live {
+                    println!(
+                        "{} Paired {}",
+                        style_ansi("✓", true, ANSI_GREEN),
+                        style_bold(&name, true)
+                    );
+                    println!(
+                        "  {}",
+                        style_dim("shelly devices — list and manage paired devices", true)
+                    );
+                } else {
+                    println!("Paired {name}.");
                 }
                 return Ok(());
             }
@@ -872,33 +836,6 @@ fn redraw_pairing_status(
     let line = centered_line(&status, visible, terminal.cols);
     print!("\x1b[{status_row};1H\x1b[2K{line}");
     std::io::stdout().flush().context("redraw pairing status")
-}
-
-/// Replaces the live status region with the approval request and parks the
-/// visible cursor after the default-deny prompt.
-fn draw_pairing_approval_prompt(
-    status_row: usize,
-    name: &str,
-    key_id: &str,
-    terminal: ClientSize,
-) -> Result<()> {
-    let key = format!("key {key_id}");
-    let request_cols = format!("● {name} wants to pair  {key}").chars().count();
-    let request = format!(
-        "{} {} wants to pair  {}",
-        style_ansi("●", true, ANSI_AMBER),
-        style_bold(name, true),
-        style_dim(&key, true)
-    );
-    let prompt_cols = "Approve this device? [y/N] ".chars().count();
-    let prompt = format!("Approve this device? {} ", style_dim("[y/N]", true));
-    print!(
-        "\x1b[{status_row};1H\x1b[2K{}\x1b[{};1H\x1b[2K{}\x1b[?25h",
-        centered_line(&request, request_cols, terminal.cols),
-        status_row + 1,
-        centered_line(&prompt, prompt_cols, terminal.cols)
-    );
-    std::io::stdout().flush().context("draw approval prompt")
 }
 
 /// Switches to the alternate screen with the cursor hidden; restores the
@@ -1401,7 +1338,14 @@ async fn attach_session(session_ref: String) -> Result<()> {
     let (mut conn, _) = ipc::connect_local().await?;
     let session = resolve_session(&mut conn, &session_ref).await?;
     let session_id = session.id;
-    let size = terminal_size();
+    let physical_size = terminal_size();
+    let status_bar =
+        terminal_cursor_control_enabled() && attach_ui::status_bar_supported(physical_size);
+    let size = if status_bar {
+        attach_ui::content_size(physical_size)
+    } else {
+        physical_size
+    };
 
     ipc::write_msg(
         &mut conn,
@@ -1418,61 +1362,68 @@ async fn attach_session(session_ref: String) -> Result<()> {
         bail!("expected attach response, got {attached:?}");
     };
 
-    let _raw = RawMode::enter()?;
-    let mut stdout = tokio::io::stdout();
-    stdout.write_all(&initial_bytes).await?;
-    stdout.flush().await?;
+    enum AttachEnd {
+        Detached,
+        SessionExited(i32),
+        Lagged(u64),
+        DaemonError(String),
+        ConnectionLost(String),
+    }
 
-    let (mut reader, mut writer) = tokio::io::split(conn);
-    let output_task = tokio::spawn(async move {
+    let end = {
+        let _raw = RawMode::enter()?;
+        let _screen = status_bar
+            .then(attach_ui::AttachScreenGuard::enter)
+            .transpose()?;
+        let mut renderer =
+            status_bar.then(|| attach_ui::AttachRenderer::new(&session.name, physical_size));
         let mut stdout = tokio::io::stdout();
-        while let Ok(message) = ipc::read_msg::<_, ServerToClientMsg>(&mut reader).await {
-            match message {
-                ServerToClientMsg::Output { bytes, .. } => {
-                    stdout.write_all(&bytes).await?;
-                    stdout.flush().await?;
-                }
-                ServerToClientMsg::Lag { skipped_bytes, .. } => {
-                    let note = format!(
-                        "\r\n[shelly: lagged {skipped_bytes} messages; re-run attach to resync]\r\n"
-                    );
-                    stdout.write_all(note.as_bytes()).await?;
-                    stdout.flush().await?;
-                    let _ = disable_raw_mode();
-                    std::process::exit(2);
-                }
-                ServerToClientMsg::SessionExited { exit_code, .. } => {
-                    let note = format!("\r\n[shelly: session exited {exit_code}]\r\n");
-                    stdout.write_all(note.as_bytes()).await?;
-                    stdout.flush().await?;
-                    let _ = disable_raw_mode();
-                    std::process::exit(exit_code);
-                }
-                ServerToClientMsg::Error { message, .. } => {
-                    let note = format!("\r\n[shelly error: {message}]\r\n");
-                    stdout.write_all(note.as_bytes()).await?;
-                    stdout.flush().await?;
-                    let _ = disable_raw_mode();
-                    std::process::exit(1);
-                }
-                _ => {}
-            }
-        }
-        anyhow::Ok(())
-    });
+        let initial_frame = match renderer.as_mut() {
+            Some(renderer) => renderer.initial_frame(&initial_bytes),
+            None => initial_bytes,
+        };
+        stdout.write_all(&initial_frame).await?;
+        stdout.flush().await?;
 
-    let input_task = tokio::spawn(async move {
+        let (mut reader, mut writer) = tokio::io::split(conn);
         let mut stdin = tokio::io::stdin();
         let mut buf = [0_u8; 1024];
         let mut prefix = false;
         let mut winch =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::window_change())?;
-        loop {
+        let end = 'attached: loop {
             tokio::select! {
+                message = ipc::read_msg::<_, ServerToClientMsg>(&mut reader) => {
+                    let message = match message {
+                        Ok(message) => message,
+                        Err(error) => break AttachEnd::ConnectionLost(error.to_string()),
+                    };
+                    match message {
+                        ServerToClientMsg::Output { bytes, .. } => {
+                            let frame = match renderer.as_mut() {
+                                Some(renderer) => renderer.output_frame(&bytes),
+                                None => bytes,
+                            };
+                            stdout.write_all(&frame).await?;
+                            stdout.flush().await?;
+                        }
+                        ServerToClientMsg::Lag { skipped_bytes, .. } => {
+                            break AttachEnd::Lagged(skipped_bytes);
+                        }
+                        ServerToClientMsg::SessionExited { exit_code, .. } => {
+                            break AttachEnd::SessionExited(exit_code);
+                        }
+                        ServerToClientMsg::Error { message, .. } => {
+                            break AttachEnd::DaemonError(message);
+                        }
+                        _ => {}
+                    }
+                }
                 n = stdin.read(&mut buf) => {
                     let n = n?;
                     if n == 0 {
-                        break;
+                        let _ = ipc::write_msg(&mut writer, &ClientToServerMsg::DetachSession).await;
+                        break AttachEnd::Detached;
                     }
 
                     // Ctrl-B (0x02) arms a detach prefix: Ctrl-B d detaches; any other
@@ -1483,7 +1434,7 @@ async fn attach_session(session_ref: String) -> Result<()> {
                             prefix = false;
                             if byte == b'd' || byte == b'D' {
                                 ipc::write_msg(&mut writer, &ClientToServerMsg::DetachSession).await?;
-                                return anyhow::Ok(());
+                                break 'attached AttachEnd::Detached;
                             }
                             outgoing.push(0x02);
                             outgoing.push(byte);
@@ -1506,40 +1457,54 @@ async fn attach_session(session_ref: String) -> Result<()> {
                     }
                 }
                 _ = winch.recv() => {
+                    let physical_size = terminal_size();
+                    let size = match renderer.as_mut() {
+                        Some(renderer) => {
+                            let frame = renderer.resize(physical_size);
+                            stdout.write_all(&frame).await?;
+                            stdout.flush().await?;
+                            renderer.content_size()
+                        }
+                        None => physical_size,
+                    };
                     ipc::write_msg(
                         &mut writer,
                         &ClientToServerMsg::Resize {
                             session_id,
-                            size: terminal_size(),
+                            size,
                         },
                     )
                     .await?;
                 }
             }
-        }
-        anyhow::Ok(())
-    });
+        };
+        stdout.flush().await?;
+        end
+    };
 
-    tokio::pin!(output_task);
-    tokio::pin!(input_task);
-    tokio::select! {
-        result = &mut output_task => {
-            input_task.abort();
-            result??
-        },
-        result = &mut input_task => {
-            output_task.abort();
-            result??
-        },
+    match end {
+        AttachEnd::Detached => Ok(()),
+        AttachEnd::SessionExited(exit_code) => {
+            eprintln!("[shelly: session exited {exit_code}]");
+            if exit_code == 0 {
+                Ok(())
+            } else {
+                std::process::exit(exit_code);
+            }
+        }
+        AttachEnd::Lagged(skipped_bytes) => {
+            eprintln!("[shelly: lagged {skipped_bytes} messages; re-run attach to resync]");
+            std::process::exit(2);
+        }
+        AttachEnd::DaemonError(message) => bail!("terminal session error: {message}"),
+        AttachEnd::ConnectionLost(message) => bail!("terminal connection closed: {message}"),
     }
-    Ok(())
 }
 
 async fn kill_session(session_ref: String) -> Result<()> {
     let (mut conn, _) = ipc::connect_local().await?;
     let session = resolve_session(&mut conn, &session_ref).await?;
     kill_session_by_id(&mut conn, session.id).await?;
-    wait_for_sessions_removed(&[session.id]).await?;
     println!("removed {}\t{}", session.id, session.name);
     Ok(())
 }
@@ -1555,8 +1520,6 @@ async fn kill_all_sessions() -> Result<()> {
     for session in &sessions {
         kill_session_by_id(&mut conn, session.id).await?;
     }
-    let ids: Vec<SessionId> = sessions.iter().map(|session| session.id).collect();
-    wait_for_sessions_removed(&ids).await?;
 
     for session in &sessions {
         println!("removed {}\t{}", session.id, session.name);
@@ -1574,28 +1537,15 @@ async fn kill_session_by_id(
     id: SessionId,
 ) -> Result<()> {
     ipc::write_msg(conn, &ClientToServerMsg::KillSession { session_id: id }).await?;
-    Ok(())
-}
-
-async fn wait_for_sessions_removed(ids: &[SessionId]) -> Result<()> {
-    let mut remaining = Vec::new();
-    for _ in 0..50 {
-        let sessions = fetch_sessions().await?;
-        remaining = sessions
-            .into_iter()
-            .filter(|session| ids.contains(&session.id))
-            .map(|session| session.id.to_string())
-            .collect();
-        if remaining.is_empty() {
-            return Ok(());
+    let response: ServerToClientMsg = ipc::read_msg(conn).await?;
+    match response {
+        ServerToClientMsg::SessionKilled { session_id } if session_id == id => Ok(()),
+        ServerToClientMsg::SessionKilled { session_id } => {
+            bail!("KillSession acknowledgement id mismatch: requested {id}, got {session_id}")
         }
-        tokio::time::sleep(Duration::from_millis(20)).await;
+        ServerToClientMsg::Error { message, .. } => bail!("{message}"),
+        other => bail!("unexpected daemon response to KillSession: {other:?}"),
     }
-
-    bail!(
-        "timed out waiting for sessions to be removed: {}",
-        remaining.join(", ")
-    )
 }
 
 async fn run_doctor(no_start: bool) -> Result<()> {

@@ -1,7 +1,6 @@
 package app.shelly.android.features.settings
 
 import androidx.compose.runtime.Composable
-import app.shelly.android.ui.components.SettingsGlyph
 import app.shelly.android.ui.components.SettingsHeroBody
 import app.shelly.android.ui.components.SettingsListRow
 import app.shelly.android.ui.components.ShellyScreen
@@ -13,12 +12,10 @@ fun NotificationsScreen(
     awaitingInputOn: Boolean = true,
     sessionCrashedOn: Boolean = true,
     buildFinishedOn: Boolean = false,
-    quietHoursLabel: String = "10pm–8am",
     onTogglePush: () -> Unit = {},
     onToggleAwaitingInput: () -> Unit = {},
     onToggleSessionCrashed: () -> Unit = {},
     onToggleBuildFinished: () -> Unit = {},
-    onCycleQuietHours: () -> Unit = {},
 ) {
     NotificationsContent(
         onBack = onBack,
@@ -26,12 +23,10 @@ fun NotificationsScreen(
         awaitingInputOn = awaitingInputOn,
         sessionCrashedOn = sessionCrashedOn,
         buildFinishedOn = buildFinishedOn,
-        quietHoursLabel = quietHoursLabel,
         onTogglePush = onTogglePush,
         onToggleAwaitingInput = onToggleAwaitingInput,
         onToggleSessionCrashed = onToggleSessionCrashed,
         onToggleBuildFinished = onToggleBuildFinished,
-        onCycleQuietHours = onCycleQuietHours,
     )
 }
 
@@ -42,21 +37,16 @@ private fun NotificationsContent(
     awaitingInputOn: Boolean,
     sessionCrashedOn: Boolean,
     buildFinishedOn: Boolean,
-    quietHoursLabel: String,
     onTogglePush: () -> Unit,
     onToggleAwaitingInput: () -> Unit,
     onToggleSessionCrashed: () -> Unit,
     onToggleBuildFinished: () -> Unit,
-    onCycleQuietHours: () -> Unit,
 ) {
     ShellyScreen(
         hero = {
             SettingsHeroBody(
                 eyebrow = "WHAT BUZZES YOUR\nPHONE — AND WHEN",
                 wordmark = "PINGS",
-                status = "push via FCM · ${if (pushOn) "on" else "off"}",
-                statusGlyph = SettingsGlyph.Bell,
-                backLabel = "Settings",
                 onBack = onBack,
             )
         },
@@ -64,8 +54,12 @@ private fun NotificationsContent(
             SettingsListRow("Push", if (pushOn) "On" else "Off", onClick = onTogglePush)
             SettingsListRow("Awaiting input", if (awaitingInputOn) "On" else "Off", onClick = onToggleAwaitingInput)
             SettingsListRow("Session crashed", if (sessionCrashedOn) "On" else "Off", onClick = onToggleSessionCrashed)
-            SettingsListRow("Build finished", if (buildFinishedOn) "On" else "Off", onClick = onToggleBuildFinished)
-            SettingsListRow("Quiet hours", quietHoursLabel, showDivider = false, onClick = onCycleQuietHours)
+            SettingsListRow(
+                "Build finished",
+                if (buildFinishedOn) "On" else "Off",
+                showDivider = false,
+                onClick = onToggleBuildFinished,
+            )
         },
     )
 }
@@ -78,11 +72,9 @@ internal fun NotificationsContentPreview() {
         awaitingInputOn = true,
         sessionCrashedOn = true,
         buildFinishedOn = false,
-        quietHoursLabel = "10pm–8am",
         onTogglePush = {},
         onToggleAwaitingInput = {},
         onToggleSessionCrashed = {},
         onToggleBuildFinished = {},
-        onCycleQuietHours = {},
     )
 }

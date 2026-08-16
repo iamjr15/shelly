@@ -54,8 +54,8 @@ mod tests {
     }
 
     #[test]
-    fn protocol_version_is_v3() {
-        assert_eq!(CONTRACT_VERSION, 3);
+    fn protocol_version_is_v4() {
+        assert_eq!(CONTRACT_VERSION, 4);
     }
 
     #[test]
@@ -396,6 +396,10 @@ mod tests {
                     session_id,
                     summary: summary.clone(),
                 },
+            ),
+            wire_case(
+                "session_killed",
+                ServerToClientMsg::SessionKilled { session_id },
             ),
             wire_case(
                 "attached",

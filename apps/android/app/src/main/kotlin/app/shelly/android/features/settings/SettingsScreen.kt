@@ -24,12 +24,10 @@ fun SettingsScreen(
     notificationsLabel: String = "OFF",
     securityLabel: String = "5 MIN",
     aboutVersionLabel: String = "V1.0",
-    telemetryEnabled: Boolean = false,
     onBackToSessions: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
     onOpenSecurity: () -> Unit = {},
-    onOpenPrivacy: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
     onOpenDaemonDetail: () -> Unit = {},
     onUnpair: () -> Unit = {},
@@ -44,12 +42,10 @@ fun SettingsScreen(
         notificationsLabel = notificationsLabel,
         securityLabel = securityLabel,
         aboutVersionLabel = aboutVersionLabel,
-        telemetryEnabled = telemetryEnabled,
         onBackToSessions = onBackToSessions,
         onOpenAppearance = onOpenAppearance,
         onOpenNotifications = onOpenNotifications,
         onOpenSecurity = onOpenSecurity,
-        onOpenPrivacy = onOpenPrivacy,
         onOpenAbout = onOpenAbout,
         onOpenDaemonDetail = onOpenDaemonDetail,
         onUnpair = onUnpair,
@@ -65,12 +61,10 @@ private fun SettingsContent(
     notificationsLabel: String,
     securityLabel: String,
     aboutVersionLabel: String,
-    telemetryEnabled: Boolean,
     onBackToSessions: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenSecurity: () -> Unit,
-    onOpenPrivacy: () -> Unit,
     onOpenAbout: () -> Unit,
     onOpenDaemonDetail: () -> Unit,
     onUnpair: () -> Unit,
@@ -84,7 +78,6 @@ private fun SettingsContent(
                 wordmark = "PREFS",
                 status = daemonStatus,
                 statusGlyph = SettingsGlyph.Monitor,
-                backLabel = "Sessions",
                 onBack = onBackToSessions,
                 onStatusClick = onOpenDaemonDetail,
             )
@@ -93,12 +86,6 @@ private fun SettingsContent(
             SettingsListRow("Appearance", themeModeLabel, glyph = SettingsGlyph.Sun, onClick = onOpenAppearance)
             SettingsListRow("Notifications", notificationsLabel, glyph = SettingsGlyph.Bell, onClick = onOpenNotifications)
             SettingsListRow("Security", securityLabel, glyph = SettingsGlyph.Lock, onClick = onOpenSecurity)
-            SettingsListRow(
-                "Privacy",
-                if (telemetryEnabled) "OPT-IN" else "OPT-OUT",
-                glyph = SettingsGlyph.Shield,
-                onClick = onOpenPrivacy,
-            )
             SettingsListRow("About", aboutVersionLabel, glyph = SettingsGlyph.Info, showDivider = false, onClick = onOpenAbout)
             Spacer(Modifier.weight(1f))
             if (paired) {
@@ -127,12 +114,10 @@ internal fun SettingsContentPreview() {
         notificationsLabel = "OFF",
         securityLabel = "5 MIN",
         aboutVersionLabel = "V1.0",
-        telemetryEnabled = false,
         onBackToSessions = {},
         onOpenAppearance = {},
         onOpenNotifications = {},
         onOpenSecurity = {},
-        onOpenPrivacy = {},
         onOpenAbout = {},
         onOpenDaemonDetail = {},
         onUnpair = {},

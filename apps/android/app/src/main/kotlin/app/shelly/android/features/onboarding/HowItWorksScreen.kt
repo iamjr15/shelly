@@ -13,7 +13,7 @@ fun HowItWorksScreen(
     ShellyScreen(
         hero = {
             OnboardingHero(
-                eyebrow = "WHAT HAPPENS THE MOMENT\nYOU PAIR A LAPTOP",
+                eyebrow = "WHAT HAPPENS THE MOMENT\nYOU PAIR A COMPUTER",
                 wordmark = "HOW",
                 trailing = "SKIP",
                 onTrailingClick = onSkip,

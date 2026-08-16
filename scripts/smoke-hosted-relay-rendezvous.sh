@@ -130,8 +130,8 @@ curl -fsS --max-time 10 "$relay_control_url/v1/version" >"$tmp/relay-version.jso
 node -e '
 const fs = require("fs");
 const version = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-if (version.contract_version !== 2) {
-  throw new Error(`expected relay contract_version=2, got ${version.contract_version}`);
+if (version.contract_version !== 4) {
+  throw new Error(`expected relay contract_version=4, got ${version.contract_version}`);
 }
 ' "$tmp/relay-version.json"
 
@@ -180,9 +180,7 @@ if [[ -z "$session_id" ]]; then
   exit 1
 fi
 
-mkfifo "$tmp/pair.in"
-exec 3<>"$tmp/pair.in"
-"$shelly" pair <"$tmp/pair.in" >"$tmp/pair.log" 2>&1 &
+"$shelly" pair </dev/null >"$tmp/pair.log" 2>&1 &
 pair_pid=$!
 
 pair_code="$(capture_pair_code "$tmp/pair.log" || true)"
@@ -207,20 +205,6 @@ sleep "${SHELLY_HOSTED_RELAY_PUBLISH_WAIT_SECONDS:-5}"
   >"$tmp/pairtest.log" 2>&1 &
 pairtest_pid=$!
 
-for _ in $(seq 1 100); do
-  if grep -q 'approve?' "$tmp/pair.log"; then
-    break
-  fi
-  sleep 0.1
-done
-
-if ! grep -q 'approve?' "$tmp/pair.log"; then
-  echo "shelly pair did not request desktop approval" >&2
-  cat "$tmp/pair.log" "$tmp/pairtest.log" "$tmp/daemon.log" >&2 || true
-  exit 1
-fi
-
-printf 'y\n' >&3
 pair_status=0
 pairtest_status=0
 wait "$pair_pid" || pair_status=$?

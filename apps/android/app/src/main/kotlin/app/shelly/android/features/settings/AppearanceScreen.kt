@@ -48,7 +48,6 @@ private fun AppearanceContent(
                     else -> "following the system theme"
                 },
                 statusGlyph = SettingsGlyph.HalfCircle,
-                backLabel = "Settings",
                 onBack = onBack,
             )
         },

@@ -34,6 +34,7 @@ data class ShellyUiState(
     val pairingError: PairingErrorMessage? = null,
     val pairedDaemon: PairedDaemonRecord? = null,
     val targetSession: MobileSession? = null,
+    val terminalTabs: List<MobileSession> = emptyList(),
     val activeTerminalSessionId: String? = null,
     val telemetryConsentPromptVisible: Boolean = false,
     val connectionState: ConnectionState = ConnectionState.Connected,
@@ -98,6 +99,7 @@ class ShellyViewModel internal constructor(
         val previous = _state.getAndUpdate {
             it.copy(
                 unlocked = unlocked,
+                terminalTabs = if (unlocked) it.terminalTabs else emptyList(),
                 activeTerminalSessionId = if (unlocked) it.activeTerminalSessionId else null,
             )
         }
@@ -210,17 +212,15 @@ class ShellyViewModel internal constructor(
         }
     }
 
-    // Kills a session on the laptop. Fire-and-forget at the daemon; the list is
-    // updated optimistically and reconciled by the session subscription.
+    // The repository returns only after the daemon has terminated the PTY and
+    // removed its persisted state, so the row never claims success prematurely.
     fun killSession(sessionId: String) {
         viewModelScope.launch {
             try {
                 withContext(repositoryDispatcher) {
                     repository.killSession(sessionId)
                 }
-                if (_state.value.activeTerminalSessionId == sessionId) {
-                    closeTerminalSession()
-                }
+                closeTerminalTab(sessionId)
                 applySessions(_state.value.sessions.filterNot { it.id == sessionId })
             } catch (error: Throwable) {
                 if (error is CancellationException) {
@@ -317,11 +317,47 @@ class ShellyViewModel internal constructor(
     }
 
     fun openTerminalSession(session: MobileSession) {
-        _state.update { it.copy(activeTerminalSessionId = session.id) }
+        _state.update { state ->
+            val current = state.terminalTabs.firstOrNull { it.id == session.id }
+            state.copy(
+                terminalTabs = if (current == null) {
+                    state.terminalTabs + session
+                } else {
+                    state.terminalTabs.map { if (it.id == session.id) session else it }
+                },
+                activeTerminalSessionId = session.id,
+            )
+        }
+    }
+
+    fun closeTerminalTab(sessionId: String) {
+        _state.update { state ->
+            val closedIndex = state.terminalTabs.indexOfFirst { it.id == sessionId }
+            if (closedIndex == -1) {
+                return@update state
+            }
+            val remaining = state.terminalTabs.filterNot { it.id == sessionId }
+            val nextActiveId = if (state.activeTerminalSessionId == sessionId) {
+                remaining.getOrNull(closedIndex)?.id ?: remaining.lastOrNull()?.id
+            } else {
+                state.activeTerminalSessionId?.takeIf { activeId ->
+                    remaining.any { it.id == activeId }
+                }
+            }
+            state.copy(
+                terminalTabs = remaining,
+                activeTerminalSessionId = nextActiveId,
+            )
+        }
     }
 
     fun closeTerminalSession() {
-        _state.update { it.copy(activeTerminalSessionId = null) }
+        _state.update {
+            it.copy(
+                terminalTabs = emptyList(),
+                activeTerminalSessionId = null,
+            )
+        }
     }
 
     fun onAppBackgrounded() {
@@ -611,11 +647,14 @@ class ShellyViewModel internal constructor(
 
     private fun applySessions(sessions: List<MobileSession>) {
         _state.update { state ->
+            val sessionsById = sessions.associateBy(MobileSession::id)
+            val updatedTabs = state.terminalTabs.map { tab -> sessionsById[tab.id] ?: tab }
             state.copy(
                 sessions = sessions,
                 activeTerminalSessionId = state.activeTerminalSessionId?.takeIf { id ->
-                    sessions.any { it.id == id }
+                    updatedTabs.any { it.id == id }
                 },
+                terminalTabs = updatedTabs,
             )
         }
     }

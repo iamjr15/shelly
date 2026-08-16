@@ -61,34 +61,6 @@ internal enum class ShellyAutoLock(val storageValue: String, val label: String, 
     }
 }
 
-/** Window during which local notifications are suppressed. Hours are 0–23, end is exclusive. */
-internal enum class ShellyQuietHours(
-    val storageValue: String,
-    val label: String,
-    val startHour: Int,
-    val endHour: Int,
-) {
-    Off("off", "Off", -1, -1),
-    TenToEight("22-08", "10pm–8am", 22, 8),
-    ElevenToSeven("23-07", "11pm–7am", 23, 7),
-    MidnightToNine("00-09", "12am–9am", 0, 9),
-    ;
-
-    fun next(): ShellyQuietHours = entries[(ordinal + 1) % entries.size]
-
-    /** True if [hour] (0–23) falls inside this quiet window (handles midnight wraparound). */
-    fun contains(hour: Int): Boolean = when {
-        this == Off -> false
-        startHour <= endHour -> hour in startHour until endHour
-        else -> hour >= startHour || hour < endHour
-    }
-
-    companion object {
-        fun fromStorage(value: String?): ShellyQuietHours =
-            entries.firstOrNull { it.storageValue == value } ?: TenToEight
-    }
-}
-
 internal enum class ShellyRoute {
     Sessions,
     Settings,
@@ -183,13 +155,6 @@ internal class ShellyUiPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_NOTIFY_BUILD, enabled).apply()
     }
 
-    fun readQuietHours(): ShellyQuietHours =
-        ShellyQuietHours.fromStorage(prefs.getString(KEY_QUIET_HOURS, null))
-
-    fun writeQuietHours(value: ShellyQuietHours) {
-        prefs.edit().putString(KEY_QUIET_HOURS, value.storageValue).apply()
-    }
-
     fun readOnboarded(): Boolean = prefs.getBoolean(KEY_ONBOARDED, false)
 
     fun writeOnboarded(onboarded: Boolean) {
@@ -208,7 +173,6 @@ internal class ShellyUiPreferences(context: Context) {
         const val KEY_NOTIFY_AWAITING = "notify_awaiting_input"
         const val KEY_NOTIFY_CRASHED = "notify_session_crashed"
         const val KEY_NOTIFY_BUILD = "notify_build_finished"
-        const val KEY_QUIET_HOURS = "quiet_hours"
         const val KEY_ONBOARDED = "onboarded"
     }
 }

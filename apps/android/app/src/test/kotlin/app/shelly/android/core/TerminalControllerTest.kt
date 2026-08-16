@@ -52,6 +52,29 @@ class TerminalControllerTest {
     }
 
     @Test
+    fun successfulBiometricUnlockRestoresAttachedPhase() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val controller = TerminalController(
+            session = testSession(),
+            initialAttachedSession = FakeAttachedSession(lastSeenSeq = 8UL),
+            scope = scope,
+            inputGate = { false },
+            reattach = { error("reattach should not be called") },
+            recordLastSeenSeq = {},
+            recordTelemetryExperience = {},
+            terminalWriterForTests = {},
+        )
+
+        controller.sendInput(byteArrayOf('x'.code.toByte()))
+        assertEquals(TerminalPhase.Locked, controller.state.value.phase)
+
+        controller.resumeAfterUnlock()
+
+        assertEquals(TerminalPhase.Attached, controller.state.value.phase)
+        scope.cancel()
+    }
+
+    @Test
     fun accessoryInputUsesSameBiometricGateAsKeyboardInput() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val lockedAttachment = FakeAttachedSession(lastSeenSeq = 8UL)

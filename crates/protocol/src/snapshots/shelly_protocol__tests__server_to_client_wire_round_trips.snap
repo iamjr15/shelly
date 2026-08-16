@@ -11,6 +11,9 @@ expression: cases
 - name: session_created
   frame_len: 142
   decoded: "SessionCreated { session_id: SessionId(018f0000-0000-7000-8000-000000000001), summary: SessionSummary { id: SessionId(018f0000-0000-7000-8000-000000000001), name: \"demo\", command: [\"bash\"], cwd: \"/tmp/shelly\", created_at: 1700000000000, last_activity: 1700000000010, state: Working, last_line: Some(\"ready\"), model: None } }"
+- name: session_killed
+  frame_len: 32
+  decoded: "SessionKilled { session_id: SessionId(018f0000-0000-7000-8000-000000000001) }"
 - name: attached
   frame_len: 56
   decoded: "Attached { session_id: SessionId(018f0000-0000-7000-8000-000000000001), initial_bytes: [27, 91, 72, 114, 101, 97, 100, 121], seq: 42 }"

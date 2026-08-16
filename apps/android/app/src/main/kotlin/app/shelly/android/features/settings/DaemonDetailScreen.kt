@@ -12,7 +12,7 @@ import app.shelly.android.ui.components.ShellyScreen
 @Composable
 fun DaemonDetailScreen(
     onBack: () -> Unit,
-    hostName: String = "your laptop",
+    hostName: String = "your computer",
     pairedAge: String = "14d",
     daemon: String = "shellyd 1.0.0",
     protocol: String = "unknown",
@@ -52,11 +52,10 @@ private fun DaemonDetailContent(
     ShellyScreen(
         hero = {
             SettingsHeroBody(
-                eyebrow = "THE LAPTOP THIS PHONE\nIS PAIRED WITH",
+                eyebrow = "THE COMPUTER THIS PHONE\nIS PAIRED WITH",
                 wordmark = "NODE",
                 status = "$hostName · paired $pairedAge",
                 statusGlyph = SettingsGlyph.Monitor,
-                backLabel = "Settings",
                 onBack = onBack,
             )
         },

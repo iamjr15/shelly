@@ -16,14 +16,14 @@ class TerminalAttachModelTest {
         val missing = terminalAttachErrorMessage(ShellyException.NotFound("session 018f... missing"))
         assertEquals("Session not found", missing.title)
         assertEquals(
-            "That session ended or was removed on your laptop. Go back to Sessions and refresh.",
+            "That session ended or was removed on your computer. Go back to Sessions and refresh.",
             missing.body,
         )
 
         val transport = terminalAttachErrorMessage(ShellyException.Transport("timed out connecting"))
         assertEquals("Could not reach daemon", transport.title)
         assertEquals(
-            "Make sure your laptop is awake and `shellyd` is running, then retry the attach.",
+            "Make sure your computer is awake and `shellyd` is running, then retry the attach.",
             transport.body,
         )
 

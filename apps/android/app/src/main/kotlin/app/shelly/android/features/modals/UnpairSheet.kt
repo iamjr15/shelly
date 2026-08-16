@@ -7,15 +7,15 @@ import androidx.compose.ui.graphics.Color
 @Composable
 fun UnpairSheet(
     modifier: Modifier = Modifier,
-    daemonLabel: String = "this laptop",
+    daemonLabel: String = "this computer",
     liveSessions: Int = 0,
     onConfirm: () -> Unit = {},
     onDismiss: () -> Unit = {},
 ) {
     val body = when (liveSessions) {
-        0 -> "Keys for this phone are erased and Shelly\ndisconnects. Pairing again needs a fresh\ncode from your laptop."
-        1 -> "Keys for this phone are erased and the one\nlive session detaches. Pairing again needs\na fresh code from your laptop."
-        else -> "Keys for this phone are erased and all $liveSessions\nlive sessions detach. Pairing again needs\na fresh code from your laptop."
+        0 -> "Keys for this phone are erased and Shelly\ndisconnects. Pairing again needs a fresh\ncode from your computer."
+        1 -> "Keys for this phone are erased and the one\nlive session detaches. Pairing again needs\na fresh code from your computer."
+        else -> "Keys for this phone are erased and all $liveSessions\nlive sessions detach. Pairing again needs\na fresh code from your computer."
     }
     ShellyModalCard(
         kicker = "THIS CANNOT BE UNDONE",

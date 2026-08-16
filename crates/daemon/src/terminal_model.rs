@@ -1,5 +1,6 @@
 use shelly_protocol::ClientSize;
 use std::io::{self, Write};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex};
 use wezterm_term::{
     CellAttributes, Intensity, Terminal, TerminalConfiguration, TerminalSize, Underline,
@@ -46,6 +47,112 @@ impl Write for PtyResponseWriter {
 
 pub struct TerminalModel {
     terminal: Terminal,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TerminalProjectionFailure {
+    ParserPanicked,
+    InspectionPanicked,
+    Unavailable,
+}
+
+impl TerminalProjectionFailure {
+    pub fn invalidated_model(self) -> bool {
+        matches!(self, Self::ParserPanicked | Self::Unavailable)
+    }
+}
+
+/// Best-effort terminal state derived from the authoritative PTY byte stream.
+///
+/// Parser failures invalidate only this projection. The session reader, raw
+/// scrollback, and attached clients remain live while the projection is rebuilt.
+pub struct TerminalProjection {
+    model: Option<TerminalModel>,
+    size: ClientSize,
+}
+
+impl TerminalProjection {
+    pub fn new(size: ClientSize, writer: Box<dyn Write + Send>) -> Self {
+        Self {
+            model: Some(TerminalModel::new(size, writer)),
+            size,
+        }
+    }
+
+    pub fn ingest(&mut self, bytes: &[u8]) -> Result<Option<String>, TerminalProjectionFailure> {
+        let Some(model) = self.model.as_mut() else {
+            return Err(TerminalProjectionFailure::Unavailable);
+        };
+        if catch_unwind(AssertUnwindSafe(|| model.advance_bytes(bytes))).is_err() {
+            self.model = None;
+            return Err(TerminalProjectionFailure::ParserPanicked);
+        }
+        catch_unwind(AssertUnwindSafe(|| model.last_non_empty_line(80)))
+            .map_err(|_| TerminalProjectionFailure::InspectionPanicked)
+    }
+
+    pub fn resize(&mut self, size: ClientSize) -> Result<(), TerminalProjectionFailure> {
+        self.size = size;
+        let Some(model) = self.model.as_mut() else {
+            return Err(TerminalProjectionFailure::Unavailable);
+        };
+        match catch_unwind(AssertUnwindSafe(|| model.resize(size))) {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                self.model = None;
+                Err(TerminalProjectionFailure::ParserPanicked)
+            }
+        }
+    }
+
+    pub fn snapshot(&mut self) -> Result<Vec<u8>, TerminalProjectionFailure> {
+        let Some(model) = self.model.as_ref() else {
+            return Err(TerminalProjectionFailure::Unavailable);
+        };
+        match catch_unwind(AssertUnwindSafe(|| model.render_snapshot())) {
+            Ok(snapshot) => Ok(snapshot),
+            Err(_) => Err(TerminalProjectionFailure::InspectionPanicked),
+        }
+    }
+
+    pub fn rebuild(
+        &mut self,
+        scrollback: &[u8],
+        writer: Box<dyn Write + Send>,
+    ) -> Result<Option<String>, TerminalProjectionFailure> {
+        let size = self.size;
+        match catch_unwind(AssertUnwindSafe(|| {
+            let mut model = TerminalModel::new(size, writer);
+            model.advance_bytes(scrollback);
+            let last_line = model.last_non_empty_line(80);
+            (model, last_line)
+        })) {
+            Ok((model, last_line)) => {
+                self.model = Some(model);
+                Ok(last_line)
+            }
+            Err(_) => {
+                self.model = None;
+                Err(TerminalProjectionFailure::ParserPanicked)
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_state(&self) -> TerminalTestState {
+        self.model
+            .as_ref()
+            .expect("terminal projection unavailable")
+            .test_state()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn render_snapshot(&self) -> Vec<u8> {
+        self.model
+            .as_ref()
+            .expect("terminal projection unavailable")
+            .render_snapshot()
+    }
 }
 
 #[cfg(test)]
@@ -163,17 +270,18 @@ impl TerminalModel {
         let screen = self.terminal.screen();
         let start = screen.phys_row(0);
         let end = screen.phys_row(size.rows as i64);
-        let mut result = None;
-        // Borrowed lines: this runs on every PTY chunk, and lines_in_phys_range
-        // would deep-clone the whole visible screen under the terminal lock.
-        screen.with_phys_lines(start..end, |lines| {
-            result = lines.iter().rev().find_map(|line| {
+        // Clone only the bounded viewport. `with_phys_lines` exposes the
+        // VecDeque's split backing slices and can index the second slice with
+        // first-slice coordinates after reverse-index scrolling (used by Codex).
+        screen
+            .lines_in_phys_range(start..end)
+            .iter()
+            .rev()
+            .find_map(|line| {
                 let text = line.as_str();
                 let text = text.trim();
                 (!text.is_empty()).then(|| text.chars().take(max_chars).collect())
-            });
-        });
-        result
+            })
     }
 
     #[cfg(test)]
@@ -397,5 +505,15 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    #[test]
+    fn tracks_last_line_after_codex_reverse_index_scrolling() {
+        let _guard = TERMINAL_TEST_LOCK
+            .lock()
+            .expect("terminal test lock poisoned");
+        let mut model = model();
+        model.advance_bytes(b"\x1b[1;24r\x1b[1;1H\x1bM\x1bM\x1bM\x1bM\x1bM\x1bM\x1bM\x1bM\x1bM");
+        let _ = model.last_non_empty_line(80);
     }
 }

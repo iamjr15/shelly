@@ -12,7 +12,7 @@ fun GetStartedScreen(
     ShellyScreen(
         hero = {
             OnboardingHero(
-                eyebrow = "YOU'RE SET — LET'S\nPAIR YOUR LAPTOP",
+                eyebrow = "YOU'RE SET — LET'S\nPAIR YOUR COMPUTER",
                 wordmark = "GO",
                 trailing = "STEP 4 / 4",
                 onTrailingClick = {},
@@ -32,7 +32,7 @@ fun GetStartedScreen(
             OnboardingStepRow(
                 number = 2,
                 title = "Attach anything",
-                detail = "Any shell, agent, or TUI your laptop\nruns",
+                detail = "Any shell, agent, or TUI your computer\nruns",
                 showDivider = true,
             )
             OnboardingStepRow(
@@ -43,7 +43,7 @@ fun GetStartedScreen(
             )
             Spacer(Modifier.weight(1f))
             OnboardingFooterLink(
-                label = "Pair your laptop",
+                label = "Pair your computer",
                 onClick = onPairLaptop,
                 strongDivider = true,
             )

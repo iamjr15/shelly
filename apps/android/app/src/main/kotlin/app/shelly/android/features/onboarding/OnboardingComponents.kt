@@ -42,7 +42,8 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.shelly.android.BuildConfig
 import app.shelly.android.ui.components.DoubleChevronGlyph
-import app.shelly.android.ui.components.TriangleLogo
+import app.shelly.android.ui.components.HeroEscapeButton
+import app.shelly.android.ui.components.ShellyLogo
 import app.shelly.android.ui.components.wordmarkFootprint
 import app.shelly.android.ui.theme.ShellyTheme
 import app.shelly.android.ui.theme.ShellyType
@@ -99,7 +100,7 @@ internal fun ColumnScope.WelcomeHero(
         color = heroForeground,
     )
     Spacer(Modifier.height(18.dp))
-    OnboardingWordmark("SH")
+    WelcomeWordmark()
     Spacer(Modifier.height(18.dp))
     OnboardingStatusRow(
         icon = OnboardingStatusIcon.Phone,
@@ -116,23 +117,28 @@ internal fun ColumnScope.OnboardingHero(
     wordmark: String,
     trailing: String,
     onTrailingClick: () -> Unit,
+    trailingAsEscape: Boolean = false,
     status: OnboardingStatus? = null,
 ) {
     val heroForeground = onboardingHeroForeground()
     val heroMuted = onboardingHeroMuted()
 
     OnboardingBrandRow(
-        modifier = Modifier.padding(bottom = 60.dp),
+        modifier = Modifier.padding(bottom = if (trailingAsEscape) 28.dp else 60.dp),
         trailing = {
-            Text(
-                text = trailing,
-                style = ShellyType.monoSmall.copy(
-                    fontWeight = FontWeight(600),
-                    letterSpacing = 0.04.em,
-                ),
-                color = heroMuted,
-                modifier = Modifier.clickable(onClick = onTrailingClick),
-            )
+            if (trailingAsEscape) {
+                HeroEscapeButton(onClick = onTrailingClick)
+            } else {
+                Text(
+                    text = trailing,
+                    style = ShellyType.monoSmall.copy(
+                        fontWeight = FontWeight(600),
+                        letterSpacing = 0.04.em,
+                    ),
+                    color = heroMuted,
+                    modifier = Modifier.clickable(onClick = onTrailingClick),
+                )
+            }
         },
     )
     Text(
@@ -164,7 +170,9 @@ private fun OnboardingBrandRow(
         modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TriangleLogo(color = heroForeground)
+        ShellyLogo(
+            color = if (ShellyTheme.colors.isDark) ShellyTheme.colors.accent else heroForeground,
+        )
         Spacer(Modifier.width(8.dp))
         Text("SHELLY", style = ShellyType.brand, color = heroForeground)
         Spacer(Modifier.weight(1f))
@@ -183,6 +191,20 @@ private fun OnboardingWordmark(text: String) {
         overflow = TextOverflow.Visible,
         modifier = Modifier.wordmarkFootprint(WordmarkSize),
     )
+}
+
+@Composable
+private fun WelcomeWordmark() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        ShellyLogo(
+            color = ShellyTheme.colors.heroWordmark,
+            size = 68.dp,
+        )
+        OnboardingWordmark("SH")
+    }
 }
 
 internal data class OnboardingStatus(

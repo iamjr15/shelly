@@ -577,6 +577,38 @@ mod tests {
     }
 
     #[test]
+    fn removing_session_is_durable_and_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("sessions.redb");
+        let persistence = Persistence::open_with_key(&path, [16; 32]).expect("open persistence");
+        let session_id = SessionId::new();
+        let session = StoredSession {
+            summary: SessionSummary {
+                id: session_id,
+                name: "delete-me".to_string(),
+                command: vec!["bash".to_string()],
+                cwd: PathBuf::from("/tmp"),
+                created_at: now_ms(),
+                last_activity: now_ms(),
+                state: AgentState::Idle,
+                last_line: None,
+                model: None,
+            },
+            scrollback_start_seq: 0,
+            scrollback: Vec::new(),
+            exit_code: None,
+        };
+
+        persistence.save_session(&session).unwrap();
+        persistence.remove_session(session_id).unwrap();
+        persistence.remove_session(session_id).unwrap();
+        drop(persistence);
+
+        let reopened = Persistence::open_with_key(&path, [16; 32]).expect("reopen persistence");
+        assert!(reopened.load_sessions().unwrap().is_empty());
+    }
+
+    #[test]
     fn load_sessions_skips_unreadable_rows() {
         let tmp = tempfile::tempdir().unwrap();
         let persistence = Persistence::open_with_key(tmp.path().join("sessions.redb"), [14; 32])

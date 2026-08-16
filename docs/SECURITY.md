@@ -10,7 +10,7 @@ Shelly v1 has four trust zones:
 - **Local desktop CLI**: trusted to create sessions running arbitrary commands
   and to kill sessions because it runs as the same user as `shellyd` over the
   hardened Unix socket.
-- **Daemon**: owns PTYs, device registry, scrollback, pairing approval, local
+- **Daemon**: owns PTYs, device registry, scrollback, pairing authorization, local
   state inference, relay-signing keys, and push-token registration dispatch.
 - **Paired mobile devices**: authenticated by long-lived Ed25519/iroh identity
   after pairing (scanning the QR ticket or typing the 5-character code). They can
@@ -25,7 +25,7 @@ Shelly v1 has four trust zones:
   reachability blobs (5-minute TTL, per-client resolve throttling, uniform
   misses, and single-use successful resolves). The QR pairing path stays
   daemon-local. The daemon still owns the in-band wrong-attempt cap before
-  desktop approval. The relay must never receive terminal bytes, command lines,
+  pairing authorization. The relay must never receive terminal bytes, command lines,
   paths, plaintext session names, or local scrollback.
 
 ## Local IPC
@@ -42,17 +42,18 @@ The daemon control socket is local-only and user-owned:
 
 ## Pairing And Device Auth
 
-Pairing is intentionally two-step:
+Pairing requires an explicit local action:
 
 - The credential is a single active 5-character Crockford code (`OsRng`,
   confusable-free alphabet, ~25 bits, 5-minute TTL). Starting a new desktop
-  pairing prompt supersedes any previous active code, and the daemon invalidates
+  pairing command supersedes any previous active code, and the daemon invalidates
   the active code after 5 wrong in-band attempts. A device gets the code either
   by scanning the QR ticket (which carries it inline) or by typing it; the typed
   code is resolved to the daemon's reachability through the rate-limited relay
   rendezvous.
-- A QR scan or correct code is not enough: the desktop must explicitly approve
-  the request.
+- A QR scan or correct code is not enough unless a trusted local user has an
+  active `shelly pair` command. That command automatically acknowledges the
+  first valid request and then exits; there is no second `y/N` prompt.
 - Approved devices authenticate with long-lived Ed25519/iroh keys.
 - Lost devices are revoked through `shelly devices remove`; there is no
   password fallback.

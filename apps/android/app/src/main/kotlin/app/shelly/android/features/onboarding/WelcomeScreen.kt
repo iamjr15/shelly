@@ -25,7 +25,7 @@ fun WelcomeScreen(
             Column(
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                WelcomeMenuRow("Pair your laptop", onPairLaptop)
+                WelcomeMenuRow("Pair your computer", onPairLaptop)
                 WelcomeMenuRow("How it works", onHowItWorks)
                 WelcomeMenuRow("Privacy", onPrivacy)
             }

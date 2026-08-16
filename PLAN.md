@@ -119,7 +119,7 @@ supports rendezvous, iroh relay fallback, and generic push delivery.
 
 Protocol rules:
 
-- `CONTRACT_VERSION = 3`
+- `CONTRACT_VERSION = 4`
 - version mismatches are rejected
 - Unix socket IPC is length-prefixed bincode
 - mobile transport uses length-prefixed MessagePack
@@ -146,7 +146,7 @@ Pairing invariants:
 
 - code TTL is 5 minutes and the desktop CLI shows the countdown
 - active pairing code is single-use
-- pairing requires explicit desktop approval
+- pairing requires an active local `shelly pair` command, which authorizes one valid request
 - wrong in-band attempts are capped
 - long-lived auth uses device Ed25519 keys
 - there is no password fallback
@@ -155,7 +155,7 @@ Pairing invariants:
 The original 32-byte base32 pair-token design was replaced before release by
 the shorter code plus compact ticket flow, which bumped the protocol contract
 to version 2; adding `UnregisterPushToken` later bumped it to the current
-version 3.
+version 4.
 
 ## 6. Security and Privacy
 

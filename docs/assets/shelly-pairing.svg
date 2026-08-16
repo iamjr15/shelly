@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
-  <title id="title">Shelly QR pairing with explicit approval</title>
-  <desc id="desc">A pairing screenshot showing a terminal QR code, phone scan state, and desktop approval prompt.</desc>
+  <title id="title">Shelly QR pairing from an active desktop command</title>
+  <desc id="desc">A pairing screenshot showing a terminal QR code, phone scan state, and successful connection.</desc>
   <rect width="1280" height="720" fill="#eef5f2"/>
   <rect x="72" y="72" width="720" height="576" rx="16" fill="#11161a"/>
   <rect x="72" y="72" width="720" height="54" rx="16" fill="#20272e"/>
@@ -29,15 +29,14 @@
     <rect x="184" y="442" width="52" height="12"/>
     <rect x="270" y="424" width="48" height="30"/>
   </g>
-  <text x="112" y="520" font-family="Menlo, Consolas, monospace" font-size="22" fill="#9fb4c8">Pair request from "Jamie iPhone" - approve? [y/N]</text>
-  <text x="112" y="565" font-family="Menlo, Consolas, monospace" font-size="22" fill="#d6e0ea">y</text>
-  <text x="112" y="610" font-family="Menlo, Consolas, monospace" font-size="22" fill="#87d787">paired Jamie iPhone</text>
+  <text x="112" y="520" font-family="Menlo, Consolas, monospace" font-size="22" fill="#9fb4c8">Waiting for a device…</text>
+  <text x="112" y="565" font-family="Menlo, Consolas, monospace" font-size="22" fill="#87d787">✓ Paired Jamie iPhone</text>
   <rect x="884" y="62" width="284" height="596" rx="38" fill="#161b20"/>
   <rect x="904" y="94" width="244" height="532" rx="28" fill="#f8fbfd"/>
   <text x="1026" y="154" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="24" font-weight="700" fill="#16212b">Pair Shelly</text>
   <rect x="936" y="205" width="180" height="180" rx="22" fill="#dcebe5"/>
   <path d="M952 328 L1012 268 L1048 304 L1100 240" fill="none" stroke="#1c7c5b" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="1026" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="18" fill="#52616f">Waiting for desktop approval</text>
+  <text x="1026" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="18" fill="#52616f">Authorized by desktop command</text>
   <rect x="932" y="505" width="188" height="48" rx="12" fill="#1c7c5b"/>
   <text x="1026" y="535" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="17" font-weight="600" fill="#ffffff">Connected</text>
 </svg>

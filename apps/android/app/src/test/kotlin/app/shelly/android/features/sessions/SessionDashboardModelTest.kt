@@ -45,6 +45,14 @@ class SessionDashboardModelTest {
             cwd = "",
             lastLine = " ",
         )
+        val freshShell = testSession(
+            id = "fresh-shell",
+            state = AgentState.Idle,
+            command = listOf("zsh"),
+            cwd = "/Users/example",
+            lastLine = "➜",
+        )
+        val meaningfulArrow = freshShell.copy(lastLine = "➜ build ready")
 
         assertEquals("Awaiting input", AgentState.AwaitingInput.sessionStateLabel())
         assertEquals("ready", shell.sessionPreviewText())
@@ -53,6 +61,9 @@ class SessionDashboardModelTest {
         assertEquals("No terminal output yet", fallback.sessionPreviewText())
         assertEquals("shell", fallback.sessionCommandLabel())
         assertEquals("~", fallback.sessionCwdLabel())
+        assertEquals("shell ready", freshShell.sessionPreviewText())
+        assertEquals("shell ready", freshShell.copy(lastLine = "$").sessionPreviewText())
+        assertEquals("➜ build ready", meaningfulArrow.sessionPreviewText())
     }
 
     @Test

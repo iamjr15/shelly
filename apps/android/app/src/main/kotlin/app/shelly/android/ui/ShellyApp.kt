@@ -124,9 +124,6 @@ fun ShellyApp(
     var telemetryEnabled by rememberSaveable { mutableStateOf(MobileTelemetry.isDiagnosticsEnabled(context)) }
     var unlockUnavailableMessage by remember { mutableStateOf(biometricGate.unlockUnavailableMessage()) }
 
-    val activeTerminalSession = state.activeTerminalSessionId?.let { id ->
-        state.sessions.firstOrNull { it.id == id }
-    }
     val surface = shellySurfaceFor(
         onboarded = onboarded,
         state = state,
@@ -258,15 +255,20 @@ fun ShellyApp(
                                 PairingUiState.Error(message = it.message, detail = it.detail)
                             } ?: PairingUiState.Idle,
                         )
-                        is ShellySurface.Terminal -> {
-                            val terminalSession = state.sessions.firstOrNull { it.id == targetSurface.sessionId } ?: activeTerminalSession
-                            if (terminalSession == null) {
+                        ShellySurface.Terminal -> {
+                            val activeSessionId = state.activeTerminalSessionId
+                            if (activeSessionId == null || state.terminalTabs.isEmpty()) {
                                 CenterSpinner()
                             } else {
                                 TerminalScreen(
-                                    session = terminalSession,
+                                    sessions = state.sessions,
+                                    tabs = state.terminalTabs,
+                                    activeSessionId = activeSessionId,
                                     viewModel = viewModel,
                                     biometricGate = biometricGate,
+                                    onSelectTab = viewModel::openTerminalSession,
+                                    onCloseTab = viewModel::closeTerminalTab,
+                                    onNewSession = { viewModel.createSession() },
                                     onBack = viewModel::closeTerminalSession,
                                 )
                             }
@@ -429,12 +431,10 @@ private fun RoutedContent(
                 notificationsLabel = if (settings.pushEnabled) "ON" else "OFF",
                 securityLabel = settings.autoLock.label.uppercase(),
                 aboutVersionLabel = "V${BuildConfig.VERSION_NAME}",
-                telemetryEnabled = telemetryEnabled,
                 onBackToSessions = { onRoute(ShellyRoute.Sessions) },
                 onOpenAppearance = { onRoute(ShellyRoute.Appearance) },
                 onOpenNotifications = { onRoute(ShellyRoute.Notifications) },
                 onOpenSecurity = { onRoute(ShellyRoute.Security) },
-                onOpenPrivacy = { onRoute(ShellyRoute.Privacy) },
                 onOpenAbout = { onRoute(ShellyRoute.About) },
                 onOpenDaemonDetail = { onRoute(ShellyRoute.DaemonDetail) },
                 onUnpair = onUnpair,
@@ -460,7 +460,6 @@ private fun RoutedContent(
                 awaitingInputOn = settings.notifyAwaitingInput,
                 sessionCrashedOn = settings.notifySessionCrashed,
                 buildFinishedOn = settings.notifyBuildFinished,
-                quietHoursLabel = settings.quietHours.label,
                 onTogglePush = {
                     settings.togglePush()
                     viewModel.setPushEnabled(settings.pushEnabled)
@@ -468,7 +467,6 @@ private fun RoutedContent(
                 onToggleAwaitingInput = settings::toggleNotifyAwaiting,
                 onToggleSessionCrashed = settings::toggleNotifySessionCrashed,
                 onToggleBuildFinished = settings::toggleNotifyBuildFinished,
-                onCycleQuietHours = settings::cycleQuietHours,
             )
         }
         ShellyRoute.Security -> {
@@ -486,10 +484,10 @@ private fun RoutedContent(
             )
         }
         ShellyRoute.Privacy -> {
-            BackHandler { onRoute(ShellyRoute.Settings) }
+            BackHandler { onRoute(ShellyRoute.About) }
             PrivacyScreen(
-                onContinue = { onRoute(ShellyRoute.Settings) },
-                onSkip = { onRoute(ShellyRoute.Settings) },
+                onContinue = { onRoute(ShellyRoute.About) },
+                onSkip = { onRoute(ShellyRoute.About) },
                 inSettings = true,
             )
         }
@@ -501,6 +499,7 @@ private fun RoutedContent(
                 build = BuildConfig.VERSION_CODE.toString(),
                 protocol = protocolLabel(pairedDaemon),
                 dependencyCount = licenseDependencyCount,
+                onOpenPrivacy = { onRoute(ShellyRoute.Privacy) },
                 onOpenSource = { openUrl(context, SHELLY_REPOSITORY_URL) },
                 onOpenLicenses = { onRoute(ShellyRoute.Licenses) },
             )
@@ -677,7 +676,7 @@ internal sealed interface ShellySurface {
         override val motionDepth = 2 + route.motionDepth
     }
 
-    data class Terminal(val sessionId: String) : ShellySurface {
+    data object Terminal : ShellySurface {
         override val motionDepth = 10
     }
 
@@ -696,7 +695,7 @@ internal fun shellySurfaceFor(
     !state.paired -> ShellySurface.Pairing
     !state.unlocked -> ShellySurface.Locked
     // Terminal keeps priority: never interrupt an attached session with a connection screen.
-    state.activeTerminalSessionId != null -> ShellySurface.Terminal(state.activeTerminalSessionId)
+    state.activeTerminalSessionId != null -> ShellySurface.Terminal
     state.connectionState is ConnectionState.Unreachable ->
         ShellySurface.Routed(ShellyRoute.SessionsDaemonUnreachable)
     state.connectionState is ConnectionState.Reconnecting ->

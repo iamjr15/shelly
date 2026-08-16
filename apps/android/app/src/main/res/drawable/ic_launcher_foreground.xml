@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="432"
+    android:viewportHeight="432">
+    <!--
+      Paper's adaptive foreground is a 150 x 169 mark centered inside a 432 x 432 canvas.
+      This group maps the canonical 364 x 411 Shelly artwork to those exact dimensions.
+    -->
+    <group
+        android:scaleX="0.4111922"
+        android:scaleY="0.4111922"
+        android:translateX="141.201"
+        android:translateY="131.5">
+        <path
+            android:fillColor="@color/shelly_black"
+            android:pathData="M0,49 L7,35 L21,33 L153,88 L175,93 L184,81 L184,10 L190,2 L200,0 L360,65 L364,71 L364,158 L359,164 L341,164 L212,110 L190,105 L183,115 L183,180 L190,201 L200,212 L355,275 L363,282 L363,373 L355,379 L346,379 L203,320 L192,319 L183,328 L182,402 L176,410 L161,411 L7,347 L0,333 L0,262 L7,248 L20,246 L159,304 L176,306 L184,294 L183,229 L175,210 L163,198 L4,131 L0,120 Z" />
+    </group>
+</vector>

@@ -44,7 +44,8 @@ pub enum ClientToServerMsg {
     },
     /// Detaches the current connection without terminating the PTY session.
     DetachSession,
-    /// Terminates a PTY session; accepted only from [`ClientKind::LocalCli`].
+    /// Terminates a PTY session and receives [`ServerToClientMsg::SessionKilled`]
+    /// only after the daemon has removed its live and persisted state.
     KillSession {
         /// Session to terminate.
         session_id: SessionId,
@@ -73,7 +74,7 @@ pub enum ClientToServerMsg {
         /// Optional desktop-provided label hint for the device.
         device_name: Option<String>,
     },
-    /// Answers a pending desktop pairing approval prompt.
+    /// Acknowledges a valid pairing request received by the active desktop pairing command.
     ApprovePairing {
         /// Request id from [`ServerToClientMsg::PairingApprovalRequested`].
         request_id: ClientId,
@@ -157,6 +158,11 @@ pub enum ServerToClientMsg {
         /// Initial dashboard summary.
         summary: SessionSummary,
     },
+    /// A requested session termination has committed on the daemon.
+    SessionKilled {
+        /// Session id from the corresponding [`ClientToServerMsg::KillSession`].
+        session_id: SessionId,
+    },
     /// Attach response containing initial replay or synthetic snapshot bytes.
     Attached {
         /// Attached session id.
@@ -206,7 +212,7 @@ pub enum ServerToClientMsg {
         /// Compact pairing ticket carrying reachability and the short code.
         ticket: PairingTicket,
     },
-    /// A remote device is waiting for explicit desktop approval.
+    /// A remote device supplied the active code and awaits desktop-command acknowledgement.
     PairingApprovalRequested {
         /// Request id to pass to [`ClientToServerMsg::ApprovePairing`].
         request_id: ClientId,

@@ -12,7 +12,7 @@ fun NotificationPermissionSheet(
     ShellyModalCard(
         kicker = "WHILE YOU'RE AWAY",
         title = "PINGS",
-        meta = "names stay on your laptop",
+        meta = "names stay on your computer",
         body = "Get a ping when a session needs you or\nfinishes — even when Shelly is closed.",
         primary = "Enable notifications",
         secondary = "Maybe later",

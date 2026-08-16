@@ -140,6 +140,16 @@ class TerminalController(
         }
     }
 
+    fun resumeAfterUnlock() {
+        _state.update { current ->
+            if (current.phase is TerminalPhase.Locked) {
+                current.copy(phase = TerminalPhase.Attached)
+            } else {
+                current
+            }
+        }
+    }
+
     internal fun requestResize(rows: Int, columns: Int) {
         if (detached.get() || columns <= 0 || rows <= 0) {
             return

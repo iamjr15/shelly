@@ -1,6 +1,6 @@
 use crate::SERVICE;
 use crate::forward::{ForwardedEvent, output_was_replayed, recv_attached_event};
-use crate::ipc::{AppState, IrohEndpointInfo, create_session_for, kill_session_for};
+use crate::ipc::{AppState, IrohEndpointInfo, create_session_for, kill_session_response};
 use crate::persistence::StoredDevice;
 use anyhow::{Context, Result, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
@@ -465,7 +465,8 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                 if !require_paired(&writer, paired).await? {
                     continue;
                 }
-                kill_session_for(&state, session_id);
+                let response = kill_session_response(&state, session_id);
+                write_msg(&writer, &response).await?;
             }
             ClientToServerMsg::BeginPairing { .. }
             | ClientToServerMsg::ApprovePairing { .. }

@@ -3,6 +3,8 @@ package app.shelly.android.features.sessions
 import app.shelly.android.core.AgentState
 import app.shelly.android.core.MobileSession
 
+private val PromptOnlyTerminalLine = Regex("^[\\s\\u0024#>%❯➜λ›»❱→]+$")
+
 internal fun filterSessions(sessions: List<MobileSession>, query: String): List<MobileSession> {
     val terms = query
         .trim()
@@ -25,8 +27,14 @@ internal fun AgentState.sessionStateLabel(): String =
         AgentState.Crashed -> "Crashed"
     }
 
-internal fun MobileSession.sessionPreviewText(): String =
-    lastLine?.takeIf { it.isNotBlank() } ?: command.joinToString(" ").ifBlank { "No terminal output yet" }
+internal fun MobileSession.sessionPreviewText(): String {
+    val preview = lastLine?.trim().orEmpty()
+    return when {
+        preview.isEmpty() -> command.joinToString(" ").ifBlank { "No terminal output yet" }
+        PromptOnlyTerminalLine.matches(preview) -> "shell ready"
+        else -> preview
+    }
+}
 
 internal fun MobileSession.sessionCommandLabel(): String =
     command.firstOrNull()?.takeIf { it.isNotBlank() } ?: "shell"

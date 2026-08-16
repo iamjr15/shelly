@@ -361,7 +361,6 @@ private fun ModalBackdrop() {
                 wordmark = "PREFS",
                 status = "paired with dev-macbook",
                 statusGlyph = SettingsGlyph.Monitor,
-                backLabel = "Sessions",
                 onBack = {},
             )
         },
@@ -369,7 +368,6 @@ private fun ModalBackdrop() {
             SettingsListRow("Appearance", "SYSTEM", glyph = SettingsGlyph.Sun, onClick = {})
             SettingsListRow("Notifications", "ON", glyph = SettingsGlyph.Bell, onClick = {})
             SettingsListRow("Security", "5 MIN", glyph = SettingsGlyph.Lock, onClick = {})
-            SettingsListRow("Privacy", "OPT-OUT", glyph = SettingsGlyph.Shield, onClick = {})
             SettingsListRow("About", "V1.0", glyph = SettingsGlyph.Info, showDivider = false, onClick = {})
             Spacer(Modifier.weight(1f))
             SettingsFooterAction("Unpair this device", onClick = {})

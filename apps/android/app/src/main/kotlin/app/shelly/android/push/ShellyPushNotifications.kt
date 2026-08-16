@@ -16,7 +16,6 @@ import androidx.core.content.ContextCompat
 import app.shelly.android.MainActivity
 import app.shelly.android.R
 import app.shelly.android.ui.ShellyUiPreferences
-import java.util.Calendar
 
 object ShellyPushNotifications {
     const val CHANNEL_ID_AGENT_STATE = "shelly-agent-state"
@@ -28,15 +27,6 @@ object ShellyPushNotifications {
     const val EVENT_AWAITING_INPUT = "awaiting_input"
     const val EVENT_SESSION_CRASHED = "session_crashed"
     const val EVENT_BUILD_FINISHED = "build_finished"
-
-    private val defaultHourOfDay: () -> Int = { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
-
-    /** Local hour-of-day (0–23) used to evaluate quiet hours; overridable for tests. */
-    internal var currentHourOfDay: () -> Int = defaultHourOfDay
-
-    internal fun resetClockForTests() {
-        currentHourOfDay = defaultHourOfDay
-    }
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
@@ -124,15 +114,9 @@ object ShellyPushNotifications {
         return hash.takeIf(::isSessionIdHash)
     }
 
-    // Quiet hours + the push master switch gate every type; the per-type switch gates its own.
+    // The push master switch gates every type; the per-type switch gates its own.
     private fun suppressed(prefs: ShellyUiPreferences, typeEnabled: Boolean): Boolean {
-        if (!prefs.readPushEnabled()) {
-            return true
-        }
-        if (!typeEnabled) {
-            return true
-        }
-        return prefs.readQuietHours().contains(currentHourOfDay())
+        return !prefs.readPushEnabled() || !typeEnabled
     }
 
     // Shared builder for the session-scoped notifications: same channel, privacy, and tap target;

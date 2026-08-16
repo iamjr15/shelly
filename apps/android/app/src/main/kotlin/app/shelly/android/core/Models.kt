@@ -89,4 +89,4 @@ data class PairedDaemonRecord(
 
 /** Friendly identifier for the paired computer; falls back to a generic label pre-host-name. */
 fun PairedDaemonRecord?.displayName(): String =
-    this?.hostName?.takeIf { it.isNotBlank() } ?: "your laptop"
+    this?.hostName?.takeIf { it.isNotBlank() } ?: "your computer"

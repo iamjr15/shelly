@@ -52,14 +52,12 @@ private fun SecurityContent(
                 wordmark = "GUARD",
                 status = if (biometricLockOn) "biometric lock is on" else "biometric lock is off",
                 statusGlyph = SettingsGlyph.Fingerprint,
-                backLabel = "Settings",
                 onBack = onBack,
             )
         },
         content = {
             SettingsListRow("Biometric lock", if (biometricLockOn) "On" else "Off", onClick = onToggleBiometricLock)
             SettingsListRow("Auto-lock", autoLockLabel, onClick = onCycleAutoLock)
-            SettingsListRow("Scrollback", "Encrypted")
             SettingsListRow("Block on background", if (blockOnBackgroundOn) "On" else "Off", onClick = onToggleBlockOnBackground)
             SettingsListRow(
                 "Telemetry",

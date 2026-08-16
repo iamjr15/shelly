@@ -7,15 +7,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,7 +25,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +63,7 @@ fun LockedScreen(
 ) {
     val c = ShellyTheme.colors
     ShellyScreen(
+        heroHeight = 338.dp,
         contentBackground = lockedContentBackground(c),
         hero = { LockedHero() },
         content = { LockedContent(onUnlock = onUnlock, unavailableMessage = unavailableMessage) },
@@ -74,7 +79,7 @@ private fun ColumnScope.LockedHero() {
         HeroBody(
             eyebrow = "PRIVATE ON THIS PHONE\nUNTIL YOU UNLOCK",
             wordmark = "LOCK",
-            wordmarkSize = 96.sp,
+            wordmarkSize = 100.sp,
             brandTrailing = {
                 LockedDate(
                     primary = heroForeground,
@@ -125,9 +130,14 @@ private fun LockedDate(primary: Color, muted: Color) {
 
 @Composable
 private fun ColumnScope.LockedContent(onUnlock: () -> Unit, unavailableMessage: String?) {
-    Spacer(Modifier.weight(0.38f))
-    LockedMessage()
-    Spacer(Modifier.weight(0.62f))
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .weight(1f),
+        contentAlignment = Alignment.Center,
+    ) {
+        LargeLockIcon()
+    }
     unavailableMessage?.let {
         Text(
             text = it,
@@ -138,42 +148,51 @@ private fun ColumnScope.LockedContent(onUnlock: () -> Unit, unavailableMessage: 
             modifier = Modifier.padding(bottom = 12.dp),
         )
     }
-    UnlockButton(onUnlock = onUnlock, modifier = Modifier.padding(bottom = 4.dp))
+    UnlockButton(onUnlock = onUnlock)
 }
 
 @Composable
-private fun LockedMessage() {
+private fun LargeLockIcon() {
     val c = ShellyTheme.colors
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    Box(
+        Modifier.size(width = 160.dp, height = 180.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            Modifier
-                .width(3.dp)
-                .height(88.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(c.accent),
-        )
-        Column {
-            Text(
-                "SHELLY IS LOCKED",
-                style = ShellyType.microLabel.copy(
-                    fontSize = 10.sp,
-                    lineHeight = 13.sp,
-                    letterSpacing = 0.08.em,
-                ),
-                color = c.accent,
+        androidx.compose.foundation.Canvas(Modifier.size(width = 150.dp, height = 168.dp)) {
+            val sx = size.width / 160f
+            val sy = size.height / 180f
+            val lineScale = minOf(sx, sy)
+            val outline = Stroke(
+                width = 9f * lineScale,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round,
             )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "Authenticate\nto continue.",
-                style = ShellyType.heading.copy(
-                    fontSize = 28.sp,
-                    lineHeight = 31.sp,
-                    fontWeight = FontWeight.SemiBold,
-                ),
+            val shackle = Path().apply {
+                moveTo(44f * sx, 72f * sy)
+                lineTo(44f * sx, 50f * sy)
+                cubicTo(44f * sx, 27f * sy, 59f * sx, 12f * sy, 80f * sx, 12f * sy)
+                cubicTo(101f * sx, 12f * sy, 116f * sx, 27f * sy, 116f * sx, 50f * sy)
+                lineTo(116f * sx, 72f * sy)
+            }
+            drawPath(shackle, color = c.ink, style = outline)
+            drawRoundRect(
                 color = c.ink,
+                topLeft = Offset(25f * sx, 70f * sy),
+                size = Size(110f * sx, 91f * sy),
+                cornerRadius = CornerRadius(14f * sx, 14f * sy),
+                style = outline,
+            )
+            drawCircle(
+                color = c.accent,
+                radius = 8f * lineScale,
+                center = Offset(80f * sx, 111f * sy),
+            )
+            drawLine(
+                color = c.accent,
+                start = Offset(80f * sx, 119f * sy),
+                end = Offset(80f * sx, 137f * sy),
+                strokeWidth = 8f * lineScale,
+                cap = StrokeCap.Round,
             )
         }
     }
@@ -195,14 +214,15 @@ private fun UnlockButton(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
                 scaleX = scale
                 scaleY = scale
             }
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(background)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onUnlock,
             )
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .height(58.dp)
+            .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {

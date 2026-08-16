@@ -1,6 +1,10 @@
 package app.shelly.android.features.settings
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import app.shelly.android.ui.components.SettingsGlyph
 import app.shelly.android.ui.components.SettingsHeroBody
 import app.shelly.android.ui.components.SettingsListRow
@@ -59,18 +63,19 @@ private fun LicensesContent(
                 wordmark = "LEGAL",
                 status = "$dependencyCount · $appLicense",
                 statusGlyph = SettingsGlyph.Package,
-                backLabel = "About",
                 onBack = onBack,
             )
         },
         content = {
-            rows.forEachIndexed { index, row ->
-                SettingsListRow(
-                    title = row.first,
-                    value = row.second,
-                    showDivider = index != rows.lastIndex,
-                    onClick = { onOpenLicense(row.first) },
-                )
+            LazyColumn(Modifier.fillMaxSize()) {
+                itemsIndexed(rows) { index, row ->
+                    SettingsListRow(
+                        title = row.first,
+                        value = row.second,
+                        showDivider = index != rows.lastIndex,
+                        onClick = { onOpenLicense(row.first) },
+                    )
+                }
             }
         },
     )

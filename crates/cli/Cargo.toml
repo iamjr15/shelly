@@ -33,6 +33,8 @@ service-manager.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 toml.workspace = true
+unicode-width.workspace = true
+vt100.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
