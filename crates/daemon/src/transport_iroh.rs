@@ -113,6 +113,14 @@ pub(crate) async fn serve(state: Arc<AppState>) -> Result<()> {
                     {
                         error!(%error, "iroh client connection failed");
                     }
+                    // The handler may have written a final frame (a version-mismatch
+                    // or unauthorized rejection) and finished the stream. Dropping
+                    // `conn` now sends CONNECTION_CLOSE, which can reset that still
+                    // in-flight stream data before the peer reads it. Wait (bounded)
+                    // for the peer to close first — it does so right after reading
+                    // the final frame — restoring the delivery guarantee the
+                    // pre-refactor finish_writer had via SendStream::stopped().
+                    let _ = timeout(Duration::from_secs(1), conn.closed()).await;
                 }
                 Err(error) => debug!(%error, "incoming iroh connection failed"),
             }

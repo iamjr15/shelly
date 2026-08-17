@@ -37,6 +37,7 @@ pub(crate) struct PairTestOptions {
     pub(crate) expect_local_cli_forbidden: bool,
     pub(crate) expect_create_and_kill: bool,
     pub(crate) expect_forbidden_agent_event: bool,
+    pub(crate) print_ticket: bool,
 }
 
 pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
@@ -88,6 +89,17 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
             PairingTicket::decode(ticket_string.trim()).context("decode pairing ticket")?
         }
     };
+
+    // Resolve-only mode: reconstruct and print the compact ticket so a caller can
+    // reuse it across multiple probes without re-consuming the single-use relay
+    // rendezvous resolve (which forgets the code after the first hit).
+    if options.print_ticket {
+        println!(
+            "{}",
+            ticket.encode().context("encode resolved pairing ticket")?
+        );
+        return Ok(());
+    }
 
     let secret_key = load_or_create_secret_key(options.secret_key_path.as_deref())?;
     let endpoint = Endpoint::builder(presets::Minimal)
