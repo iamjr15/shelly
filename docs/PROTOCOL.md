@@ -1,6 +1,6 @@
-# Shelly Protocol (v1 product, contract v4)
+# Shelly Protocol (v1 product, contract v5)
 
-`CONTRACT_VERSION` is `4`. Version 3 introduced the compact expiring `PairingTicket`. Version 4 makes session termination an acknowledged transaction: `KillSession` receives `SessionKilled { session_id }` only after the daemon has removed both live and persisted session state. The daemon rejects `Hello` with a mismatched version.
+`CONTRACT_VERSION` is `5`. Version 3 introduced the compact expiring `PairingTicket`. Version 4 made session termination an acknowledged transaction: `KillSession` receives `SessionKilled { session_id }` only after the daemon has removed both live and persisted session state. Version 5 adds the two-sided SAS pairing ceremony (a reachability-only rendezvous locator plus a transcript short-authentication-string confirmed identically on both devices) and the authenticated `UnpairSelf` message. During the migration window the daemon accepts a range rather than an exact match: already-paired identities keep their existing sessions at v4 (`MIN_PAIRED_CONTRACT_VERSION` is `4`), while new pairing and `UnpairSelf` require v5. The daemon rejects a `Hello` whose version falls outside that accepted range.
 
 The implemented local IPC path uses length-prefixed bincode frames over the daemon Unix socket. The protocol crate owns the bincode helpers and uses bincode 2 with its legacy configuration so v1 keeps the original fixed-int/little-endian bincode wire layout while rejecting trailing payload bytes. The implemented iroh path is mobile-only and uses the same length prefix with MessagePack payloads. Each frame is:
 

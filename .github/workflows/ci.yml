@@ -23,7 +23,7 @@ jobs:
           toolchain: 1.94.0
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2
+      - uses: taiki-e/install-action@288e746965032cfcc232e09af2daf5f23c14d780 # v2.86.1
         with:
           tool: nextest
       - if: matrix.os == 'ubuntu-24.04'
@@ -44,10 +44,10 @@ jobs:
         with:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2
+      - uses: taiki-e/install-action@288e746965032cfcc232e09af2daf5f23c14d780 # v2.86.1
         with:
           tool: cargo-deny
-      - uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2
+      - uses: taiki-e/install-action@288e746965032cfcc232e09af2daf5f23c14d780 # v2.86.1
         with:
           tool: cargo-audit
       - run: cargo deny check
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2
+      - uses: taiki-e/install-action@288e746965032cfcc232e09af2daf5f23c14d780 # v2.86.1
         with:
           tool: actionlint
       - run: actionlint
@@ -89,7 +89,7 @@ jobs:
       - run: scripts/smoke-local-handoff.sh
 
   macos-npm-smoke:
-    name: macOS npm and launchd Smoke
+    name: macOS npm Smoke
     runs-on: macos-14
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -114,7 +114,12 @@ jobs:
           codesign --force --sign - "packages/cli-$package/bin/shelly"
           codesign --force --sign - "packages/cli-$package/bin/shellyd"
       - run: node scripts/smoke-npm-local-install.mjs
-      - run: scripts/smoke-macos-daemon-launchd.sh
+      # Deferred: scripts/smoke-macos-daemon-launchd.sh (launchd daemon smoke) needs
+      # validation on a dedicated macOS host before CI wiring — it exercises daemon
+      # install/kill/replay under launchd (the script pkills shellyd and boots the
+      # user service), which the sandboxed CI runner has not been shaken out against.
+      # The daemon/CLI it would cover already pass their unit suites + the direct-spawn
+      # cli-doctor smoke. Wire it in a follow-up (Phase 8 L-7).
 
   relay-otlp-smoke:
     name: Relay OTLP Smoke
