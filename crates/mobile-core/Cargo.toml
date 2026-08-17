@@ -7,17 +7,16 @@ repository.workspace = true
 description = "Shelly Rust mobile core."
 
 [lib]
-crate-type = ["lib", "cdylib", "staticlib"]
+crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 iroh.workspace = true
 shelly-protocol = { path = "../protocol" }
 reqwest.workspace = true
 rustls.workspace = true
-rmp-serde.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { version = "1", default-features = false, features = ["io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 uniffi = { workspace = true, features = ["cli"] }
 webpki-roots.workspace = true
 

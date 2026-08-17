@@ -9,18 +9,20 @@
 //! create/kill by the paired device identity; the relay/transport never weakens
 //! that boundary.
 
-use iroh::endpoint::{RecvStream, SendStream, presets};
+use iroh::endpoint::{RecvStream, SendStream, VarInt, presets};
 use iroh::{Endpoint, EndpointAddr, RelayMode, RelayUrl, SecretKey, TransportAddr};
 use serde::{Serialize, de::DeserializeOwned};
 use shelly_protocol::{
-    AgentState as ProtocolAgentState, CONTRACT_VERSION, ClientKind, ClientSize, ClientToServerMsg,
-    ErrorCode, PairingTicket, PushPlatform as ProtocolPushPlatform, ServerToClientMsg, SessionId,
-    SessionSummary as ProtocolSessionSummary, max_frame_len, normalize_code,
+    AgentState as ProtocolAgentState, CODE_LEN, CONTRACT_VERSION, ClientKind, ClientSize,
+    ClientToServerMsg, ErrorCode, MessagePackDecodeError, MessagePackFraming, PairingRendezvous,
+    PairingTicket, PushPlatform as ProtocolPushPlatform, ReadFrameError, ServerToClientMsg,
+    SessionId, SessionSummary as ProtocolSessionSummary, WriteFrameError, is_valid_code,
+    normalize_code, pairing_code_locator, pairing_sas, read_framed, write_framed,
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
 use tokio::time::{Duration, timeout};
 
@@ -57,7 +59,7 @@ pub struct ClientConfig {
     pub device_secret_key: Option<Vec<u8>>,
     /// Persisted daemon connection target after successful pairing.
     pub paired_daemon: Option<DaemonConfig>,
-    /// Relay control URL used to resolve a typed pairing code to a ticket.
+    /// Relay control URL used to resolve a typed pairing code to daemon reachability.
     ///
     /// Injected from the `SHELLY_RELAY_CONTROL_URL` environment value via the
     /// iOS `ShellyRelayControlURL` Info.plist key and the Android
@@ -98,7 +100,7 @@ pub enum AgentStateFfi {
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
-/// Result of successful QR pairing, persisted by the native app.
+/// Result of a locally confirmed, daemon-completed pairing, persisted by the native app.
 pub struct DaemonInfo {
     /// Daemon iroh node id.
     pub daemon_node_id: String,
@@ -165,6 +167,9 @@ pub enum ShellyError {
     /// The daemon returned an unexpected or invalid protocol response.
     #[error("protocol error: {0}")]
     Protocol(String),
+    /// The phone and daemon protocol versions cannot perform this operation together.
+    #[error("version mismatch: {0}")]
+    VersionMismatch(String),
     /// The daemon rejected the client identity.
     #[error("unauthorized: {0}")]
     Unauthorized(String),
@@ -243,6 +248,71 @@ struct DaemonTarget {
     node_id: String,
     relay_url: Option<String>,
     addrs: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+struct PendingPairingGate {
+    local_confirmed: bool,
+    daemon_completed: bool,
+    cancelled: bool,
+    persisted: bool,
+}
+
+impl PendingPairingGate {
+    fn confirm_local(&mut self) -> Result<(), ShellyError> {
+        if self.cancelled {
+            return Err(ShellyError::InvalidConfig(
+                "pairing attempt was already cancelled".to_string(),
+            ));
+        }
+        if self.persisted {
+            return Err(ShellyError::InvalidConfig(
+                "pairing attempt was already completed".to_string(),
+            ));
+        }
+        self.local_confirmed = true;
+        Ok(())
+    }
+
+    fn record_daemon_completed(&mut self) -> Result<(), ShellyError> {
+        if self.cancelled {
+            return Err(ShellyError::InvalidConfig(
+                "cancelled pairing attempt cannot complete".to_string(),
+            ));
+        }
+        self.daemon_completed = true;
+        Ok(())
+    }
+
+    fn mark_persisted(&mut self) -> Result<(), ShellyError> {
+        if !self.ready_to_persist() {
+            return Err(ShellyError::Internal(
+                "pairing cannot be persisted before both confirmations".to_string(),
+            ));
+        }
+        self.persisted = true;
+        Ok(())
+    }
+
+    fn cancel(&mut self) -> Result<(), ShellyError> {
+        if self.persisted {
+            return Err(ShellyError::InvalidConfig(
+                "completed pairing attempt cannot be cancelled".to_string(),
+            ));
+        }
+        self.cancelled = true;
+        Ok(())
+    }
+
+    fn ready_to_persist(&self) -> bool {
+        self.local_confirmed && self.daemon_completed && !self.cancelled
+    }
+}
+
+struct PendingPairingAttempt {
+    send: Option<SendStream>,
+    recv: Option<RecvStream>,
+    gate: PendingPairingGate,
 }
 
 fn build_http_client() -> Result<reqwest::Client, ShellyError> {
@@ -343,7 +413,7 @@ impl ShellyClient {
     pub async fn pair_with_qr(
         self: Arc<Self>,
         qr_payload: String,
-    ) -> Result<DaemonInfo, ShellyError> {
+    ) -> Result<Arc<PendingPairing>, ShellyError> {
         let ticket = PairingTicket::decode(qr_payload.trim()).map_err(|error| {
             ShellyError::Protocol(format!("invalid pairing QR payload: {error}"))
         })?;
@@ -352,11 +422,19 @@ impl ShellyClient {
 
     /// Pairs with a daemon using a short typed code resolved through the relay.
     ///
-    /// The code is normalized, then exchanged for the daemon's [`PairingTicket`]
-    /// via the relay rendezvous endpoint. Requires a configured relay control
-    /// URL; the typed-code path is unavailable when no relay is hosted.
-    pub async fn pair_with_code(self: Arc<Self>, code: String) -> Result<DaemonInfo, ShellyError> {
+    /// The code is normalized and hashed into its relay locator. The relay returns
+    /// only daemon reachability; the locally retained code is sent end-to-end to
+    /// the authenticated daemon. Requires a configured relay control URL.
+    pub async fn pair_with_code(
+        self: Arc<Self>,
+        code: String,
+    ) -> Result<Arc<PendingPairing>, ShellyError> {
         let code = normalize_code(&code);
+        if !is_valid_code(&code) {
+            return Err(ShellyError::InvalidConfig(format!(
+                "pairing code must be {CODE_LEN} Crockford-base32 characters"
+            )));
+        }
         let relay_control_url = self
             .config
             .relay_control_url
@@ -368,7 +446,8 @@ impl ShellyClient {
                 )
             })?
             .trim_end_matches('/');
-        let url = format!("{relay_control_url}/v1/pair/resolve/{code}");
+        let locator = pairing_code_locator(&code);
+        let url = format!("{relay_control_url}/v1/pair/resolve/{locator}");
 
         let response = self.http.get(&url).send().await.map_err(|error| {
             let error = error.without_url();
@@ -398,12 +477,7 @@ impl ShellyClient {
                 "pairing relay returned an invalid resolve response: {error}"
             ))
         })?;
-        let ticket = PairingTicket::decode(resolved.ticket_blob.trim()).map_err(|error| {
-            android_error!("pairing relay returned an invalid pairing ticket: {error}");
-            ShellyError::Protocol(format!(
-                "pairing relay returned an invalid pairing ticket: {error}"
-            ))
-        })?;
+        let ticket = resolved.rendezvous.into_ticket(code);
         self.pair_with_ticket(ticket).await
     }
 
@@ -633,11 +707,39 @@ impl ShellyClient {
             ))),
         }
     }
+
+    /// Removes this authenticated phone's own pairing from the daemon.
+    ///
+    /// The daemon derives the record to remove from the authenticated iroh peer;
+    /// callers cannot name or remove another paired device.
+    pub async fn unpair_self(self: Arc<Self>) -> Result<(), ShellyError> {
+        let (mut send, mut recv) = self.open_authenticated_stream().await?;
+        write_msg(&mut send, &ClientToServerMsg::UnpairSelf).await?;
+        match read_msg::<ServerToClientMsg>(&mut recv).await? {
+            ServerToClientMsg::Pong { .. } => {
+                *self.daemon.lock().await = None;
+                Ok(())
+            }
+            ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
+            other => Err(ShellyError::Protocol(format!(
+                "unexpected daemon response to UnpairSelf: {other:?}"
+            ))),
+        }
+    }
 }
 
 impl ShellyClient {
     /// Shared dial-and-pair path for both the QR and typed-code flows.
-    async fn pair_with_ticket(&self, ticket: PairingTicket) -> Result<DaemonInfo, ShellyError> {
+    async fn pair_with_ticket(
+        self: Arc<Self>,
+        ticket: PairingTicket,
+    ) -> Result<Arc<PendingPairing>, ShellyError> {
+        let code = normalize_code(&ticket.code);
+        if !is_valid_code(&code) {
+            return Err(ShellyError::InvalidConfig(format!(
+                "pairing code must be {CODE_LEN} Crockford-base32 characters"
+            )));
+        }
         let target = DaemonTarget::from_ticket(&ticket);
         let endpoint = self.endpoint(target.parsed_relay()?.as_ref()).await?;
         let (mut send, mut recv) = open_stream(&endpoint, &target).await?;
@@ -647,7 +749,7 @@ impl ShellyClient {
         write_msg(
             &mut send,
             &ClientToServerMsg::PairWithCode {
-                code: ticket.code,
+                code: code.clone(),
                 device_name: self.config.device_name.clone(),
                 device_node_id: endpoint.id().to_string(),
             },
@@ -655,18 +757,27 @@ impl ShellyClient {
         .await?;
 
         match read_msg::<ServerToClientMsg>(&mut recv).await? {
-            ServerToClientMsg::PairingComplete { daemon_node_id } => {
-                *self.daemon.lock().await = Some(target.clone());
-                Ok(DaemonInfo {
-                    daemon_node_id,
-                    relay_url: target.relay_url,
-                    addrs: target.addrs,
+            ServerToClientMsg::PairingPending { sas } => {
+                let expected_sas = expected_pairing_sas(&code, &target.node_id, endpoint.id())?;
+                if sas != expected_sas {
+                    close_pairing_streams(&mut send, &mut recv);
+                    return Err(ShellyError::Protocol(
+                        "daemon pairing SAS did not match the locally computed transcript"
+                            .to_string(),
+                    ));
+                }
+                Ok(Arc::new(PendingPairing {
+                    sas,
+                    client: self,
+                    target,
+                    welcome,
                     device_node_id: endpoint.id().to_string(),
-                    device_secret_key: self.secret_key.to_bytes().to_vec(),
-                    daemon_version: welcome.daemon_version,
-                    protocol_version: CONTRACT_VERSION,
-                    host_name: welcome.host_name,
-                })
+                    attempt: Mutex::new(PendingPairingAttempt {
+                        send: Some(send),
+                        recv: Some(recv),
+                        gate: PendingPairingGate::default(),
+                    }),
+                }))
             }
             ServerToClientMsg::Error { code, message } => Err(error_from_server(code, message)),
             other => Err(ShellyError::Protocol(format!(
@@ -703,6 +814,111 @@ impl ShellyClient {
         let created = endpoint_for_secret(&self.secret_key, relay_url).await?;
         *endpoint = Some(created.clone());
         Ok(created)
+    }
+}
+
+#[derive(uniffi::Object)]
+/// Pairing attempt waiting for the user to compare and confirm its SAS.
+///
+/// The daemon stream remains open and may buffer `PairingComplete`, but no
+/// daemon target is saved until [`Self::confirm`] observes both the local user
+/// confirmation and that daemon completion. Dropping or cancelling the attempt
+/// leaves no persisted pairing.
+pub struct PendingPairing {
+    sas: String,
+    client: Arc<ShellyClient>,
+    target: DaemonTarget,
+    welcome: WelcomeInfo,
+    device_node_id: String,
+    attempt: Mutex<PendingPairingAttempt>,
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl PendingPairing {
+    /// Returns the fixed grouped SAS to compare with the computer display.
+    pub fn sas(&self) -> String {
+        self.sas.clone()
+    }
+
+    /// Confirms that the SAS matches and waits for the daemon's completion.
+    ///
+    /// The returned daemon record is safe for the native app to persist. A
+    /// completion received before this call remains buffered on the stream and
+    /// cannot persist anything by itself.
+    pub async fn confirm(self: Arc<Self>) -> Result<DaemonInfo, ShellyError> {
+        let (mut send, mut recv) = {
+            let mut attempt = self.attempt.lock().await;
+            attempt.gate.confirm_local()?;
+            let send = attempt.send.take().ok_or_else(|| {
+                ShellyError::InvalidConfig(
+                    "pairing confirmation is already in progress".to_string(),
+                )
+            })?;
+            let recv = attempt.recv.take().ok_or_else(|| {
+                ShellyError::InvalidConfig(
+                    "pairing confirmation is already in progress".to_string(),
+                )
+            })?;
+            (send, recv)
+        };
+
+        let daemon_node_id = match read_msg::<ServerToClientMsg>(&mut recv).await {
+            Ok(ServerToClientMsg::PairingComplete { daemon_node_id }) => daemon_node_id,
+            Ok(ServerToClientMsg::Error { code, message }) => {
+                close_pairing_streams(&mut send, &mut recv);
+                return Err(error_from_server(code, message));
+            }
+            Ok(other) => {
+                close_pairing_streams(&mut send, &mut recv);
+                return Err(ShellyError::Protocol(format!(
+                    "unexpected daemon response during pairing confirmation: {other:?}"
+                )));
+            }
+            Err(error) => {
+                close_pairing_streams(&mut send, &mut recv);
+                return Err(error);
+            }
+        };
+
+        if daemon_node_id != self.target.node_id {
+            close_pairing_streams(&mut send, &mut recv);
+            return Err(ShellyError::Protocol(
+                "pairing completion daemon identity did not match the authenticated target"
+                    .to_string(),
+            ));
+        }
+
+        {
+            let mut attempt = self.attempt.lock().await;
+            attempt.gate.record_daemon_completed()?;
+            attempt.gate.mark_persisted()?;
+        }
+        *self.client.daemon.lock().await = Some(self.target.clone());
+        let _ = send.finish();
+
+        Ok(DaemonInfo {
+            daemon_node_id,
+            relay_url: self.target.relay_url.clone(),
+            addrs: self.target.addrs.clone(),
+            device_node_id: self.device_node_id.clone(),
+            device_secret_key: self.client.secret_key.to_bytes().to_vec(),
+            daemon_version: self.welcome.daemon_version.clone(),
+            protocol_version: CONTRACT_VERSION,
+            host_name: self.welcome.host_name.clone(),
+        })
+    }
+
+    /// Rejects the local pairing ceremony and closes its outstanding stream.
+    pub async fn cancel(self: Arc<Self>) -> Result<(), ShellyError> {
+        let (send, recv) = {
+            let mut attempt = self.attempt.lock().await;
+            attempt.gate.cancel()?;
+            (attempt.send.take(), attempt.recv.take())
+        };
+        if let (Some(mut send), Some(mut recv)) = (send, recv) {
+            close_pairing_streams(&mut send, &mut recv);
+        }
+        Ok(())
     }
 }
 
@@ -799,7 +1015,7 @@ impl AttachedSession {
         match message {
             ServerToClientMsg::Output { seq, bytes, .. } => {
                 self.last_seen_seq.store(seq, Ordering::Release);
-                sink.on_output(bytes);
+                sink.on_output(bytes.to_vec());
                 Ok(StreamDecision::Continue)
             }
             ServerToClientMsg::AgentStateChanged { state, .. } => {
@@ -948,6 +1164,27 @@ async fn open_stream(
     })
 }
 
+fn expected_pairing_sas(
+    code: &str,
+    daemon_node_id: &str,
+    phone_node_id: iroh::PublicKey,
+) -> Result<String, ShellyError> {
+    let daemon_node_id = daemon_node_id.parse::<iroh::PublicKey>().map_err(|error| {
+        ShellyError::Protocol(format!("pairing daemon node id is invalid: {error}"))
+    })?;
+    Ok(pairing_sas(
+        code,
+        daemon_node_id.as_bytes(),
+        phone_node_id.as_bytes(),
+    ))
+}
+
+fn close_pairing_streams(send: &mut SendStream, recv: &mut RecvStream) {
+    let error_code = VarInt::from_u32(0);
+    let _ = send.reset(error_code);
+    let _ = recv.stop(error_code);
+}
+
 async fn write_hello(send: &mut SendStream, platform: MobilePlatform) -> Result<(), ShellyError> {
     write_msg(
         send,
@@ -996,20 +1233,24 @@ where
     T: DeserializeOwned,
     R: AsyncRead + Unpin,
 {
-    let mut len_bytes = [0_u8; 4];
-    reader.read_exact(&mut len_bytes).await.map_err(|error| {
-        ShellyError::Transport(format!("failed to read daemon frame length: {error}"))
-    })?;
-    let len = u32::from_be_bytes(len_bytes) as usize;
-    if len > max_frame_len() {
-        return Err(ShellyError::Protocol(format!("frame too large: {len}")));
+    match read_framed::<MessagePackFraming, _, _>(reader).await {
+        Ok(message) => Ok(message),
+        Err(ReadFrameError::ReadLength(error)) => Err(ShellyError::Transport(format!(
+            "failed to read daemon frame length: {error}"
+        ))),
+        Err(ReadFrameError::TooLarge(len)) => {
+            Err(ShellyError::Protocol(format!("frame too large: {len}")))
+        }
+        Err(ReadFrameError::ReadPayload(error)) => Err(ShellyError::Transport(format!(
+            "failed to read daemon frame payload: {error}"
+        ))),
+        Err(ReadFrameError::Decode(MessagePackDecodeError::Decode(error))) => Err(
+            ShellyError::Protocol(format!("daemon frame payload is invalid: {error}")),
+        ),
+        Err(ReadFrameError::Decode(MessagePackDecodeError::TrailingBytes(len))) => Err(
+            ShellyError::Protocol(format!("daemon frame payload has {len} trailing byte(s)")),
+        ),
     }
-    let mut payload = vec![0; len];
-    reader.read_exact(&mut payload).await.map_err(|error| {
-        ShellyError::Transport(format!("failed to read daemon frame payload: {error}"))
-    })?;
-    rmp_serde::from_slice(&payload)
-        .map_err(|error| ShellyError::Protocol(format!("daemon frame payload is invalid: {error}")))
 }
 
 async fn write_msg<T>(writer: &mut SendStream, message: &T) -> Result<(), ShellyError>
@@ -1024,37 +1265,34 @@ where
     T: Serialize,
     W: AsyncWrite + Unpin,
 {
-    let payload = rmp_serde::to_vec_named(message).map_err(|error| {
-        ShellyError::Protocol(format!("failed to encode daemon request: {error}"))
-    })?;
-    if payload.len() > max_frame_len() {
-        return Err(ShellyError::Protocol(format!(
-            "frame too large: {}",
-            payload.len()
-        )));
+    match write_framed::<MessagePackFraming, _, _>(writer, message).await {
+        Ok(()) => Ok(()),
+        Err(WriteFrameError::Encode(error)) => Err(ShellyError::Protocol(format!(
+            "failed to encode daemon request: {error}"
+        ))),
+        Err(WriteFrameError::TooLarge(len)) => {
+            Err(ShellyError::Protocol(format!("frame too large: {len}")))
+        }
+        Err(WriteFrameError::WriteLength(error)) => Err(ShellyError::Transport(format!(
+            "failed to write daemon frame length: {error}"
+        ))),
+        Err(WriteFrameError::WritePayload(error)) => Err(ShellyError::Transport(format!(
+            "failed to write daemon frame payload: {error}"
+        ))),
     }
-    writer
-        .write_all(&(payload.len() as u32).to_be_bytes())
-        .await
-        .map_err(|error| {
-            ShellyError::Transport(format!("failed to write daemon frame length: {error}"))
-        })?;
-    writer.write_all(&payload).await.map_err(|error| {
-        ShellyError::Transport(format!("failed to write daemon frame payload: {error}"))
-    })?;
-    Ok(())
 }
 
 #[derive(serde::Deserialize)]
-/// Relay rendezvous response carrying the opaque encoded [`PairingTicket`].
+/// Relay rendezvous response carrying code-free daemon reachability.
 struct ResolvePairingResponse {
-    /// `sh1`-prefixed ticket string published by the daemon under this code.
-    ticket_blob: String,
+    /// Reachability published under the pairing code's SHA-256 locator.
+    rendezvous: PairingRendezvous,
 }
 
 fn error_from_server(code: ErrorCode, message: String) -> ShellyError {
     match code {
-        ErrorCode::ProtocolMismatch | ErrorCode::InvalidRequest => ShellyError::Protocol(message),
+        ErrorCode::VersionMismatch => ShellyError::VersionMismatch(message),
+        ErrorCode::InvalidRequest => ShellyError::Protocol(message),
         ErrorCode::Unauthorized => ShellyError::Unauthorized(message),
         ErrorCode::Forbidden => ShellyError::Forbidden(message),
         ErrorCode::NotFound => ShellyError::NotFound(message),
@@ -1181,8 +1419,9 @@ impl From<ProtocolSessionSummary> for SessionSummaryFfi {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shelly_protocol::{encode_messagepack, max_frame_len};
     use std::sync::Mutex as StdMutex;
-    use tokio::io::duplex;
+    use tokio::io::{AsyncWriteExt as _, duplex};
 
     #[test]
     fn kill_confirmation_requires_the_requested_session_id() {
@@ -1284,7 +1523,7 @@ mod tests {
 
     fn sample_ticket() -> PairingTicket {
         PairingTicket {
-            code: "AB234".to_string(),
+            code: "AB234CD".to_string(),
             node_id: "node".to_string(),
             relay_url: Some("https://relay.example".to_string()),
             addrs: vec!["127.0.0.1:9000".to_string()],
@@ -1308,6 +1547,57 @@ mod tests {
         // trailing newline must still resolve to the same ticket.
         let scanned = format!("{encoded}\n");
         assert_eq!(PairingTicket::decode(scanned.trim()).unwrap(), ticket);
+    }
+
+    #[test]
+    fn pending_pairing_gate_requires_both_confirmations_before_persisting() {
+        let mut gate = PendingPairingGate::default();
+
+        gate.record_daemon_completed().unwrap();
+        assert!(!gate.ready_to_persist());
+        assert!(gate.mark_persisted().is_err());
+
+        gate.confirm_local().unwrap();
+        assert!(gate.ready_to_persist());
+        gate.mark_persisted().unwrap();
+        assert!(gate.persisted);
+    }
+
+    #[test]
+    fn cancelled_pending_pairing_cannot_confirm_or_persist() {
+        let mut gate = PendingPairingGate::default();
+
+        gate.record_daemon_completed().unwrap();
+        gate.cancel().unwrap();
+
+        assert!(gate.confirm_local().is_err());
+        assert!(gate.record_daemon_completed().is_err());
+        assert!(!gate.ready_to_persist());
+        assert!(gate.mark_persisted().is_err());
+    }
+
+    #[test]
+    fn mobile_sas_computation_uses_normalized_code_and_authenticated_key_order() {
+        let daemon = SecretKey::from_bytes(&[0x11; 32]).public();
+        let phone = SecretKey::from_bytes(&[0x22; 32]).public();
+        let computed = expected_pairing_sas("ab2-34 cd", &daemon.to_string(), phone).unwrap();
+
+        assert_eq!(
+            computed,
+            pairing_sas("AB234CD", daemon.as_bytes(), phone.as_bytes())
+        );
+        assert_ne!(
+            computed,
+            pairing_sas("AB234CD", phone.as_bytes(), daemon.as_bytes())
+        );
+    }
+
+    #[test]
+    fn version_mismatch_has_a_distinct_mobile_error() {
+        assert!(matches!(
+            error_from_server(ErrorCode::VersionMismatch, "update required".to_string()),
+            ShellyError::VersionMismatch(message) if message == "update required"
+        ));
     }
 
     #[test]
@@ -1369,6 +1659,27 @@ mod tests {
         assert!(matches!(error, ShellyError::Transport(_)));
     }
 
+    #[tokio::test]
+    async fn mobile_messagepack_frame_reader_rejects_trailing_payload_bytes() {
+        let mut payload = encode_messagepack(&ClientToServerMsg::Ping { seq: 9 }).unwrap();
+        payload.push(0xc0);
+        let (mut writer, mut reader) = duplex(1024);
+        writer
+            .write_all(&(payload.len() as u32).to_be_bytes())
+            .await
+            .unwrap();
+        writer.write_all(&payload).await.unwrap();
+        drop(writer);
+
+        let error = read_msg_from::<ClientToServerMsg, _>(&mut reader)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(error, ShellyError::Protocol(message) if message.contains("trailing byte"))
+        );
+    }
+
     #[test]
     fn stream_output_advances_mobile_reconnect_offset_without_decoding_bytes() {
         let session_id = SessionId::new();
@@ -1381,7 +1692,7 @@ mod tests {
                 ServerToClientMsg::Output {
                     session_id,
                     seq: 42,
-                    bytes: raw_bytes.clone(),
+                    bytes: raw_bytes.clone().into(),
                 },
                 &sink,
             )
@@ -1413,7 +1724,7 @@ mod tests {
                     ServerToClientMsg::Output {
                         session_id,
                         seq,
-                        bytes: chunk,
+                        bytes: chunk.into(),
                     },
                     &sink,
                 )
