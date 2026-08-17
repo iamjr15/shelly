@@ -38,7 +38,7 @@ Remote iroh clients with `ClientKind::IosApp` or `ClientKind::AndroidApp` may li
 1. `POST /v1/pair` registers the daemon node id and relay-signing Ed25519 public key.
 2. `POST /v1/push/register-token` binds `(daemon_node_id, push_token, platform)` at the relay.
 3. `POST /v1/push/unregister-token` removes that relay binding when mobile unpairs or the desktop device record is removed.
-4. `POST /v1/push` sends `recipient_token`, `platform`, lowercase 64-character hex `session_id_hash`, lowercase 64-character hex `session_name_hash`, fixed `event_type`, `nonce`, and `ts_ms`.
+4. `POST /v1/push` sends `recipient_token`, `platform`, lowercase 64-character hex `session_id_hash`, fixed `event_type`, `nonce`, and `ts_ms`.
 
 `GET /v1/version` returns the relay version, minimum desktop/mobile versions, and protocol `CONTRACT_VERSION`; it does not include daemon node IDs, tokens, session hashes, or terminal metadata.
 

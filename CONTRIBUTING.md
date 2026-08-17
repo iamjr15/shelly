@@ -18,7 +18,7 @@ Before opening a PR, run:
 
 ```sh
 cargo fmt --check
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo nextest run --workspace
 cargo test --workspace --doc
 ```
@@ -28,8 +28,9 @@ example `node scripts/test-npm-artifact-pack.mjs` for npm packaging,
 `scripts/smoke-local-handoff.sh` for daemon/CLI handoff behavior, `pnpm
 test:android-unit` for Android UI/core changes, or `pnpm check:site` for site
 changes.
-`cargo deny check` and `cargo audit` are CI supply-chain gates when the tools
-are installed.
+`cargo deny check` and plain `cargo audit` are CI supply-chain gates when the
+tools are installed. Time-bounded accepted audit findings and their review dates
+live in `.cargo/audit.toml`.
 
 For release-milestone readiness, use the `Required Local Checks` section in
 `PLAN.md`; it is intentionally broader than the day-to-day PR checklist above.

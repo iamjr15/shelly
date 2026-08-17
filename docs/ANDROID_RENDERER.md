@@ -6,7 +6,7 @@ Rationale:
 
 - `termlib` is an Apache-2.0 native Jetpack Compose terminal backed by MIT-licensed libvterm, so it consumes the same raw PTY byte stream that Shelly transports between daemon and mobile clients.
 - It supports the v1 rendering needs called out in `PLAN.md`: 256/true color, double-width and combining characters, text selection, scrolling, zoom, and resize.
-- It is published as `org.connectbot:termlib`; the Android app currently pins `0.0.35`.
+- It is published as `org.connectbot:termlib`; the Android app currently pins `0.1.0`.
 - Recent upstream work specifically addressed two v1 risk areas: IME `ACTION_MULTIPLE` input handling and terminal recomposition overhead.
 
 Known risk:
@@ -18,7 +18,7 @@ Local verification status:
 - Implemented the native Android Compose app target that wires `Terminal(...)` to `mobile-core` `ByteStreamSink` output and sends termlib keyboard bytes back through `AttachedSession.sendInput`.
 - XML resources lint locally with `xmllint`.
 - Android Gradle app tasks depend on `buildRustMobileCore`, which runs `apps/android/scripts/build-rust.sh` before Kotlin compilation or native-library merge.
-- `apps/android/gradlew --no-daemon bundleRelease` builds the Rust mobile core for `arm64-v8a`, `armeabi-v7a`, and `x86_64`, then emits a release AAB that includes all three ABI slices.
+- `apps/android/gradlew --no-daemon bundleRelease` builds the Rust mobile core for `arm64-v8a` and `x86_64`, then emits a release AAB that includes both ABI slices.
 - Latest direct adb emulator pass on 2026-06-02 used `Medium_Phone_API_36.1`,
   paired through the local relay/daemon, attached to a daemon-owned `bash`
   session named `pretzel`, sent `shelly_android_direct_ok` from the Android terminal,

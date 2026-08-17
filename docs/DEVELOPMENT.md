@@ -8,7 +8,7 @@ behavior.
 
 ```sh
 cargo fmt --check
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo nextest run --workspace
 cargo test --workspace --doc
 ```
@@ -32,8 +32,9 @@ cargo deny check
 cargo audit
 ```
 
-Current accepted RustSec output is warning-only and tracked in `deny.toml`.
-Treat any new failing advisory, source, or license finding as a release blocker.
+Run plain `cargo audit`; its time-bounded accepted findings and review dates are
+tracked in `.cargo/audit.toml`. Cargo-deny policy remains in `deny.toml`. Treat
+any new failing advisory, source, or license finding as a release blocker.
 
 ## Local Handoff
 
@@ -135,6 +136,10 @@ Gradle app tasks depend on `buildRustMobileCore`, which runs
 native-library merge. `bundleRelease` exercises the release-oriented Android
 build path used by CI; run the script directly only when you want an explicit
 Rust/UniFFI preflight.
+
+The Gradle version-catalog (`libs.versions.toml`) migration is intentionally
+deferred; the build keeps explicit dependency coordinates to avoid high-risk,
+low-value churn during the v1 release hardening pass.
 
 Emulator handoff testing is direct manual adb work: install the debug APK,
 capture screenshots/UI dumps/logcat, pair through the relay or local daemon, and
