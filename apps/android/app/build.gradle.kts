@@ -141,7 +141,7 @@ android {
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2026.03.01"))
+    implementation(platform("androidx.compose:compose-bom:2026.08.00"))
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
@@ -152,9 +152,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-savedstate:2.10.0")
     implementation("androidx.navigation:navigation-compose:2.9.7")
     implementation("androidx.work:work-runtime-ktx:2.10.1")
-    implementation("androidx.fragment:fragment-ktx:1.8.9")
+    implementation("androidx.fragment:fragment-ktx:1.9.0")
     implementation("androidx.biometric:biometric-ktx:1.4.0-alpha02")
-    implementation(platform("com.google.firebase:firebase-bom:34.13.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
     implementation("com.google.firebase:firebase-messaging")
 
     implementation("androidx.camera:camera-camera2:1.5.1")
@@ -164,12 +164,12 @@ dependencies {
 
     implementation("org.connectbot:termlib:0.1.0")
     implementation("net.java.dev.jna:jna:5.19.1@aar")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.robolectric:robolectric:4.16")
-    testImplementation(platform("androidx.compose:compose-bom:2026.03.01"))
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation(platform("androidx.compose:compose-bom:2026.08.00"))
     testImplementation("androidx.compose.ui:ui-test-junit4")
 }
 
