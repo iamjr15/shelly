@@ -2,11 +2,11 @@ use anyhow::{Context, Result, anyhow, bail};
 use chacha20poly1305::aead::{OsRng, rand_core::RngCore};
 use shelly_protocol::{CODE_ALPHABET, CODE_LEN, ClientId, now_ms};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Duration, timeout};
 
-const PAIR_TOKEN_TTL_MS: u64 = 15 * 60 * 1000;
+const PAIR_TOKEN_TTL_MS: u64 = 5 * 60 * 1000;
 /// Wrong in-band code attempts tolerated before an active code is invalidated.
 const MAX_CODE_ATTEMPTS: u8 = 5;
 
@@ -15,6 +15,7 @@ pub struct PairingApprovalEvent {
     pub request_id: ClientId,
     pub device_name: String,
     pub device_node_id: String,
+    pub sas: String,
 }
 
 struct PendingPairCode {
@@ -26,14 +27,47 @@ struct PendingPairCode {
 
 pub struct PairingManager {
     codes: Mutex<HashMap<String, PendingPairCode>>,
-    approvals: Mutex<HashMap<ClientId, oneshot::Sender<bool>>>,
+    approvals: Arc<Mutex<HashMap<ClientId, oneshot::Sender<bool>>>>,
+}
+
+pub struct PendingPairingApproval {
+    approvals: Arc<Mutex<HashMap<ClientId, oneshot::Sender<bool>>>>,
+    request_id: ClientId,
+    remaining_ms: u64,
+    approval_rx: Option<oneshot::Receiver<bool>>,
+}
+
+impl PendingPairingApproval {
+    pub async fn wait(mut self) -> bool {
+        let approval_rx = self
+            .approval_rx
+            .take()
+            .expect("pending pairing approval receiver already consumed");
+        match timeout(Duration::from_millis(self.remaining_ms), approval_rx).await {
+            Ok(Ok(approved)) => approved,
+            Ok(Err(_)) | Err(_) => false,
+        }
+    }
+}
+
+impl Drop for PendingPairingApproval {
+    fn drop(&mut self) {
+        match self.approvals.lock() {
+            Ok(mut approvals) => {
+                approvals.remove(&self.request_id);
+            }
+            Err(_) => {
+                tracing::warn!(request_id = %self.request_id.0, "pair approval lock poisoned during cleanup");
+            }
+        }
+    }
 }
 
 impl PairingManager {
     pub fn new() -> Self {
         Self {
             codes: Mutex::new(HashMap::new()),
-            approvals: Mutex::new(HashMap::new()),
+            approvals: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -62,12 +96,13 @@ impl PairingManager {
         Ok((code, expires_at, request_rx))
     }
 
-    pub async fn request_approval(
+    pub fn begin_approval(
         &self,
         code: &str,
         device_name: String,
         device_node_id: String,
-    ) -> Result<bool> {
+        sas: String,
+    ) -> Result<PendingPairingApproval> {
         let pending = {
             let mut codes = self
                 .codes
@@ -104,6 +139,12 @@ impl PairingManager {
             .lock()
             .map_err(|_| anyhow!("pair approval lock poisoned"))?
             .insert(request_id, approval_tx);
+        let pending_approval = PendingPairingApproval {
+            approvals: Arc::clone(&self.approvals),
+            request_id,
+            remaining_ms,
+            approval_rx: Some(approval_rx),
+        };
 
         if pending
             .request_tx
@@ -111,27 +152,32 @@ impl PairingManager {
                 request_id,
                 device_name,
                 device_node_id,
+                sas,
             })
             .is_err()
         {
-            self.approvals
-                .lock()
-                .map_err(|_| anyhow!("pair approval lock poisoned"))?
-                .remove(&request_id);
             bail!("desktop pairing approval prompt is no longer active");
         }
 
-        match timeout(Duration::from_millis(remaining_ms), approval_rx).await {
-            Ok(Ok(approved)) => Ok(approved),
-            Ok(Err(_)) => Ok(false),
-            Err(_) => {
-                self.approvals
-                    .lock()
-                    .map_err(|_| anyhow!("pair approval lock poisoned"))?
-                    .remove(&request_id);
-                Ok(false)
-            }
-        }
+        Ok(pending_approval)
+    }
+
+    #[cfg(test)]
+    async fn request_approval(
+        &self,
+        code: &str,
+        device_name: String,
+        device_node_id: String,
+    ) -> Result<bool> {
+        Ok(self
+            .begin_approval(
+                code,
+                device_name,
+                device_node_id,
+                "0000-0000-0000-0000-0000".to_string(),
+            )?
+            .wait()
+            .await)
     }
 
     pub fn approve(&self, request_id: ClientId, approved: bool) -> Result<()> {
@@ -266,6 +312,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancelling_approval_wait_removes_pending_entry() {
+        let manager = Arc::new(PairingManager::new());
+        let (code, _, mut rx) = manager.begin_pairing().unwrap();
+        let approval_manager = Arc::clone(&manager);
+        let request = tokio::spawn(async move {
+            approval_manager
+                .request_approval(&code, "phone".to_string(), "node-a".to_string())
+                .await
+        });
+        let event = rx.recv().await.expect("pair approval request");
+
+        request.abort();
+        let _ = request.await;
+
+        assert!(manager.approve(event.request_id, true).is_err());
+        assert!(manager.approvals.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn active_code_is_invalidated_after_five_wrong_attempts() {
         let manager = PairingManager::new();
         let (code, _, _rx) = manager.begin_pairing().unwrap();
@@ -274,7 +339,7 @@ mod tests {
         for _ in 0..MAX_CODE_ATTEMPTS {
             assert!(
                 manager
-                    .request_approval("ZZZZZ", "phone".to_string(), "node-a".to_string())
+                    .request_approval("ZZZZZZZ", "phone".to_string(), "node-a".to_string())
                     .await
                     .is_err()
             );
@@ -297,7 +362,7 @@ mod tests {
         for _ in 0..(MAX_CODE_ATTEMPTS - 1) {
             assert!(
                 manager
-                    .request_approval("ZZZZZ", "phone".to_string(), "node-a".to_string())
+                    .request_approval("ZZZZZZZ", "phone".to_string(), "node-a".to_string())
                     .await
                     .is_err()
             );

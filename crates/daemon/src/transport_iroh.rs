@@ -1,19 +1,25 @@
 use crate::SERVICE;
 use crate::forward::{ForwardedEvent, output_was_replayed, recv_attached_event};
-use crate::ipc::{AppState, IrohEndpointInfo, create_session_for, kill_session_response};
+use crate::ipc::{
+    AppState, DeviceRevocationWatcher, IrohEndpointInfo, create_session_for, invalid_client_size,
+    kill_session_response,
+};
 use crate::persistence::StoredDevice;
+use crate::session::AttachedClient;
 use anyhow::{Context, Result, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
-use iroh::endpoint::{Connection, RecvStream, SendStream, presets};
+use iroh::endpoint::presets;
 use iroh::{Endpoint, RelayMode, RelayUrl, SecretKey};
 use serde::{Serialize, de::DeserializeOwned};
 use shelly_protocol::{
-    CONTRACT_VERSION, ClientId, ClientKind, ClientToServerMsg, ErrorCode, ServerToClientMsg,
-    SessionId, max_frame_len, normalize_code,
+    CONTRACT_VERSION, ClientId, ClientKind, ClientToServerMsg, ErrorCode,
+    MIN_PAIRED_CONTRACT_VERSION, MessagePackDecodeError, MessagePackFraming, ReadFrameError,
+    ServerToClientMsg, SessionId, WriteFrameError, normalize_code, pairing_sas, read_framed,
+    write_framed,
 };
 use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::sync::{Mutex, broadcast, watch};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, broadcast, watch};
 use tokio::time::{Duration, timeout};
 use tracing::{debug, error, info, warn};
 
@@ -21,6 +27,8 @@ pub(crate) const SHELLY_ALPN: &[u8] = b"shelly/1";
 
 const IROH_SECRET_ACCOUNT: &str = "iroh-secret-key-v1";
 const IROH_SECRET_KEY_ENV: &str = "SHELLY_IROH_SECRET_KEY_B64";
+const HELLO_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_UNAUTHENTICATED_CONNECTIONS: usize = 32;
 
 pub(crate) async fn serve(state: Arc<AppState>) -> Result<()> {
     let secret_key = load_or_create_secret_key().context("load iroh endpoint secret")?;
@@ -69,7 +77,18 @@ pub(crate) async fn serve(state: Arc<AppState>) -> Result<()> {
         "iroh transport address refreshed"
     );
 
+    let unauthenticated_connections = Arc::new(Semaphore::new(MAX_UNAUTHENTICATED_CONNECTIONS));
     while let Some(incoming) = endpoint.accept().await {
+        let permit = match Arc::clone(&unauthenticated_connections).try_acquire_owned() {
+            Ok(permit) => permit,
+            Err(_) => {
+                warn!(
+                    limit = MAX_UNAUTHENTICATED_CONNECTIONS,
+                    "dropping iroh connection because the unauthenticated connection limit is full"
+                );
+                continue;
+            }
+        };
         let state = Arc::clone(&state);
         tokio::spawn(async move {
             let accepting = match incoming.accept() {
@@ -81,7 +100,17 @@ pub(crate) async fn serve(state: Arc<AppState>) -> Result<()> {
             };
             match accepting.await {
                 Ok(conn) => {
-                    if let Err(error) = handle_connection(state, conn).await {
+                    let remote_node_id = conn.remote_id().to_string();
+                    let (send, recv) = match conn.accept_bi().await {
+                        Ok(streams) => streams,
+                        Err(error) => {
+                            debug!(%error, "failed to accept iroh bidirectional stream");
+                            return;
+                        }
+                    };
+                    if let Err(error) =
+                        handle_connection(state, remote_node_id, recv, send, Some(permit)).await
+                    {
                         error!(%error, "iroh client connection failed");
                     }
                 }
@@ -102,20 +131,32 @@ fn endpoint_info(endpoint: &Endpoint) -> IrohEndpointInfo {
     }
 }
 
-async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()> {
-    let remote_node_id = conn.remote_id().to_string();
-    let (send, mut recv) = conn.accept_bi().await.context("accept iroh stream")?;
+async fn handle_connection<R, W>(
+    state: Arc<AppState>,
+    remote_node_id: String,
+    mut recv: R,
+    send: W,
+    mut unauthenticated_permit: Option<OwnedSemaphorePermit>,
+) -> Result<()>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
     let writer = Arc::new(Mutex::new(send));
     let mut attach_task: Option<ForwarderTask> = None;
+    let mut attached_client: Option<AttachedClient> = None;
     let mut session_list_task: Option<ForwarderTask> = None;
 
-    let hello: ClientToServerMsg = read_msg(&mut recv).await?;
-    let (client_id, client_kind) = match hello {
+    let hello: ClientToServerMsg = timeout(HELLO_TIMEOUT, read_msg_from(&mut recv))
+        .await
+        .context("timed out waiting for iroh Hello")??;
+    let initially_paired = state.is_device_paired(&remote_node_id);
+    let (client_id, client_kind, protocol_version) = match hello {
         ClientToServerMsg::Hello {
             client_kind,
             protocol_version,
             ..
-        } if protocol_version == CONTRACT_VERSION => {
+        } if iroh_version_is_accepted(protocol_version, initially_paired) => {
             if let Some(error) = iroh_client_kind_error(client_kind) {
                 write_msg(&writer, &error).await?;
                 finish_writer(&writer).await?;
@@ -133,7 +174,7 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                 },
             )
             .await?;
-            (client_id, client_kind)
+            (client_id, client_kind, protocol_version)
         }
         ClientToServerMsg::Hello {
             protocol_version, ..
@@ -141,9 +182,9 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
             write_msg(
                 &writer,
                 &ServerToClientMsg::Error {
-                    code: ErrorCode::ProtocolMismatch,
+                    code: ErrorCode::VersionMismatch,
                     message: format!(
-                        "protocol version mismatch: client={protocol_version}, daemon={CONTRACT_VERSION}"
+                        "protocol version {protocol_version} cannot start this connection; update required (daemon={CONTRACT_VERSION})"
                     ),
                 },
             )
@@ -165,249 +206,277 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
         }
     };
 
-    let mut paired = state.is_device_paired(&remote_node_id);
-    let mut revocation_rx = state.subscribe_device_revocation(&remote_node_id);
+    let mut paired = initially_paired;
+    let mut revocation = paired.then(|| state.subscribe_device_revocation(&remote_node_id));
+    if paired {
+        drop(unauthenticated_permit.take());
+    }
     if paired && let Err(error) = state.mark_device_seen(&remote_node_id) {
         warn!(%error, %remote_node_id, "failed to persist device last_seen");
     }
+    if paired && !state.is_device_paired(&remote_node_id) {
+        return Ok(());
+    }
 
-    loop {
-        let message = tokio::select! {
-            message = read_msg::<ClientToServerMsg>(&mut recv) => match message {
-                Ok(message) => message,
-                Err(_) => break,
-            },
-            _ = revocation_rx.changed(), if paired => break,
-        };
-        if paired && !state.is_device_paired(&remote_node_id) {
-            break;
-        }
-        match message {
-            ClientToServerMsg::Hello { .. } => {
-                // Retrying clients may replay Hello after the handshake, so keep it idempotent.
+    let result: Result<()> = async {
+        loop {
+            let message = tokio::select! {
+                message = read_msg_from::<ClientToServerMsg, _>(&mut recv) => match message {
+                    Ok(message) => message,
+                    Err(_) => break,
+                },
+                _ = wait_for_revocation(&mut revocation), if paired => break,
+            };
+            if paired && !state.is_device_paired(&remote_node_id) {
+                break;
             }
-            ClientToServerMsg::PairWithCode {
-                code,
-                device_name,
-                device_node_id,
-            } => {
-                if let Some(error) = pairing_peer_identity_error(&remote_node_id, &device_node_id) {
-                    write_msg(&writer, &error).await?;
-                    continue;
-                }
-
-                let code = normalize_code(&code);
-                match state
-                    .pairing
-                    .request_approval(&code, device_name.clone(), remote_node_id.clone())
-                    .await
-                {
-                    Ok(true) => {
-                        state
-                            .save_device(StoredDevice::new(device_name, remote_node_id.clone()))?;
-                        paired = true;
-                        revocation_rx.borrow_and_update();
-                        let daemon_node_id = state.iroh_node_id().unwrap_or_default();
-                        write_msg(
-                            &writer,
-                            &ServerToClientMsg::PairingComplete { daemon_node_id },
-                        )
-                        .await?;
+            match message {
+                ClientToServerMsg::Hello { .. } => {
+                    // Retrying clients may replay Hello after the handshake, so keep it idempotent.
+                    if !require_paired(&writer, paired).await? {
+                        continue;
                     }
-                    Ok(false) => write_forbidden(&writer, "pairing denied on laptop").await?,
-                    Err(error) => {
+                }
+                ClientToServerMsg::PairWithCode {
+                    code,
+                    device_name,
+                    device_node_id,
+                } => {
+                    if protocol_version < CONTRACT_VERSION {
+                        write_update_required(&writer, "new pairing requires protocol v5").await?;
+                        continue;
+                    }
+                    if let Some(error) =
+                        pairing_peer_identity_error(&remote_node_id, &device_node_id)
+                    {
+                        write_msg(&writer, &error).await?;
+                        continue;
+                    }
+
+                    let code = normalize_code(&code);
+                    let sas = match authenticated_pairing_sas(&state, &code, &remote_node_id) {
+                        Ok(sas) => sas,
+                        Err(error) => {
+                            write_msg(
+                                &writer,
+                                &ServerToClientMsg::Error {
+                                    code: ErrorCode::InvalidRequest,
+                                    message: error.to_string(),
+                                },
+                            )
+                            .await?;
+                            continue;
+                        }
+                    };
+                    match state.pairing.begin_approval(
+                        &code,
+                        device_name.clone(),
+                        remote_node_id.clone(),
+                        sas.clone(),
+                    ) {
+                        Ok(approval) => {
+                            write_msg(&writer, &ServerToClientMsg::PairingPending { sas }).await?;
+                            if !approval.wait().await {
+                                write_forbidden(&writer, "pairing denied on laptop").await?;
+                                continue;
+                            }
+                            state.save_device(StoredDevice::new(
+                                device_name,
+                                remote_node_id.clone(),
+                            ))?;
+                            paired = true;
+                            revocation = Some(state.subscribe_device_revocation(&remote_node_id));
+                            revocation
+                                .as_mut()
+                                .expect("paired device revocation watcher")
+                                .mark_current_seen();
+                            drop(unauthenticated_permit.take());
+                            let daemon_node_id = state.iroh_node_id().unwrap_or_default();
+                            write_msg(
+                                &writer,
+                                &ServerToClientMsg::PairingComplete { daemon_node_id },
+                            )
+                            .await?;
+                        }
+                        Err(error) => {
+                            write_msg(
+                                &writer,
+                                &ServerToClientMsg::Error {
+                                    code: ErrorCode::Forbidden,
+                                    message: error.to_string(),
+                                },
+                            )
+                            .await?;
+                        }
+                    }
+                }
+                ClientToServerMsg::UnpairSelf => {
+                    if protocol_version < CONTRACT_VERSION {
+                        write_update_required(&writer, "UnpairSelf requires protocol v5").await?;
+                        continue;
+                    }
+                    match state.unpair_self(&remote_node_id) {
+                        Ok(_) => {
+                            paired = false;
+                            revocation = None;
+                            write_msg(&writer, &ServerToClientMsg::Pong { seq: 0 }).await?;
+                        }
+                        Err(error) => {
+                            write_msg(
+                                &writer,
+                                &ServerToClientMsg::Error {
+                                    code: ErrorCode::Internal,
+                                    message: error.to_string(),
+                                },
+                            )
+                            .await?;
+                        }
+                    }
+                }
+                ClientToServerMsg::ListSessions => {
+                    if !require_paired(&writer, paired).await? {
+                        continue;
+                    }
+                    write_msg(
+                        &writer,
+                        &ServerToClientMsg::SessionList {
+                            sessions: state.summaries(),
+                        },
+                    )
+                    .await?;
+                }
+                ClientToServerMsg::SubscribeSessions => {
+                    if !require_paired(&writer, paired).await? {
+                        continue;
+                    }
+                    if let Some(task) = session_list_task.take() {
+                        task.shutdown().await;
+                    }
+                    let (sessions, rx) = state.subscribe_session_list_with_initial();
+                    write_msg(&writer, &ServerToClientMsg::SessionList { sessions }).await?;
+
+                    let writer = Arc::clone(&writer);
+                    let revocation = revocation_watcher(&revocation);
+                    session_list_task = Some(ForwarderTask::spawn(move |shutdown| async move {
+                        forward_session_list_updates(writer, rx, shutdown, revocation).await;
+                    }));
+                }
+                ClientToServerMsg::AttachSession {
+                    session_id,
+                    size,
+                    last_seen_seq,
+                } => {
+                    if !require_paired(&writer, paired).await? {
+                        continue;
+                    }
+                    if let Some(error) = invalid_client_size(size) {
+                        write_msg(&writer, &error).await?;
+                        continue;
+                    }
+
+                    let session = if let Some(session) = state
+                        .sessions
+                        .get(&session_id)
+                        .map(|entry| Arc::clone(&entry))
+                    {
+                        session
+                    } else if let Some(restored) = state.restored.get(&session_id) {
                         write_msg(
                             &writer,
-                            &ServerToClientMsg::Error {
-                                code: ErrorCode::Forbidden,
-                                message: error.to_string(),
+                            &ServerToClientMsg::Attached {
+                                session_id,
+                                initial_bytes: restored.scrollback.clone(),
+                                seq: restored
+                                    .scrollback_start_seq
+                                    .saturating_add(restored.scrollback.len() as u64),
                             },
                         )
                         .await?;
+                        write_msg(
+                            &writer,
+                            &ServerToClientMsg::SessionExited {
+                                session_id,
+                                exit_code: restored.exit_code.unwrap_or(0),
+                            },
+                        )
+                        .await?;
+                        continue;
+                    } else {
+                        write_msg(
+                            &writer,
+                            &ServerToClientMsg::Error {
+                                code: ErrorCode::NotFound,
+                                message: format!("session not found: {session_id}"),
+                            },
+                        )
+                        .await?;
+                        continue;
+                    };
+
+                    if let Some(task) = attach_task.take() {
+                        task.shutdown().await;
                     }
-                }
-            }
-            ClientToServerMsg::ListSessions => {
-                if !require_paired(&writer, paired).await? {
-                    continue;
-                }
-                write_msg(
-                    &writer,
-                    &ServerToClientMsg::SessionList {
-                        sessions: state.summaries(),
-                    },
-                )
-                .await?;
-            }
-            ClientToServerMsg::SubscribeSessions => {
-                if !require_paired(&writer, paired).await? {
-                    continue;
-                }
-                if let Some(task) = session_list_task.take() {
-                    task.shutdown();
-                }
-                let (sessions, rx) = state.subscribe_session_list_with_initial();
-                write_msg(&writer, &ServerToClientMsg::SessionList { sessions }).await?;
-
-                let writer = Arc::clone(&writer);
-                let revocation = revocation_rx.clone();
-                session_list_task = Some(ForwarderTask::spawn(move |shutdown| async move {
-                    forward_session_list_updates(writer, rx, shutdown, revocation).await;
-                }));
-            }
-            ClientToServerMsg::AttachSession {
-                session_id,
-                size,
-                last_seen_seq,
-            } => {
-                if !require_paired(&writer, paired).await? {
-                    continue;
-                }
-
-                let session = if let Some(session) = state
-                    .sessions
-                    .get(&session_id)
-                    .map(|entry| Arc::clone(&entry))
-                {
-                    session
-                } else if let Some(restored) = state.restored.get(&session_id) {
+                    drop(attached_client.take());
+                    let attachment = match session.attach_client(client_id, size) {
+                        Ok(attachment) => attachment,
+                        Err(error) => {
+                            write_msg(
+                                &writer,
+                                &ServerToClientMsg::Error {
+                                    code: ErrorCode::Internal,
+                                    message: error.to_string(),
+                                },
+                            )
+                            .await?;
+                            continue;
+                        }
+                    };
+                    let rx = session.subscribe();
+                    let (seq, initial_bytes) = session.attach_bytes(last_seen_seq);
                     write_msg(
                         &writer,
                         &ServerToClientMsg::Attached {
                             session_id,
-                            initial_bytes: restored.scrollback.clone(),
-                            seq: restored
-                                .scrollback_start_seq
-                                .saturating_add(restored.scrollback.len() as u64),
+                            initial_bytes,
+                            seq,
                         },
                     )
                     .await?;
-                    write_msg(
-                        &writer,
-                        &ServerToClientMsg::SessionExited {
-                            session_id,
-                            exit_code: restored.exit_code.unwrap_or(0),
-                        },
-                    )
-                    .await?;
-                    continue;
-                } else {
-                    write_msg(
-                        &writer,
-                        &ServerToClientMsg::Error {
-                            code: ErrorCode::NotFound,
-                            message: format!("session not found: {session_id}"),
-                        },
-                    )
-                    .await?;
-                    continue;
-                };
 
-                if let Some(task) = attach_task.take() {
-                    task.shutdown();
-                }
-                let attachment = match session.attach_client(client_id, size) {
-                    Ok(attachment) => attachment,
-                    Err(error) => {
+                    if let Some(exit_code) = session.exit_code() {
                         write_msg(
                             &writer,
-                            &ServerToClientMsg::Error {
-                                code: ErrorCode::Internal,
-                                message: error.to_string(),
+                            &ServerToClientMsg::SessionExited {
+                                session_id,
+                                exit_code,
                             },
                         )
                         .await?;
                         continue;
                     }
-                };
-                let rx = session.subscribe();
-                let (seq, initial_bytes) = session.attach_bytes(last_seen_seq);
-                write_msg(
-                    &writer,
-                    &ServerToClientMsg::Attached {
-                        session_id,
-                        initial_bytes,
-                        seq,
-                    },
-                )
-                .await?;
 
-                if let Some(exit_code) = session.exit_code() {
-                    write_msg(
-                        &writer,
-                        &ServerToClientMsg::SessionExited {
-                            session_id,
-                            exit_code,
-                        },
-                    )
-                    .await?;
-                    continue;
+                    let writer = Arc::clone(&writer);
+                    let revocation = revocation_watcher(&revocation);
+                    attached_client = Some(attachment);
+                    attach_task = Some(ForwarderTask::spawn(move |shutdown| async move {
+                        forward_attached_events(writer, rx, session_id, seq, shutdown, revocation)
+                            .await;
+                    }));
                 }
-
-                let writer = Arc::clone(&writer);
-                let revocation = revocation_rx.clone();
-                attach_task = Some(ForwarderTask::spawn(move |shutdown| async move {
-                    let _attachment = attachment;
-                    forward_attached_events(writer, rx, session_id, seq, shutdown, revocation)
-                        .await;
-                }));
-            }
-            ClientToServerMsg::Input { session_id, bytes } => {
-                if !require_paired(&writer, paired).await? {
-                    continue;
-                }
-                let Some(session) = state
-                    .sessions
-                    .get(&session_id)
-                    .map(|entry| Arc::clone(&entry))
-                else {
-                    write_session_not_found(&writer, session_id).await?;
-                    continue;
-                };
-                let error = session.write_input(&bytes).err();
-                if let Some(error) = error {
-                    write_msg(
-                        &writer,
-                        &ServerToClientMsg::Error {
-                            code: ErrorCode::Internal,
-                            message: error.to_string(),
-                        },
-                    )
-                    .await?;
-                }
-            }
-            ClientToServerMsg::Resize { session_id, size } => {
-                if !require_paired(&writer, paired).await? {
-                    continue;
-                }
-                let Some(session) = state
-                    .sessions
-                    .get(&session_id)
-                    .map(|entry| Arc::clone(&entry))
-                else {
-                    write_session_not_found(&writer, session_id).await?;
-                    continue;
-                };
-                let error = session.update_client_size(client_id, size).err();
-                if let Some(error) = error {
-                    write_msg(
-                        &writer,
-                        &ServerToClientMsg::Error {
-                            code: ErrorCode::Internal,
-                            message: error.to_string(),
-                        },
-                    )
-                    .await?;
-                }
-            }
-            ClientToServerMsg::RegisterPushToken { platform, token } => {
-                if !require_paired(&writer, paired).await? {
-                    continue;
-                }
-                match state.update_device_push(&remote_node_id, platform, token) {
-                    Ok(true) => write_msg(&writer, &ServerToClientMsg::Pong { seq: 0 }).await?,
-                    Ok(false) => write_unauthorized(&writer).await?,
-                    Err(error) => {
+                ClientToServerMsg::Input { session_id, bytes } => {
+                    if !require_paired(&writer, paired).await? {
+                        continue;
+                    }
+                    let Some(session) = state
+                        .sessions
+                        .get(&session_id)
+                        .map(|entry| Arc::clone(&entry))
+                    else {
+                        write_session_not_found(&writer, session_id).await?;
+                        continue;
+                    };
+                    let error = session.write_input(&bytes).err();
+                    if let Some(error) = error {
                         write_msg(
                             &writer,
                             &ServerToClientMsg::Error {
@@ -418,15 +487,24 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                         .await?;
                     }
                 }
-            }
-            ClientToServerMsg::UnregisterPushToken { platform, token } => {
-                if !require_paired(&writer, paired).await? {
-                    continue;
-                }
-                match state.clear_device_push(&remote_node_id, platform, token) {
-                    Ok(true) => write_msg(&writer, &ServerToClientMsg::Pong { seq: 0 }).await?,
-                    Ok(false) => write_unauthorized(&writer).await?,
-                    Err(error) => {
+                ClientToServerMsg::Resize { session_id, size } => {
+                    if !require_paired(&writer, paired).await? {
+                        continue;
+                    }
+                    if let Some(error) = invalid_client_size(size) {
+                        write_msg(&writer, &error).await?;
+                        continue;
+                    }
+                    let Some(session) = state
+                        .sessions
+                        .get(&session_id)
+                        .map(|entry| Arc::clone(&entry))
+                    else {
+                        write_session_not_found(&writer, session_id).await?;
+                        continue;
+                    };
+                    let error = session.update_client_size(client_id, size).err();
+                    if let Some(error) = error {
                         write_msg(
                             &writer,
                             &ServerToClientMsg::Error {
@@ -437,55 +515,108 @@ async fn handle_connection(state: Arc<AppState>, conn: Connection) -> Result<()>
                         .await?;
                     }
                 }
-            }
-            ClientToServerMsg::Ping { seq } => {
-                if !require_paired(&writer, paired).await? {
-                    continue;
+                ClientToServerMsg::RegisterPushToken { platform, token } => {
+                    if !require_paired(&writer, paired).await? {
+                        continue;
+                    }
+                    match state.update_device_push(&remote_node_id, platform, token) {
+                        Ok(true) => write_msg(&writer, &ServerToClientMsg::Pong { seq: 0 }).await?,
+                        Ok(false) => write_unauthorized(&writer).await?,
+                        Err(error) => {
+                            write_msg(
+                                &writer,
+                                &ServerToClientMsg::Error {
+                                    code: ErrorCode::Internal,
+                                    message: error.to_string(),
+                                },
+                            )
+                            .await?;
+                        }
+                    }
                 }
-                write_msg(&writer, &ServerToClientMsg::Pong { seq }).await?;
-            }
-            ClientToServerMsg::DetachSession => break,
-            ClientToServerMsg::CreateSession {
-                name,
-                command,
-                cwd,
-                env,
-                size,
-            } => {
-                if !require_paired(&writer, paired).await? {
-                    continue;
+                ClientToServerMsg::UnregisterPushToken { platform, token } => {
+                    if !require_paired(&writer, paired).await? {
+                        continue;
+                    }
+                    match state.clear_device_push(&remote_node_id, platform, token) {
+                        Ok(true) => write_msg(&writer, &ServerToClientMsg::Pong { seq: 0 }).await?,
+                        Ok(false) => write_unauthorized(&writer).await?,
+                        Err(error) => {
+                            write_msg(
+                                &writer,
+                                &ServerToClientMsg::Error {
+                                    code: ErrorCode::Internal,
+                                    message: error.to_string(),
+                                },
+                            )
+                            .await?;
+                        }
+                    }
                 }
-                // Mobile create is shell-only: `create_session_for` ignores the
-                // client-supplied command/cwd/env and forces a default shell.
-                let response =
-                    create_session_for(&state, client_kind, name, command, cwd, env, size);
-                write_msg(&writer, &response).await?;
-            }
-            ClientToServerMsg::KillSession { session_id } => {
-                if !require_paired(&writer, paired).await? {
-                    continue;
+                ClientToServerMsg::Ping { seq } => {
+                    if !require_paired(&writer, paired).await? {
+                        continue;
+                    }
+                    write_msg(&writer, &ServerToClientMsg::Pong { seq }).await?;
                 }
-                let response = kill_session_response(&state, session_id);
-                write_msg(&writer, &response).await?;
-            }
-            ClientToServerMsg::BeginPairing { .. }
-            | ClientToServerMsg::ApprovePairing { .. }
-            | ClientToServerMsg::ListDevices
-            | ClientToServerMsg::RemoveDevice { .. }
-            | ClientToServerMsg::AgentStateEvent { .. } => {
-                write_forbidden(&writer, forbidden_iroh_operation_message(client_kind)).await?;
+                ClientToServerMsg::DetachSession => {
+                    if !require_paired(&writer, paired).await? {
+                        continue;
+                    }
+                    break;
+                }
+                ClientToServerMsg::CreateSession {
+                    name,
+                    command,
+                    cwd,
+                    env,
+                    size,
+                } => {
+                    if !require_paired(&writer, paired).await? {
+                        continue;
+                    }
+                    if let Some(error) = invalid_client_size(size) {
+                        write_msg(&writer, &error).await?;
+                        continue;
+                    }
+                    // Mobile create is shell-only: `create_session_for` ignores the
+                    // client-supplied command/cwd/env and forces a default shell.
+                    let response =
+                        create_session_for(&state, client_kind, name, command, cwd, env, size);
+                    write_msg(&writer, &response).await?;
+                }
+                ClientToServerMsg::KillSession { session_id } => {
+                    if !require_paired(&writer, paired).await? {
+                        continue;
+                    }
+                    let response = kill_session_response(&state, session_id);
+                    write_msg(&writer, &response).await?;
+                }
+                ClientToServerMsg::BeginPairing { .. }
+                | ClientToServerMsg::ApprovePairing { .. }
+                | ClientToServerMsg::ListDevices
+                | ClientToServerMsg::RemoveDevice { .. }
+                | ClientToServerMsg::AgentStateEvent { .. } => {
+                    if !require_paired(&writer, paired).await? {
+                        continue;
+                    }
+                    write_forbidden(&writer, forbidden_iroh_operation_message(client_kind)).await?;
+                }
             }
         }
+        Ok(())
     }
+    .await;
 
     if let Some(task) = attach_task {
-        task.shutdown();
+        task.shutdown().await;
     }
+    drop(attached_client);
     if let Some(task) = session_list_task {
-        task.shutdown();
+        task.shutdown().await;
     }
 
-    Ok(())
+    result
 }
 
 struct ForwarderTask {
@@ -503,9 +634,21 @@ impl ForwarderTask {
         Self { shutdown, handle }
     }
 
-    fn shutdown(self) {
+    async fn shutdown(mut self) {
         let _ = self.shutdown.send(true);
-        drop(self.handle);
+        if timeout(Duration::from_secs(1), &mut self.handle)
+            .await
+            .is_err()
+        {
+            self.handle.abort();
+            let _ = (&mut self.handle).await;
+        }
+    }
+}
+
+impl Drop for ForwarderTask {
+    fn drop(&mut self) {
+        self.handle.abort();
     }
 }
 
@@ -513,7 +656,7 @@ async fn forward_session_list_updates<W>(
     writer: Arc<Mutex<W>>,
     mut rx: watch::Receiver<Vec<shelly_protocol::SessionSummary>>,
     mut shutdown: watch::Receiver<bool>,
-    mut revocation: watch::Receiver<u64>,
+    mut revocation: DeviceRevocationWatcher,
 ) where
     W: AsyncWrite + Unpin,
 {
@@ -542,7 +685,7 @@ async fn forward_attached_events<W>(
     session_id: SessionId,
     attached_seq: u64,
     mut shutdown: watch::Receiver<bool>,
-    mut revocation: watch::Receiver<u64>,
+    mut revocation: DeviceRevocationWatcher,
 ) where
     W: AsyncWrite + Unpin,
 {
@@ -570,7 +713,51 @@ async fn forward_attached_events<W>(
     }
 }
 
-async fn require_paired(writer: &Arc<Mutex<SendStream>>, paired: bool) -> Result<bool> {
+async fn wait_for_revocation(revocation: &mut Option<DeviceRevocationWatcher>) {
+    if let Some(revocation) = revocation {
+        let _ = revocation.changed().await;
+    } else {
+        std::future::pending::<()>().await;
+    }
+}
+
+fn revocation_watcher(revocation: &Option<DeviceRevocationWatcher>) -> DeviceRevocationWatcher {
+    revocation
+        .as_ref()
+        .expect("paired connection has a revocation watcher")
+        .clone()
+}
+
+fn iroh_version_is_accepted(protocol_version: u32, already_paired: bool) -> bool {
+    protocol_version == CONTRACT_VERSION
+        || (already_paired && protocol_version == MIN_PAIRED_CONTRACT_VERSION)
+}
+
+fn authenticated_pairing_sas(
+    state: &AppState,
+    normalized_code: &str,
+    remote_node_id: &str,
+) -> Result<String> {
+    let daemon_node_id = state
+        .iroh_node_id()
+        .context("daemon iroh endpoint is not ready")?;
+    let daemon_key: iroh::PublicKey = daemon_node_id
+        .parse()
+        .context("daemon iroh node id is invalid")?;
+    let phone_key: iroh::PublicKey = remote_node_id
+        .parse()
+        .context("authenticated phone iroh node id is invalid")?;
+    Ok(pairing_sas(
+        normalized_code,
+        daemon_key.as_bytes(),
+        phone_key.as_bytes(),
+    ))
+}
+
+async fn require_paired<W>(writer: &Arc<Mutex<W>>, paired: bool) -> Result<bool>
+where
+    W: AsyncWrite + Unpin,
+{
     if paired {
         return Ok(true);
     }
@@ -579,12 +766,29 @@ async fn require_paired(writer: &Arc<Mutex<SendStream>>, paired: bool) -> Result
     Ok(false)
 }
 
-async fn write_unauthorized(writer: &Arc<Mutex<SendStream>>) -> Result<()> {
+async fn write_unauthorized<W>(writer: &Arc<Mutex<W>>) -> Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     write_msg(
         writer,
         &ServerToClientMsg::Error {
             code: ErrorCode::Unauthorized,
             message: "device is not paired".to_string(),
+        },
+    )
+    .await
+}
+
+async fn write_update_required<W>(writer: &Arc<Mutex<W>>, message: &str) -> Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    write_msg(
+        writer,
+        &ServerToClientMsg::Error {
+            code: ErrorCode::VersionMismatch,
+            message: format!("{message}; update Shelly"),
         },
     )
     .await
@@ -624,7 +828,10 @@ fn iroh_client_kind_error(client_kind: ClientKind) -> Option<ServerToClientMsg> 
     })
 }
 
-async fn write_forbidden(writer: &Arc<Mutex<SendStream>>, message: &str) -> Result<()> {
+async fn write_forbidden<W>(writer: &Arc<Mutex<W>>, message: &str) -> Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     write_msg(
         writer,
         &ServerToClientMsg::Error {
@@ -635,10 +842,10 @@ async fn write_forbidden(writer: &Arc<Mutex<SendStream>>, message: &str) -> Resu
     .await
 }
 
-async fn write_session_not_found(
-    writer: &Arc<Mutex<SendStream>>,
-    session_id: SessionId,
-) -> Result<()> {
+async fn write_session_not_found<W>(writer: &Arc<Mutex<W>>, session_id: SessionId) -> Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     write_msg(
         writer,
         &ServerToClientMsg::Error {
@@ -649,12 +856,14 @@ async fn write_session_not_found(
     .await
 }
 
-async fn finish_writer(writer: &Arc<Mutex<SendStream>>) -> Result<()> {
+async fn finish_writer<W>(writer: &Arc<Mutex<W>>) -> Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     let mut writer = writer.lock().await;
-    let stopped = writer.stopped();
-    writer.finish().context("finish iroh stream")?;
-    drop(writer);
-    let _ = timeout(Duration::from_secs(1), stopped).await;
+    timeout(Duration::from_secs(1), writer.shutdown())
+        .await
+        .context("time out finishing iroh stream")??;
     Ok(())
 }
 
@@ -711,33 +920,23 @@ mod peer_identity_tests {
     }
 }
 
-async fn read_msg<T>(reader: &mut RecvStream) -> Result<T>
-where
-    T: DeserializeOwned,
-{
-    read_msg_from(reader).await
-}
-
 async fn read_msg_from<T, R>(reader: &mut R) -> Result<T>
 where
     T: DeserializeOwned,
     R: AsyncRead + Unpin,
 {
-    let mut len_bytes = [0_u8; 4];
-    reader
-        .read_exact(&mut len_bytes)
-        .await
-        .context("read iroh frame length")?;
-    let len = u32::from_be_bytes(len_bytes) as usize;
-    if len > max_frame_len() {
-        bail!("frame too large: {len}");
+    match read_framed::<MessagePackFraming, _, _>(reader).await {
+        Ok(message) => Ok(message),
+        Err(ReadFrameError::ReadLength(error)) => Err(error).context("read iroh frame length"),
+        Err(ReadFrameError::TooLarge(len)) => bail!("frame too large: {len}"),
+        Err(ReadFrameError::ReadPayload(error)) => Err(error).context("read iroh frame payload"),
+        Err(ReadFrameError::Decode(MessagePackDecodeError::Decode(error))) => {
+            Err(error).context("decode messagepack frame")
+        }
+        Err(ReadFrameError::Decode(MessagePackDecodeError::TrailingBytes(len))) => {
+            bail!("trailing bytes after messagepack payload: {len}")
+        }
     }
-    let mut payload = vec![0; len];
-    reader
-        .read_exact(&mut payload)
-        .await
-        .context("read iroh frame payload")?;
-    rmp_serde::from_slice(&payload).context("decode messagepack frame")
 }
 
 async fn write_msg<T, W>(writer: &Arc<Mutex<W>>, message: &T) -> Result<()>
@@ -754,14 +953,19 @@ where
     T: Serialize,
     W: AsyncWrite + Unpin,
 {
-    let payload = rmp_serde::to_vec_named(message).context("encode messagepack frame")?;
-    if payload.len() > max_frame_len() {
-        bail!("frame too large: {}", payload.len());
+    match write_framed::<MessagePackFraming, _, _>(writer, message).await {
+        Ok(()) => {}
+        Err(WriteFrameError::Encode(error)) => {
+            return Err(error).context("encode messagepack frame");
+        }
+        Err(WriteFrameError::TooLarge(len)) => bail!("frame too large: {len}"),
+        Err(WriteFrameError::WriteLength(error)) => {
+            return Err(error).context("write iroh frame length");
+        }
+        Err(WriteFrameError::WritePayload(error)) => {
+            return Err(error).context("write iroh frame payload");
+        }
     }
-    let mut frame = Vec::with_capacity(4 + payload.len());
-    frame.extend_from_slice(&(payload.len() as u32).to_be_bytes());
-    frame.extend_from_slice(&payload);
-    writer.write_all(&frame).await.context("write iroh frame")?;
     writer.flush().await.context("flush iroh frame")?;
     Ok(())
 }
@@ -825,12 +1029,20 @@ fn secret_key_from_env() -> Result<Option<SecretKey>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        IROH_SECRET_KEY_ENV, forward_attached_events, read_msg_from, secret_key_from_env,
-        write_msg_to,
+        IROH_SECRET_KEY_ENV, forward_attached_events, handle_connection, read_msg_from,
+        secret_key_from_env, write_msg_to,
     };
+    use crate::ipc::{AppState, IrohEndpointInfo};
+    use crate::persistence::StoredDevice;
     use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
-    use shelly_protocol::{ServerToClientMsg, SessionId, max_frame_len};
+    use shelly_protocol::{
+        AgentSource, AgentState, CONTRACT_VERSION, ClientId, ClientKind, ClientSize,
+        ClientToServerMsg, ErrorCode, PushPlatform, ServerToClientMsg, SessionId,
+        encode_messagepack, max_frame_len, pairing_sas,
+    };
+    use std::collections::HashMap;
     use std::ffi::OsString;
+    use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
     use tokio::io::{AsyncWriteExt as _, duplex};
     use tokio::sync::{Mutex as TokioMutex, broadcast, watch};
@@ -907,7 +1119,14 @@ mod tests {
         let session_id = SessionId::new();
         let (events, rx) = broadcast::channel(8);
         let (_shutdown_tx, shutdown_rx) = watch::channel(false);
-        let (revocation_tx, revocation_rx) = watch::channel(0_u64);
+        let state = AppState::for_tests();
+        state
+            .save_device(StoredDevice::new(
+                "phone".to_string(),
+                "revoked-node".to_string(),
+            ))
+            .unwrap();
+        let revocation = state.subscribe_device_revocation("revoked-node");
         let (mut reader, writer) = duplex(4096);
         let writer = Arc::new(TokioMutex::new(writer));
         let forwarder = tokio::spawn(forward_attached_events(
@@ -916,20 +1135,20 @@ mod tests {
             session_id,
             0,
             shutdown_rx,
-            revocation_rx,
+            revocation,
         ));
 
         events
             .send(ServerToClientMsg::Output {
                 session_id,
                 seq: 1,
-                bytes: b"before revoke".to_vec(),
+                bytes: b"before revoke".as_slice().into(),
             })
             .unwrap();
         let before: ServerToClientMsg = read_msg_from(&mut reader).await.unwrap();
         assert!(matches!(before, ServerToClientMsg::Output { seq: 1, .. }));
 
-        revocation_tx.send(1).unwrap();
+        state.remove_device("revoked-node").unwrap();
         timeout(Duration::from_secs(1), forwarder)
             .await
             .expect("revocation should stop the iroh attach forwarder")
@@ -937,7 +1156,7 @@ mod tests {
         let _ = events.send(ServerToClientMsg::Output {
             session_id,
             seq: 2,
-            bytes: b"after revoke".to_vec(),
+            bytes: b"after revoke".as_slice().into(),
         });
 
         let read_after = timeout(
@@ -979,5 +1198,659 @@ mod tests {
             .unwrap_err();
 
         assert!(format!("{error:#}").contains("read iroh frame payload"));
+    }
+
+    #[tokio::test]
+    async fn messagepack_frame_reader_rejects_trailing_payload_bytes() {
+        let mut payload = encode_messagepack(&ServerToClientMsg::Pong { seq: 7 }).unwrap();
+        payload.push(0xc0);
+        let (mut writer, mut reader) = duplex(1024);
+        writer
+            .write_all(&(payload.len() as u32).to_be_bytes())
+            .await
+            .unwrap();
+        writer.write_all(&payload).await.unwrap();
+        drop(writer);
+
+        let error = read_msg_from::<ServerToClientMsg, _>(&mut reader)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("trailing bytes after messagepack payload")
+        );
+    }
+
+    #[tokio::test]
+    async fn every_unpaired_message_variant_is_unauthorized() {
+        let session_id = SessionId::new();
+        let request_id = ClientId::new();
+        let size = ClientSize { rows: 24, cols: 80 };
+        let messages = vec![
+            (
+                "Hello",
+                ClientToServerMsg::Hello {
+                    client_kind: ClientKind::AndroidApp,
+                    client_version: "retry".to_string(),
+                    protocol_version: CONTRACT_VERSION,
+                },
+            ),
+            ("ListSessions", ClientToServerMsg::ListSessions),
+            (
+                "CreateSession",
+                ClientToServerMsg::CreateSession {
+                    name: "blocked".to_string(),
+                    command: vec!["/bin/false".to_string()],
+                    cwd: PathBuf::from("/tmp"),
+                    env: HashMap::new(),
+                    size,
+                },
+            ),
+            (
+                "AttachSession",
+                ClientToServerMsg::AttachSession {
+                    session_id,
+                    size,
+                    last_seen_seq: None,
+                },
+            ),
+            ("DetachSession", ClientToServerMsg::DetachSession),
+            ("KillSession", ClientToServerMsg::KillSession { session_id }),
+            (
+                "Input",
+                ClientToServerMsg::Input {
+                    session_id,
+                    bytes: b"blocked".to_vec(),
+                },
+            ),
+            ("Resize", ClientToServerMsg::Resize { session_id, size }),
+            ("Ping", ClientToServerMsg::Ping { seq: 7 }),
+            (
+                "BeginPairing",
+                ClientToServerMsg::BeginPairing { device_name: None },
+            ),
+            (
+                "ApprovePairing",
+                ClientToServerMsg::ApprovePairing {
+                    request_id,
+                    approved: true,
+                },
+            ),
+            (
+                "PairWithCode",
+                ClientToServerMsg::PairWithCode {
+                    code: "WRONG".to_string(),
+                    device_name: "phone".to_string(),
+                    // A matching identity is the sole bootstrap exception; this mismatched
+                    // claim proves the variant cannot bypass authenticated peer identity.
+                    device_node_id: "claimed-other-node".to_string(),
+                },
+            ),
+            ("ListDevices", ClientToServerMsg::ListDevices),
+            (
+                "RemoveDevice",
+                ClientToServerMsg::RemoveDevice {
+                    name: "blocked".to_string(),
+                },
+            ),
+            (
+                "RegisterPushToken",
+                ClientToServerMsg::RegisterPushToken {
+                    platform: PushPlatform::Fcm,
+                    token: "blocked".to_string(),
+                },
+            ),
+            (
+                "AgentStateEvent",
+                ClientToServerMsg::AgentStateEvent {
+                    session_id,
+                    source: AgentSource::Codex,
+                    state: AgentState::Working,
+                    last_line: None,
+                },
+            ),
+            ("SubscribeSessions", ClientToServerMsg::SubscribeSessions),
+            (
+                "UnregisterPushToken",
+                ClientToServerMsg::UnregisterPushToken {
+                    platform: PushPlatform::Fcm,
+                    token: "blocked".to_string(),
+                },
+            ),
+        ];
+
+        for (variant, message) in messages {
+            let response = send_request(AppState::for_tests(), "unpaired-node", message).await;
+            assert_error_code(response, ErrorCode::Unauthorized, variant);
+        }
+    }
+
+    #[tokio::test]
+    async fn paired_mobile_forbidden_variants_remain_forbidden() {
+        let session_id = SessionId::new();
+        let messages = vec![
+            (
+                "BeginPairing",
+                ClientToServerMsg::BeginPairing { device_name: None },
+            ),
+            (
+                "ApprovePairing",
+                ClientToServerMsg::ApprovePairing {
+                    request_id: ClientId::new(),
+                    approved: true,
+                },
+            ),
+            ("ListDevices", ClientToServerMsg::ListDevices),
+            (
+                "RemoveDevice",
+                ClientToServerMsg::RemoveDevice {
+                    name: "phone".to_string(),
+                },
+            ),
+            (
+                "AgentStateEvent",
+                ClientToServerMsg::AgentStateEvent {
+                    session_id,
+                    source: AgentSource::Claude,
+                    state: AgentState::Idle,
+                    last_line: None,
+                },
+            ),
+        ];
+
+        for (variant, message) in messages {
+            let state = AppState::for_tests();
+            state
+                .save_device(StoredDevice::new(
+                    "phone".to_string(),
+                    "paired-node".to_string(),
+                ))
+                .unwrap();
+            let response = send_request(state, "paired-node", message).await;
+            assert_error_code(response, ErrorCode::Forbidden, variant);
+        }
+    }
+
+    #[tokio::test]
+    async fn paired_iroh_rejects_invalid_size_for_every_size_bearing_message() {
+        let session_id = SessionId::new();
+        let messages = vec![
+            (
+                "CreateSession",
+                ClientToServerMsg::CreateSession {
+                    name: "invalid".to_string(),
+                    command: Vec::new(),
+                    cwd: PathBuf::from("/tmp"),
+                    env: HashMap::new(),
+                    size: ClientSize { rows: 0, cols: 80 },
+                },
+            ),
+            (
+                "AttachSession",
+                ClientToServerMsg::AttachSession {
+                    session_id,
+                    size: ClientSize {
+                        rows: 24,
+                        cols: 1_001,
+                    },
+                    last_seen_seq: None,
+                },
+            ),
+            (
+                "Resize",
+                ClientToServerMsg::Resize {
+                    session_id,
+                    size: ClientSize {
+                        rows: 1_001,
+                        cols: 80,
+                    },
+                },
+            ),
+        ];
+
+        for (variant, message) in messages {
+            let state = AppState::for_tests();
+            state
+                .save_device(StoredDevice::new(
+                    "phone".to_string(),
+                    "paired-node".to_string(),
+                ))
+                .unwrap();
+            let response = send_request(state, "paired-node", message).await;
+            assert_error_code(response, ErrorCode::InvalidRequest, variant);
+        }
+    }
+
+    #[tokio::test]
+    async fn rogue_relay_self_pairing_exposes_a_different_sas_and_cannot_complete() {
+        let daemon_key = iroh::SecretKey::from_bytes(&[3; 32]);
+        let real_phone_key = iroh::SecretKey::from_bytes(&[4; 32]);
+        let rogue_key = iroh::SecretKey::from_bytes(&[5; 32]);
+        let state = AppState::for_tests();
+        state.set_iroh_endpoint(IrohEndpointInfo {
+            node_id: daemon_key.public().to_string(),
+            relay_url: None,
+            addrs: Vec::new(),
+        });
+        let (code, _, mut desktop_events) = state.pairing.begin_pairing().unwrap();
+
+        let (client, server) = duplex(64 * 1024);
+        let (server_reader, server_writer) = tokio::io::split(server);
+        let remote_node_id = rogue_key.public().to_string();
+        let server_task = tokio::spawn(handle_connection(
+            Arc::clone(&state),
+            remote_node_id.clone(),
+            server_reader,
+            server_writer,
+            None,
+        ));
+        let (mut client_reader, mut client_writer) = tokio::io::split(client);
+        write_msg_to(
+            &mut client_writer,
+            &ClientToServerMsg::Hello {
+                client_kind: ClientKind::AndroidApp,
+                client_version: "rogue-relay".to_string(),
+                protocol_version: CONTRACT_VERSION,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            read_msg_from::<ServerToClientMsg, _>(&mut client_reader)
+                .await
+                .unwrap(),
+            ServerToClientMsg::Welcome { .. }
+        ));
+        write_msg_to(
+            &mut client_writer,
+            &ClientToServerMsg::PairWithCode {
+                code: code.clone(),
+                device_name: "relay impostor".to_string(),
+                device_node_id: remote_node_id.clone(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let desktop_event = desktop_events.recv().await.expect("desktop SAS event");
+        let phone_pending: ServerToClientMsg = read_msg_from(&mut client_reader).await.unwrap();
+        let ServerToClientMsg::PairingPending { sas: phone_sas } = phone_pending else {
+            panic!("expected PairingPending, got {phone_pending:?}");
+        };
+        let expected_real_phone_sas = pairing_sas(
+            &code,
+            daemon_key.public().as_bytes(),
+            real_phone_key.public().as_bytes(),
+        );
+        assert_eq!(desktop_event.sas, phone_sas);
+        assert_ne!(desktop_event.sas, expected_real_phone_sas);
+
+        // The real desktop has no matching phone display, so it rejects. The
+        // daemon must not persist the relay's authenticated identity or finish.
+        state
+            .pairing
+            .approve(desktop_event.request_id, false)
+            .unwrap();
+        let denied: ServerToClientMsg = read_msg_from(&mut client_reader).await.unwrap();
+        assert_error_code(denied, ErrorCode::Forbidden, "rogue pairing");
+        assert!(!state.is_device_paired(&remote_node_id));
+
+        drop(client_writer);
+        drop(client_reader);
+        timeout(Duration::from_secs(2), server_task)
+            .await
+            .expect("iroh handler did not stop")
+            .expect("iroh handler panicked")
+            .expect("iroh handler failed");
+    }
+
+    #[tokio::test]
+    async fn version_negotiation_keeps_v4_paired_sessions_but_requires_v5_for_pairing() {
+        let paired_key = iroh::SecretKey::from_bytes(&[6; 32]);
+        let paired_node_id = paired_key.public().to_string();
+        let state = AppState::for_tests();
+        state
+            .save_device(StoredDevice::new(
+                "existing phone".to_string(),
+                paired_node_id.clone(),
+            ))
+            .unwrap();
+        let session_id = match crate::ipc::create_session_for(
+            &state,
+            ClientKind::LocalCli,
+            "v4-existing-session".to_string(),
+            vec!["/bin/cat".to_string()],
+            std::env::current_dir().unwrap(),
+            HashMap::new(),
+            ClientSize { rows: 24, cols: 80 },
+        ) {
+            ServerToClientMsg::SessionCreated { session_id, .. } => session_id,
+            other => panic!("failed to create v4 fixture session: {other:?}"),
+        };
+
+        let (client, server) = duplex(64 * 1024);
+        let (server_reader, server_writer) = tokio::io::split(server);
+        let server_task = tokio::spawn(handle_connection(
+            Arc::clone(&state),
+            paired_node_id.clone(),
+            server_reader,
+            server_writer,
+            None,
+        ));
+        let (mut client_reader, mut client_writer) = tokio::io::split(client);
+        write_msg_to(
+            &mut client_writer,
+            &ClientToServerMsg::Hello {
+                client_kind: ClientKind::AndroidApp,
+                client_version: "released-v4".to_string(),
+                protocol_version: 4,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            read_msg_from::<ServerToClientMsg, _>(&mut client_reader)
+                .await
+                .unwrap(),
+            ServerToClientMsg::Welcome { .. }
+        ));
+        write_msg_to(&mut client_writer, &ClientToServerMsg::ListSessions)
+            .await
+            .unwrap();
+        assert!(matches!(
+            read_msg_from::<ServerToClientMsg, _>(&mut client_reader)
+                .await
+                .unwrap(),
+            ServerToClientMsg::SessionList { .. }
+        ));
+        write_msg_to(
+            &mut client_writer,
+            &ClientToServerMsg::AttachSession {
+                session_id,
+                size: ClientSize { rows: 24, cols: 80 },
+                last_seen_seq: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            read_msg_from::<ServerToClientMsg, _>(&mut client_reader)
+                .await
+                .unwrap(),
+            ServerToClientMsg::Attached {
+                session_id: attached,
+                ..
+            } if attached == session_id
+        ));
+        write_msg_to(
+            &mut client_writer,
+            &ClientToServerMsg::Resize {
+                session_id,
+                size: ClientSize {
+                    rows: 30,
+                    cols: 100,
+                },
+            },
+        )
+        .await
+        .unwrap();
+        write_msg_to(
+            &mut client_writer,
+            &ClientToServerMsg::Input {
+                session_id,
+                bytes: b"v4-input\n".to_vec(),
+            },
+        )
+        .await
+        .unwrap();
+        timeout(Duration::from_secs(2), async {
+            loop {
+                if let ServerToClientMsg::Output {
+                    session_id: output_session,
+                    bytes,
+                    ..
+                } = read_msg_from::<ServerToClientMsg, _>(&mut client_reader)
+                    .await
+                    .unwrap()
+                    && output_session == session_id
+                    && bytes
+                        .windows(b"v4-input".len())
+                        .any(|window| window == b"v4-input")
+                {
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("v4 input should reach the existing attached session");
+        write_msg_to(
+            &mut client_writer,
+            &ClientToServerMsg::PairWithCode {
+                code: "A1B2C3D".to_string(),
+                device_name: "replacement".to_string(),
+                device_node_id: paired_node_id,
+            },
+        )
+        .await
+        .unwrap();
+        let pairing_rejected = timeout(Duration::from_secs(2), async {
+            loop {
+                let message: ServerToClientMsg = read_msg_from(&mut client_reader).await.unwrap();
+                if matches!(message, ServerToClientMsg::Error { .. }) {
+                    break message;
+                }
+            }
+        })
+        .await
+        .expect("v4 pairing rejection should not be hidden by session output");
+        assert_error_code(
+            pairing_rejected,
+            ErrorCode::VersionMismatch,
+            "v4 new pairing",
+        );
+        write_msg_to(&mut client_writer, &ClientToServerMsg::UnpairSelf)
+            .await
+            .unwrap();
+        let unpair_rejected = timeout(Duration::from_secs(2), async {
+            loop {
+                let message: ServerToClientMsg = read_msg_from(&mut client_reader).await.unwrap();
+                if matches!(message, ServerToClientMsg::Error { .. }) {
+                    break message;
+                }
+            }
+        })
+        .await
+        .expect("v4 UnpairSelf rejection should arrive");
+        assert_error_code(unpair_rejected, ErrorCode::VersionMismatch, "v4 UnpairSelf");
+        assert!(state.is_device_paired(&paired_key.public().to_string()));
+        write_msg_to(&mut client_writer, &ClientToServerMsg::DetachSession)
+            .await
+            .unwrap();
+        drop(client_writer);
+        drop(client_reader);
+        timeout(Duration::from_secs(2), server_task)
+            .await
+            .expect("v4 paired handler did not stop")
+            .expect("v4 paired handler panicked")
+            .expect("v4 paired handler failed");
+        assert!(matches!(
+            crate::ipc::kill_session_response(&state, session_id),
+            ServerToClientMsg::SessionKilled { .. }
+        ));
+
+        let unpaired_key = iroh::SecretKey::from_bytes(&[7; 32]);
+        let response =
+            send_hello(AppState::for_tests(), &unpaired_key.public().to_string(), 4).await;
+        assert_error_code(response, ErrorCode::VersionMismatch, "v4 unpaired Hello");
+        let response = send_hello(
+            AppState::for_tests(),
+            &unpaired_key.public().to_string(),
+            CONTRACT_VERSION,
+        )
+        .await;
+        assert!(matches!(response, ServerToClientMsg::Welcome { .. }));
+    }
+
+    #[tokio::test]
+    async fn unpair_self_is_exact_and_idempotent() {
+        let caller_key = iroh::SecretKey::from_bytes(&[8; 32]);
+        let other_key = iroh::SecretKey::from_bytes(&[9; 32]);
+        let caller_node_id = caller_key.public().to_string();
+        let other_node_id = other_key.public().to_string();
+        let state = AppState::for_tests();
+        state
+            .save_device(StoredDevice::new(
+                other_node_id.clone(),
+                other_node_id.clone(),
+            ))
+            .unwrap();
+        state
+            .save_device(StoredDevice::new(
+                "calling phone".to_string(),
+                caller_node_id.clone(),
+            ))
+            .unwrap();
+
+        let (client, server) = duplex(64 * 1024);
+        let (server_reader, server_writer) = tokio::io::split(server);
+        let server_task = tokio::spawn(handle_connection(
+            Arc::clone(&state),
+            caller_node_id.clone(),
+            server_reader,
+            server_writer,
+            None,
+        ));
+        let (mut client_reader, mut client_writer) = tokio::io::split(client);
+        write_msg_to(
+            &mut client_writer,
+            &ClientToServerMsg::Hello {
+                client_kind: ClientKind::AndroidApp,
+                client_version: "v5".to_string(),
+                protocol_version: CONTRACT_VERSION,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            read_msg_from::<ServerToClientMsg, _>(&mut client_reader)
+                .await
+                .unwrap(),
+            ServerToClientMsg::Welcome { .. }
+        ));
+
+        for _ in 0..2 {
+            write_msg_to(&mut client_writer, &ClientToServerMsg::UnpairSelf)
+                .await
+                .unwrap();
+            assert_eq!(
+                read_msg_from::<ServerToClientMsg, _>(&mut client_reader)
+                    .await
+                    .unwrap(),
+                ServerToClientMsg::Pong { seq: 0 }
+            );
+        }
+        assert!(!state.is_device_paired(&caller_node_id));
+        assert!(state.is_device_paired(&other_node_id));
+
+        drop(client_writer);
+        drop(client_reader);
+        timeout(Duration::from_secs(2), server_task)
+            .await
+            .expect("unpair handler did not stop")
+            .expect("unpair handler panicked")
+            .expect("unpair handler failed");
+    }
+
+    async fn send_hello(
+        state: Arc<AppState>,
+        remote_node_id: &str,
+        protocol_version: u32,
+    ) -> ServerToClientMsg {
+        let (client, server) = duplex(64 * 1024);
+        let (server_reader, server_writer) = tokio::io::split(server);
+        let server_task = tokio::spawn(handle_connection(
+            state,
+            remote_node_id.to_string(),
+            server_reader,
+            server_writer,
+            None,
+        ));
+        let (mut client_reader, mut client_writer) = tokio::io::split(client);
+        write_msg_to(
+            &mut client_writer,
+            &ClientToServerMsg::Hello {
+                client_kind: ClientKind::AndroidApp,
+                client_version: "test".to_string(),
+                protocol_version,
+            },
+        )
+        .await
+        .unwrap();
+        let response = read_msg_from(&mut client_reader).await.unwrap();
+        drop(client_writer);
+        drop(client_reader);
+        timeout(Duration::from_secs(2), server_task)
+            .await
+            .expect("iroh Hello handler did not stop")
+            .expect("iroh Hello handler panicked")
+            .expect("iroh Hello handler failed");
+        response
+    }
+
+    async fn send_request(
+        state: Arc<AppState>,
+        remote_node_id: &str,
+        message: ClientToServerMsg,
+    ) -> ServerToClientMsg {
+        let (client, server) = duplex(64 * 1024);
+        let (server_reader, server_writer) = tokio::io::split(server);
+        let server_task = tokio::spawn(handle_connection(
+            state,
+            remote_node_id.to_string(),
+            server_reader,
+            server_writer,
+            None,
+        ));
+        let (mut client_reader, mut client_writer) = tokio::io::split(client);
+
+        write_msg_to(
+            &mut client_writer,
+            &ClientToServerMsg::Hello {
+                client_kind: ClientKind::AndroidApp,
+                client_version: "test".to_string(),
+                protocol_version: CONTRACT_VERSION,
+            },
+        )
+        .await
+        .unwrap();
+        let welcome: ServerToClientMsg = read_msg_from(&mut client_reader).await.unwrap();
+        assert!(matches!(welcome, ServerToClientMsg::Welcome { .. }));
+
+        write_msg_to(&mut client_writer, &message).await.unwrap();
+        let response = timeout(
+            Duration::from_secs(2),
+            read_msg_from::<ServerToClientMsg, _>(&mut client_reader),
+        )
+        .await
+        .expect("iroh handler response timed out")
+        .expect("read iroh handler response");
+
+        drop(client_writer);
+        drop(client_reader);
+        timeout(Duration::from_secs(2), server_task)
+            .await
+            .expect("iroh handler did not stop")
+            .expect("iroh handler panicked")
+            .expect("iroh handler failed");
+        response
+    }
+
+    fn assert_error_code(response: ServerToClientMsg, expected: ErrorCode, variant: &str) {
+        match response {
+            ServerToClientMsg::Error { code, .. } => assert_eq!(code, expected, "{variant}"),
+            other => panic!("{variant}: expected {expected:?}, got {other:?}"),
+        }
     }
 }

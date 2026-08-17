@@ -40,13 +40,13 @@ mod tests {
         tx.send(ServerToClientMsg::Output {
             session_id,
             seq: 1,
-            bytes: b"first".to_vec(),
+            bytes: b"first".as_slice().into(),
         })
         .unwrap();
         tx.send(ServerToClientMsg::Output {
             session_id,
             seq: 2,
-            bytes: b"second".to_vec(),
+            bytes: b"second".as_slice().into(),
         })
         .unwrap();
 
@@ -69,13 +69,13 @@ mod tests {
         tx.send(ServerToClientMsg::Output {
             session_id,
             seq: 5,
-            bytes: b"live".to_vec(),
+            bytes: b"live".as_slice().into(),
         })
         .unwrap();
 
         match recv_attached_event(&mut rx, session_id).await {
             ForwardedEvent::Message(ServerToClientMsg::Output { bytes, .. }) => {
-                assert_eq!(bytes, b"live");
+                assert_eq!(bytes.as_ref(), b"live");
             }
             other => panic!("expected output event, got {other:?}"),
         }
@@ -87,12 +87,12 @@ mod tests {
         let replayed = ServerToClientMsg::Output {
             session_id,
             seq: 10,
-            bytes: b"already sent".to_vec(),
+            bytes: b"already sent".as_slice().into(),
         };
         let live = ServerToClientMsg::Output {
             session_id,
             seq: 11,
-            bytes: b"new".to_vec(),
+            bytes: b"new".as_slice().into(),
         };
         let state = ServerToClientMsg::AgentStateChanged {
             session_id,
