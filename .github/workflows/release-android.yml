@@ -6,6 +6,10 @@ on:
       - "android-v*.*.*"
   workflow_dispatch:
 
+concurrency:
+  group: android-internal
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -13,8 +17,21 @@ jobs:
   internal-track:
     name: Build and upload Play internal track
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: android-internal
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a main-branch release revision
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          if [[ "$GITHUB_REF_TYPE" != "tag" && "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Manual Android releases must run from main." >&2
+            exit 1
+          fi
       - name: Verify Android release credentials
         env:
           ANDROID_GOOGLE_SERVICES_JSON: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON }}
@@ -96,14 +113,14 @@ jobs:
           fi
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
           echo "version_name=$version" >> "$GITHUB_OUTPUT"
-      - name: Assemble release AAB
+      - name: Test and assemble release AAB
         env:
           SHELLY_ANDROID_VERSION_CODE: ${{ steps.android-version.outputs.version_code }}
           SHELLY_ANDROID_VERSION_NAME: ${{ steps.android-version.outputs.version_name }}
           SHELLY_RELAY_CONTROL_URL: ${{ secrets.SHELLY_RELAY_CONTROL_URL }}
         run: |
           node scripts/sync-release-version.mjs --check
-          apps/android/gradlew --no-daemon bundleRelease
+          apps/android/gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest bundleRelease
       - name: Verify release AAB signature
         run: |
           set -euo pipefail

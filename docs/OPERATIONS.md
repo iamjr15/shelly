@@ -8,8 +8,10 @@ through CI workflows, not through repository capture scripts.
 
 The publish flow is npm-only for desktop.
 
-1. Build Rust release artifacts with `.github/workflows/release-rust.yml`.
-2. Run `.github/workflows/release-npm.yml` from the matching release tag. Each
+1. Push a matching `v*.*.*` tag whose commit is on `main`; the Rust release
+   workflow builds and attests the artifacts.
+2. A successful Rust release automatically starts `.github/workflows/release-npm.yml`.
+   Each
    npm package trusts the `iamjr15/shelly` GitHub repository and the
    `release-npm.yml` workflow for `npm publish` through OIDC; no npm publishing
    token is stored in GitHub.
@@ -69,8 +71,9 @@ abuse. Bound it at the Lightsail firewall (restrict and monitor inbound on
 and watch the relay's aggregate metrics on `127.0.0.1:9091`.
 Per-client iroh-level rate limits can be added if abuse appears.
 
-`.github/workflows/deploy-relay.yml` deploys the relay automatically from
-`main` when relay code or relay infrastructure files change. It builds
+`.github/workflows/deploy-relay.yml` deploys every successful `main` CI
+revision automatically. Deploying every green revision avoids production drift
+when a prior deployment fails and a later, unrelated merge succeeds. It builds
 `shelly-relay` on an Ubuntu x64 runner, temporarily opens Lightsail SSH to
 that runner's public IPv4 address, runs the Ansible playbook, and closes the
 temporary SSH rule in an `always()` cleanup step.
@@ -143,8 +146,10 @@ defaults do — when the relay sits behind a trusted proxy that overwrites
 - `PLAY_SERVICE_ACCOUNT_JSON`
 
 The workflow builds mobile Rust libraries, decodes Firebase/signing config,
-builds the release AAB, verifies the JAR signature with `jarsigner`, uploads to
-Play internal track, and removes generated Firebase/signing files in cleanup.
+runs Android lint and unit tests, builds the release AAB, verifies the JAR
+signature with `jarsigner`, uploads to Play internal track, and removes generated
+Firebase/signing files in cleanup. Android is intentionally not part of normal
+pull-request CI, so this workflow is the mandatory Android release gate.
 
 Physical Android testing remains manual. Use direct `adb` screenshots, UI dumps,
 logcat, crash-buffer checks, and app behavior checks on the signed release build.
@@ -155,6 +160,10 @@ The site deploy workflow needs:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
+
+Site changes deploy automatically only after the corresponding `main` CI run
+passes. Missing credentials fail the deployment instead of reporting a false
+successful skip.
 
 Local commands:
 

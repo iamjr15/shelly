@@ -4,6 +4,24 @@ This guide covers the current source workflow after the custom verifier harness
 was removed. Keep checks focused on real build, test, package, and smoke
 behavior.
 
+## CI and delivery
+
+Every pull request runs the `CI` workflow and reports one stable required check:
+`CI Gate`. A small selector runs only the Core, macOS package, supply-chain,
+package metadata, site, Terraform, and workflow checks affected by the changed
+paths. The gate itself always runs, so documentation-only changes do not get
+stuck waiting for a skipped required workflow.
+
+Android is intentionally excluded from pull-request CI. The `Release Android`
+workflow runs lint, unit tests, the release bundle build, signature verification,
+and Play internal-track upload for `android-v*.*.*` tags (or a manual run from
+`main`). Restore an Android-path-only PR job if Android development becomes
+frequent enough that release-time feedback is too late.
+
+A green `main` CI run automatically deploys the exact revision to the relay.
+Site changes deploy after the same gate; package release tags must point to a
+commit on `main` before artifact or npm publication can proceed.
+
 ## Rust
 
 ```sh
@@ -134,8 +152,8 @@ apps/android/gradlew --no-daemon :app:testDebugUnitTest
 Gradle app tasks depend on `buildRustMobileCore`, which runs
 `apps/android/scripts/build-rust.sh` before Kotlin compilation or
 native-library merge. `bundleRelease` exercises the release-oriented Android
-build path used by CI; run the script directly only when you want an explicit
-Rust/UniFFI preflight.
+build path used by the Android release workflow; run the script directly only
+when you want an explicit Rust/UniFFI preflight.
 
 The Gradle version-catalog (`libs.versions.toml`) migration is intentionally
 deferred; the build keeps explicit dependency coordinates to avoid high-risk,
