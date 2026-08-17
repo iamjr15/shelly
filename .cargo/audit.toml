@@ -1,0 +1,9 @@
+[advisories]
+ignore = [
+  # Review by 2026-11-17: bincode 2 is the frozen v1 local IPC/persistence contract.
+  "RUSTSEC-2025-0141",
+  # Review by 2026-11-17: paste remains target-specific through iroh's netlink discovery stack.
+  "RUSTSEC-2024-0436",
+  # Review by 2026-11-17: postcard currently has no compatible move off atomic-polyfill.
+  "RUSTSEC-2023-0089",
+]
