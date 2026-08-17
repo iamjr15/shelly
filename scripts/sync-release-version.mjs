@@ -11,6 +11,7 @@ const workspacePackages = [
   "shelly-cli",
   "shelly-daemon",
   "shelly-mobile-core",
+  "shelly-privacy-tracing",
   "shelly-protocol",
   "shelly-relay",
 ];

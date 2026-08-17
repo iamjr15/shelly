@@ -154,16 +154,11 @@ pull-request CI, so this workflow is the mandatory Android release gate.
 Physical Android testing remains manual. Use direct `adb` screenshots, UI dumps,
 logcat, crash-buffer checks, and app behavior checks on the signed release build.
 
-## Site Deployment
+## Site Preview
 
-The site deploy workflow needs:
-
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
-
-Site changes deploy automatically only after the corresponding `main` CI run
-passes. Missing credentials fail the deployment instead of reporting a false
-successful skip.
+Shelly does not have a public website yet, so there is no site deployment
+workflow or Cloudflare credential dependency. The source remains buildable in
+CI and can be wired to hosting when a public site is ready.
 
 Local commands:
 

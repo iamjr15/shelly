@@ -19,8 +19,9 @@ and Play internal-track upload for `android-v*.*.*` tags (or a manual run from
 frequent enough that release-time feedback is too late.
 
 A green `main` CI run automatically deploys the exact revision to the relay.
-Site changes deploy after the same gate; package release tags must point to a
-commit on `main` before artifact or npm publication can proceed.
+The site source remains CI-only until Shelly has a public website; package
+release tags must point to a commit on `main` before artifact or npm publication
+can proceed.
 
 ## Rust
 
