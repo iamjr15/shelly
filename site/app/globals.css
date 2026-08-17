@@ -79,11 +79,10 @@ pre,
 }
 
 .brand-mark {
-  width: 1.1rem;
-  height: 1.1rem;
-  border: 2px solid var(--green);
-  border-radius: 4px;
-  box-shadow: 0.34rem 0.34rem 0 var(--amber);
+  width: 0.92rem;
+  height: 1.05rem;
+  color: var(--green);
+  flex: 0 0 auto;
 }
 
 .site-header nav {
