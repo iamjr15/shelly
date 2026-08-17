@@ -189,4 +189,6 @@ pnpm check:site
 pnpm build:site
 ```
 
-Cloudflare Pages deployment is handled by `.github/workflows/deploy-site.yml` using the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets.
+GitHub Pages deployment is handled by `.github/workflows/deploy-site.yml`. It
+runs automatically only for `site/**` changes on `main`, and it can also be
+started manually.

@@ -154,11 +154,12 @@ pull-request CI, so this workflow is the mandatory Android release gate.
 Physical Android testing remains manual. Use direct `adb` screenshots, UI dumps,
 logcat, crash-buffer checks, and app behavior checks on the signed release build.
 
-## Site Preview
+## Website deployment
 
-Shelly does not have a public website yet, so there is no site deployment
-workflow or Cloudflare credential dependency. The source remains buildable in
-CI and can be wired to hosting when a public site is ready.
+The public site is a static Astro project in `site/` and is deployed to GitHub
+Pages by `.github/workflows/deploy-site.yml`. Automatic deployments run only
+when files under `site/` change on `main`; operators can also start the workflow
+manually. The custom domain is `shelly.sh`.
 
 Local commands:
 
