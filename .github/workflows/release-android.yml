@@ -138,13 +138,17 @@ jobs:
         id: play-destination
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            echo "track=production" >> "$GITHUB_OUTPUT"
-            echo "status=draft" >> "$GITHUB_OUTPUT"
-            echo "changes_not_sent_for_review=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "track=production"
+              echo "status=draft"
+              echo "changes_not_sent_for_review=true"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "track=internal" >> "$GITHUB_OUTPUT"
-            echo "status=completed" >> "$GITHUB_OUTPUT"
-            echo "changes_not_sent_for_review=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "track=internal"
+              echo "status=completed"
+              echo "changes_not_sent_for_review=false"
+            } >> "$GITHUB_OUTPUT"
           fi
       - name: Upload signed AAB to Play
         env:
