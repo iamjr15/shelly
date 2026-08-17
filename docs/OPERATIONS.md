@@ -147,8 +147,10 @@ defaults do — when the relay sits behind a trusted proxy that overwrites
 
 The workflow builds mobile Rust libraries, decodes Firebase/signing config,
 runs Android lint and unit tests, builds the release AAB, verifies the JAR
-signature with `jarsigner`, uploads to Play internal track, and removes generated
-Firebase/signing files in cleanup. Android is intentionally not part of normal
+signature with `jarsigner`, uploads it to Play, and removes generated
+Firebase/signing files in cleanup. A manual run creates an unsubmitted
+production-track draft; an `android-v*.*.*` tag keeps the existing completed
+internal-track behavior. Android is intentionally not part of normal
 pull-request CI, so this workflow is the mandatory Android release gate.
 
 Physical Android testing remains manual. Use direct `adb` screenshots, UI dumps,
