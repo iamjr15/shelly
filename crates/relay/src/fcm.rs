@@ -8,7 +8,7 @@ use ring::{
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 const FCM_SCOPE: &str = "https://www.googleapis.com/auth/firebase.messaging";
 const DEFAULT_FCM_ENDPOINT: &str = "https://fcm.googleapis.com";
@@ -19,7 +19,7 @@ pub(crate) struct FcmClient {
     endpoint: String,
     project_id: String,
     token_uri: String,
-    token_cache: Arc<Mutex<FcmTokenCache>>,
+    token_cache: Arc<tokio::sync::Mutex<FcmTokenCache>>,
     http: reqwest::Client,
 }
 
@@ -99,7 +99,6 @@ struct FcmNotification<'a> {
 #[derive(Serialize)]
 struct FcmData<'a> {
     session_id_hash: &'a str,
-    session_name_hash: &'a str,
     event_type: &'a str,
 }
 
@@ -157,7 +156,7 @@ impl FcmClient {
             endpoint: credentials.endpoint.trim_end_matches('/').to_string(),
             project_id: credentials.project_id,
             token_uri: credentials.token_uri,
-            token_cache: Arc::new(Mutex::new(FcmTokenCache::new(
+            token_cache: Arc::new(tokio::sync::Mutex::new(FcmTokenCache::new(
                 credentials.client_email,
                 credentials.private_key_id,
                 credentials.private_key_pem,
@@ -207,29 +206,16 @@ impl FcmClient {
     }
 
     async fn access_token(&self, now_secs: u64) -> Result<String> {
-        if let Some(token) = self
-            .token_cache
-            .lock()
-            .expect("FCM token cache lock poisoned")
-            .cached_token(now_secs)
-        {
+        // Keep this lock through the exchange: concurrent cache misses must
+        // single-flight rather than stampede Google's OAuth endpoint.
+        let mut cache = self.token_cache.lock().await;
+        if let Some(token) = cache.cached_token(now_secs) {
             return Ok(token);
         }
 
-        let assertion = self
-            .token_cache
-            .lock()
-            .expect("FCM token cache lock poisoned")
-            .jwt(&self.token_uri, now_secs)?;
+        let assertion = cache.jwt(&self.token_uri, now_secs)?;
         let response = self.exchange_token(&assertion).await?;
-        let expires_at_secs = now_secs
-            + response
-                .expires_in
-                .saturating_sub(ACCESS_TOKEN_REFRESH_SKEW_SECONDS);
-        let mut cache = self
-            .token_cache
-            .lock()
-            .expect("FCM token cache lock poisoned");
+        let expires_at_secs = access_token_refresh_at(now_secs, response.expires_in);
         cache.cached = Some(CachedAccessToken {
             token: response.access_token.clone(),
             expires_at_secs,
@@ -274,7 +260,6 @@ impl FcmClient {
                 },
                 data: FcmData {
                     session_id_hash: &delivery.session_id_hash,
-                    session_name_hash: &delivery.session_name_hash,
                     event_type: delivery.event_type.as_str(),
                 },
                 android: FcmAndroidConfig {
@@ -394,11 +379,22 @@ fn fcm_invalid_token_reason(body: &str) -> Option<String> {
             .and_then(serde_json::Value::as_str)
             .is_some_and(|value| value == "type.googleapis.com/google.firebase.fcm.v1.FcmError");
         let error_code = detail.get("errorCode").and_then(serde_json::Value::as_str);
-        if fcm_error_type && error_code == Some("UNREGISTERED") {
-            return Some("UNREGISTERED".to_string());
+        if fcm_error_type && matches!(error_code, Some("UNREGISTERED" | "INVALID_ARGUMENT")) {
+            return error_code.map(str::to_string);
         }
     }
     None
+}
+
+fn access_token_refresh_at(now_secs: u64, expires_in: u64) -> u64 {
+    // Normal one-hour tokens refresh five minutes early. Short-lived tokens
+    // retain up to a one-minute usable window instead of immediately looking
+    // expired when `expires_in < ACCESS_TOKEN_REFRESH_SKEW_SECONDS`.
+    let minimum_usable_lifetime = expires_in.min(60);
+    let usable_lifetime = expires_in
+        .saturating_sub(ACCESS_TOKEN_REFRESH_SKEW_SECONDS)
+        .max(minimum_usable_lifetime);
+    now_secs.saturating_add(usable_lifetime)
 }
 
 fn provider_error(error: anyhow::Error) -> crate::ProviderDeliveryError {
@@ -426,6 +422,7 @@ mod tests {
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use serde_json::json;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
@@ -479,8 +476,6 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
             thread_id: "session.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                 .to_string(),
             session_id_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                .to_string(),
-            session_name_hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
                 .to_string(),
             event_type: crate::PushEventType::AwaitingInput,
         }
@@ -536,6 +531,29 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
             fcm_invalid_token_reason(&body).as_deref(),
             Some("UNREGISTERED")
         );
+
+        let invalid_argument = json!({
+            "error": {
+                "status": "INVALID_ARGUMENT",
+                "details": [{
+                    "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError",
+                    "errorCode": "INVALID_ARGUMENT"
+                }]
+            }
+        })
+        .to_string();
+        assert_eq!(
+            fcm_invalid_token_reason(&invalid_argument).as_deref(),
+            Some("INVALID_ARGUMENT")
+        );
+    }
+
+    #[test]
+    fn short_lived_fcm_tokens_keep_a_bounded_cache_window() {
+        assert_eq!(access_token_refresh_at(1_000, 3_600), 4_300);
+        assert_eq!(access_token_refresh_at(1_000, 60), 1_060);
+        assert_eq!(access_token_refresh_at(1_000, 299), 1_060);
+        assert_eq!(access_token_refresh_at(u64::MAX - 1, 60), u64::MAX);
     }
 
     fn assert_fcm_payload_shape(payload: &serde_json::Value) {
@@ -556,7 +574,6 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
             message["data"],
             json!({
                 "session_id_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                "session_name_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                 "event_type": "awaiting_input"
             })
         );
@@ -616,6 +633,39 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
         assert!(!requests[0].body.contains("claude"));
         assert!(!requests[0].body.contains("/Users/"));
         assert!(!requests[0].body.contains("last_line"));
+    }
+
+    #[tokio::test]
+    async fn concurrent_fcm_sends_single_flight_oauth_refresh() {
+        let state = MockState::default();
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new()
+            .route("/token", post(token_handler))
+            .route("/v1/projects/test-project/messages:send", post(fcm_handler))
+            .with_state(state.clone());
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let endpoint = format!("http://{addr}");
+        let client = fcm_client(&endpoint, &format!("{endpoint}/token"));
+        let first = delivery();
+        let second = delivery();
+        let third = delivery();
+        let (first, second, third) = tokio::join!(
+            client.send(&first),
+            client.send(&second),
+            client.send(&third),
+        );
+
+        first.unwrap();
+        second.unwrap();
+        third.unwrap();
+        assert_eq!(state.token_requests.load(Ordering::Relaxed), 1);
+        assert_eq!(state.fcm_requests.lock().unwrap().len(), 3);
     }
 
     #[tokio::test]
@@ -689,6 +739,7 @@ QuQiDPxvGAbQ1yXAK5PsWzA=
 
     async fn token_handler(State(state): State<MockState>, body: Bytes) -> impl IntoResponse {
         state.token_requests.fetch_add(1, Ordering::Relaxed);
+        tokio::time::sleep(Duration::from_millis(25)).await;
         let body = std::str::from_utf8(&body).unwrap();
         assert!(body.contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer"));
         assert!(body.contains("assertion="));

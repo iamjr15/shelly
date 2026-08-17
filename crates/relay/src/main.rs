@@ -1,9 +1,8 @@
 mod iroh_fallback;
-mod privacy_tracing;
 mod telemetry;
 
 use anyhow::{Context, Result, bail};
-use privacy_tracing::PrivacySanitizerLayer;
+use shelly_privacy_tracing::PrivacySanitizerLayer;
 use std::path::PathBuf;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -19,11 +18,31 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let _telemetry = init_tracing()?;
+    let mut telemetry = init_tracing()?;
 
-    match relay_mode()? {
+    let result = match relay_mode()? {
         RelayMode::ControlPlane => serve_control_plane().await,
         RelayMode::IrohRelay => iroh_fallback::serve_from_env().await,
+    };
+    telemetry.shutdown();
+    result
+}
+
+async fn shutdown_signal() -> &'static str {
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("install SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => "Ctrl-C",
+            _ = terminate.recv() => "SIGTERM",
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+        "Ctrl-C"
     }
 }
 

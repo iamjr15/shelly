@@ -61,7 +61,6 @@ struct ApnsErrorResponse {
 struct ApnsPushPayload<'a> {
     aps: Aps<'a>,
     session_id_hash: &'a str,
-    session_name_hash: &'a str,
     event_type: &'a str,
 }
 
@@ -154,12 +153,11 @@ impl ApnsClient {
         if response.status() != StatusCode::OK {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            if status == StatusCode::BAD_REQUEST
-                && apns_error_reason(&body).as_deref() == Some("BadDeviceToken")
-            {
+            let reason = apns_error_reason(&body);
+            if apns_error_is_invalid_token(status, reason.as_deref()) {
                 return Err(crate::ProviderDeliveryError::invalid_token(
                     "APNs",
-                    "BadDeviceToken",
+                    reason.unwrap_or_else(|| "invalid_token".to_string()),
                 ));
             }
             return Err(provider_error(anyhow::anyhow!(
@@ -186,7 +184,6 @@ impl ApnsClient {
                 thread_id: &delivery.thread_id,
             },
             session_id_hash: &delivery.session_id_hash,
-            session_name_hash: &delivery.session_name_hash,
             event_type: delivery.event_type.as_str(),
         };
         serde_json::to_string(&payload).context("encode APNs payload")
@@ -263,6 +260,11 @@ fn apns_error_reason(body: &str) -> Option<String> {
     serde_json::from_str::<ApnsErrorResponse>(body).ok()?.reason
 }
 
+fn apns_error_is_invalid_token(status: StatusCode, reason: Option<&str>) -> bool {
+    matches!(reason, Some("BadDeviceToken" | "DeviceTokenNotForTopic"))
+        || (status == StatusCode::GONE && reason == Some("Unregistered"))
+}
+
 fn provider_error(error: anyhow::Error) -> crate::ProviderDeliveryError {
     crate::ProviderDeliveryError::other("APNs", error)
 }
@@ -323,8 +325,6 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
                 .to_string(),
             session_id_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                 .to_string(),
-            session_name_hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-                .to_string(),
             event_type: crate::PushEventType::AwaitingInput,
         }
     }
@@ -358,6 +358,26 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
     }
 
     #[test]
+    fn apns_invalid_token_classification_covers_provider_terminal_reasons() {
+        assert!(apns_error_is_invalid_token(
+            StatusCode::GONE,
+            Some("Unregistered")
+        ));
+        assert!(apns_error_is_invalid_token(
+            StatusCode::BAD_REQUEST,
+            Some("DeviceTokenNotForTopic")
+        ));
+        assert!(apns_error_is_invalid_token(
+            StatusCode::BAD_REQUEST,
+            Some("BadDeviceToken")
+        ));
+        assert!(!apns_error_is_invalid_token(
+            StatusCode::FORBIDDEN,
+            Some("ExpiredProviderToken")
+        ));
+    }
+
+    #[test]
     fn apns_payload_contains_only_generic_text_and_hashes() {
         let client = ApnsClient::new(ApnsCredentials {
             team_id: "TEAMID1234".to_string(),
@@ -376,7 +396,7 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
     fn assert_apns_payload_shape(payload: &serde_json::Value) {
         assert_eq!(
             object_keys(payload),
-            vec!["aps", "event_type", "session_id_hash", "session_name_hash"]
+            vec!["aps", "event_type", "session_id_hash"]
         );
         assert_eq!(object_keys(&payload["aps"]), vec!["alert", "thread-id"]);
         assert_eq!(object_keys(&payload["aps"]["alert"]), vec!["body", "title"]);
@@ -392,10 +412,6 @@ Qs2AKHh1jTVeSS4oFAe+TdkeM/D3FuooTy4WMMf6s8BjtKjlBVHwauFo
         assert_eq!(
             payload["session_id_hash"],
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        );
-        assert_eq!(
-            payload["session_name_hash"],
-            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         );
         assert_eq!(payload["event_type"], "awaiting_input");
 

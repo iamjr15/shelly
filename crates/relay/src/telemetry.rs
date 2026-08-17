@@ -75,13 +75,19 @@ impl TelemetryGuard {
     pub(crate) fn endpoint(&self) -> Option<&str> {
         self.config.as_ref().map(|config| config.endpoint.as_str())
     }
+
+    pub(crate) fn shutdown(&mut self) {
+        if let Some(provider) = self.provider.take()
+            && let Err(error) = provider.shutdown()
+        {
+            tracing::warn!(%error, "failed to flush relay telemetry during shutdown");
+        }
+    }
 }
 
 impl Drop for TelemetryGuard {
     fn drop(&mut self) {
-        if let Some(provider) = self.provider.take() {
-            let _ = provider.shutdown();
-        }
+        self.shutdown();
     }
 }
 
