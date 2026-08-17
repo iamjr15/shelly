@@ -6,6 +6,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("io.github.takahirom.roborazzi")
 }
 
 if (file("google-services.json").exists()) {
@@ -22,7 +23,8 @@ fun escapedBuildConfigString(value: String): String = value.replace("\\", "\\\\"
 val debugBiometricBypass = System.getenv("SHELLY_ANDROID_BIOMETRIC_BYPASS") == "true"
 val debugPairingCode = escapedBuildConfigString(System.getenv("SHELLY_ANDROID_PAIRING_CODE").orEmpty())
 val relayControlUrl = escapedBuildConfigString(System.getenv("SHELLY_RELAY_CONTROL_URL").orEmpty())
-val shellyAbiFilter = providers.gradleProperty("shelly.android.abiFilter").orNull?.trim().orEmpty()
+val shellyAndroidVersionCode = System.getenv("SHELLY_ANDROID_VERSION_CODE")?.toIntOrNull() ?: 1
+val shellyAndroidVersionName = System.getenv("SHELLY_ANDROID_VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "1.0"
 val repoRoot = rootProject.projectDir.parentFile.parentFile
 val buildRustMobileCore = tasks.register<Exec>("buildRustMobileCore") {
     group = "build"
@@ -41,20 +43,28 @@ val buildRustMobileCore = tasks.register<Exec>("buildRustMobileCore") {
 android {
     namespace = "app.shelly.android"
     compileSdk = 36
+    ndkVersion = "27.1.12297006"
+
+    lint {
+        // Adopt Lint on a previously-unlinted codebase: the baseline grandfathers the
+        // current issues (generated-uniffi Cleaner NewApi calls that are runtime-guarded,
+        // pre-existing manifest/permission nits) so new regressions still fail the build.
+        baseline = file("lint-baseline.xml")
+        abortOnError = true
+    }
 
     defaultConfig {
         applicationId = "app.shelly.android"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = shellyAndroidVersionCode
+        versionName = shellyAndroidVersionName
         buildConfigField("boolean", "SHELLY_BIOMETRIC_BYPASS", "false")
         buildConfigField("String", "SHELLY_DEBUG_PAIRING_CODE", "\"\"")
         buildConfigField("String", "SHELLY_RELAY_CONTROL_URL", "\"$relayControlUrl\"")
-        if (shellyAbiFilter.isNotEmpty()) {
-            ndk {
-                abiFilters += shellyAbiFilter
-            }
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+            debugSymbolLevel = "FULL"
         }
     }
 
@@ -124,6 +134,14 @@ android {
     }
 }
 
+roborazzi {
+    // Baselines are source artifacts; diffs/reports remain under build/.
+    outputDir.set(rootProject.file("screenshots/goldens"))
+    compare {
+        outputDir.set(layout.buildDirectory.dir("outputs/roborazzi-comparison"))
+    }
+}
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.03.01"))
     implementation("androidx.activity:activity-compose:1.13.0")
@@ -133,7 +151,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-savedstate:2.10.0")
     implementation("androidx.navigation:navigation-compose:2.9.7")
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("androidx.biometric:biometric-ktx:1.4.0-alpha02")
     implementation(platform("com.google.firebase:firebase-bom:34.13.0"))
@@ -145,12 +165,13 @@ dependencies {
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     implementation("org.connectbot:termlib:0.1.0")
-    implementation("net.java.dev.jna:jna:5.15.0@aar")
+    implementation("net.java.dev.jna:jna:5.19.1@aar")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.70.0")
     testImplementation(platform("androidx.compose:compose-bom:2026.03.01"))
     testImplementation("androidx.compose.ui:ui-test-junit4")
 }

@@ -3,7 +3,6 @@ package app.shelly.android.features.modals
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import app.shelly.android.core.ShellyAlertMessage
-import app.shelly.android.core.daemonUnreachablePreviewMessage
 
 @Composable
 fun AlertSheet(
@@ -24,11 +23,4 @@ fun AlertSheet(
         modifier = modifier,
         warning = true,
     )
-}
-
-@Composable
-internal fun AlertSheetPreview() {
-    ModalPreviewScaffold {
-        AlertSheet(message = daemonUnreachablePreviewMessage())
-    }
 }

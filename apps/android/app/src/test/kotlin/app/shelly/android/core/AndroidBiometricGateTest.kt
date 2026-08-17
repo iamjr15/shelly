@@ -1,5 +1,6 @@
 package app.shelly.android.core
 
+import androidx.biometric.BiometricManager
 import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -68,6 +69,14 @@ class AndroidBiometricGateTest {
 
         assertFalse(AndroidBiometricGate.isFreshForTests())
         assertTrue(AndroidBiometricGate.shouldLockOnResumeForTests())
+    }
+
+    @Test
+    fun permanentBiometricFailuresExposeRecoverySettingsButTransientFailureDoesNot() {
+        assertTrue(biometricFailureIsPermanent(BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE))
+        assertTrue(biometricFailureIsPermanent(BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED))
+        assertFalse(biometricFailureIsPermanent(BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE))
+        assertFalse(biometricFailureIsPermanent(BiometricManager.BIOMETRIC_SUCCESS))
     }
 
     private companion object {

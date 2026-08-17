@@ -4,9 +4,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.shelly.android.R
 import app.shelly.android.core.PairedDaemonRecord
 import app.shelly.android.core.ShellyViewModel
 import app.shelly.android.core.displayName
@@ -21,7 +23,7 @@ fun SettingsScreen(
     padding: PaddingValues,
     viewModel: ShellyViewModel,
     themeModeLabel: String = "SYSTEM",
-    notificationsLabel: String = "OFF",
+    notificationsLabel: String? = null,
     securityLabel: String = "5 MIN",
     aboutVersionLabel: String = "V1.0",
     onBackToSessions: () -> Unit = {},
@@ -32,14 +34,14 @@ fun SettingsScreen(
     onOpenDaemonDetail: () -> Unit = {},
     onUnpair: () -> Unit = {},
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     SettingsContent(
         modifier = Modifier.padding(padding),
         paired = state.paired,
         pairedDaemon = state.pairedDaemon,
         themeModeLabel = themeModeLabel,
-        notificationsLabel = notificationsLabel,
+        notificationsLabel = notificationsLabel ?: stringResource(R.string.state_off),
         securityLabel = securityLabel,
         aboutVersionLabel = aboutVersionLabel,
         onBackToSessions = onBackToSessions,
@@ -53,7 +55,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsContent(
+internal fun SettingsContent(
     modifier: Modifier = Modifier,
     paired: Boolean,
     pairedDaemon: PairedDaemonRecord?,
@@ -89,37 +91,8 @@ private fun SettingsContent(
             SettingsListRow("About", aboutVersionLabel, glyph = SettingsGlyph.Info, showDivider = false, onClick = onOpenAbout)
             Spacer(Modifier.weight(1f))
             if (paired) {
-                SettingsFooterAction("Unpair this device", onClick = onUnpair)
+                SettingsFooterAction(stringResource(R.string.unpair_this_device), onClick = onUnpair)
             }
         },
-    )
-}
-
-@Composable
-internal fun SettingsContentPreview() {
-    SettingsContent(
-        paired = true,
-        pairedDaemon = PairedDaemonRecord(
-            daemonNodeId = "preview-daemon",
-            relayUrl = null,
-            addrs = emptyList(),
-            deviceNodeId = "preview-device",
-            deviceSecretKey = ByteArray(0),
-            pairedAtMillis = 0L,
-            daemonVersion = "1.0.0",
-            hostName = "dev-macbook",
-            protocolVersion = 3,
-        ),
-        themeModeLabel = "SYSTEM",
-        notificationsLabel = "OFF",
-        securityLabel = "5 MIN",
-        aboutVersionLabel = "V1.0",
-        onBackToSessions = {},
-        onOpenAppearance = {},
-        onOpenNotifications = {},
-        onOpenSecurity = {},
-        onOpenAbout = {},
-        onOpenDaemonDetail = {},
-        onUnpair = {},
     )
 }

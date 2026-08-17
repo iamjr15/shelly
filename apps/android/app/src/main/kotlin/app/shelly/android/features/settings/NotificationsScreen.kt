@@ -1,6 +1,8 @@
 package app.shelly.android.features.settings
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import app.shelly.android.R
 import app.shelly.android.ui.components.SettingsHeroBody
 import app.shelly.android.ui.components.SettingsListRow
 import app.shelly.android.ui.components.ShellyScreen
@@ -42,6 +44,8 @@ private fun NotificationsContent(
     onToggleSessionCrashed: () -> Unit,
     onToggleBuildFinished: () -> Unit,
 ) {
+    val onLabel = stringResource(R.string.state_on)
+    val offLabel = stringResource(R.string.state_off)
     ShellyScreen(
         hero = {
             SettingsHeroBody(
@@ -51,30 +55,16 @@ private fun NotificationsContent(
             )
         },
         content = {
-            SettingsListRow("Push", if (pushOn) "On" else "Off", onClick = onTogglePush)
-            SettingsListRow("Awaiting input", if (awaitingInputOn) "On" else "Off", onClick = onToggleAwaitingInput)
-            SettingsListRow("Session crashed", if (sessionCrashedOn) "On" else "Off", onClick = onToggleSessionCrashed)
+            SettingsListRow("Push", if (pushOn) onLabel else offLabel, onClick = onTogglePush, toggleState = pushOn)
+            SettingsListRow("Awaiting input", if (awaitingInputOn) onLabel else offLabel, onClick = onToggleAwaitingInput, toggleState = awaitingInputOn)
+            SettingsListRow("Session crashed", if (sessionCrashedOn) onLabel else offLabel, onClick = onToggleSessionCrashed, toggleState = sessionCrashedOn)
             SettingsListRow(
                 "Build finished",
-                if (buildFinishedOn) "On" else "Off",
+                if (buildFinishedOn) onLabel else offLabel,
                 showDivider = false,
                 onClick = onToggleBuildFinished,
+                toggleState = buildFinishedOn,
             )
         },
-    )
-}
-
-@Composable
-internal fun NotificationsContentPreview() {
-    NotificationsContent(
-        onBack = {},
-        pushOn = true,
-        awaitingInputOn = true,
-        sessionCrashedOn = true,
-        buildFinishedOn = false,
-        onTogglePush = {},
-        onToggleAwaitingInput = {},
-        onToggleSessionCrashed = {},
-        onToggleBuildFinished = {},
     )
 }

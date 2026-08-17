@@ -1,6 +1,6 @@
 package app.shelly.android.screenshots
 
-import app.shelly.android.features.palette.CommandPaletteContentPreview
+import app.shelly.android.features.palette.CommandPaletteScreen
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -14,11 +14,11 @@ import org.robolectric.annotation.GraphicsMode
 class CommandPaletteScreenshotTest {
     @Test
     fun command_palette_dark() = ScreenshotHarness.render("command_palette_dark", dark = true) {
-        CommandPaletteContentPreview()
+        CommandPaletteScreen(initialQuery = "attach")
     }
 
     @Test
     fun command_palette_light() = ScreenshotHarness.render("command_palette_light", dark = false) {
-        CommandPaletteContentPreview()
+        CommandPaletteScreen(initialQuery = "attach")
     }
 }

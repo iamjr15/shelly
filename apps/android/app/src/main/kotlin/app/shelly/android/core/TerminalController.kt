@@ -1,5 +1,6 @@
 package app.shelly.android.core
 
+import android.os.Handler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +21,7 @@ import uniffi.shelly_mobile_core.AttachedSession
 import uniffi.shelly_mobile_core.ByteStreamSink
 import uniffi.shelly_mobile_core.ShellyException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 sealed interface TerminalPhase {
     data object Attached : TerminalPhase
@@ -52,12 +54,13 @@ class TerminalController(
     private val recordLastSeenSeq: (ULong) -> Unit,
     private val recordTelemetryExperience: () -> Unit,
     private val terminalWriterForTests: ((ByteArray) -> Unit)? = null,
+    private val detachScope: CoroutineScope = scope,
+    private val onDetached: () -> Unit = {},
 ) : ByteStreamSink {
     private val _state = MutableStateFlow(TerminalUiState(agentState = session.state))
     val state: StateFlow<TerminalUiState> = _state.asStateFlow()
 
-    @Volatile
-    private var attachedSession: AttachedSession = initialAttachedSession
+    private val attachedSession = AtomicReference<AttachedSession?>(initialAttachedSession)
     private var subscribeJob: Job? = null
     private var awaitingInputObserved = false
     private var inputSentAfterAwaiting = false
@@ -68,7 +71,8 @@ class TerminalController(
 
     val modifierManager = ShellyModifierManager()
 
-    val emulator: TerminalEmulator = TerminalEmulatorFactory.create(
+    @Volatile
+    private var terminalEmulator: TerminalEmulator? = TerminalEmulatorFactory.create(
         initialRows = 24,
         initialCols = 80,
         onKeyboardInput = { bytes ->
@@ -78,8 +82,12 @@ class TerminalController(
             requestResize(rows = dimensions.rows, columns = dimensions.columns)
         },
     )
+
+    val emulator: TerminalEmulator
+        get() = checkNotNull(terminalEmulator) { "Terminal emulator has been detached" }
+
     private val terminalWriter: (ByteArray) -> Unit = terminalWriterForTests ?: { bytes ->
-        emulator.writeInput(bytes)
+        terminalEmulator?.writeInput(bytes)
     }
 
     fun start() {
@@ -88,10 +96,13 @@ class TerminalController(
     }
 
     private fun launchSubscribe(cancelExisting: Boolean) {
+        if (detached.get()) {
+            return
+        }
         if (cancelExisting) {
             subscribeJob?.cancel()
         }
-        val current = attachedSession
+        val current = attachedSession.get() ?: return
         subscribeJob = scope.launch(Dispatchers.IO) {
             try {
                 current.subscribe(this@TerminalController)
@@ -112,7 +123,7 @@ class TerminalController(
             modifierManager.clearTransients()
             return
         }
-        val current = attachedSession
+        val current = attachedSession.get() ?: return
         try {
             current.sendInput(bytes)
         } catch (error: Throwable) {
@@ -156,7 +167,7 @@ class TerminalController(
         }
         scope.launch {
             if (!detached.get()) {
-                val current = attachedSession
+                val current = attachedSession.get() ?: return@launch
                 runCatching {
                     current.resize(
                         cols = columns.toUShort(),
@@ -176,15 +187,21 @@ class TerminalController(
         }
     }
 
-    fun detach() {
+    fun detach(): Job? {
         if (!detached.compareAndSet(false, true)) {
-            return
+            return null
         }
         subscribeJob?.cancel()
-        recordCurrentSeq()
-        scope.launch {
-            runCatching { attachedSession.detach() }
-            attachedSession.destroy()
+        val current = attachedSession.getAndSet(null)
+        current?.let(::recordCurrentSeq)
+        tearDownTerminalEmulator()
+        onDetached()
+        return current?.let { attachment ->
+            detachScope.launch {
+                runCatching { attachment.detach() }
+                    .onFailure { debugLog("terminal detach RPC failed", it, "ShellyTerminal") }
+                attachment.destroy()
+            }
         }
     }
 
@@ -210,10 +227,10 @@ class TerminalController(
 
     override fun onLag(skippedBytes: ULong) {
         if (detached.get()) return
-        recordCurrentSeq()
+        val current = attachedSession.get() ?: return
+        recordCurrentSeq(current)
         val phase = TerminalPhase.Resyncing(skippedBytes)
         _state.update { it.copy(phase = phase) }
-        val current = attachedSession
         scope.launch {
             recoverAttachment(current, phase)
         }
@@ -221,22 +238,32 @@ class TerminalController(
 
     override fun onSessionExited(code: Int) {
         if (detached.get()) return
-        recordCurrentSeq()
+        attachedSession.get()?.let(::recordCurrentSeq)
         _state.update { it.copy(phase = TerminalPhase.Exited(code), exitedCode = code) }
     }
 
-    private fun recordCurrentSeq() {
-        recordLastSeenSeq(attachedSession.lastSeenSeq())
+    private fun recordCurrentSeq(attachment: AttachedSession) {
+        runCatching { recordLastSeenSeq(attachment.lastSeenSeq()) }
+            .onFailure { debugLog("could not record terminal sequence", it, "ShellyTerminal") }
     }
 
     private suspend fun recoverAttachment(failed: AttachedSession, initialPhase: TerminalPhase) {
         recoveryMutex.withLock {
-            if (detached.get() || failed !== attachedSession) {
+            if (detached.get() || failed !== attachedSession.get()) {
                 return
             }
-            val lastSeenSeq = failed.lastSeenSeq()
+            val lastSeenSeq = runCatching { failed.lastSeenSeq() }.getOrElse { error ->
+                if (detached.get() || failed !== attachedSession.get()) {
+                    return
+                }
+                throw error
+            }
             recordLastSeenSeq(lastSeenSeq)
             runCatching { failed.detach() }
+                .onFailure { debugLog("terminal recovery detach failed", it, "ShellyTerminal") }
+            if (!attachedSession.compareAndSet(failed, null)) {
+                return
+            }
             failed.destroy()
 
             var attempt = 0
@@ -247,11 +274,19 @@ class TerminalController(
                 }
                 _state.update { it.copy(phase = phase) }
                 try {
-                    attachedSession = reattach(lastSeenSeq)
-                    if (!detached.get()) {
-                        _state.update { it.copy(phase = TerminalPhase.Attached) }
-                        launchSubscribe(cancelExisting = false)
+                    val replacement = reattach(lastSeenSeq)
+                    if (detached.get() || !attachedSession.compareAndSet(null, replacement)) {
+                        releaseAttachment(replacement)
+                        return
                     }
+                    if (detached.get()) {
+                        if (attachedSession.compareAndSet(replacement, null)) {
+                            releaseAttachment(replacement)
+                        }
+                        return
+                    }
+                    _state.update { it.copy(phase = TerminalPhase.Attached) }
+                    launchSubscribe(cancelExisting = false)
                     return
                 } catch (error: Throwable) {
                     if (error is CancellationException) {
@@ -263,6 +298,32 @@ class TerminalController(
                 delay(reconnectDelayMillis(attempt))
             }
         }
+    }
+
+    private fun releaseAttachment(attachment: AttachedSession) {
+        detachScope.launch {
+            runCatching { attachment.detach() }
+                .onFailure { debugLog("terminal replacement detach failed", it, "ShellyTerminal") }
+            attachment.destroy()
+        }
+    }
+
+    private fun tearDownTerminalEmulator() {
+        val emulator = terminalEmulator ?: return
+        // TODO(upstream-termlib): add close() to pinned termlib 0.1.0 and replace this reflective
+        // best-effort cleanup with the supported API once the upstream release exposes it.
+        runCatching {
+            generateSequence(emulator.javaClass as Class<*>?) { it.superclass }
+                .flatMap { type -> type.declaredFields.asSequence() }
+                .firstOrNull { field -> Handler::class.java.isAssignableFrom(field.type) }
+                ?.let { field ->
+                    field.isAccessible = true
+                    (field.get(emulator) as? Handler)?.removeCallbacksAndMessages(null)
+                }
+        }.onFailure { error ->
+            debugLog("termlib handler cleanup failed", error, "ShellyTerminal")
+        }
+        terminalEmulator = null
     }
 
     private fun reconnectDelayMillis(attempt: Int): Long {

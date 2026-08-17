@@ -1,7 +1,5 @@
 package app.shelly.android.screenshots
 
-import app.shelly.android.features.terminal.TerminalContentPreview
-import app.shelly.android.features.terminal.TerminalPreviewState
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -15,31 +13,31 @@ import org.robolectric.annotation.GraphicsMode
 class TerminalScreenshotTest {
     @Test
     fun terminal_dark() = ScreenshotHarness.render("terminal_dark", dark = true) {
-        TerminalContentPreview(TerminalPreviewState.Base)
+        TerminalScreenshotFixture(TerminalFixtureState.Base)
     }
 
     @Test
     fun terminal_light() = ScreenshotHarness.render("terminal_light", dark = false) {
-        TerminalContentPreview(TerminalPreviewState.Base)
+        TerminalScreenshotFixture(TerminalFixtureState.Base)
     }
 
     @Test
     fun terminal_attaching() = ScreenshotHarness.render("terminal_attaching", dark = false) {
-        TerminalContentPreview(TerminalPreviewState.Attaching)
+        TerminalScreenshotFixture(TerminalFixtureState.Attaching)
     }
 
     @Test
     fun terminal_locked() = ScreenshotHarness.render("terminal_locked", dark = false) {
-        TerminalContentPreview(TerminalPreviewState.Locked)
+        TerminalScreenshotFixture(TerminalFixtureState.Locked)
     }
 
     @Test
     fun terminal_exited() = ScreenshotHarness.render("terminal_exited", dark = false) {
-        TerminalContentPreview(TerminalPreviewState.Exited)
+        TerminalScreenshotFixture(TerminalFixtureState.Exited)
     }
 
     @Test
     fun terminal_claude_tui() = ScreenshotHarness.render("terminal_claude_tui", dark = false) {
-        TerminalContentPreview(TerminalPreviewState.ClaudeTui)
+        TerminalScreenshotFixture(TerminalFixtureState.ClaudeTui)
     }
 }

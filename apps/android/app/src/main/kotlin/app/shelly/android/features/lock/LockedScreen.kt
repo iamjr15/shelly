@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -35,11 +37,15 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import app.shelly.android.core.UiTestClock
 import app.shelly.android.ui.components.HeroBody
 import app.shelly.android.ui.components.DoubleChevronGlyph
 import app.shelly.android.ui.components.SettingsGlyph
@@ -60,13 +66,24 @@ import kotlinx.coroutines.delay
 fun LockedScreen(
     onUnlock: () -> Unit = {},
     unavailableMessage: String? = null,
+    showRecoveryActions: Boolean = false,
+    onOpenSecurity: () -> Unit = {},
+    onUnpair: () -> Unit = {},
 ) {
     val c = ShellyTheme.colors
     ShellyScreen(
         heroHeight = 338.dp,
         contentBackground = lockedContentBackground(c),
         hero = { LockedHero() },
-        content = { LockedContent(onUnlock = onUnlock, unavailableMessage = unavailableMessage) },
+        content = {
+            LockedContent(
+                onUnlock = onUnlock,
+                unavailableMessage = unavailableMessage,
+                showRecoveryActions = showRecoveryActions,
+                onOpenSecurity = onOpenSecurity,
+                onUnpair = onUnpair,
+            )
+        },
     )
 }
 
@@ -97,7 +114,7 @@ private fun LockedDate(primary: Color, muted: Color) {
     LaunchedEffect(context) {
         while (true) {
             clock = currentClock(context)
-            delay(60_000L - (System.currentTimeMillis() % 60_000L))
+            delay(60_000L - (UiTestClock.nowMillis() % 60_000L))
         }
     }
     val (clockTime, clockDay) = clock
@@ -129,7 +146,13 @@ private fun LockedDate(primary: Color, muted: Color) {
 }
 
 @Composable
-private fun ColumnScope.LockedContent(onUnlock: () -> Unit, unavailableMessage: String?) {
+private fun ColumnScope.LockedContent(
+    onUnlock: () -> Unit,
+    unavailableMessage: String?,
+    showRecoveryActions: Boolean,
+    onOpenSecurity: () -> Unit,
+    onUnpair: () -> Unit,
+) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -149,16 +172,42 @@ private fun ColumnScope.LockedContent(onUnlock: () -> Unit, unavailableMessage: 
         )
     }
     UnlockButton(onUnlock = onUnlock)
+    if (showRecoveryActions) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            RecoveryAction("Security", onOpenSecurity, Modifier.weight(1f))
+            RecoveryAction("Unpair", onUnpair, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun RecoveryAction(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Text(
+        text = label,
+        style = ShellyType.button,
+        color = ShellyTheme.colors.textPrimary,
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(ShellyTheme.colors.surfaceSubtle)
+            .sizeIn(minHeight = 48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 15.dp),
+    )
 }
 
 @Composable
 private fun LargeLockIcon() {
     val c = ShellyTheme.colors
     Box(
-        Modifier.size(width = 160.dp, height = 180.dp),
+        Modifier
+            .size(width = 160.dp, height = 180.dp)
+            .semantics { contentDescription = "Shelly is locked" },
         contentAlignment = Alignment.Center,
     ) {
-        androidx.compose.foundation.Canvas(Modifier.size(width = 150.dp, height = 168.dp)) {
+        Box(Modifier.size(width = 150.dp, height = 168.dp).drawWithCache {
             val sx = size.width / 160f
             val sy = size.height / 180f
             val lineScale = minOf(sx, sy)
@@ -174,27 +223,19 @@ private fun LargeLockIcon() {
                 cubicTo(101f * sx, 12f * sy, 116f * sx, 27f * sy, 116f * sx, 50f * sy)
                 lineTo(116f * sx, 72f * sy)
             }
-            drawPath(shackle, color = c.ink, style = outline)
-            drawRoundRect(
-                color = c.ink,
-                topLeft = Offset(25f * sx, 70f * sy),
-                size = Size(110f * sx, 91f * sy),
-                cornerRadius = CornerRadius(14f * sx, 14f * sy),
-                style = outline,
-            )
-            drawCircle(
-                color = c.accent,
-                radius = 8f * lineScale,
-                center = Offset(80f * sx, 111f * sy),
-            )
-            drawLine(
-                color = c.accent,
-                start = Offset(80f * sx, 119f * sy),
-                end = Offset(80f * sx, 137f * sy),
-                strokeWidth = 8f * lineScale,
-                cap = StrokeCap.Round,
-            )
-        }
+            onDrawBehind {
+                drawPath(shackle, color = c.ink, style = outline)
+                drawRoundRect(
+                    color = c.ink,
+                    topLeft = Offset(25f * sx, 70f * sy),
+                    size = Size(110f * sx, 91f * sy),
+                    cornerRadius = CornerRadius(14f * sx, 14f * sy),
+                    style = outline,
+                )
+                drawCircle(color = c.accent, radius = 8f * lineScale, center = Offset(80f * sx, 111f * sy))
+                drawLine(c.accent, Offset(80f * sx, 119f * sy), Offset(80f * sx, 137f * sy), 8f * lineScale, StrokeCap.Round)
+            }
+        })
     }
 }
 
@@ -219,6 +260,7 @@ private fun UnlockButton(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Button,
                 onClick = onUnlock,
             )
             .height(58.dp)
@@ -246,7 +288,7 @@ private fun UnlockButton(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 private fun currentClock(context: Context): Pair<String, String> {
-    val now = Date()
+    val now = Date(UiTestClock.nowMillis())
     val time = DateFormat.getTimeFormat(context).format(now)
     val day = SimpleDateFormat("EEE", Locale.getDefault()).format(now).uppercase(Locale.getDefault())
     return time to day
@@ -266,8 +308,3 @@ private fun lockedButtonBackground(c: ShellyColors): Color =
 
 private fun lockedButtonForeground(c: ShellyColors): Color =
     if (c.isDark) c.onButtonPrimary else c.content
-
-@Composable
-internal fun LockedContentPreview() {
-    LockedScreen()
-}

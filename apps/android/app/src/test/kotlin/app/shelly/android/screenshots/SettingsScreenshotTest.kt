@@ -1,12 +1,11 @@
 package app.shelly.android.screenshots
 
-import app.shelly.android.features.settings.AboutContentPreview
-import app.shelly.android.features.settings.AppearanceContentPreview
-import app.shelly.android.features.settings.DaemonDetailContentPreview
-import app.shelly.android.features.settings.LicensesContentPreview
-import app.shelly.android.features.settings.NotificationsContentPreview
-import app.shelly.android.features.settings.SecurityContentPreview
-import app.shelly.android.features.settings.SettingsContentPreview
+import app.shelly.android.features.settings.AboutScreen
+import app.shelly.android.features.settings.AppearanceScreen
+import app.shelly.android.features.settings.DaemonDetailScreen
+import app.shelly.android.features.settings.LicensesScreen
+import app.shelly.android.features.settings.NotificationsScreen
+import app.shelly.android.features.settings.SecurityScreen
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -19,71 +18,71 @@ import org.robolectric.annotation.GraphicsMode
 class SettingsScreenshotTest {
     @Test
     fun settings_dark() = ScreenshotHarness.render("settings_dark", dark = true) {
-        SettingsContentPreview()
+        SettingsScreenshotFixture()
     }
 
     @Test
     fun settings_light() = ScreenshotHarness.render("settings_light", dark = false) {
-        SettingsContentPreview()
+        SettingsScreenshotFixture()
     }
 
     @Test
     fun appearance_dark() = ScreenshotHarness.render("appearance_dark", dark = true) {
-        AppearanceContentPreview()
+        AppearanceScreen(onBack = {})
     }
 
     @Test
     fun appearance_light() = ScreenshotHarness.render("appearance_light", dark = false) {
-        AppearanceContentPreview()
+        AppearanceScreen(onBack = {})
     }
 
     @Test
     fun notifications_dark() = ScreenshotHarness.render("notifications_dark", dark = true) {
-        NotificationsContentPreview()
+        NotificationsScreen(onBack = {})
     }
 
     @Test
     fun notifications_light() = ScreenshotHarness.render("notifications_light", dark = false) {
-        NotificationsContentPreview()
+        NotificationsScreen(onBack = {})
     }
 
     @Test
     fun security_dark() = ScreenshotHarness.render("security_dark", dark = true) {
-        SecurityContentPreview()
+        SecurityScreen(onBack = {})
     }
 
     @Test
     fun security_light() = ScreenshotHarness.render("security_light", dark = false) {
-        SecurityContentPreview()
+        SecurityScreen(onBack = {})
     }
 
     @Test
     fun about_dark() = ScreenshotHarness.render("about_dark", dark = true) {
-        AboutContentPreview()
+        AboutScreen(onBack = {}, protocol = "v3", dependencyCount = "16 notices")
     }
 
     @Test
     fun about_light() = ScreenshotHarness.render("about_light", dark = false) {
-        AboutContentPreview()
+        AboutScreen(onBack = {}, protocol = "v3", dependencyCount = "16 notices")
     }
 
     @Test
     fun daemon_detail_dark() = ScreenshotHarness.render("daemon_detail_dark", dark = true) {
-        DaemonDetailContentPreview()
+        DaemonDetailScreen(onBack = {}, hostName = "dev-macbook", protocol = "v3")
     }
 
     @Test
     fun daemon_detail_light() = ScreenshotHarness.render("daemon_detail_light", dark = false) {
-        DaemonDetailContentPreview()
+        DaemonDetailScreen(onBack = {}, hostName = "dev-macbook", protocol = "v3")
     }
 
     @Test
     fun licenses_dark() = ScreenshotHarness.render("licenses_dark", dark = true) {
-        LicensesContentPreview()
+        LicensesScreen(onBack = {})
     }
 
     @Test
     fun licenses_light() = ScreenshotHarness.render("licenses_light", dark = false) {
-        LicensesContentPreview()
+        LicensesScreen(onBack = {})
     }
 }

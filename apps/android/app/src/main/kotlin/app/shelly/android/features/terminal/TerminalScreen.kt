@@ -3,6 +3,10 @@
 package app.shelly.android.features.terminal
 
 import android.app.Activity
+import android.content.ClipboardManager
+import android.content.Intent
+import android.graphics.Typeface
+import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -46,8 +50,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
@@ -98,12 +103,17 @@ import app.shelly.android.core.TerminalPhase
 import app.shelly.android.core.TerminalAttachErrorMessage
 import app.shelly.android.core.TerminalUiState
 import app.shelly.android.core.terminalAttachErrorMessage
+import app.shelly.android.R
 import app.shelly.android.ui.theme.ShellyTheme
+import app.shelly.android.ui.theme.ShellyTerminalPalette
 import app.shelly.android.ui.theme.ShellyType
+import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.connectbot.terminal.DelKeyMode
 import org.connectbot.terminal.Terminal
 
 @Composable
@@ -118,9 +128,15 @@ fun TerminalScreen(
     onNewSession: () -> Unit,
     onBack: () -> Unit,
 ) {
-    val activity = LocalContext.current as? Activity
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val clipboard = remember(context) { context.getSystemService(ClipboardManager::class.java) }
     val view = LocalView.current
     val restoreLightStatusBars = !ShellyTheme.colors.isDark
+    val selectionBackgroundColor = ShellyTheme.colors.accent.copy(alpha = 0.35f)
+    val terminalTypeface = remember(context) {
+        ResourcesCompat.getFont(context, R.font.jetbrains_mono_variable) ?: Typeface.MONOSPACE
+    }
     val haptics = LocalHapticFeedback.current
     val controllers = remember { mutableStateMapOf<String, TerminalController>() }
     val attachErrors = remember { mutableStateMapOf<String, TerminalAttachErrorMessage>() }
@@ -180,7 +196,7 @@ fun TerminalScreen(
 
     val activeSession = tabs.firstOrNull { it.id == activeSessionId } ?: tabs.firstOrNull()
     val currentController = activeSession?.let { controllers[it.id] }
-    val terminalState = currentController?.state?.collectAsState()?.value
+    val terminalState = currentController?.state?.collectAsStateWithLifecycle()?.value
 
     LaunchedEffect(currentController) {
         currentController?.emulator?.setDefaultColors(
@@ -265,16 +281,31 @@ fun TerminalScreen(
                     },
                 )
             }
+            // TODO(M-26): termlib 0.1.0 owns zoomScale inside Terminal and exposes neither an
+            // initial value nor an onZoomScaleChange callback. Hoist it above this keyed subtree
+            // when termlib makes that state controllable so zoom survives tab switches.
             else -> key(activeSession.id) {
                 Terminal(
                     terminalEmulator = currentController.emulator,
                     modifier = Modifier.fillMaxSize(),
                     backgroundColor = TerminalShellSurface,
                     foregroundColor = TerminalFg,
+                    selectionBackgroundColor = selectionBackgroundColor,
+                    typeface = terminalTypeface,
                     keyboardEnabled = keyboardEnabled,
                     showSoftKeyboard = showSoftKeyboard,
-                    onTerminalTap = { keyboardRequest += 1 },
+                    onPasteRequest = {
+                        clipboard.primaryClip
+                            ?.takeIf { it.itemCount > 0 }
+                            ?.getItemAt(0)
+                            ?.coerceToText(context)
+                            ?.toString()
+                            ?.takeIf { it.isNotEmpty() }
+                            ?.let { currentController.sendAccessory(it.encodeToByteArray()) }
+                    },
+                    onHyperlinkClick = { url -> openTerminalUrl(context, url) },
                     modifierManager = currentController.modifierManager,
+                    delKeyMode = DelKeyMode.Delete,
                 )
             }
         }
@@ -297,44 +328,8 @@ fun TerminalScreen(
     }
 }
 
-internal enum class TerminalPreviewState {
-    Base,
-    Attaching,
-    Locked,
-    Exited,
-    ClaudeTui,
-}
-
-/** Stateless render of the terminal screen states from Paper, with no live PTY session. */
 @Composable
-internal fun TerminalContentPreview(state: TerminalPreviewState) {
-    val title = if (state == TerminalPreviewState.ClaudeTui) "claude agent" else "crates/daemon"
-    val status = when (state) {
-        TerminalPreviewState.Base -> "ATTACHED"
-        TerminalPreviewState.Attaching -> "ATTACHING"
-        TerminalPreviewState.Locked -> "LOCKED"
-        TerminalPreviewState.Exited -> "EXITED"
-        TerminalPreviewState.ClaudeTui -> "THINKING"
-    }
-    TerminalScaffold(
-        topBar = { TerminalPreviewTabBar(title = title, status = status) },
-        accessoryDimmed = state == TerminalPreviewState.Locked,
-        accessoryEnabled = false,
-        ctrlActive = true,
-        onAccessory = {},
-    ) {
-        when (state) {
-            TerminalPreviewState.Base -> MockTerminalTranscript(exited = false)
-            TerminalPreviewState.Attaching -> AttachStatus(sessionName = "crates/daemon", error = null, onRetry = {})
-            TerminalPreviewState.Locked -> LockedStatus(onUnlock = {})
-            TerminalPreviewState.Exited -> MockTerminalTranscript(exited = true)
-            TerminalPreviewState.ClaudeTui -> ClaudeTuiTranscript()
-        }
-    }
-}
-
-@Composable
-private fun TerminalScaffold(
+internal fun TerminalScaffold(
     topBar: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     accessoryDimmed: Boolean = false,
@@ -346,7 +341,10 @@ private fun TerminalScaffold(
 ) {
     val accent = ShellyTheme.colors.accent
     val density = LocalDensity.current
-    val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    val imeInsets = WindowInsets.ime
+    val imeVisible by remember(imeInsets, density) {
+        derivedStateOf { imeInsets.getBottom(density) > 0 }
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -378,7 +376,7 @@ private fun TerminalScaffold(
 }
 
 @Composable
-private fun TerminalTabBar(
+internal fun TerminalTabBar(
     tabs: List<MobileSession>,
     activeSessionId: String?,
     controllers: Map<String, TerminalController>,
@@ -466,7 +464,7 @@ private fun TerminalSessionTab(
     onSelect: () -> Unit,
     onClose: () -> Unit,
 ) {
-    val state = controller?.state?.collectAsState()?.value
+    val state = controller?.state?.collectAsStateWithLifecycle()?.value
     val status = terminalTabStatus(state = state, attachFailed = attachFailed)
     val shape = RoundedCornerShape(11.dp)
     Box(
@@ -503,7 +501,7 @@ private fun TerminalSessionTab(
                     lineHeight = 16,
                     weight = if (selected) FontWeight(650) else FontWeight(500),
                 ),
-                color = if (selected) TerminalTabSelectedText else TerminalMutedStrong.copy(alpha = 0.66f),
+                color = if (selected) TerminalTabSelectedText else TerminalDim,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -519,7 +517,7 @@ private fun TerminalSessionTab(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .size(48.dp)
-                    .clickable(onClick = onClose)
+                    .clickable(role = Role.Button, onClick = onClose)
                     .semantics { contentDescription = "Close ${session.name} tab" },
                 contentAlignment = Alignment.Center,
             ) {
@@ -539,7 +537,7 @@ private fun TerminalBarAction(
     Box(
         modifier = Modifier
             .size(size)
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {
@@ -551,58 +549,6 @@ private fun TerminalBarAction(
             contentAlignment = Alignment.Center,
             content = content,
         )
-    }
-}
-
-@Composable
-private fun TerminalPreviewTabBar(title: String, status: String) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(TerminalToolbar)
-            .statusBarsPadding(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(55.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TerminalBarAction(contentDescription = "Back to sessions", onClick = {}) {
-                BackGlyph(Modifier.size(17.dp))
-            }
-            Row(
-                modifier = Modifier
-                    .width(172.dp)
-                    .height(48.dp)
-                    .padding(vertical = 3.dp)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(TerminalTabSelected)
-                    .padding(start = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(terminalPreviewStatusColor(status)))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = title.lowercase(),
-                    style = terminalMonoStyle(fontSize = 12, lineHeight = 16, weight = FontWeight(650)),
-                    color = TerminalTabSelectedText,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Box(
-                    modifier = Modifier.size(48.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CloseGlyph(Modifier.size(13.dp))
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            TerminalBarAction(contentDescription = "Open another session", onClick = {}) {
-                PlusGlyph(Modifier.size(17.dp))
-            }
-        }
     }
 }
 
@@ -714,7 +660,7 @@ private fun TerminalMoreButton(
     Box(
         modifier = Modifier
             .size(width = 52.dp, height = 48.dp)
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = if (expanded) "Hide terminal keys" else "More terminal keys" },
         contentAlignment = Alignment.Center,
     ) {
@@ -813,6 +759,7 @@ private fun TerminalSessionPicker(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(bottom = 18.dp),
         ) {
             Text(
@@ -882,7 +829,7 @@ private fun TerminalPickerAction(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 62.dp)
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .semantics { this.contentDescription = contentDescription }
             .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -957,15 +904,9 @@ private fun terminalTabStatus(state: TerminalUiState?, attachFailed: Boolean): T
     }
 }
 
-private fun terminalPreviewStatusColor(status: String): Color = when (status) {
-    "EXITED" -> TerminalDim
-    "LOCKED", "THINKING" -> Color(0xFFE85D29)
-    "ATTACHING" -> TerminalMuted
-    else -> TerminalGreen
-}
-
+@Composable
 private fun agentStatusColor(state: AgentState): Color = when (state) {
-    AgentState.AwaitingInput -> Color(0xFFE85D29)
+    AgentState.AwaitingInput -> ShellyTheme.colors.accent
     AgentState.Crashed -> TerminalRed
     AgentState.Working -> TerminalGreen
     AgentState.Idle -> TerminalDim
@@ -978,7 +919,7 @@ private fun terminalPickerDetail(session: MobileSession): String = when {
 }
 
 @Composable
-private fun AttachStatus(
+internal fun AttachStatus(
     sessionName: String,
     error: TerminalAttachErrorMessage?,
     onRetry: () -> Unit,
@@ -1025,7 +966,7 @@ private fun AttachStatus(
 }
 
 @Composable
-private fun LockedStatus(onUnlock: () -> Unit) {
+internal fun LockedStatus(onUnlock: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1052,9 +993,10 @@ private fun LockedStatus(onUnlock: () -> Unit) {
         Spacer(Modifier.height(22.dp))
         Row(
             modifier = Modifier
+                .heightIn(min = 48.dp)
                 .clip(RoundedCornerShape(999.dp))
                 .background(ShellyTheme.colors.accent)
-                .clickable(onClick = onUnlock)
+                .clickable(role = Role.Button, onClick = onUnlock)
                 .padding(horizontal = 22.dp, vertical = 13.dp),
             horizontalArrangement = Arrangement.spacedBy(9.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1078,9 +1020,10 @@ private fun LockedStatus(onUnlock: () -> Unit) {
 private fun TerminalPillButton(label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
+            .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(999.dp))
             .background(ShellyTheme.colors.accent)
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 22.dp, vertical = 13.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -1088,208 +1031,6 @@ private fun TerminalPillButton(label: String, onClick: () -> Unit) {
             label,
             style = terminalInterStyle(fontSize = 16, lineHeight = 20, weight = FontWeight(700)),
             color = Color.Black,
-        )
-    }
-}
-
-@Composable
-private fun MockTerminalTranscript(exited: Boolean) {
-    Column(Modifier.fillMaxSize()) {
-        TerminalLine("~/shelly on  main", color = TerminalFg, lineHeight = 17)
-        TerminalLine("❯ cargo test --workspace", color = TerminalFg, lineHeight = 17)
-        Spacer(Modifier.height(4.dp))
-        TerminalLine("    Finished `test` profile [unoptimized]", color = TerminalMutedBase, lineHeight = 17)
-        TerminalLine("     Running unittests src/lib.rs", color = TerminalMutedBase, lineHeight = 17)
-        Spacer(Modifier.height(8.dp))
-        TerminalLine("running 142 tests", color = TerminalFg, lineHeight = 17)
-        TerminalLine("test ipc::tests::handshake_replays ... ok", color = TerminalFg, lineHeight = 17)
-        TerminalLine("test ipc::tests::session_create ... ok", color = TerminalFg, lineHeight = 17)
-        TerminalLine("test logging::redact_path ... ok", color = TerminalFg, lineHeight = 17)
-        TerminalLine("test pairing::token_expires ... ok", color = TerminalFg, lineHeight = 17)
-        TerminalLine("test session::subscription_lag ... ok", color = TerminalFg, lineHeight = 17)
-        Spacer(Modifier.height(8.dp))
-        TerminalLine("test result: ok. 142 passed; 0 failed", color = TerminalGreen, lineHeight = 17)
-        Spacer(Modifier.height(12.dp))
-        TerminalLine("~/shelly on  main", color = TerminalFg, lineHeight = 17)
-        TerminalLine(if (exited) "❯ exit" else "❯ ", color = TerminalFg, lineHeight = 17)
-        if (exited) {
-            ExitBlock()
-        }
-    }
-}
-
-@Composable
-private fun ExitBlock() {
-    Column(Modifier.padding(top = 2.dp)) {
-        TerminalLine("logout", color = TerminalMuted, lineHeight = 19)
-        Spacer(Modifier.height(10.dp))
-        TerminalLine("[ process exited · code 0 ]", color = TerminalRed, lineHeight = 19)
-        Spacer(Modifier.height(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ExitActionChip(key = "R", label = "restart", active = true)
-            ExitActionChip(key = "D", label = "detach", active = false)
-        }
-    }
-}
-
-@Composable
-private fun ExitActionChip(key: String, label: String, active: Boolean) {
-    val keyColor = if (active) ShellyTheme.colors.accent else TerminalSoft
-    val labelColor = if (active) TerminalFg else TerminalSoftText
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .border(1.dp, TerminalBorder, RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .border(1.dp, keyColor, RoundedCornerShape(4.dp))
-                .padding(horizontal = 5.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                key,
-                style = terminalMonoStyle(fontSize = 11, lineHeight = 14, weight = FontWeight(700)),
-                color = keyColor,
-            )
-        }
-        Text(
-            label,
-            style = terminalMonoStyle(fontSize = 13, lineHeight = 16, weight = FontWeight(500)),
-            color = labelColor,
-        )
-    }
-}
-
-@Composable
-private fun ClaudeTuiTranscript() {
-    Column(Modifier.fillMaxSize()) {
-        Column {
-            TerminalLine("~/shelly on main", color = TerminalDim, lineHeight = 19)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TerminalLine("❯", color = ShellyTheme.colors.accent, lineHeight = 19, fill = false)
-                TerminalLine("shelly agent", color = TerminalFg, lineHeight = 19, fill = false)
-            }
-            Spacer(Modifier.height(6.dp))
-            TerminalLine("opus-4-8 · session a3f1 · ready", color = TerminalDim, lineHeight = 19)
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TerminalLine("❯", color = ShellyTheme.colors.accent, lineHeight = 19, fill = false)
-                TerminalLine("expire pairing tokens after 60s", color = TerminalFg, lineHeight = 19, fill = false)
-            }
-            Spacer(Modifier.height(14.dp))
-        }
-        Column {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TerminalLine("●", color = ShellyTheme.colors.accent, lineHeight = 19, fill = false)
-                TerminalLine("Read src/pairing/token.rs", color = TerminalFg, lineHeight = 19, fill = false)
-            }
-            TerminalLine("Tokens never expire today. I’ll gate", color = TerminalMutedStrong, lineHeight = 19)
-            TerminalLine("verify() on a 60s TTL.", color = TerminalMutedStrong, lineHeight = 19)
-            Spacer(Modifier.height(14.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(TerminalFg)
-                        .padding(horizontal = 7.dp, vertical = 1.dp),
-                ) {
-                    Text(
-                        "EDIT",
-                        style = terminalMonoStyle(fontSize = 11, lineHeight = 16, letterSpacing = 0.04.em),
-                        color = TerminalPlane,
-                    )
-                }
-                TerminalLine("src/pairing/token.rs", color = TerminalEditPath, lineHeight = 19, fill = false)
-            }
-            Spacer(Modifier.height(28.dp))
-        }
-        DiffPanel()
-        Spacer(Modifier.height(28.dp))
-        ApprovalPanel()
-    }
-}
-
-@Composable
-private fun DiffPanel() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(TerminalDiffPanel)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-    ) {
-        TerminalLine("  fn verify(t: &Token) -> bool {", color = TerminalCodeMuted, lineHeight = 19, wrap = false)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0x1FE0705E)),
-        ) {
-            TerminalLine("-     t.sig_ok()", color = TerminalRed, lineHeight = 19, wrap = false)
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0x1F6BC48E)),
-        ) {
-            TerminalLine("+     t.sig_ok() && t.age() < TTL", color = TerminalDiffGreen, lineHeight = 19, wrap = false)
-        }
-        TerminalLine("  }", color = TerminalCodeMuted, lineHeight = 19, wrap = false)
-    }
-}
-
-@Composable
-private fun ApprovalPanel() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .border(1.dp, TerminalBorder, RoundedCornerShape(8.dp)),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 9.dp),
-        ) {
-            TerminalLine("Apply this change to token.rs?", color = TerminalFg, lineHeight = 18)
-        }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(TerminalBorder))
-        ChoiceRow(selected = true, label = "1. Yes, apply it")
-        ChoiceRow(selected = false, label = "2. No, keep as is")
-        ChoiceRow(selected = false, label = "3. Always allow edits")
-    }
-}
-
-@Composable
-private fun ChoiceRow(selected: Boolean, label: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(if (selected) Color(0x29E85D29) else Color.Transparent)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (selected) {
-            TerminalLine("❯", color = ShellyTheme.colors.accent, lineHeight = 18, fill = false)
-        } else {
-            Spacer(Modifier.width(0.dp))
-        }
-        TerminalLine(
-            label,
-            color = if (selected) TerminalChoice else TerminalSoftText,
-            lineHeight = 18,
-            fill = false,
         )
     }
 }
@@ -1434,6 +1175,7 @@ internal enum class TerminalKeyAction {
     ToggleAlt,
 }
 
+@Immutable
 internal data class TerminalKeySpec(
     val label: String,
     val contentDescription: String,
@@ -1463,7 +1205,7 @@ internal data class TerminalKeySpec(
     }
 }
 
-internal fun terminalKeySpecs(): List<TerminalKeySpec> = listOf(
+private val TerminalKeySpecs = listOf(
     TerminalKeySpec("esc", "Send escape", TerminalKeyAction.SendBytes, byteArrayOf(0x1b)),
     TerminalKeySpec("ctrl", "Toggle control modifier", TerminalKeyAction.ToggleCtrl),
     TerminalKeySpec("tab", "Send tab", TerminalKeyAction.SendBytes, byteArrayOf(0x09)),
@@ -1482,7 +1224,7 @@ internal fun terminalKeySpecs(): List<TerminalKeySpec> = listOf(
     TerminalKeySpec("-", "Send dash", TerminalKeyAction.SendBytes, "-".encodeToByteArray(), fixedSquare = true),
 )
 
-internal fun terminalOverflowKeySpecs(): List<TerminalKeySpec> = listOf(
+private val TerminalOverflowKeySpecs = listOf(
     TerminalKeySpec("alt", "Toggle alt modifier", TerminalKeyAction.ToggleAlt),
     TerminalKeySpec("home", "Send home", TerminalKeyAction.SendBytes, byteArrayOf(0x1b, 0x5b, 0x48)),
     TerminalKeySpec("end", "Send end", TerminalKeyAction.SendBytes, byteArrayOf(0x1b, 0x5b, 0x46)),
@@ -1495,6 +1237,10 @@ internal fun terminalOverflowKeySpecs(): List<TerminalKeySpec> = listOf(
     TerminalKeySpec("^R", "Send control R", TerminalKeyAction.SendBytes, byteArrayOf(0x12)),
     TerminalKeySpec("^Z", "Send control Z", TerminalKeyAction.SendBytes, byteArrayOf(0x1a)),
 )
+
+internal fun terminalKeySpecs(): List<TerminalKeySpec> = TerminalKeySpecs
+
+internal fun terminalOverflowKeySpecs(): List<TerminalKeySpec> = TerminalOverflowKeySpecs
 
 private fun terminalMonoStyle(
     fontSize: Int,
@@ -1520,25 +1266,33 @@ private fun terminalInterStyle(
     platformStyle = PlatformTextStyle(includeFontPadding = false),
 )
 
-private val TerminalShellSurface = Color(0xFF1E1E2E)
-private val TerminalPlane = TerminalShellSurface
-private val TerminalToolbar = Color(0xFF202033)
-private val TerminalTabSelected = Color(0xFF19382D)
-private val TerminalTabSelectedText = Color(0xFF83D4AF)
-private val TerminalTabInactive = Color(0xFF29293D)
-private val TerminalKeySurface = Color(0xFF313244)
-private val TerminalFg = Color(0xFFCDD6F4)
-private val TerminalMutedBase = Color(0xFF6C7086)
-private val TerminalMuted = Color(0xFF7F849C)
-private val TerminalMutedStrong = Color(0xFFBAC2DE)
-private val TerminalDim = Color(0xFF585B70)
-private val TerminalGreen = Color(0xFFA6E3A1)
-private val TerminalDiffGreen = Color(0xFFA6E3A1)
-private val TerminalRed = Color(0xFFF38BA8)
-private val TerminalDiffPanel = Color(0xFF181825)
-private val TerminalBorder = Color(0xFF313244)
-private val TerminalSoft = Color(0xFF585B70)
-private val TerminalSoftText = Color(0xFFA6ADC8)
-private val TerminalEditPath = Color(0xFF89B4FA)
-private val TerminalCodeMuted = Color(0xFF6E756F)
-private val TerminalChoice = Color(0xFFF2A07E)
+private val TerminalShellSurface = ShellyTerminalPalette.shellSurface
+private val TerminalPlane = ShellyTerminalPalette.shellSurface
+private val TerminalToolbar = ShellyTerminalPalette.toolbar
+private val TerminalTabSelected = ShellyTerminalPalette.tabSelected
+private val TerminalTabSelectedText = ShellyTerminalPalette.tabSelectedText
+private val TerminalTabInactive = ShellyTerminalPalette.tabInactive
+private val TerminalKeySurface = ShellyTerminalPalette.keySurface
+private val TerminalFg = ShellyTerminalPalette.foreground
+private val TerminalMutedBase = ShellyTerminalPalette.mutedBase
+private val TerminalMuted = ShellyTerminalPalette.muted
+private val TerminalMutedStrong = ShellyTerminalPalette.mutedStrong
+private val TerminalDim = ShellyTerminalPalette.dim
+private val TerminalGreen = ShellyTerminalPalette.success
+private val TerminalDiffGreen = ShellyTerminalPalette.success
+private val TerminalRed = ShellyTerminalPalette.error
+private val TerminalDiffPanel = ShellyTerminalPalette.diffPanel
+private val TerminalBorder = ShellyTerminalPalette.border
+private val TerminalSoft = ShellyTerminalPalette.soft
+private val TerminalSoftText = ShellyTerminalPalette.softText
+private val TerminalEditPath = ShellyTerminalPalette.editPath
+private val TerminalCodeMuted = ShellyTerminalPalette.codeMuted
+private val TerminalChoice = ShellyTerminalPalette.choice
+
+private fun openTerminalUrl(context: android.content.Context, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }.onFailure { error ->
+        Log.w("ShellyTerminal", "Could not open terminal hyperlink", error)
+    }
+}

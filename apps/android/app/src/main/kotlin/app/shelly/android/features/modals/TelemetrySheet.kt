@@ -21,10 +21,3 @@ fun TelemetrySheet(
         modifier = modifier,
     )
 }
-
-@Composable
-internal fun TelemetrySheetPreview() {
-    ModalPreviewScaffold {
-        TelemetrySheet()
-    }
-}

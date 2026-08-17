@@ -35,20 +35,36 @@ internal class KeystorePairingCipher : PairingCipher {
     }
 
     private fun obtainKey(): SecretKey {
+        return synchronized(KEY_LOCK) {
+            loadKey()?.let { return@synchronized it }
+            val generated = runCatching {
+                val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER)
+                generator.init(
+                    KeyGenParameterSpec.Builder(
+                        KEY_ALIAS,
+                        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+                    )
+                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                        .setKeySize(256)
+                        .setUnlockedDeviceRequired(true)
+                        .build(),
+                )
+                generator.generateKey()
+            }
+            // Another process may create the alias between our first lookup and generateKey().
+            // Re-read the keystore before surfacing that race as a failure.
+            generated.getOrElse { error -> loadKey() ?: throw error }
+        }
+    }
+
+    private fun loadKey(): SecretKey? {
         val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
-        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER)
-        generator.init(
-            KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .build(),
-        )
-        return generator.generateKey()
+        return keyStore.getKey(KEY_ALIAS, null) as? SecretKey
     }
 
     private companion object {
+        val KEY_LOCK = Any()
         const val KEYSTORE_PROVIDER = "AndroidKeyStore"
         const val KEY_ALIAS = "shelly_pairing_key"
         const val TRANSFORMATION = "AES/GCM/NoPadding"

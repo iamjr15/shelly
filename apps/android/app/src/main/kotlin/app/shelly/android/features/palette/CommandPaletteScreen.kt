@@ -1,6 +1,5 @@
 package app.shelly.android.features.palette
 
-import app.shelly.android.BuildConfig
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -11,22 +10,33 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -36,7 +46,15 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -59,20 +77,15 @@ fun CommandPaletteScreen(
     onSearchSessions: () -> Unit = {},
     onLockNow: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
-    onShowGroupedSessions: () -> Unit = {},
-    onShowReconnecting: () -> Unit = {},
-    onShowDaemonUnreachable: () -> Unit = {},
 ) {
     var query by rememberSaveable { mutableStateOf(initialQuery) }
+    var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
     val commands = commandPaletteCommands(
         onAttachSession = onAttachSession,
         onNewSession = onNewSession,
         onSearchSessions = onSearchSessions,
         onLockNow = onLockNow,
         onOpenSettings = onOpenSettings,
-        onShowGroupedSessions = onShowGroupedSessions,
-        onShowReconnecting = onShowReconnecting,
-        onShowDaemonUnreachable = onShowDaemonUnreachable,
     )
     val visibleCommands = commands.filter { it.matches(query) }.ifEmpty {
         commands.filterNot { it.hiddenUntilQuery }
@@ -82,8 +95,20 @@ fun CommandPaletteScreen(
     CommandPaletteContent(
         modifier = modifier,
         query = query,
-        onQueryChange = { query = it },
+        onQueryChange = {
+            query = it
+            selectedIndex = 0
+        },
         commands = visibleCommands,
+        selectedIndex = selectedIndex,
+        onMoveSelection = { delta ->
+            if (visibleCommands.isNotEmpty()) {
+                selectedIndex = (selectedIndex + delta + visibleCommands.size) % visibleCommands.size
+            }
+        },
+        onRunSelected = {
+            visibleCommands.getOrNull(selectedIndex)?.onClick?.invoke()
+        },
         onBack = onBack,
     )
 }
@@ -95,7 +120,15 @@ private fun CommandPaletteContent(
     onQueryChange: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    selectedIndex: Int = 0,
+    onMoveSelection: (Int) -> Unit = {},
+    onRunSelected: () -> Unit = {},
 ) {
+    val searchFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        searchFocusRequester.requestFocus()
+    }
+
     ShellyScreen(
         modifier = modifier,
         hero = {
@@ -109,20 +142,41 @@ private fun CommandPaletteContent(
             )
         },
         content = {
-            CommandSearchField(query = query, onQueryChange = onQueryChange)
-            SectionLabel("MATCHING COMMANDS")
-            commands.forEachIndexed { index, command ->
-                CommandRow(command = command, selected = index == 0)
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .imePadding()
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                CommandSearchField(
+                    query = query,
+                    onQueryChange = onQueryChange,
+                    focusRequester = searchFocusRequester,
+                    onMoveSelection = onMoveSelection,
+                    onRunSelected = onRunSelected,
+                    onBack = onBack,
+                )
+                SectionLabel("MATCHING COMMANDS")
+                commands.forEachIndexed { index, command ->
+                    CommandRow(command = command, selected = index == selectedIndex)
+                }
+                Spacer(Modifier.height(24.dp))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(ShellyTheme.colors.divider))
+                CommandHints()
             }
-            Spacer(Modifier.weight(1f))
-            Box(Modifier.fillMaxWidth().height(1.dp).background(ShellyTheme.colors.divider))
-            CommandHints()
         },
     )
 }
 
 @Composable
-private fun CommandSearchField(query: String, onQueryChange: (String) -> Unit) {
+private fun CommandSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    focusRequester: FocusRequester,
+    onMoveSelection: (Int) -> Unit,
+    onRunSelected: () -> Unit,
+    onBack: () -> Unit,
+) {
     val c = ShellyTheme.colors
     val shape = RoundedCornerShape(14.dp)
     val primary = palettePrimary()
@@ -150,6 +204,8 @@ private fun CommandSearchField(query: String, onQueryChange: (String) -> Unit) {
             value = query,
             onValueChange = onQueryChange,
             singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+            keyboardActions = KeyboardActions(onGo = { onRunSelected() }),
             textStyle = ShellyType.mono.copy(
                 color = primary,
                 fontWeight = FontWeight.Medium,
@@ -157,7 +213,17 @@ private fun CommandSearchField(query: String, onQueryChange: (String) -> Unit) {
                 lineHeight = 20.sp,
             ),
             cursorBrush = SolidColor(c.accent),
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester)
+                .onPreviewKeyEvent { event ->
+                    handlePaletteKeyEvent(
+                        event = event,
+                        onMoveSelection = onMoveSelection,
+                        onRunSelected = onRunSelected,
+                        onBack = onBack,
+                    )
+                },
         )
         ShortcutKey(
             label = "/",
@@ -168,6 +234,36 @@ private fun CommandSearchField(query: String, onQueryChange: (String) -> Unit) {
             letterSpacing = 0.04.em,
             muted = true,
         )
+    }
+}
+
+private fun handlePaletteKeyEvent(
+    event: KeyEvent,
+    onMoveSelection: (Int) -> Unit,
+    onRunSelected: () -> Unit,
+    onBack: () -> Unit,
+): Boolean {
+    if (event.type != KeyEventType.KeyDown) return false
+    return when (event.key) {
+        Key.DirectionUp -> {
+            onMoveSelection(-1)
+            true
+        }
+        Key.DirectionDown -> {
+            onMoveSelection(1)
+            true
+        }
+        Key.Enter,
+        Key.NumPadEnter,
+        -> {
+            onRunSelected()
+            true
+        }
+        Key.Escape -> {
+            onBack()
+            true
+        }
+        else -> false
     }
 }
 
@@ -196,7 +292,7 @@ private fun CommandRow(command: PaletteCommand, selected: Boolean) {
             .fillMaxWidth()
             .clip(shape)
             .background(rowBackground)
-            .clickable(onClick = command.onClick)
+            .clickable(role = Role.Button, onClick = command.onClick)
             .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -417,9 +513,6 @@ private fun commandPaletteCommands(
     onSearchSessions: () -> Unit,
     onLockNow: () -> Unit,
     onOpenSettings: () -> Unit,
-    onShowGroupedSessions: () -> Unit,
-    onShowReconnecting: () -> Unit,
-    onShowDaemonUnreachable: () -> Unit,
 ) = listOf(
     PaletteCommand(
         title = "Attach session",
@@ -457,68 +550,4 @@ private fun commandPaletteCommands(
         onClick = onOpenSettings,
         searchTerms = listOf("preferences"),
     ),
-) + if (BuildConfig.DEBUG) {
-    // Debug-only previews of the reconnecting / daemon-unreachable / grouped states.
-    // Gated so they never ship in release builds.
-    listOf(
-        PaletteCommand(
-            title = "Show grouped sessions",
-            shortcut = "DBG",
-            glyph = CommandGlyph.Settings,
-            onClick = onShowGroupedSessions,
-            searchTerms = listOf("debug grouped multi device"),
-            hiddenUntilQuery = true,
-        ),
-        PaletteCommand(
-            title = "Show reconnecting",
-            shortcut = "DBG",
-            glyph = CommandGlyph.Settings,
-            onClick = onShowReconnecting,
-            searchTerms = listOf("debug reconnect offline sync"),
-            hiddenUntilQuery = true,
-        ),
-        PaletteCommand(
-            title = "Show daemon unreachable",
-            shortcut = "DBG",
-            glyph = CommandGlyph.Settings,
-            onClick = onShowDaemonUnreachable,
-            searchTerms = listOf("debug daemon unreachable offline"),
-            hiddenUntilQuery = true,
-        ),
-    )
-} else {
-    emptyList()
-}
-
-@Composable
-internal fun CommandPaletteContentPreview() {
-    val previewQuery = "attach█"
-    val visibleCommands = commandPaletteCommands(
-        onAttachSession = {},
-        onNewSession = {},
-        onSearchSessions = {},
-        onLockNow = {},
-        onOpenSettings = {},
-        onShowGroupedSessions = {},
-        onShowReconnecting = {},
-        onShowDaemonUnreachable = {},
-    ).filter { it.matches(previewQuery.removeSuffix("█")) }.ifEmpty {
-        commandPaletteCommands(
-            onAttachSession = {},
-            onNewSession = {},
-            onSearchSessions = {},
-            onLockNow = {},
-            onOpenSettings = {},
-            onShowGroupedSessions = {},
-            onShowReconnecting = {},
-            onShowDaemonUnreachable = {},
-        ).filterNot { it.hiddenUntilQuery }
-    }
-
-    CommandPaletteContent(
-        query = previewQuery,
-        onQueryChange = {},
-        commands = visibleCommands,
-        onBack = {},
-    )
-}
+)

@@ -1,6 +1,5 @@
 package app.shelly.android.screenshots
 
-import app.shelly.android.features.pairing.PairingContentPreview
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -14,11 +13,11 @@ import org.robolectric.annotation.GraphicsMode
 class PairingScreenshotTest {
     @Test
     fun pairing_dark() = ScreenshotHarness.render("pairing_dark", dark = true) {
-        PairingContentPreview()
+        PairingScreenshotFixture()
     }
 
     @Test
     fun pairing_light() = ScreenshotHarness.render("pairing_light", dark = false) {
-        PairingContentPreview()
+        PairingScreenshotFixture()
     }
 }

@@ -72,21 +72,3 @@ private fun AboutContent(
         },
     )
 }
-
-@Composable
-internal fun AboutContentPreview() {
-    AboutContent(
-        onBack = {},
-        version = "1.0",
-        build = "1",
-        protocol = "v3",
-        source = "GitHub",
-        dependencyCount = "16 notices",
-        onOpenVersion = null,
-        onOpenBuild = null,
-        onOpenProtocol = null,
-        onOpenPrivacy = {},
-        onOpenSource = {},
-        onOpenLicenses = {},
-    )
-}

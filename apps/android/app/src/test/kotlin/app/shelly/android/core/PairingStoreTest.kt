@@ -6,6 +6,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.spec.GCMParameterSpec
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -59,6 +60,41 @@ class PairingStoreTest {
     }
 
     @Test
+    fun clearKeepsEncryptedPushUnregisterTombstone() {
+        val store = PairingStore(context, cipher)
+        val tombstone = pushTombstone()
+        store.save(pairedRecord())
+        store.savePushUnregisterTombstone(tombstone)
+
+        store.clear()
+
+        assertNull(store.load())
+        assertEquals(tombstone, store.loadPushUnregisterTombstone())
+    }
+
+    @Test
+    fun pushUnregisterTombstoneIsNotStoredAsPlaintext() {
+        val store = PairingStore(context, cipher)
+
+        store.savePushUnregisterTombstone(pushTombstone())
+
+        val stored = context.pairingPrefsForTests().getString("push_unregister_tombstone", null).orEmpty()
+        assertFalse(stored.contains("daemon-node-id"))
+        assertFalse(stored.contains("device-node-id"))
+        assertFalse(stored.contains("fcm-token"))
+    }
+
+    @Test
+    fun acknowledgingLastPushTokenClearsTombstone() {
+        val store = PairingStore(context, cipher)
+        store.savePushUnregisterTombstone(pushTombstone())
+
+        store.acknowledgePushToken("fcm-token")
+
+        assertNull(store.loadPushUnregisterTombstone())
+    }
+
+    @Test
     fun loadReturnsNullForCorruptedStoredBlob() {
         val store = PairingStore(context, cipher)
         val corrupted = byteArrayOf(12) + ByteArray(12) + ByteArray(24) { 7 }
@@ -68,6 +104,20 @@ class PairingStoreTest {
             .commit()
 
         assertNull(store.load())
+        assertFalse(context.pairingPrefsForTests().contains("daemon"))
+    }
+
+    @Test
+    fun loadClearsRecordWhoseDecryptedJsonIsPoisoned() {
+        val store = PairingStore(context, cipher)
+        val encrypted = cipher.encrypt("{not-json".encodeToByteArray())
+        context.pairingPrefsForTests()
+            .edit()
+            .putString("daemon", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            .commit()
+
+        assertNull(store.load())
+        assertFalse(context.pairingPrefsForTests().contains("daemon"))
     }
 
     @Test
@@ -95,6 +145,21 @@ class PairingStoreTest {
         daemonVersion = "1.2.3",
         hostName = "dev-macbook",
         protocolVersion = 3,
+    )
+
+    private fun pushTombstone() = PushUnregisterTombstone(
+        daemonNodeId = "daemon-node-id",
+        relayUrl = "https://relay.example.com",
+        addrs = listOf("192.168.1.20:4433", "10.0.0.7:4433"),
+        deviceNodeId = "device-node-id",
+        deviceSecretKey = byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8),
+        tokens = listOf(
+            PushTokenMetadata(
+                platform = "fcm",
+                token = "fcm-token",
+                createdAtMillis = 1_717_000_000_000L,
+            ),
+        ),
     )
 
     private fun Context.pairingPrefsForTests() =

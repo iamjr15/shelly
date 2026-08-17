@@ -21,10 +21,3 @@ fun NotificationPermissionSheet(
         modifier = modifier,
     )
 }
-
-@Composable
-internal fun NotificationPermissionSheetPreview() {
-    ModalPreviewScaffold {
-        NotificationPermissionSheet()
-    }
-}

@@ -3,6 +3,8 @@ package app.shelly.android.features.modals
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import app.shelly.android.R
 
 @Composable
 fun UnpairSheet(
@@ -12,6 +14,7 @@ fun UnpairSheet(
     onConfirm: () -> Unit = {},
     onDismiss: () -> Unit = {},
 ) {
+    val unpairLabel = stringResource(R.string.unpair_this_device)
     val body = when (liveSessions) {
         0 -> "Keys for this phone are erased and Shelly\ndisconnects. Pairing again needs a fresh\ncode from your computer."
         1 -> "Keys for this phone are erased and the one\nlive session detaches. Pairing again needs\na fresh code from your computer."
@@ -22,7 +25,7 @@ fun UnpairSheet(
         title = "DROP",
         meta = daemonLabel,
         body = body,
-        primary = "Unpair this device",
+        primary = unpairLabel,
         secondary = "Keep it paired",
         onConfirm = onConfirm,
         onDismiss = onDismiss,
@@ -31,11 +34,4 @@ fun UnpairSheet(
         destructive = true,
         primaryIcon = { TrashIcon(color = Color.White) },
     )
-}
-
-@Composable
-internal fun UnpairSheetPreview() {
-    ModalPreviewScaffold {
-        UnpairSheet(daemonLabel = "6e7a1cdd29b0…", liveSessions = 6)
-    }
 }

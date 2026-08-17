@@ -1,9 +1,10 @@
 package app.shelly.android.screenshots
 
-import app.shelly.android.features.modals.AlertSheetPreview
-import app.shelly.android.features.modals.NotificationPermissionSheetPreview
-import app.shelly.android.features.modals.TelemetrySheetPreview
-import app.shelly.android.features.modals.UnpairSheetPreview
+import app.shelly.android.core.ShellyAlertMessage
+import app.shelly.android.features.modals.AlertSheet
+import app.shelly.android.features.modals.NotificationPermissionSheet
+import app.shelly.android.features.modals.TelemetrySheet
+import app.shelly.android.features.modals.UnpairSheet
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -16,41 +17,50 @@ import org.robolectric.annotation.GraphicsMode
 class ModalsScreenshotTest {
     @Test
     fun unpair_dark() = ScreenshotHarness.render("unpair_dark", dark = true) {
-        UnpairSheetPreview()
+        ModalScreenshotHost { UnpairSheet(daemonLabel = "6e7a1cdd29b0…", liveSessions = 6) }
     }
 
     @Test
     fun unpair_light() = ScreenshotHarness.render("unpair_light", dark = false) {
-        UnpairSheetPreview()
+        ModalScreenshotHost { UnpairSheet(daemonLabel = "6e7a1cdd29b0…", liveSessions = 6) }
     }
 
     @Test
     fun telemetry_dark() = ScreenshotHarness.render("telemetry_dark", dark = true) {
-        TelemetrySheetPreview()
+        ModalScreenshotHost { TelemetrySheet() }
     }
 
     @Test
     fun telemetry_light() = ScreenshotHarness.render("telemetry_light", dark = false) {
-        TelemetrySheetPreview()
+        ModalScreenshotHost { TelemetrySheet() }
     }
 
     @Test
     fun alert_dark() = ScreenshotHarness.render("alert_dark", dark = true) {
-        AlertSheetPreview()
+        ModalScreenshotHost { AlertSheet(offlineAlert) }
     }
 
     @Test
     fun alert_light() = ScreenshotHarness.render("alert_light", dark = false) {
-        AlertSheetPreview()
+        ModalScreenshotHost { AlertSheet(offlineAlert) }
     }
 
     @Test
     fun notif_permission_dark() = ScreenshotHarness.render("notif_permission_dark", dark = true) {
-        NotificationPermissionSheetPreview()
+        ModalScreenshotHost { NotificationPermissionSheet() }
     }
 
     @Test
     fun notif_permission_light() = ScreenshotHarness.render("notif_permission_light", dark = false) {
-        NotificationPermissionSheetPreview()
+        ModalScreenshotHost { NotificationPermissionSheet() }
+    }
+
+    private companion object {
+        val offlineAlert = ShellyAlertMessage(
+            kicker = "DAEMON CONNECTION TIMED OUT",
+            title = "OFFLINE",
+            meta = "transport timeout",
+            body = "Shelly could not reach your computer. Make sure it is awake and shellyd is running, then try again.",
+        )
     }
 }

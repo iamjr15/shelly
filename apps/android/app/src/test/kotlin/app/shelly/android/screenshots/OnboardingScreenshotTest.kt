@@ -1,9 +1,9 @@
 package app.shelly.android.screenshots
 
-import app.shelly.android.features.onboarding.GetStartedContentPreview
-import app.shelly.android.features.onboarding.HowItWorksContentPreview
-import app.shelly.android.features.onboarding.PrivacyContentPreview
-import app.shelly.android.features.onboarding.WelcomeContentPreview
+import app.shelly.android.features.onboarding.GetStartedScreen
+import app.shelly.android.features.onboarding.HowItWorksScreen
+import app.shelly.android.features.onboarding.PrivacyScreen
+import app.shelly.android.features.onboarding.WelcomeScreen
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -16,41 +16,55 @@ import org.robolectric.annotation.GraphicsMode
 class OnboardingScreenshotTest {
     @Test
     fun welcome_dark() = ScreenshotHarness.render("welcome_dark", dark = true) {
-        WelcomeContentPreview()
+        WelcomeScreen()
     }
 
     @Test
     fun welcome_light() = ScreenshotHarness.render("welcome_light", dark = false) {
-        WelcomeContentPreview()
+        WelcomeScreen()
     }
 
     @Test
     fun how_it_works_dark() = ScreenshotHarness.render("how_it_works_dark", dark = true) {
-        HowItWorksContentPreview()
+        HowItWorksScreen()
     }
 
     @Test
     fun how_it_works_light() = ScreenshotHarness.render("how_it_works_light", dark = false) {
-        HowItWorksContentPreview()
+        HowItWorksScreen()
     }
 
     @Test
     fun privacy_dark() = ScreenshotHarness.render("privacy_dark", dark = true) {
-        PrivacyContentPreview()
+        PrivacyScreen()
     }
 
     @Test
     fun privacy_light() = ScreenshotHarness.render("privacy_light", dark = false) {
-        PrivacyContentPreview()
+        PrivacyScreen()
     }
 
     @Test
     fun get_started_dark() = ScreenshotHarness.render("get_started_dark", dark = true) {
-        GetStartedContentPreview()
+        GetStartedScreen()
     }
 
     @Test
     fun get_started_light() = ScreenshotHarness.render("get_started_light", dark = false) {
-        GetStartedContentPreview()
+        GetStartedScreen()
     }
+
+    @Test
+    fun welcome_large_font() = ScreenshotHarness.render(
+        "welcome_large_font",
+        dark = false,
+        variant = ScreenshotHarness.Variant.LargeFont,
+    ) { WelcomeScreen() }
+
+    @Test
+    fun privacy_rtl() = ScreenshotHarness.render(
+        "privacy_rtl",
+        dark = false,
+        variant = ScreenshotHarness.Variant.Rtl,
+    ) { PrivacyScreen() }
 }

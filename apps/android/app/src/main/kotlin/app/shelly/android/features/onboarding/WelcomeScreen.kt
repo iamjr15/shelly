@@ -40,8 +40,3 @@ fun WelcomeScreen(
         },
     )
 }
-
-@Composable
-internal fun WelcomeContentPreview() {
-    WelcomeScreen()
-}

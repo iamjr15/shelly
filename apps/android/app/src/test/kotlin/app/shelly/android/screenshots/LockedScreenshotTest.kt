@@ -1,6 +1,6 @@
 package app.shelly.android.screenshots
 
-import app.shelly.android.features.lock.LockedContentPreview
+import app.shelly.android.features.lock.LockedScreen
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -14,11 +14,11 @@ import org.robolectric.annotation.GraphicsMode
 class LockedScreenshotTest {
     @Test
     fun locked_dark() = ScreenshotHarness.render("locked_dark", dark = true) {
-        LockedContentPreview()
+        LockedScreen()
     }
 
     @Test
     fun locked_light() = ScreenshotHarness.render("locked_light", dark = false) {
-        LockedContentPreview()
+        LockedScreen()
     }
 }

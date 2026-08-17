@@ -23,6 +23,10 @@ internal data class TerminalAttachErrorMessage(
 
 internal fun pairingErrorMessage(error: Throwable): PairingErrorMessage {
     return when (error) {
+        is ShellyException.VersionMismatch -> PairingErrorMessage(
+            message = "Update Shelly to continue pairing.",
+            detail = "Install the latest Shelly app and update Shelly on your computer, then try again.",
+        )
         is ShellyException.NotFound -> PairingErrorMessage(
             message = "That pairing code expired or was already used.",
             detail = "Run `shelly pair` on your computer for a fresh code.",
@@ -85,6 +89,11 @@ internal fun savedPairingUnavailableMessage(error: Throwable): PairingErrorMessa
         )
     }
 }
+
+internal fun revokedPairingMessage(): PairingErrorMessage = PairingErrorMessage(
+    message = "This phone is no longer paired with your computer.",
+    detail = "Run `shelly pair` on your computer and pair this phone again.",
+)
 
 internal fun sessionsUnavailableMessage(error: Throwable): ShellyAlertMessage {
     return when (error) {
@@ -226,13 +235,6 @@ internal fun terminalCommandErrorPhase(error: Throwable): TerminalPhase {
         is ShellyException.Forbidden -> TerminalPhase.Error(TerminalErrorKind.Denied)
         else -> TerminalPhase.Error(TerminalErrorKind.ConnectionLost)
     }
-}
-
-internal fun daemonUnreachablePreviewMessage(): ShellyAlertMessage {
-    return daemonUnreachableAlert(
-        meta = "transport timeout",
-        body = "Shelly could not reach your computer. Make sure it is awake and `shellyd` is running, then try again.",
-    )
 }
 
 private fun daemonUnreachableAlert(meta: String, body: String): ShellyAlertMessage {
