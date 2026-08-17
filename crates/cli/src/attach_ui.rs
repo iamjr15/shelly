@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use shelly_protocol::ClientSize;
 use std::io::{self, Write};
+use std::sync::OnceLock;
 use unicode_width::UnicodeWidthChar;
 
 const STATUS_ROWS: u16 = 1;
@@ -21,19 +22,14 @@ impl AttachScreenGuard {
             .write_all(b"\x1b[?1049h\x1b[H\x1b[2J\x1b[?25l")
             .and_then(|_| stdout.flush())
             .context("enter attached terminal screen")?;
+        crate::terminal::mark_alt_screen_active();
         Ok(Self)
     }
 }
 
 impl Drop for AttachScreenGuard {
     fn drop(&mut self) {
-        let mut stdout = io::stdout();
-        // Reset input modes that the nested terminal may have enabled before
-        // restoring the user's original terminal screen.
-        let _ = stdout.write_all(
-            b"\x1b[0m\x1b[r\x1b[?6l\x1b[?1l\x1b>\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l\x1b[?25h\x1b[?1049l",
-        );
-        let _ = stdout.flush();
+        crate::terminal::restore_alt_screen();
     }
 }
 
@@ -44,6 +40,7 @@ impl Drop for AttachScreenGuard {
 /// remains correct when escape sequences arrive across multiple reads.
 pub struct AttachRenderer {
     parser: vt100::Parser,
+    previous: vt100::Screen,
     physical_size: ClientSize,
     session_name: String,
 }
@@ -51,8 +48,11 @@ pub struct AttachRenderer {
 impl AttachRenderer {
     pub fn new(session_name: &str, physical_size: ClientSize) -> Self {
         let content_size = content_size(physical_size);
+        let parser = vt100::Parser::new(content_size.rows, content_size.cols, 0);
+        let previous = parser.screen().clone();
         Self {
-            parser: vt100::Parser::new(content_size.rows, content_size.cols, 0),
+            parser,
+            previous,
             physical_size,
             session_name: sanitized_session_name(session_name),
         }
@@ -64,18 +64,20 @@ impl AttachRenderer {
 
     pub fn initial_frame(&mut self, bytes: &[u8]) -> Vec<u8> {
         self.parser.process(bytes);
-        self.full_frame()
+        let frame = self.full_frame();
+        self.previous.clone_from(self.parser.screen());
+        frame
     }
 
     pub fn output_frame(&mut self, bytes: &[u8]) -> Vec<u8> {
-        let previous = self.parser.screen().clone();
         self.parser.process(bytes);
         let screen = self.parser.screen();
-        let mut frame = screen.contents_diff(&previous);
-        frame.extend(screen.input_mode_diff(&previous));
+        let mut frame = screen.contents_diff(&self.previous);
+        frame.extend(screen.input_mode_diff(&self.previous));
         if frame_erases_status_row(&frame) {
             frame.extend(self.status_frame());
         }
+        self.previous.clone_from(self.parser.screen());
         frame
     }
 
@@ -85,7 +87,9 @@ impl AttachRenderer {
         self.parser
             .screen_mut()
             .set_size(content_size.rows, content_size.cols);
-        self.full_frame()
+        let frame = self.full_frame();
+        self.previous.clone_from(self.parser.screen());
+        frame
     }
 
     fn full_frame(&self) -> Vec<u8> {
@@ -197,6 +201,11 @@ fn frame_erases_status_row(frame: &[u8]) -> bool {
 }
 
 fn status_style() -> &'static str {
+    static STATUS_STYLE: OnceLock<&'static str> = OnceLock::new();
+    STATUS_STYLE.get_or_init(detect_status_style)
+}
+
+fn detect_status_style() -> &'static str {
     if std::env::var("COLORTERM").is_ok_and(|value| {
         value.eq_ignore_ascii_case("truecolor") || value.eq_ignore_ascii_case("24bit")
     }) {

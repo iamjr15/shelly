@@ -1,19 +1,24 @@
 mod attach_ui;
+mod clock;
 mod ipc;
 #[cfg(feature = "test-client")]
 mod iroh_client;
 mod service;
 mod settings;
+mod terminal;
 mod update_notice;
 
 use anyhow::{Context, Result, bail};
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use clap_complete::Shell;
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use crossterm::terminal::enable_raw_mode;
 use qrcode::{QrCode, render::unicode};
+use shelly_cli::attach_loop::{
+    AttachIo, AttachOutcome, DetachState, InputEvent, TerminalRenderer, run_attach_session,
+};
 use shelly_protocol::{
     AgentSource, AgentState, CONTRACT_VERSION, ClientSize, ClientToServerMsg, ServerToClientMsg,
-    SessionId, SessionSummary, now_ms,
+    SessionId, SessionSummary,
 };
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -22,7 +27,7 @@ use std::io::{IsTerminal, Read, Write};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::mpsc;
 
 #[derive(Parser)]
 #[command(name = "shelly")]
@@ -197,6 +202,7 @@ pub(crate) fn ensure_crypto_provider() {
 #[tokio::main]
 async fn main() -> Result<()> {
     ensure_crypto_provider();
+    terminal::install_panic_restore_hook();
     let cli = parse_cli_for_current_invocation();
     // Run the npm update check concurrently so a stale cache never delays
     // command output; awaited after the command so the cache write completes.
@@ -471,6 +477,8 @@ async fn pair_device() -> Result<()> {
     let depth = color_depth();
     let use_ansi = depth != ColorDepth::Plain;
     let live = use_ansi && terminal_cursor_control_enabled();
+    let mut termination =
+        terminal::TerminationSignals::new().context("register terminal signals")?;
 
     if pairing_remaining_seconds(ticket.expires_at) == 0 {
         bail!("pairing code expired. Run `shelly pair` again.");
@@ -522,6 +530,10 @@ async fn pair_device() -> Result<()> {
                         drop(alt_screen.take());
                         std::process::exit(130);
                     }
+                    signal = termination.recv() => {
+                        drop(alt_screen.take());
+                        terminal::restore_and_reraise(signal);
+                    }
                     _ = countdown.tick() => {
                         let remaining = pairing_remaining_seconds(ticket.expires_at);
                         if live {
@@ -562,21 +574,26 @@ async fn pair_device() -> Result<()> {
             ServerToClientMsg::PairingApprovalRequested {
                 request_id,
                 device_name,
+                sas,
                 ..
             } => {
                 let name = sanitize_device_name(&device_name);
+                drop(alt_screen.take());
+                let approved = confirm_pairing_sas(&name, &sas).await?;
                 ipc::write_msg(
                     &mut conn,
                     &ClientToServerMsg::ApprovePairing {
                         request_id,
-                        approved: true,
+                        approved,
                     },
                 )
                 .await?;
-                drop(alt_screen.take());
-                if live {
+                if !approved {
+                    bail!("pairing denied; the device was not saved");
+                }
+                if use_ansi {
                     println!(
-                        "{} Paired {}",
+                        "{} Approved pairing for {}",
                         style_ansi("✓", true, ANSI_GREEN),
                         style_bold(&name, true)
                     );
@@ -585,7 +602,7 @@ async fn pair_device() -> Result<()> {
                         style_dim("shelly devices — list and manage paired devices", true)
                     );
                 } else {
-                    println!("Paired {name}.");
+                    println!("Approved pairing for {name}.");
                 }
                 return Ok(());
             }
@@ -593,6 +610,37 @@ async fn pair_device() -> Result<()> {
             _ => {}
         }
     }
+}
+
+async fn confirm_pairing_sas(device_name: &str, sas: &str) -> Result<bool> {
+    println!();
+    println!("Pairing request from {device_name}");
+    println!("Compare this security fingerprint with the phone:");
+    println!();
+    println!("    {sas}");
+    println!();
+    print!("Press Y to approve; any other key denies: ");
+    std::io::stdout()
+        .flush()
+        .context("flush pairing approval prompt")?;
+
+    let terminal_input = std::io::stdin().is_terminal();
+    let _raw = terminal_input.then(RawMode::enter).transpose()?;
+    let key = tokio::task::spawn_blocking(|| {
+        let mut byte = [0_u8; 1];
+        match std::io::stdin().read(&mut byte) {
+            Ok(1) => Ok(Some(byte[0])),
+            Ok(_) => Ok(None),
+            Err(error) => Err(error),
+        }
+    })
+    .await
+    .context("join pairing approval input reader")?
+    .context("read pairing approval key")?;
+    if terminal_input {
+        println!();
+    }
+    Ok(key.is_some_and(|key| matches!(key, b'y' | b'Y')))
 }
 
 async fn list_devices() -> Result<()> {
@@ -619,9 +667,8 @@ async fn list_devices() -> Result<()> {
     Ok(())
 }
 
-fn short_node_id(node_id: &str) -> &str {
-    let end = node_id.len().min(12);
-    &node_id[..end]
+fn short_node_id(node_id: &str) -> String {
+    node_id.chars().take(12).collect()
 }
 
 /// Renders a short pairing code with a separating space for easier hand entry.
@@ -764,7 +811,7 @@ fn keycap_style_code(depth: ColorDepth) -> Option<String> {
     }
 }
 
-/// Renders the pairing code as keycap chips (grouped 2+3); returns the styled
+/// Renders the pairing code as two groups of keycap chips; returns the styled
 /// row and its visible width in columns.
 fn keycap_row(code: &str, depth: ColorDepth) -> (String, usize) {
     let grouped = group_code(code);
@@ -844,16 +891,18 @@ struct LiveScreenGuard;
 
 impl LiveScreenGuard {
     fn enter() -> Result<Self> {
-        print!("\x1b[?1049h\x1b[H\x1b[2J\x1b[?25l");
-        std::io::stdout().flush().context("enter pairing screen")?;
+        let mut stdout = std::io::stdout();
+        write!(stdout, "\x1b[?1049h\x1b[H\x1b[2J\x1b[?25l")
+            .and_then(|_| stdout.flush())
+            .context("enter pairing screen")?;
+        terminal::mark_alt_screen_active();
         Ok(Self)
     }
 }
 
 impl Drop for LiveScreenGuard {
     fn drop(&mut self) {
-        print!("\x1b[?25h\x1b[?1049l");
-        let _ = std::io::stdout().flush();
+        terminal::restore_alt_screen();
     }
 }
 
@@ -1040,7 +1089,7 @@ fn print_pairing_countdown(expires_at: u64, use_ansi: bool, force: bool) -> Resu
 }
 
 fn pairing_remaining_seconds(expires_at: u64) -> u64 {
-    let remaining_ms = expires_at.saturating_sub(now_ms());
+    let remaining_ms = expires_at.saturating_sub(clock::now_ms());
     remaining_ms.div_ceil(1000)
 }
 
@@ -1110,7 +1159,9 @@ async fn run_hook(command: HookCommand) -> Result<()> {
     match command {
         HookCommand::ClaudeStop { session, last_line } => {
             let session_id = hook_session_id(session)?;
+            let (mut conn, _) = ipc::connect_local().await?;
             emit_agent_state_event(
+                &mut conn,
                 session_id,
                 AgentSource::Claude,
                 AgentState::AwaitingInput,
@@ -1126,8 +1177,10 @@ async fn run_hook(command: HookCommand) -> Result<()> {
                 .context("read Codex event JSON from stdin")?;
             let states = codex_states_from_payload(&payload)
                 .with_context(|| format!("unsupported Codex event payload: {payload}"))?;
+            let (mut conn, _) = ipc::connect_local().await?;
             for state in states {
-                emit_agent_state_event(session_id, AgentSource::Codex, state, None).await?;
+                emit_agent_state_event(&mut conn, session_id, AgentSource::Codex, state, None)
+                    .await?;
             }
             Ok(())
         }
@@ -1135,14 +1188,14 @@ async fn run_hook(command: HookCommand) -> Result<()> {
 }
 
 async fn emit_agent_state_event(
+    conn: &mut interprocess::local_socket::tokio::Stream,
     session_id: SessionId,
     source: AgentSource,
     state: AgentState,
     last_line: Option<String>,
 ) -> Result<()> {
-    let (mut conn, _) = ipc::connect_local().await?;
     ipc::write_msg(
-        &mut conn,
+        &mut *conn,
         &ClientToServerMsg::AgentStateEvent {
             session_id,
             source,
@@ -1151,7 +1204,7 @@ async fn emit_agent_state_event(
         },
     )
     .await?;
-    match ipc::read_msg::<_, ServerToClientMsg>(&mut conn).await? {
+    match ipc::read_msg::<_, ServerToClientMsg>(&mut *conn).await? {
         ServerToClientMsg::AgentStateChanged {
             session_id: applied_session,
             state: applied_state,
@@ -1341,150 +1394,59 @@ async fn attach_session(session_ref: String) -> Result<()> {
     let physical_size = terminal_size();
     let status_bar =
         terminal_cursor_control_enabled() && attach_ui::status_bar_supported(physical_size);
-    let size = if status_bar {
+    let initial_size = if status_bar {
         attach_ui::content_size(physical_size)
     } else {
         physical_size
     };
+    let detach_prefix = settings::detach_prefix()?;
+    let mut detach_state = DetachState::new(detach_prefix);
+    let mut input = spawn_stdin_reader()?;
+    let (resize_tx, mut resize) = mpsc::channel(8);
+    let mut winch = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::window_change())?;
+    let mut termination =
+        terminal::TerminationSignals::new().context("register terminal signals")?;
 
-    ipc::write_msg(
-        &mut conn,
-        &ClientToServerMsg::AttachSession {
-            session_id,
-            size,
-            last_seen_seq: None,
-        },
-    )
-    .await?;
-
-    let attached = ipc::read_msg::<_, ServerToClientMsg>(&mut conn).await?;
-    let ServerToClientMsg::Attached { initial_bytes, .. } = attached else {
-        bail!("expected attach response, got {attached:?}");
-    };
-
-    enum AttachEnd {
-        Detached,
-        SessionExited(i32),
-        Lagged(u64),
-        DaemonError(String),
-        ConnectionLost(String),
-    }
-
-    let end = {
+    let outcome = {
         let _raw = RawMode::enter()?;
         let _screen = status_bar
             .then(attach_ui::AttachScreenGuard::enter)
             .transpose()?;
-        let mut renderer =
-            status_bar.then(|| attach_ui::AttachRenderer::new(&session.name, physical_size));
-        let mut stdout = tokio::io::stdout();
-        let initial_frame = match renderer.as_mut() {
-            Some(renderer) => renderer.initial_frame(&initial_bytes),
-            None => initial_bytes,
-        };
-        stdout.write_all(&initial_frame).await?;
-        stdout.flush().await?;
-
-        let (mut reader, mut writer) = tokio::io::split(conn);
-        let mut stdin = tokio::io::stdin();
-        let mut buf = [0_u8; 1024];
-        let mut prefix = false;
-        let mut winch =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::window_change())?;
-        let end = 'attached: loop {
-            tokio::select! {
-                message = ipc::read_msg::<_, ServerToClientMsg>(&mut reader) => {
-                    let message = match message {
-                        Ok(message) => message,
-                        Err(error) => break AttachEnd::ConnectionLost(error.to_string()),
-                    };
-                    match message {
-                        ServerToClientMsg::Output { bytes, .. } => {
-                            let frame = match renderer.as_mut() {
-                                Some(renderer) => renderer.output_frame(&bytes),
-                                None => bytes,
-                            };
-                            stdout.write_all(&frame).await?;
-                            stdout.flush().await?;
-                        }
-                        ServerToClientMsg::Lag { skipped_bytes, .. } => {
-                            break AttachEnd::Lagged(skipped_bytes);
-                        }
-                        ServerToClientMsg::SessionExited { exit_code, .. } => {
-                            break AttachEnd::SessionExited(exit_code);
-                        }
-                        ServerToClientMsg::Error { message, .. } => {
-                            break AttachEnd::DaemonError(message);
-                        }
-                        _ => {}
-                    }
-                }
-                n = stdin.read(&mut buf) => {
-                    let n = n?;
-                    if n == 0 {
-                        let _ = ipc::write_msg(&mut writer, &ClientToServerMsg::DetachSession).await;
-                        break AttachEnd::Detached;
-                    }
-
-                    // Ctrl-B (0x02) arms a detach prefix: Ctrl-B d detaches; any other
-                    // byte replays the held 0x02 so the escape stays transparent.
-                    let mut outgoing = Vec::with_capacity(n);
-                    for &byte in &buf[..n] {
-                        if prefix {
-                            prefix = false;
-                            if byte == b'd' || byte == b'D' {
-                                ipc::write_msg(&mut writer, &ClientToServerMsg::DetachSession).await?;
-                                break 'attached AttachEnd::Detached;
-                            }
-                            outgoing.push(0x02);
-                            outgoing.push(byte);
-                        } else if byte == 0x02 {
-                            prefix = true;
-                        } else {
-                            outgoing.push(byte);
-                        }
-                    }
-
-                    if !outgoing.is_empty() {
-                        ipc::write_msg(
-                            &mut writer,
-                            &ClientToServerMsg::Input {
-                                session_id,
-                                bytes: outgoing,
-                            },
-                        )
-                        .await?;
-                    }
-                }
-                _ = winch.recv() => {
-                    let physical_size = terminal_size();
-                    let size = match renderer.as_mut() {
-                        Some(renderer) => {
-                            let frame = renderer.resize(physical_size);
-                            stdout.write_all(&frame).await?;
-                            stdout.flush().await?;
-                            renderer.content_size()
-                        }
-                        None => physical_size,
-                    };
-                    ipc::write_msg(
-                        &mut writer,
-                        &ClientToServerMsg::Resize {
-                            session_id,
-                            size,
-                        },
-                    )
-                    .await?;
+        let resize_task = tokio::spawn(async move {
+            while winch.recv().await.is_some() {
+                if resize_tx.send(terminal_size()).await.is_err() {
+                    break;
                 }
             }
+        });
+        let mut renderer = CliTerminalRenderer::new(&session.name, physical_size, status_bar);
+        let mut stdout = tokio::io::stdout();
+        let attach = run_attach_session(
+            conn,
+            session_id,
+            initial_size,
+            AttachIo::new(
+                &mut input,
+                &mut resize,
+                &mut stdout,
+                &mut renderer,
+                &mut detach_state,
+            ),
+        );
+        tokio::pin!(attach);
+        let result = tokio::select! {
+            result = &mut attach => result,
+            signal = termination.recv() => {
+                terminal::restore_and_reraise(signal);
+            }
         };
-        stdout.flush().await?;
-        end
-    };
+        resize_task.abort();
+        result
+    }?;
 
-    match end {
-        AttachEnd::Detached => Ok(()),
-        AttachEnd::SessionExited(exit_code) => {
+    match outcome {
+        AttachOutcome::Detached => Ok(()),
+        AttachOutcome::SessionExited(exit_code) => {
             eprintln!("[shelly: session exited {exit_code}]");
             if exit_code == 0 {
                 Ok(())
@@ -1492,13 +1454,82 @@ async fn attach_session(session_ref: String) -> Result<()> {
                 std::process::exit(exit_code);
             }
         }
-        AttachEnd::Lagged(skipped_bytes) => {
-            eprintln!("[shelly: lagged {skipped_bytes} messages; re-run attach to resync]");
-            std::process::exit(2);
+        AttachOutcome::DaemonError(message) => bail!("terminal session error: {message}"),
+        AttachOutcome::ConnectionLost(message) => {
+            bail!("terminal connection closed: {message}")
         }
-        AttachEnd::DaemonError(message) => bail!("terminal session error: {message}"),
-        AttachEnd::ConnectionLost(message) => bail!("terminal connection closed: {message}"),
     }
+}
+
+struct CliTerminalRenderer {
+    renderer: Option<attach_ui::AttachRenderer>,
+}
+
+impl CliTerminalRenderer {
+    fn new(session_name: &str, physical_size: ClientSize, status_bar: bool) -> Self {
+        Self {
+            renderer: status_bar
+                .then(|| attach_ui::AttachRenderer::new(session_name, physical_size)),
+        }
+    }
+}
+
+impl TerminalRenderer for CliTerminalRenderer {
+    fn initial_frame(&mut self, bytes: &[u8]) -> Vec<u8> {
+        self.renderer
+            .as_mut()
+            .map_or_else(|| bytes.to_vec(), |renderer| renderer.initial_frame(bytes))
+    }
+
+    fn output_frame(&mut self, bytes: &[u8]) -> Vec<u8> {
+        self.renderer
+            .as_mut()
+            .map_or_else(|| bytes.to_vec(), |renderer| renderer.output_frame(bytes))
+    }
+
+    fn resize_frame(&mut self, physical_size: ClientSize) -> (ClientSize, Vec<u8>) {
+        match self.renderer.as_mut() {
+            Some(renderer) => {
+                let frame = renderer.resize(physical_size);
+                (renderer.content_size(), frame)
+            }
+            None => (physical_size, Vec::new()),
+        }
+    }
+}
+
+fn spawn_stdin_reader() -> Result<mpsc::Receiver<InputEvent>> {
+    let (sender, receiver) = mpsc::channel(16);
+    std::thread::Builder::new()
+        .name("shelly-stdin".to_string())
+        .spawn(move || {
+            let stdin = std::io::stdin();
+            let mut stdin = stdin.lock();
+            let mut buffer = [0_u8; 1024];
+            loop {
+                match stdin.read(&mut buffer) {
+                    Ok(0) => {
+                        let _ = sender.blocking_send(InputEvent::Eof);
+                        break;
+                    }
+                    Ok(read) => {
+                        if sender
+                            .blocking_send(InputEvent::Bytes(buffer[..read].to_vec()))
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                    Err(error) => {
+                        let _ = sender.blocking_send(InputEvent::Error(error.to_string()));
+                        break;
+                    }
+                }
+            }
+        })
+        .context("spawn terminal input reader")?;
+    Ok(receiver)
 }
 
 async fn kill_session(session_ref: String) -> Result<()> {
@@ -2060,13 +2091,14 @@ struct RawMode;
 impl RawMode {
     fn enter() -> Result<Self> {
         enable_raw_mode().context("enable raw mode")?;
+        terminal::mark_raw_mode_active();
         Ok(Self)
     }
 }
 
 impl Drop for RawMode {
     fn drop(&mut self) {
-        let _ = disable_raw_mode();
+        terminal::restore_raw_mode();
     }
 }
 
@@ -2082,7 +2114,7 @@ mod tests {
         macos_trust_mode_from_signature_kinds, normalize_session_name, pairing_qr_fits_terminal,
         pairing_qr_terminal_dimensions, pairing_screen_lines, parse_macos_signature_kind,
         parse_named_shortcut_args, render_pairing_status, requested_session_name,
-        sanitize_device_name, should_check_update_notice,
+        sanitize_device_name, short_node_id, should_check_update_notice,
     };
     use clap::Parser;
     use clap_complete::Shell;
@@ -2528,32 +2560,32 @@ mod tests {
     #[test]
     fn keycap_row_falls_back_to_grouped_text_when_plain() {
         assert_eq!(
-            keycap_row("KW7F4", ColorDepth::Plain),
-            ("KW 7F4".to_string(), 6)
+            keycap_row("KW7F4AB", ColorDepth::Plain),
+            ("KW7 F4AB".to_string(), 8)
         );
     }
 
     #[test]
     fn keycap_row_renders_chips_with_wider_group_gap() {
-        let (styled, cols) = keycap_row("KW7F4", ColorDepth::Ansi16);
-        assert_eq!(cols, 21);
-        assert_eq!(styled.matches("\x1b[30;43m").count(), 5);
-        assert_eq!(styled.matches(ANSI_RESET).count(), 5);
+        let (styled, cols) = keycap_row("KW7F4AB", ColorDepth::Ansi16);
+        assert_eq!(cols, 29);
+        assert_eq!(styled.matches("\x1b[30;43m").count(), 7);
+        assert_eq!(styled.matches(ANSI_RESET).count(), 7);
         assert!(styled.contains("   "));
     }
 
     #[test]
     fn keycap_row_uses_explicit_ink_above_ansi16() {
-        let (truecolor, _) = keycap_row("KW7F4", ColorDepth::TrueColor);
+        let (truecolor, _) = keycap_row("KW7F4AB", ColorDepth::TrueColor);
         assert!(truecolor.contains("\x1b[38;2;21;10;5;48;2;232;93;41m"));
-        let (ansi256, _) = keycap_row("KW7F4", ColorDepth::Ansi256);
+        let (ansi256, _) = keycap_row("KW7F4AB", ColorDepth::Ansi256);
         assert!(ansi256.contains("\x1b[38;5;16;48;5;166m"));
     }
 
     #[test]
     fn pairing_screen_keeps_status_third_from_end_in_both_layouts() {
         let narrow = pairing_screen_lines(
-            "KW7F4",
+            "KW7F4AB",
             None,
             49,
             ClientSize { cols: 46, rows: 14 },
@@ -2565,7 +2597,7 @@ mod tests {
         assert!(narrow.iter().any(|line| line.contains("Pane is too small")));
 
         let full = pairing_screen_lines(
-            "KW7F4",
+            "KW7F4AB",
             Some("ab\ncd"),
             49,
             ClientSize { cols: 80, rows: 60 },
@@ -2617,6 +2649,11 @@ mod tests {
         assert_eq!(sanitize_device_name("\x1b[31mPixel\x07"), "[31mPixel");
         assert_eq!(sanitize_device_name("\x1b\x07 \n"), "device");
         assert_eq!(sanitize_device_name(&"n".repeat(64)).chars().count(), 48);
+    }
+
+    #[test]
+    fn short_node_id_truncates_on_character_boundaries() {
+        assert_eq!(short_node_id("éééééééééééésuffix"), "éééééééééééé");
     }
 
     fn bind_unix_socket_for_test(path: &Path) -> Option<UnixListener> {

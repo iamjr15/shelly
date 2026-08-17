@@ -2,7 +2,6 @@ use crate::settings;
 use anyhow::{Context, Result};
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use shelly_protocol::now_ms;
 use std::{
     future::Future,
     path::{Path, PathBuf},
@@ -31,7 +30,9 @@ pub async fn maybe_print_update_notice() {
     }
 
     let path = default_cache_path();
-    if let Ok(Some(notice)) = check_for_update(&path, env!("CARGO_PKG_VERSION"), now_ms()).await {
+    if let Ok(Some(notice)) =
+        check_for_update(&path, env!("CARGO_PKG_VERSION"), crate::clock::now_ms()).await
+    {
         eprintln!("{notice}");
     }
 }

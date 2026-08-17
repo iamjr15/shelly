@@ -11,6 +11,8 @@ struct UserConfig {
     scrollback_encryption: ScrollbackEncryptionConfig,
     #[serde(default)]
     telemetry: TelemetryConfig,
+    #[serde(default)]
+    terminal: TerminalConfig,
     // config.toml is shared with the daemon, whose schema may be newer than this
     // CLI's; capturing unknown keys keeps the rewrite in write_config lossless.
     #[serde(flatten)]
@@ -29,6 +31,14 @@ struct TelemetryConfig {
     opt_in: bool,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct TerminalConfig {
+    #[serde(default = "default_detach_prefix")]
+    detach_prefix: String,
+    #[serde(flatten)]
+    extra: toml::Table,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TelemetryStatus {
     pub path: PathBuf,
@@ -44,6 +54,15 @@ pub struct ScrollbackEncryptionStatus {
 impl Default for ScrollbackEncryptionConfig {
     fn default() -> Self {
         Self { enabled: true }
+    }
+}
+
+impl Default for TerminalConfig {
+    fn default() -> Self {
+        Self {
+            detach_prefix: default_detach_prefix(),
+            extra: toml::Table::new(),
+        }
     }
 }
 
@@ -71,6 +90,11 @@ pub fn scrollback_encryption_env_override() -> Result<Option<bool>> {
 pub fn set_scrollback_encryption(enabled: bool) -> Result<ScrollbackEncryptionStatus> {
     let path = default_config_path();
     set_scrollback_encryption_at_path(&path, enabled)
+}
+
+pub fn detach_prefix() -> Result<u8> {
+    let config = read_config(&default_config_path())?;
+    parse_detach_prefix(&config.terminal.detach_prefix)
 }
 
 fn telemetry_status_at_path(path: &Path) -> Result<TelemetryStatus> {
@@ -140,6 +164,43 @@ fn parse_bool_with_name(value: &str, name: &str) -> Result<bool> {
         "0" | "false" | "no" | "off" => Ok(false),
         other => bail!("invalid boolean value for {name}: {other}"),
     }
+}
+
+fn parse_detach_prefix(value: &str) -> Result<u8> {
+    let value = value.trim();
+    let control = value
+        .strip_prefix('^')
+        .or_else(|| strip_ascii_case_prefix(value, "ctrl-"))
+        .or_else(|| strip_ascii_case_prefix(value, "control-"))
+        .or_else(|| strip_ascii_case_prefix(value, "c-"));
+
+    if let Some(control) = control {
+        let mut characters = control.chars();
+        let character = characters
+            .next()
+            .filter(|_| characters.next().is_none())
+            .with_context(|| format!("invalid terminal.detach_prefix: {value}"))?;
+        let upper = character.to_ascii_uppercase();
+        return match upper {
+            '@'..='_' => Ok((upper as u8) & 0x1f),
+            '?' => Ok(0x7f),
+            _ => bail!("invalid terminal.detach_prefix: {value}"),
+        };
+    }
+
+    if value.len() == 1 && value.is_ascii() {
+        return Ok(value.as_bytes()[0]);
+    }
+    bail!(
+        "invalid terminal.detach_prefix: {value}; use a single ASCII character or a control key such as ctrl-b"
+    )
+}
+
+fn strip_ascii_case_prefix<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    value
+        .get(..prefix.len())
+        .filter(|candidate| candidate.eq_ignore_ascii_case(prefix))
+        .map(|_| &value[prefix.len()..])
 }
 
 fn write_config(path: &Path, config: &UserConfig) -> Result<()> {
@@ -214,10 +275,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_detach_prefix() -> String {
+    "ctrl-b".to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        env_var, parse_bool_with_name, scrollback_encryption_status_at_path,
+        env_var, parse_bool_with_name, parse_detach_prefix, scrollback_encryption_status_at_path,
         set_scrollback_encryption_at_path, set_telemetry_at_path, telemetry_status_at_path,
     };
     #[cfg(unix)]
@@ -261,6 +326,16 @@ mod tests {
             .to_string();
         assert!(error.contains("SHELLY_SCROLLBACK_ENCRYPTION_ENABLED"));
         assert!(error.contains("maybe"));
+    }
+
+    #[test]
+    fn detach_prefix_accepts_control_notation_and_ascii_characters() {
+        for value in ["ctrl-b", "CTRL-B", "control-b", "c-b", "^B"] {
+            assert_eq!(parse_detach_prefix(value).unwrap(), 0x02);
+        }
+        assert_eq!(parse_detach_prefix("~").unwrap(), b'~');
+        assert!(parse_detach_prefix("é").is_err());
+        assert!(parse_detach_prefix("ctrl-ab").is_err());
     }
 
     #[test]
