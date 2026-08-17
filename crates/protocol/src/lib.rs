@@ -8,10 +8,12 @@
 
 /// Shared short pairing-code alphabet and normalization helpers.
 pub mod code;
-/// Length-prefixed bincode framing helpers for local IPC.
+/// Capped, length-prefixed bincode and MessagePack framing helpers.
 pub mod framing;
 /// Client/server protocol messages.
 pub mod messages;
+/// Pairing locator and transcript-SAS helpers.
+pub mod pairing_security;
 /// Canonical request layout for relay HTTP request signing.
 pub mod signing;
 /// Shared protocol data types.
@@ -21,15 +23,21 @@ pub mod version;
 
 pub use code::{CODE_ALPHABET, CODE_LEN, is_valid_code, normalize_code};
 pub use framing::{
-    FrameError, decode_bincode, decode_frame, encode_bincode, encode_frame, max_frame_len,
+    BincodeFraming, FrameError, Framing, MessagePackDecodeError, MessagePackFraming,
+    ReadFrameError, WriteFrameError, decode_bincode, decode_frame, decode_messagepack,
+    encode_bincode, encode_frame, encode_messagepack, max_frame_len, read_framed, write_framed,
 };
 pub use messages::{ClientToServerMsg, ErrorCode, ServerToClientMsg};
-pub use signing::canonical_request;
+pub use pairing_security::{pairing_code_locator, pairing_sas};
+pub use signing::{
+    SignatureVersion, canonical_request, canonical_request_v2, signature_header,
+    split_signature_header,
+};
 pub use types::{
     AgentSource, AgentState, Capabilities, ClientId, ClientKind, ClientSize, DeviceSummary,
-    PairingTicket, PushPlatform, SessionId, SessionSummary, TicketError, now_ms,
+    PairingRendezvous, PairingTicket, PushPlatform, SessionId, SessionSummary, TicketError, now_ms,
 };
-pub use version::CONTRACT_VERSION;
+pub use version::{CONTRACT_VERSION, MIN_PAIRED_CONTRACT_VERSION};
 
 #[cfg(test)]
 mod tests {
@@ -38,6 +46,7 @@ mod tests {
     use std::collections::HashMap;
     use std::fmt::Debug;
     use std::path::PathBuf;
+    use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
     use uuid::{Uuid, Version};
 
@@ -54,8 +63,8 @@ mod tests {
     }
 
     #[test]
-    fn protocol_version_is_v4() {
-        assert_eq!(CONTRACT_VERSION, 4);
+    fn protocol_version_is_v5() {
+        assert_eq!(CONTRACT_VERSION, 5);
     }
 
     #[test]
@@ -92,7 +101,7 @@ mod tests {
         let msg = ServerToClientMsg::Output {
             session_id: SessionId::new(),
             seq: 42,
-            bytes: b"\x1b[31mhello\x1b[0m\r\n".to_vec(),
+            bytes: Arc::from(&b"\x1b[31mhello\x1b[0m\r\n"[..]),
         };
 
         let frame = encode_frame(&msg).unwrap();
@@ -118,7 +127,7 @@ mod tests {
     fn round_trips_pairing_ticket() {
         let msg = ServerToClientMsg::PairingStarted {
             ticket: PairingTicket {
-                code: "AB234".to_string(),
+                code: "AB234CD".to_string(),
                 node_id: "node".to_string(),
                 relay_url: Some("https://relay.example".to_string()),
                 addrs: vec!["127.0.0.1:1234".to_string()],
@@ -134,7 +143,7 @@ mod tests {
     #[test]
     fn pairing_ticket_string_round_trips_exactly() {
         let ticket = PairingTicket {
-            code: "AB234".to_string(),
+            code: "AB234CD".to_string(),
             node_id: "node-daemon".to_string(),
             relay_url: Some("https://relay.example".to_string()),
             addrs: vec!["127.0.0.1:1234".to_string()],
@@ -175,6 +184,20 @@ mod tests {
     }
 
     #[test]
+    fn version_mismatch_keeps_the_v4_serde_spelling() {
+        assert_eq!(ErrorCode::ProtocolMismatch, ErrorCode::VersionMismatch);
+        let encoded = rmp_serde::to_vec_named(&ErrorCode::VersionMismatch).unwrap();
+        assert!(
+            String::from_utf8_lossy(&encoded).contains("ProtocolMismatch"),
+            "v4 clients need the released error spelling"
+        );
+        assert_eq!(
+            rmp_serde::from_slice::<ErrorCode>(&encoded).unwrap(),
+            ErrorCode::VersionMismatch
+        );
+    }
+
+    #[test]
     fn snapshot_round_trips_all_client_messages() {
         let cases: Vec<_> = client_message_cases()
             .into_iter()
@@ -206,6 +229,57 @@ mod tests {
         for case in server_message_cases() {
             messagepack_round_trip_case(case);
         }
+    }
+
+    #[test]
+    fn arc_output_bytes_are_wire_identical_to_legacy_vec_bytes() {
+        #[allow(dead_code)]
+        #[derive(Serialize)]
+        enum LegacyServerToClientMsg {
+            Welcome,
+            SessionList,
+            SessionCreated,
+            SessionKilled,
+            Attached,
+            Output {
+                session_id: SessionId,
+                seq: u64,
+                bytes: Vec<u8>,
+            },
+        }
+
+        let session_id = fixed_session_id();
+        let legacy = LegacyServerToClientMsg::Output {
+            session_id,
+            seq: 48,
+            bytes: b"output".to_vec(),
+        };
+        let current = ServerToClientMsg::Output {
+            session_id,
+            seq: 48,
+            bytes: Arc::from(&b"output"[..]),
+        };
+
+        assert_eq!(
+            encode_bincode(&current).unwrap(),
+            encode_bincode(&legacy).unwrap()
+        );
+        assert_eq!(
+            rmp_serde::to_vec_named(&current).unwrap(),
+            rmp_serde::to_vec_named(&legacy).unwrap()
+        );
+        let cloned = current.clone();
+        let (
+            ServerToClientMsg::Output { bytes, .. },
+            ServerToClientMsg::Output {
+                bytes: cloned_bytes,
+                ..
+            },
+        ) = (&current, &cloned)
+        else {
+            unreachable!("both messages are Output")
+        };
+        assert!(Arc::ptr_eq(bytes, cloned_bytes));
     }
 
     fn snapshot_case<T>(case: WireCase<T>) -> RoundTripSnapshot
@@ -324,7 +398,7 @@ mod tests {
             wire_case(
                 "pair_with_code",
                 ClientToServerMsg::PairWithCode {
-                    code: "AB234".to_string(),
+                    code: "AB234CD".to_string(),
                     device_name: "Phone".to_string(),
                     device_node_id: "node-phone".to_string(),
                 },
@@ -360,6 +434,7 @@ mod tests {
                     token: "opaque-token".to_string(),
                 },
             ),
+            wire_case("unpair_self", ClientToServerMsg::UnpairSelf),
         ]
     }
 
@@ -414,7 +489,7 @@ mod tests {
                 ServerToClientMsg::Output {
                     session_id,
                     seq: 48,
-                    bytes: b"output".to_vec(),
+                    bytes: Arc::from(&b"output"[..]),
                 },
             ),
             wire_case(
@@ -443,7 +518,7 @@ mod tests {
                 "pairing_started",
                 ServerToClientMsg::PairingStarted {
                     ticket: PairingTicket {
-                        code: "AB234".to_string(),
+                        code: "AB234CD".to_string(),
                         node_id: "node-daemon".to_string(),
                         relay_url: Some("https://relay.example".to_string()),
                         addrs: vec!["127.0.0.1:1234".to_string()],
@@ -457,6 +532,7 @@ mod tests {
                     request_id: client_id,
                     device_name: "Phone".to_string(),
                     device_node_id: "node-phone".to_string(),
+                    sas: "0123-4567-89AB-CDEF-0123".to_string(),
                 },
             ),
             wire_case(
@@ -477,6 +553,12 @@ mod tests {
                 ServerToClientMsg::Error {
                     code: ErrorCode::Forbidden,
                     message: "mobile clients cannot create sessions".to_string(),
+                },
+            ),
+            wire_case(
+                "pairing_pending",
+                ServerToClientMsg::PairingPending {
+                    sas: "0123-4567-89AB-CDEF-0123".to_string(),
                 },
             ),
         ]

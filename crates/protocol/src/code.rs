@@ -7,7 +7,7 @@
 //! validate routines so user input can be canonicalized consistently.
 
 /// Number of characters in a pairing code.
-pub const CODE_LEN: usize = 5;
+pub const CODE_LEN: usize = 7;
 
 /// Crockford base32 alphabet used for pairing codes (no `I`/`L`/`O`/`U`).
 pub const CODE_ALPHABET: &str = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -51,20 +51,20 @@ mod tests {
 
     #[test]
     fn normalize_uppercases_and_strips_separators() {
-        assert_eq!(normalize_code(" ab2-3 4 "), "AB234");
+        assert_eq!(normalize_code(" ab2-3 4cd "), "AB234CD");
     }
 
     #[test]
     fn normalize_applies_crockford_aliases() {
-        assert_eq!(normalize_code("iloO0"), "11000");
+        assert_eq!(normalize_code("iloO0ab"), "11000AB");
     }
 
     #[test]
     fn valid_code_requires_exact_length_and_alphabet() {
-        assert!(is_valid_code("AB234"));
-        assert!(!is_valid_code("AB23"));
-        assert!(!is_valid_code("AB2345"));
+        assert!(is_valid_code("AB234CD"));
+        assert!(!is_valid_code("AB234C"));
+        assert!(!is_valid_code("AB234CD5"));
         // `I`, `L`, `O`, `U` are not in the canonical alphabet.
-        assert!(!is_valid_code("ABCIO"));
+        assert!(!is_valid_code("ABCIO12"));
     }
 }

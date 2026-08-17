@@ -30,11 +30,11 @@ expression: cases
   frame_len: 40
   decoded: "Lag { session_id: SessionId(018f0000-0000-7000-8000-000000000001), skipped_bytes: 3 }"
 - name: pairing_started
-  frame_len: 108
-  decoded: "PairingStarted { ticket: PairingTicket { code: \"AB234\", node_id: \"node-daemon\", relay_url: Some(\"https://relay.example\"), addrs: [\"127.0.0.1:1234\"], expires_at: 1700000300000 } }"
+  frame_len: 110
+  decoded: "PairingStarted { ticket: PairingTicket { code: \"AB234CD\", node_id: \"node-daemon\", relay_url: Some(\"https://relay.example\"), addrs: [\"127.0.0.1:1234\"], expires_at: 1700000300000 } }"
 - name: pairing_approval_requested
-  frame_len: 63
-  decoded: "PairingApprovalRequested { request_id: ClientId(018f0000-0000-7000-8000-000000000002), device_name: \"Phone\", device_node_id: \"node-phone\" }"
+  frame_len: 95
+  decoded: "PairingApprovalRequested { request_id: ClientId(018f0000-0000-7000-8000-000000000002), device_name: \"Phone\", device_node_id: \"node-phone\", sas: \"0123-4567-89AB-CDEF-0123\" }"
 - name: pairing_complete
   frame_len: 27
   decoded: "PairingComplete { daemon_node_id: \"node-daemon\" }"
@@ -47,3 +47,6 @@ expression: cases
 - name: error
   frame_len: 57
   decoded: "Error { code: Forbidden, message: \"mobile clients cannot create sessions\" }"
+- name: pairing_pending
+  frame_len: 40
+  decoded: "PairingPending { sas: \"0123-4567-89AB-CDEF-0123\" }"
