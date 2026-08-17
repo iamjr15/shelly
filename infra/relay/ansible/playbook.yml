@@ -176,9 +176,10 @@
 
     # The sqlite3 .backup command invokes SQLite's online backup API. It produces
     # a consistent snapshot while the old service remains available, including
-    # data that may currently reside in its WAL.
+    # data that may currently reside in its WAL. Run SQLite as root because the
+    # play is already privileged; becoming the unprivileged service user makes
+    # Ansible depend on host ACL support for its temporary module files.
     - name: Take consistent pre-migration database snapshot with SQLite backup API
-      become_user: "{{ shelly_relay_user }}"
       ansible.builtin.command:
         argv:
           - sqlite3
@@ -197,7 +198,6 @@
       when: relay_database_before.stat.exists
 
     - name: Validate pre-migration database snapshot
-      become_user: "{{ shelly_relay_user }}"
       ansible.builtin.command:
         argv:
           - sqlite3
@@ -301,7 +301,6 @@
           failed_when: false
 
         - name: Check live database integrity after failed rollout
-          become_user: "{{ shelly_relay_user }}"
           ansible.builtin.command:
             argv:
               - sqlite3
