@@ -27,6 +27,12 @@ const expectedNames = [
   "shellykit-linux-x64",
   "shellykit",
 ];
+const nativeTargets = new Map([
+  ["shellykit-darwin-arm64", { format: "Mach-O", arch: "arm64", machine: 0x0100000c }],
+  ["shellykit-darwin-x64", { format: "Mach-O", arch: "x86_64", machine: 0x01000007 }],
+  ["shellykit-linux-arm64", { format: "ELF", arch: "aarch64", machine: 183 }],
+  ["shellykit-linux-x64", { format: "ELF", arch: "x86_64", machine: 62 }],
+]);
 
 verifyPackageGraph();
 
@@ -107,13 +113,49 @@ function assertPublishReady(packageDir) {
 function assertNativeBinary(filePath, packageName) {
   const bytes = fs.readFileSync(filePath);
   const isElf = bytes.length >= 4 && bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46;
-  const isMachO =
+  const isLittleEndianMachO =
     bytes.length >= 4 &&
-    ((bytes[0] === 0xcf && bytes[1] === 0xfa && bytes[2] === 0xed && bytes[3] === 0xfe) ||
-      (bytes[0] === 0xfe && bytes[1] === 0xed && bytes[2] === 0xfa && bytes[3] === 0xcf) ||
-      (bytes[0] === 0xca && bytes[1] === 0xfe && bytes[2] === 0xba && bytes[3] === 0xbe) ||
-      (bytes[0] === 0xbe && bytes[1] === 0xba && bytes[2] === 0xfe && bytes[3] === 0xca));
+    bytes[0] === 0xcf &&
+    bytes[1] === 0xfa &&
+    bytes[2] === 0xed &&
+    bytes[3] === 0xfe;
+  const isBigEndianMachO =
+    bytes.length >= 4 &&
+    bytes[0] === 0xfe &&
+    bytes[1] === 0xed &&
+    bytes[2] === 0xfa &&
+    bytes[3] === 0xcf;
+  const isMachO = isLittleEndianMachO || isBigEndianMachO;
   assert(isElf || isMachO, `${packageName} ${path.relative(root, filePath)} must be a native Mach-O or ELF binary before publish`);
+
+  const expected = nativeTargets.get(packageName);
+  assert(expected, `no native architecture policy is defined for ${packageName}`);
+
+  if (expected.format === "Mach-O") {
+    assert(isMachO, `${packageName} ${path.relative(root, filePath)} must be Mach-O for ${expected.arch}`);
+    assert(bytes.length >= 8, `${packageName} ${path.relative(root, filePath)} has a truncated Mach-O header`);
+    const cpuType = isLittleEndianMachO ? bytes.readUInt32LE(4) : bytes.readUInt32BE(4);
+    assert(
+      cpuType === expected.machine,
+      `${packageName} ${path.relative(root, filePath)} has Mach-O cputype ${formatMachine(cpuType)}; expected ${expected.arch} (${formatMachine(expected.machine)})`,
+    );
+    return;
+  }
+
+  assert(isElf, `${packageName} ${path.relative(root, filePath)} must be ELF for ${expected.arch}`);
+  assert(bytes.length >= 20, `${packageName} ${path.relative(root, filePath)} has a truncated ELF header`);
+  assert(bytes[4] === 2, `${packageName} ${path.relative(root, filePath)} must be a 64-bit ELF binary`);
+  const elfByteOrder = bytes[5];
+  assert(elfByteOrder === 1 || elfByteOrder === 2, `${packageName} ${path.relative(root, filePath)} has an invalid ELF byte order`);
+  const machine = elfByteOrder === 1 ? bytes.readUInt16LE(18) : bytes.readUInt16BE(18);
+  assert(
+    machine === expected.machine,
+    `${packageName} ${path.relative(root, filePath)} has ELF e_machine ${machine}; expected ${expected.arch} (${expected.machine})`,
+  );
+}
+
+function formatMachine(machine) {
+  return `0x${machine.toString(16).padStart(8, "0")}`;
 }
 
 function assertExecutablePackFile(files, filePath, packageName) {
@@ -125,6 +167,30 @@ function assertExecutablePackFile(files, filePath, packageName) {
 }
 
 function publish(packageDir) {
+  const manifest = readJson(path.join(packageDir, "package.json"));
+  const packageVersion = `${manifest.name}@${manifest.version}`;
+  const view = spawnSync(npmBin, ["view", packageVersion, "version", "--json"], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      LC_ALL: "C",
+      LANG: "C",
+    },
+  });
+
+  if (view.status === 0) {
+    console.log(`skip ${packageVersion}: already published`);
+    return;
+  }
+
+  const viewOutput = `${view.stdout ?? ""}\n${view.stderr ?? ""}`;
+  if (!/\b(?:E404|ETARGET)\b|404 Not Found|No match found for version/i.test(viewOutput)) {
+    process.stdout.write(view.stdout ?? "");
+    process.stderr.write(view.stderr ?? "");
+    fail(`could not check whether ${packageVersion} is already published`);
+  }
+
   run(npmBin, publishArgs(packageDir));
 }
 

@@ -35,15 +35,6 @@
         group: "{{ shelly_relay_group }}"
         mode: "0700"
 
-    - name: Install relay binary
-      ansible.builtin.copy:
-        src: "{{ shelly_relay_binary }}"
-        dest: "{{ shelly_relay_bin_dir }}/shelly-relay"
-        owner: root
-        group: root
-        mode: "0755"
-      notify: Restart shelly relay
-
     - name: Ensure relay secrets directory
       ansible.builtin.file:
         path: /etc/shelly/secrets
@@ -61,7 +52,6 @@
         group: root
         mode: "0600"
       when: fcm_credential_src is defined and (fcm_credential_src | length > 0)
-      notify: Restart shelly relay
 
     - name: Remove unmanaged relay service drop-ins
       ansible.builtin.file:
@@ -70,7 +60,6 @@
       loop:
         - /etc/systemd/system/shelly-control-plane.service.d
         - /etc/systemd/system/shelly-iroh-relay.service.d
-      notify: Restart shelly relay
 
     - name: Install HTTP control-plane service
       ansible.builtin.template:
@@ -79,7 +68,6 @@
         owner: root
         group: root
         mode: "0644"
-      notify: Restart shelly relay
 
     - name: Install iroh relay service
       ansible.builtin.template:
@@ -88,22 +76,8 @@
         owner: root
         group: root
         mode: "0644"
-      notify: Restart shelly relay
 
-    - name: Enable and start relay backend services
-      ansible.builtin.systemd_service:
-        name: "{{ item }}"
-        enabled: true
-        state: started
-        daemon_reload: true
-      loop:
-        - shelly-control-plane.service
-        - shelly-iroh-relay.service
-
-    - name: Flush relay backend restarts
-      ansible.builtin.meta: flush_handlers
-
-    - name: Install Caddy apt prerequisites
+    - name: Install relay host prerequisites
       ansible.builtin.apt:
         name:
           - apt-transport-https
@@ -111,6 +85,7 @@
           - debian-archive-keyring
           - debian-keyring
           - gnupg
+          - sqlite3
         state: present
         update_cache: true
 
@@ -173,29 +148,285 @@
     - name: Flush Caddy reload
       ansible.builtin.meta: flush_handlers
 
-    - name: Verify relay services are active
-      ansible.builtin.command: "systemctl is-active {{ item }}"
-      register: relay_service_active
+    - name: Check for installed relay binary
+      ansible.builtin.stat:
+        path: "{{ shelly_relay_bin_dir }}/shelly-relay"
+      register: relay_installed_binary
+
+    - name: Stage currently installed binary for rollback
+      ansible.builtin.copy:
+        src: "{{ shelly_relay_bin_dir }}/shelly-relay"
+        dest: "{{ shelly_relay_previous_binary_path }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+      when: relay_installed_binary.stat.exists
+
+    - name: Check for relay database
+      ansible.builtin.stat:
+        path: "{{ shelly_relay_db_path }}"
+      register: relay_database_before
+
+    - name: Remove prior pre-migration database snapshot
+      ansible.builtin.file:
+        path: "{{ shelly_relay_db_snapshot_path }}"
+        state: absent
+      when: relay_database_before.stat.exists
+
+    # The sqlite3 .backup command invokes SQLite's online backup API. It produces
+    # a consistent snapshot while the old service remains available, including
+    # data that may currently reside in its WAL.
+    - name: Take consistent pre-migration database snapshot with SQLite backup API
+      become_user: "{{ shelly_relay_user }}"
+      ansible.builtin.command:
+        argv:
+          - sqlite3
+          - "{{ shelly_relay_db_path }}"
+          - ".timeout 10000"
+          - ".backup {{ shelly_relay_db_snapshot_path }}"
+      changed_when: true
+      when: relay_database_before.stat.exists
+
+    - name: Protect pre-migration database snapshot
+      ansible.builtin.file:
+        path: "{{ shelly_relay_db_snapshot_path }}"
+        owner: "{{ shelly_relay_user }}"
+        group: "{{ shelly_relay_group }}"
+        mode: "0600"
+      when: relay_database_before.stat.exists
+
+    - name: Validate pre-migration database snapshot
+      become_user: "{{ shelly_relay_user }}"
+      ansible.builtin.command:
+        argv:
+          - sqlite3
+          - "{{ shelly_relay_db_snapshot_path }}"
+          - ".timeout 10000"
+          - PRAGMA quick_check;
+      register: relay_snapshot_integrity
       changed_when: false
-      failed_when: relay_service_active.stdout != "active"
-      retries: 6
-      delay: 5
-      until: relay_service_active.stdout == "active"
-      loop:
-        - shelly-control-plane.service
-        - shelly-iroh-relay.service
-        - caddy.service
+      failed_when: relay_snapshot_integrity.stdout_lines != ['ok']
+      when: relay_database_before.stat.exists
+
+    - name: Record relay rollout start time
+      ansible.builtin.command:
+        argv:
+          - date
+          - +%s
+      register: relay_rollout_started_at
+      changed_when: false
+
+    # Relay migrations must be expand-only and readable by the previous binary.
+    # The default rescue path therefore restores only the binary. Restoring the
+    # database is reserved for a post-start integrity failure after this known-good
+    # snapshot was taken; health and smoke failures never satisfy that condition.
+    - name: Roll out relay binary with two-tier recovery
+      block:
+        - name: Install relay binary
+          ansible.builtin.copy:
+            src: "{{ shelly_relay_binary }}"
+            dest: "{{ shelly_relay_bin_dir }}/shelly-relay"
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Enable and restart relay backend services
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            enabled: true
+            state: restarted
+            daemon_reload: true
+          loop:
+            - shelly-control-plane.service
+            - shelly-iroh-relay.service
+
+        - name: Verify relay services are active
+          ansible.builtin.command: "systemctl is-active {{ item }}"
+          register: relay_service_active
+          changed_when: false
+          failed_when: relay_service_active.stdout != "active"
+          retries: 6
+          delay: 5
+          until: relay_service_active.stdout == "active"
+          loop:
+            - shelly-control-plane.service
+            - shelly-iroh-relay.service
+            - caddy.service
+
+        - name: Verify local relay health endpoint
+          ansible.builtin.uri:
+            url: "{{ shelly_relay_local_control_url }}/healthz"
+            method: GET
+            return_content: true
+            status_code: 200
+          register: relay_local_health
+          failed_when: false
+          retries: 6
+          delay: 5
+          until:
+            - relay_local_health.status | default(0) == 200
+            - relay_local_health.content | default('') == 'ok'
+
+        - name: Verify local relay version endpoint
+          ansible.builtin.uri:
+            url: "{{ shelly_relay_local_control_url }}/v1/version"
+            method: GET
+            return_content: true
+            status_code: 200
+          register: relay_local_version
+          failed_when: false
+          retries: 6
+          delay: 5
+          until:
+            - relay_local_version.status | default(0) == 200
+            - (relay_local_version.json | default({})).get('relay_version', '') | length > 0
+            - (relay_local_version.json | default({})).get('contract_version') is number
+
+      rescue:
+        - name: Record relay rollout failure
+          ansible.builtin.set_fact:
+            relay_rollout_failure_message: "{{ ansible_failed_result.msg | default(ansible_failed_result | string) }}"
+
+        - name: Read control-plane logs from failed rollout
+          ansible.builtin.command:
+            argv:
+              - journalctl
+              - --unit=shelly-control-plane.service
+              - "--since=@{{ relay_rollout_started_at.stdout }}"
+              - --no-pager
+              - --output=cat
+          register: relay_failed_rollout_journal
+          changed_when: false
+          failed_when: false
+
+        - name: Check live database integrity after failed rollout
+          become_user: "{{ shelly_relay_user }}"
+          ansible.builtin.command:
+            argv:
+              - sqlite3
+              - "{{ shelly_relay_db_path }}"
+              - ".timeout 10000"
+              - PRAGMA quick_check;
+          register: relay_live_database_integrity
+          changed_when: false
+          failed_when: false
+          when: relay_database_before.stat.exists
+
+        - name: Classify confirmed migration database failure
+          ansible.builtin.set_fact:
+            relay_confirmed_migration_failure: >-
+              {{
+                (relay_database_before.stat.exists | bool) and
+                (
+                  (
+                    (relay_live_database_integrity.rc | default(1) | int) == 0 and
+                    (relay_live_database_integrity.stdout_lines | default([])) != ['ok'] and
+                    (
+                      'database disk image is malformed' in (relay_failed_rollout_journal.stdout | default('') | lower) or
+                      'database corruption' in (relay_failed_rollout_journal.stdout | default('') | lower) or
+                      'file is not a database' in (relay_failed_rollout_journal.stdout | default('') | lower) or
+                      'malformed database schema' in (relay_failed_rollout_journal.stdout | default('') | lower)
+                    )
+                  ) or
+                  (
+                    (
+                      'database disk image is malformed' in (relay_live_database_integrity.stderr | default('') | lower) or
+                      'database corruption' in (relay_live_database_integrity.stderr | default('') | lower) or
+                      'file is not a database' in (relay_live_database_integrity.stderr | default('') | lower) or
+                      'malformed database schema' in (relay_live_database_integrity.stderr | default('') | lower)
+                    ) and
+                    (
+                      'database' in (relay_failed_rollout_journal.stdout | default('') | lower) or
+                      'sqlite' in (relay_failed_rollout_journal.stdout | default('') | lower)
+                    )
+                  )
+                )
+              }}
+
+        - name: Report selected rollback tier
+          ansible.builtin.debug:
+            msg: >-
+              {{
+                'SQLite integrity failed after the new binary started; restoring the known-good pre-migration snapshot and binary.'
+                if (relay_confirmed_migration_failure | bool)
+                else 'No migration corruption was confirmed; restoring the binary only and preserving the live database.'
+              }}
+
+        - name: Stop control plane before confirmed database restore
+          ansible.builtin.systemd_service:
+            name: shelly-control-plane.service
+            state: stopped
+          when: relay_confirmed_migration_failure | bool
+
+        - name: Restore previous relay binary
+          ansible.builtin.copy:
+            src: "{{ shelly_relay_previous_binary_path }}"
+            dest: "{{ shelly_relay_bin_dir }}/shelly-relay"
+            remote_src: true
+            owner: root
+            group: root
+            mode: "0755"
+          when: relay_installed_binary.stat.exists
+
+        - name: Remove failed live database and sidecars
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - "{{ shelly_relay_db_path }}"
+            - "{{ shelly_relay_db_path }}-wal"
+            - "{{ shelly_relay_db_path }}-shm"
+            - "{{ shelly_relay_db_path }}-journal"
+          when: relay_confirmed_migration_failure | bool
+
+        - name: Restore known-good pre-migration database snapshot
+          ansible.builtin.copy:
+            src: "{{ shelly_relay_db_snapshot_path }}"
+            dest: "{{ shelly_relay_db_path }}"
+            remote_src: true
+            owner: "{{ shelly_relay_user }}"
+            group: "{{ shelly_relay_group }}"
+            mode: "0600"
+          when: relay_confirmed_migration_failure | bool
+
+        - name: Require a previous binary for rollback
+          ansible.builtin.assert:
+            that:
+              - relay_installed_binary.stat.exists
+            fail_msg: "Relay rollout failed on a first install, so no previous binary is available."
+
+        - name: Restart services with previous relay binary
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: restarted
+            daemon_reload: true
+          loop:
+            - shelly-control-plane.service
+            - shelly-iroh-relay.service
+
+        - name: Verify rolled-back relay health endpoint
+          ansible.builtin.uri:
+            url: "{{ shelly_relay_local_control_url }}/healthz"
+            method: GET
+            return_content: true
+            status_code: 200
+          register: relay_rollback_health
+          failed_when: false
+          retries: 6
+          delay: 5
+          until:
+            - relay_rollback_health.status | default(0) == 200
+            - relay_rollback_health.content | default('') == 'ok'
+
+        - name: Fail deployment after successful rollback
+          ansible.builtin.fail:
+            msg: >-
+              Relay rollout failed and was rolled back. Database restored:
+              {{ relay_confirmed_migration_failure | bool }}. Original failure:
+              {{ relay_rollout_failure_message }}
 
   handlers:
-    - name: Restart shelly relay
-      ansible.builtin.systemd_service:
-        name: "{{ item }}"
-        state: restarted
-        daemon_reload: true
-      loop:
-        - shelly-control-plane.service
-        - shelly-iroh-relay.service
-
     - name: Reload caddy
       ansible.builtin.systemd_service:
         name: caddy.service

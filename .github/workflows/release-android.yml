@@ -49,7 +49,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: 1.94.0
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          targets: aarch64-linux-android,x86_64-linux-android
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
@@ -75,10 +75,35 @@ jobs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > apps/android/app/release.keystore
           echo "$ANDROID_KEYSTORE_PROPERTIES" > apps/android/keystore.properties
           chmod 600 apps/android/app/release.keystore apps/android/keystore.properties
+      - name: Resolve Android release version
+        id: android-version
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./packages/cli/package.json').version")
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ] && [ "${GITHUB_REF_NAME#android-v}" != "$version" ]; then
+            echo "Android tag $GITHUB_REF_NAME does not match package version $version" >&2
+            exit 1
+          fi
+          IFS=. read -r major minor patch <<< "$version"
+          if [ "$minor" -gt 999 ] || [ "$patch" -gt 999 ]; then
+            echo "Android version components must be below 1000: $version" >&2
+            exit 1
+          fi
+          version_code=$((major * 1000000 + minor * 1000 + patch))
+          if [ "$version_code" -gt 2100000000 ]; then
+            echo "Android version code exceeds the Play limit: $version_code" >&2
+            exit 1
+          fi
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "version_name=$version" >> "$GITHUB_OUTPUT"
       - name: Assemble release AAB
         env:
+          SHELLY_ANDROID_VERSION_CODE: ${{ steps.android-version.outputs.version_code }}
+          SHELLY_ANDROID_VERSION_NAME: ${{ steps.android-version.outputs.version_name }}
           SHELLY_RELAY_CONTROL_URL: ${{ secrets.SHELLY_RELAY_CONTROL_URL }}
-        run: apps/android/gradlew --no-daemon bundleRelease
+        run: |
+          node scripts/sync-release-version.mjs --check
+          apps/android/gradlew --no-daemon bundleRelease
       - name: Verify release AAB signature
         run: |
           set -euo pipefail

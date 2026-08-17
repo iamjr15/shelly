@@ -1,0 +1,82 @@
+---
+- name: Roll back Shelly relay binary
+  hosts: shelly_relays
+  become: true
+  vars_files:
+    - group_vars/all/main.yml
+
+  pre_tasks:
+    - name: Check for staged previous relay binary
+      ansible.builtin.stat:
+        path: "{{ shelly_relay_previous_binary_path }}"
+      register: relay_previous_binary
+
+    - name: Require staged previous relay binary
+      ansible.builtin.assert:
+        that:
+          - relay_previous_binary.stat.exists
+        fail_msg: "No staged previous relay binary exists at {{ shelly_relay_previous_binary_path }}."
+
+  tasks:
+    # This playbook is intentionally binary-only. Public health or rendezvous
+    # failures must preserve the live database; only playbook.yml's confirmed
+    # migration-corruption rescue path is allowed to restore its SQLite snapshot.
+    - name: Restore previous relay binary
+      ansible.builtin.copy:
+        src: "{{ shelly_relay_previous_binary_path }}"
+        dest: "{{ shelly_relay_bin_dir }}/shelly-relay"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Restart services with previous relay binary
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: restarted
+        daemon_reload: true
+      loop:
+        - shelly-control-plane.service
+        - shelly-iroh-relay.service
+
+    - name: Verify rolled-back relay services are active
+      ansible.builtin.command: "systemctl is-active {{ item }}"
+      register: relay_rollback_service_active
+      changed_when: false
+      failed_when: relay_rollback_service_active.stdout != "active"
+      retries: 6
+      delay: 5
+      until: relay_rollback_service_active.stdout == "active"
+      loop:
+        - shelly-control-plane.service
+        - shelly-iroh-relay.service
+        - caddy.service
+
+    - name: Verify rolled-back relay health endpoint
+      ansible.builtin.uri:
+        url: "{{ shelly_relay_local_control_url }}/healthz"
+        method: GET
+        return_content: true
+        status_code: 200
+      register: relay_rollback_health
+      failed_when: false
+      retries: 6
+      delay: 5
+      until:
+        - relay_rollback_health.status | default(0) == 200
+        - relay_rollback_health.content | default('') == 'ok'
+
+    - name: Verify rolled-back relay version endpoint
+      ansible.builtin.uri:
+        url: "{{ shelly_relay_local_control_url }}/v1/version"
+        method: GET
+        return_content: true
+        status_code: 200
+      register: relay_rollback_version
+      failed_when: false
+      retries: 6
+      delay: 5
+      until:
+        - relay_rollback_version.status | default(0) == 200
+        - (relay_rollback_version.json | default({})).get('relay_version', '') | length > 0
+        - (relay_rollback_version.json | default({})).get('contract_version') is number

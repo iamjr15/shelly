@@ -1,10 +1,18 @@
 {
 	email {{ shelly_caddy_acme_email }}
+	servers {
+		timeouts {
+			read_header {{ shelly_caddy_read_header_timeout }}
+			read_body {{ shelly_caddy_read_body_timeout }}
+		}
+	}
 }
 
 http://{{ shelly_relay_public_hostname }} {
 	handle /generate_204 {
-		reverse_proxy {{ shelly_iroh_relay_upstream }}
+		reverse_proxy {{ shelly_iroh_relay_upstream }} {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 
 	handle {
@@ -13,19 +21,27 @@ http://{{ shelly_relay_public_hostname }} {
 }
 
 {{ shelly_relay_public_hostname }} {
-	handle /v1/* {
-		reverse_proxy {{ shelly_relay_control_upstream }}
-	}
-
 	handle /healthz {
-		reverse_proxy {{ shelly_relay_control_upstream }}
+		reverse_proxy {{ shelly_relay_control_upstream }} {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 
-	handle /metrics {
-		reverse_proxy {{ shelly_relay_metrics_upstream }}
+	handle /v1/version {
+		reverse_proxy {{ shelly_relay_control_upstream }} {
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+
+	handle /v1/* {
+		reverse_proxy {{ shelly_relay_control_upstream }} {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 
 	handle {
-		reverse_proxy {{ shelly_iroh_relay_upstream }}
+		reverse_proxy {{ shelly_iroh_relay_upstream }} {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 }

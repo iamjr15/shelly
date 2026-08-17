@@ -70,6 +70,39 @@ function checkVersions(version) {
     const lockVersion = lockPackages.get(packageName);
     assert(lockVersion === version, `Cargo.lock ${packageName} version ${lockVersion ?? "<missing>"} does not match npm release ${version}`);
   }
+
+  checkAndroidVersion(version);
+}
+
+function checkAndroidVersion(version) {
+  const gradleFile = fs.readFileSync(path.join(root, "apps/android/app/build.gradle.kts"), "utf8");
+  assert(
+    gradleFile.includes('System.getenv("SHELLY_ANDROID_VERSION_CODE")?.toIntOrNull() ?: 1'),
+    "Android versionCode must come from SHELLY_ANDROID_VERSION_CODE with fallback 1",
+  );
+  assert(
+    gradleFile.includes('System.getenv("SHELLY_ANDROID_VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "1.0"'),
+    'Android versionName must come from SHELLY_ANDROID_VERSION_NAME with fallback "1.0"',
+  );
+
+  const versionCode = process.env.SHELLY_ANDROID_VERSION_CODE;
+  const versionName = process.env.SHELLY_ANDROID_VERSION_NAME;
+  if (versionCode === undefined && versionName === undefined) {
+    return;
+  }
+
+  assert(versionCode !== undefined && versionName !== undefined, "both Android version environment variables must be set together");
+  assert(versionName === version, `Android versionName ${versionName} does not match npm release ${version}`);
+  const expectedCode = androidVersionCode(version);
+  assert(versionCode === String(expectedCode), `Android versionCode ${versionCode} does not match ${version} (${expectedCode})`);
+}
+
+function androidVersionCode(version) {
+  const [major, minor, patch] = version.split(".").map(Number);
+  assert(minor < 1000 && patch < 1000, `Android version components must be below 1000: ${version}`);
+  const versionCode = major * 1_000_000 + minor * 1_000 + patch;
+  assert(versionCode <= 2_100_000_000, `Android versionCode exceeds the Play limit: ${versionCode}`);
+  return versionCode;
 }
 
 function parseCargoLock() {
