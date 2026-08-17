@@ -61,8 +61,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y expect vim
       - run: cargo fmt --check
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-      - run: cargo nextest run --locked --workspace
-      - run: cargo test --locked -p shelly-cli --features test-client
+      - run: cargo nextest run --locked --workspace --all-features
       - run: cargo test --locked --workspace --doc
       - run: scripts/smoke-cli-no-args.sh
       - run: scripts/smoke-cli-doctor.sh
