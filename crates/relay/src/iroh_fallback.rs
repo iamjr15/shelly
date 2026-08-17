@@ -69,7 +69,9 @@ pub(crate) async fn serve_from_env() -> Result<()> {
     );
     tokio::select! {
         biased;
-        _ = tokio::signal::ctrl_c() => (),
+        signal = crate::shutdown_signal() => {
+            info!(signal, "iroh relay shutdown signal received");
+        },
         result = relay.join() => {
             result
                 .context("join iroh relay fallback supervisor")?

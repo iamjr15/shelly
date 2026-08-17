@@ -4,7 +4,7 @@ expression: cases
 ---
 - name: hello
   frame_len: 29
-  decoded: "Hello { client_kind: LocalCli, client_version: \"0.1.0\", protocol_version: 4 }"
+  decoded: "Hello { client_kind: LocalCli, client_version: \"0.1.0\", protocol_version: 5 }"
 - name: list_sessions
   frame_len: 8
   decoded: ListSessions
@@ -36,8 +36,8 @@ expression: cases
   frame_len: 33
   decoded: "ApprovePairing { request_id: ClientId(018f0000-0000-7000-8000-000000000002), approved: true }"
 - name: pair_with_code
-  frame_len: 52
-  decoded: "PairWithCode { code: \"AB234\", device_name: \"Phone\", device_node_id: \"node-phone\" }"
+  frame_len: 54
+  decoded: "PairWithCode { code: \"AB234CD\", device_name: \"Phone\", device_node_id: \"node-phone\" }"
 - name: list_devices
   frame_len: 8
   decoded: ListDevices
@@ -56,3 +56,6 @@ expression: cases
 - name: unregister_push_token
   frame_len: 32
   decoded: "UnregisterPushToken { platform: Apns, token: \"opaque-token\" }"
+- name: unpair_self
+  frame_len: 8
+  decoded: UnpairSelf

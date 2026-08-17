@@ -1,6 +1,6 @@
-# Shelly Protocol (v1 product, contract v4)
+# Shelly Protocol (v1 product, contract v5)
 
-`CONTRACT_VERSION` is `4`. Version 3 introduced the compact expiring `PairingTicket`. Version 4 makes session termination an acknowledged transaction: `KillSession` receives `SessionKilled { session_id }` only after the daemon has removed both live and persisted session state. The daemon rejects `Hello` with a mismatched version.
+`CONTRACT_VERSION` is `5`. Version 3 introduced the compact expiring `PairingTicket`. Version 4 made session termination an acknowledged transaction: `KillSession` receives `SessionKilled { session_id }` only after the daemon has removed both live and persisted session state. Version 5 adds the two-sided SAS pairing ceremony (a reachability-only rendezvous locator plus a transcript short-authentication-string confirmed identically on both devices) and the authenticated `UnpairSelf` message. During the migration window the daemon accepts a range rather than an exact match: already-paired identities keep their existing sessions at v4 (`MIN_PAIRED_CONTRACT_VERSION` is `4`), while new pairing and `UnpairSelf` require v5. The daemon rejects a `Hello` whose version falls outside that accepted range.
 
 The implemented local IPC path uses length-prefixed bincode frames over the daemon Unix socket. The protocol crate owns the bincode helpers and uses bincode 2 with its legacy configuration so v1 keeps the original fixed-int/little-endian bincode wire layout while rejecting trailing payload bytes. The implemented iroh path is mobile-only and uses the same length prefix with MessagePack payloads. Each frame is:
 
@@ -38,7 +38,7 @@ Remote iroh clients with `ClientKind::IosApp` or `ClientKind::AndroidApp` may li
 1. `POST /v1/pair` registers the daemon node id and relay-signing Ed25519 public key.
 2. `POST /v1/push/register-token` binds `(daemon_node_id, push_token, platform)` at the relay.
 3. `POST /v1/push/unregister-token` removes that relay binding when mobile unpairs or the desktop device record is removed.
-4. `POST /v1/push` sends `recipient_token`, `platform`, lowercase 64-character hex `session_id_hash`, lowercase 64-character hex `session_name_hash`, fixed `event_type`, `nonce`, and `ts_ms`.
+4. `POST /v1/push` sends `recipient_token`, `platform`, lowercase 64-character hex `session_id_hash`, fixed `event_type`, `nonce`, and `ts_ms`.
 
 `GET /v1/version` returns the relay version, minimum desktop/mobile versions, and protocol `CONTRACT_VERSION`; it does not include daemon node IDs, tokens, session hashes, or terminal metadata.
 

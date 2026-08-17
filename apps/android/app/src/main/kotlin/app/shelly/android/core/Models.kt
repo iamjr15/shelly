@@ -1,5 +1,7 @@
 package app.shelly.android.core
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Health of the live daemon tunnel that backs the session subscription.
  *
@@ -27,6 +29,7 @@ sealed interface ConnectionState {
     ) : ConnectionState
 }
 
+@Immutable
 data class MobileSession(
     val id: String,
     val name: String,
@@ -83,6 +86,45 @@ data class PairedDaemonRecord(
         result = 31 * result + daemonVersion.hashCode()
         result = 31 * result + hostName.hashCode()
         result = 31 * result + protocolVersion
+        return result
+    }
+}
+
+internal data class PushTokenMetadata(
+    val platform: String,
+    val token: String,
+    val createdAtMillis: Long,
+)
+
+/**
+ * Encrypted retry material retained after the visible pairing is removed. The daemon target and
+ * device key are deliberately complete because [ShellyRepository.clear] destroys the live client.
+ */
+internal data class PushUnregisterTombstone(
+    val daemonNodeId: String,
+    val relayUrl: String?,
+    val addrs: List<String>,
+    val deviceNodeId: String,
+    val deviceSecretKey: ByteArray,
+    val tokens: List<PushTokenMetadata>,
+) {
+    override fun equals(other: Any?): Boolean {
+        return other is PushUnregisterTombstone &&
+            daemonNodeId == other.daemonNodeId &&
+            relayUrl == other.relayUrl &&
+            addrs == other.addrs &&
+            deviceNodeId == other.deviceNodeId &&
+            deviceSecretKey.contentEquals(other.deviceSecretKey) &&
+            tokens == other.tokens
+    }
+
+    override fun hashCode(): Int {
+        var result = daemonNodeId.hashCode()
+        result = 31 * result + (relayUrl?.hashCode() ?: 0)
+        result = 31 * result + addrs.hashCode()
+        result = 31 * result + deviceNodeId.hashCode()
+        result = 31 * result + deviceSecretKey.contentHashCode()
+        result = 31 * result + tokens.hashCode()
         return result
     }
 }

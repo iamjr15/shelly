@@ -72,7 +72,6 @@ internal enum class ShellyRoute {
     DaemonDetail,
     Licenses,
     OpenSourceLicenses,
-    SessionsGrouped,
     SessionsReconnecting,
     SessionsDaemonUnreachable,
 }
@@ -161,7 +160,11 @@ internal class ShellyUiPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_ONBOARDED, onboarded).apply()
     }
 
-    private companion object {
+    companion object {
+        internal fun warm(context: Context) {
+            context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).all
+        }
+
         const val PREFS_NAME = "shelly_ui"
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_TEXT_SIZE = "text_size"

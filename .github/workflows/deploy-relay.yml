@@ -1,24 +1,10 @@
 name: Deploy Relay
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/deploy-relay.yml"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "crates/protocol/**"
-      - "crates/relay/**"
-      - "infra/lightsail/**"
-      - "infra/relay/**"
-      - "rust-toolchain.toml"
-      - "scripts/check-infra-terraform.sh"
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   workflow_dispatch:
-
-permissions:
-  contents: read
-  id-token: write
 
 concurrency:
   group: deploy-relay
@@ -27,14 +13,150 @@ concurrency:
 env:
   AWS_REGION: ap-south-1
   LIGHTSAIL_INSTANCE: dock-relay
+  RELAY_CONTROL_URL: https://relay.shelly.sh
 
 jobs:
+  select-revision:
+    name: Select deploy revision
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/main' &&
+       github.event.repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      deploy_sha: ${{ steps.changes.outputs.deploy_sha }}
+      should_deploy: ${{ steps.changes.outputs.should_deploy }}
+    steps:
+      - name: Check out successful CI revision
+        if: github.event_name == 'workflow_run'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out manually selected revision
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check deploy-relevant changes
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "deploy_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "Manual main-branch deployment requested; deploy-relevant path filtering is intentionally bypassed."
+            exit 0
+          fi
+
+          echo "deploy_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          runs_json="$(
+            gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=completed&per_page=100"
+          )"
+          previous_sha="$(
+            jq -r --argjson current "$WORKFLOW_RUN_ID" '
+              [.workflow_runs[] | select(.id != $current and .conclusion == "success")][0].head_sha // empty
+            ' <<< "$runs_json"
+          )"
+
+          if [[ -z "$previous_sha" ]]; then
+            echo "No earlier successful main CI run was found; deploying conservatively."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git merge-base --is-ancestor "$previous_sha" "$HEAD_SHA"; then
+            echo "The previous successful CI revision is not an ancestor; deploying conservatively."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git diff --name-only --diff-filter=ACDMRTUXB "$previous_sha" "$HEAD_SHA" > "$RUNNER_TEMP/relay-changed-files.txt"
+          echo "Changed files since successful CI revision $previous_sha:"
+          sed 's/^/  /' "$RUNNER_TEMP/relay-changed-files.txt"
+
+          should_deploy=false
+          while IFS= read -r path; do
+            case "$path" in
+              .github/workflows/deploy-relay.yml | \
+              Cargo.lock | \
+              Cargo.toml | \
+              crates/protocol/* | \
+              crates/relay/* | \
+              infra/lightsail/* | \
+              infra/relay/* | \
+              rust-toolchain.toml | \
+              scripts/check-infra-terraform.sh | \
+              scripts/smoke-hosted-relay-rendezvous.sh)
+                should_deploy=true
+                break
+                ;;
+            esac
+          done < "$RUNNER_TEMP/relay-changed-files.txt"
+
+          echo "should_deploy=$should_deploy" >> "$GITHUB_OUTPUT"
+          if [[ "$should_deploy" != "true" ]]; then
+            echo "No deploy-relevant files changed; production deployment will be skipped."
+          fi
+
   deploy:
     name: Deploy dock relay
+    needs: select-revision
+    if: >-
+      needs.select-revision.outputs.should_deploy == 'true' &&
+      (
+        (github.event_name == 'workflow_run' &&
+         github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.event == 'push' &&
+         github.event.workflow_run.head_branch == 'main' &&
+         github.event.workflow_run.head_repository.full_name == github.repository) ||
+        (github.event_name == 'workflow_dispatch' &&
+         github.ref == 'refs/heads/main' &&
+         github.event.repository.full_name == github.repository)
+      )
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    # Required reviewers on this Environment are the human deployment gate.
+    # That setting is not represented in the repository and must be confirmed in GitHub.
     environment: relay-production
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Check out successful CI revision
+        if: github.event_name == 'workflow_run'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Check out manually selected revision
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify exact deploy revision
+        env:
+          DEPLOY_SHA: ${{ needs.select-revision.outputs.deploy_sha }}
+        run: test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
+
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: 1.94.0
@@ -73,8 +195,8 @@ jobs:
             exit 1
           fi
 
-      - name: Build relay
-        run: cargo build --release -p shelly-relay
+      - name: Build relay and hosted smoke clients
+        run: cargo build --locked --release -p shelly-relay -p shelly-cli -p shelly-daemon --features shelly-cli/test-client
 
       - name: Capture runner IP
         run: |
@@ -103,6 +225,7 @@ jobs:
           echo "$RELAY_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
       - name: Deploy with Ansible
+        id: ansible-deploy
         env:
           ANSIBLE_HOST_KEY_CHECKING: "true"
           RELAY_FCM_SERVICE_ACCOUNT: ${{ secrets.RELAY_FCM_SERVICE_ACCOUNT }}
@@ -120,14 +243,42 @@ jobs:
             -e shelly_relay_binary="$PWD/target/release/shelly-relay" \
             "${fcm_args[@]}"
 
+      - name: Verify public relay and hosted rendezvous
+        id: hosted-verification
+        run: |
+          curl -fsS --retry 5 --retry-delay 2 --retry-all-errors --max-time 10 \
+            "$RELAY_CONTROL_URL/healthz" > "$RUNNER_TEMP/relay-health.txt"
+          curl -fsS --retry 5 --retry-delay 2 --retry-all-errors --max-time 10 \
+            "$RELAY_CONTROL_URL/v1/version" > "$RUNNER_TEMP/relay-version.json"
+          jq -e '
+            (.relay_version | type == "string" and length > 0) and
+            (.contract_version | type == "number")
+          ' "$RUNNER_TEMP/relay-version.json" > /dev/null
+          SHELLY_HOSTED_RELAY_CONTROL_URL="$RELAY_CONTROL_URL" \
+            scripts/smoke-hosted-relay-rendezvous.sh
+
+      - name: Roll back binary after hosted verification failure
+        if: failure() && steps.ansible-deploy.outcome == 'success' && steps.hosted-verification.outcome == 'failure'
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "true"
+        run: |
+          ansible-playbook \
+            -i infra/relay/ansible/inventory.ini \
+            --private-key ~/.ssh/shelly-relay \
+            infra/relay/ansible/rollback.yml
+
       - name: Close relay SSH for this runner
         if: always() && env.RUNNER_CIDR != ''
         run: |
           aws lightsail close-instance-public-ports \
             --region "$AWS_REGION" \
             --instance-name "$LIGHTSAIL_INSTANCE" \
-            --port-info "{\"fromPort\":22,\"toPort\":22,\"protocol\":\"tcp\",\"cidrs\":[\"$RUNNER_CIDR\"]}" || true
+            --port-info "{\"fromPort\":22,\"toPort\":22,\"protocol\":\"tcp\",\"cidrs\":[\"$RUNNER_CIDR\"]}"
 
-      - name: Clean relay SSH key
+      - name: Clean relay deployment secrets
         if: always()
-        run: rm -f ~/.ssh/shelly-relay
+        run: |
+          rm -f ~/.ssh/shelly-relay
+          if [ -f "$RUNNER_TEMP/fcm-service-account.json" ]; then
+            shred -u "$RUNNER_TEMP/fcm-service-account.json" || rm -f "$RUNNER_TEMP/fcm-service-account.json"
+          fi

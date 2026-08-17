@@ -160,7 +160,7 @@ and relay operations surface in [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
 ```sh
 cargo fmt --check
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo nextest run --workspace
 scripts/smoke-local-handoff.sh      # end-to-end pairing/attach smoke
 pnpm test:android-unit              # Android unit tests

@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +22,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -47,11 +49,14 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +66,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import app.shelly.android.R
 import app.shelly.android.core.AgentState
 import app.shelly.android.core.MobileSession
 import app.shelly.android.features.sessions.sessionPreviewText
@@ -69,6 +76,7 @@ import app.shelly.android.ui.theme.ShellyTheme
 import app.shelly.android.ui.theme.ShellyType
 import app.shelly.android.ui.theme.ink
 import app.shelly.android.ui.theme.shellyPressScale
+import kotlin.math.roundToInt
 
 /**
  * Measures caps-only wordmarks unbounded so Inter Black never clips, then reports the tight
@@ -76,7 +84,7 @@ import app.shelly.android.ui.theme.shellyPressScale
  */
 fun Modifier.wordmarkFootprint(size: TextUnit): Modifier = layout { measurable, _ ->
     val placeable = measurable.measure(Constraints())
-    val footprint = (size.value * 0.9f).dp.roundToPx()
+    val footprint = (size.toPx() * 0.9f).roundToInt()
     layout(placeable.width, footprint) {
         placeable.place(0, (footprint - placeable.height) / 2)
     }
@@ -99,7 +107,7 @@ fun ShellyScreen(
         Column(
             Modifier
                 .fillMaxSize()
-                .systemBarsPadding()
+                .safeDrawingPadding()
                 .padding(ShellyDimens.screenInset)
                 .clip(RoundedCornerShape(ShellyDimens.cardRadius)),
         ) {
@@ -168,6 +176,7 @@ fun BrandRow(onClick: (() -> Unit)? = null, trailing: @Composable RowScope.() ->
         Modifier
     } else {
         Modifier
+            .sizeIn(minHeight = 48.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -175,8 +184,10 @@ fun BrandRow(onClick: (() -> Unit)? = null, trailing: @Composable RowScope.() ->
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Button,
                 onClick = onClick,
             )
+            .semantics { contentDescription = "Open command menu" }
     }
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -260,7 +271,7 @@ fun ShellyLogo(
     modifier: Modifier = Modifier,
     size: Dp = 14.dp,
 ) {
-    Canvas(modifier.size(size)) {
+    Box(modifier.size(size).drawWithCache {
         // The source mark is 364×411 and is rendered with `contain` inside a square in Paper.
         // Keeping the square viewport here prevents the compact header mark from stretching.
         val scale = this.size.minDimension / 411f
@@ -314,8 +325,8 @@ fun ShellyLogo(
             lineTo(x(0f), y(120f))
             close()
         }
-        drawPath(path, color)
-    }
+        onDrawBehind { drawPath(path, color) }
+    })
 }
 
 /** Circular icon button used in the hero header (search / refresh / theme). */
@@ -326,7 +337,7 @@ fun IconCircleButton(
     onClick: () -> Unit,
     iconModifier: Modifier = Modifier,
     visualSize: Dp = 32.dp,
-    touchTargetSize: Dp = visualSize,
+    touchTargetSize: Dp = 48.dp,
     iconSize: Dp = 16.dp,
 ) {
     val c = ShellyTheme.colors
@@ -338,8 +349,12 @@ fun IconCircleButton(
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Button,
                 onClick = onClick,
-            ),
+            )
+            .semantics {
+                if (contentDescription != null) this.contentDescription = contentDescription
+            },
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -353,7 +368,7 @@ fun IconCircleButton(
                 .background(c.surfaceSubtle),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription, tint = c.textPrimary, modifier = Modifier.size(iconSize).then(iconModifier))
+            Icon(icon, null, tint = c.textPrimary, modifier = Modifier.size(iconSize).then(iconModifier))
         }
     }
 }
@@ -362,13 +377,33 @@ fun IconCircleButton(
 @Composable
 fun StatusDot(state: AgentState, size: Dp = 10.dp) {
     val c = ShellyTheme.colors
-    androidx.compose.foundation.Canvas(Modifier.size(size)) {
+    val label = when (state) {
+        AgentState.AwaitingInput -> "Session status: awaiting input"
+        AgentState.Working -> "Session status: working"
+        AgentState.Idle -> "Session status: idle"
+        AgentState.Crashed -> "Session status: crashed"
+    }
+    androidx.compose.foundation.Canvas(
+        Modifier
+            .size(size)
+            .semantics { contentDescription = label },
+    ) {
         val r = this.size.minDimension / 2f
         val center = Offset(this.size.width / 2f, this.size.height / 2f)
         when (state) {
-            AgentState.AwaitingInput -> drawCircle(c.statusAwaiting, r, center)
+            AgentState.AwaitingInput -> rotate(45f, center) {
+                drawRect(
+                    color = c.statusAwaiting,
+                    topLeft = Offset(center.x - r * 0.68f, center.y - r * 0.68f),
+                    size = Size(r * 1.36f, r * 1.36f),
+                )
+            }
             AgentState.Working -> drawCircle(c.statusWorking, r, center)
-            AgentState.Crashed -> drawCircle(c.statusCrashed, r, center)
+            AgentState.Crashed -> drawRect(
+                color = c.statusCrashed,
+                topLeft = Offset(center.x - r * 0.78f, center.y - r * 0.78f),
+                size = Size(r * 1.56f, r * 1.56f),
+            )
             AgentState.Idle -> drawCircle(c.statusIdle, r - 1.dp.toPx(), center, style = Stroke(width = 2.dp.toPx()))
         }
     }
@@ -419,6 +454,7 @@ fun SessionRow(
                 onClick = onClick,
                 onLongClick = onLongClick,
             )
+            .semantics { role = Role.Button }
             .then(if (showDivider) Modifier.drawBehind {
                 val y = this.size.height - 0.5.dp.toPx()
                 drawLine(c.divider, Offset(0f, y), Offset(this.size.width, y), 1.dp.toPx())
@@ -435,7 +471,7 @@ fun SessionRow(
             Text(
                 session.sessionPreviewText(),
                 style = ShellyType.monoSmall,
-                color = c.textMuted.copy(alpha = 0.55f),
+                color = c.textMutedSubtle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -461,8 +497,8 @@ fun SessionStateTab(
     modifier: Modifier = Modifier,
 ) {
     val c = ShellyTheme.colors
-    val foreground = c.textPrimary.copy(alpha = if (active) 1f else 0.48f)
-    val secondary = c.textPrimary.copy(alpha = if (active) 0.62f else 0.34f)
+    val foreground = if (active) c.textPrimary else c.textMutedSubtle
+    val secondary = c.textMutedSubtle
     val baseline = c.textPrimary.copy(alpha = if (c.isDark) 0.18f else 0.16f)
     val interactionSource = remember { MutableInteractionSource() }
     Box(
@@ -584,7 +620,16 @@ fun ColumnScope.SettingsHeroBody(
         Spacer(Modifier.height(20.dp))
         Row(
             Modifier
-                .then(if (onStatusClick != null) Modifier.clickable(onClick = onStatusClick) else Modifier)
+                .then(
+                    if (onStatusClick != null) {
+                        Modifier
+                            .sizeIn(minHeight = 48.dp)
+                            .clickable(role = Role.Button, onClick = onStatusClick)
+                            .semantics { contentDescription = "$status. Open device details" }
+                    } else {
+                        Modifier
+                    },
+                )
                 .padding(bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -613,13 +658,36 @@ fun SettingsListRow(
     glyph: SettingsGlyph? = null,
     showDivider: Boolean = true,
     onClick: (() -> Unit)? = null,
+    toggleState: Boolean? = null,
 ) {
     val c = ShellyTheme.colors
+    val onStateDescription = stringResource(R.string.state_on)
+    val offStateDescription = stringResource(R.string.state_off)
     val primary = c.ink
     val iconColor = if (c.isDark) c.textMuted else primary
-    val valueColor = if (c.isDark) c.textMuted.copy(alpha = 0.55f) else primary.copy(alpha = 0.55f)
+    val valueColor = c.textMutedSubtle
     val interactionSource = remember { MutableInteractionSource() }
     val scale = if (onClick == null) 1f else shellyPressScale(interactionSource, pressedScale = 0.985f)
+    val actionModifier = when {
+        onClick == null -> Modifier
+        toggleState != null -> Modifier
+            .toggleable(
+                value = toggleState,
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Switch,
+                onValueChange = { onClick() },
+            )
+            .semantics {
+                stateDescription = if (toggleState) onStateDescription else offStateDescription
+            }
+        else -> Modifier.clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            role = Role.Button,
+            onClick = onClick,
+        )
+    }
     Row(
         modifier
             .fillMaxWidth()
@@ -627,17 +695,7 @@ fun SettingsListRow(
                 scaleX = scale
                 scaleY = scale
             }
-            .then(
-                if (onClick != null) {
-                    Modifier.clickable(
-                        interactionSource = interactionSource,
-                        indication = null,
-                        onClick = onClick,
-                    )
-                } else {
-                    Modifier
-                },
-            )
+            .then(actionModifier)
             .then(if (showDivider) Modifier.drawBehind {
                 val y = size.height - 0.5.dp.toPx()
                 drawLine(c.divider, Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
@@ -697,6 +755,7 @@ fun SettingsFooterAction(
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
+                    role = Role.Button,
                     onClick = onClick,
                 )
                 .padding(top = 16.dp, bottom = 4.dp),
@@ -879,13 +938,13 @@ fun SettingsGlyphIcon(glyph: SettingsGlyph, color: Color, modifier: Modifier = M
 
 @Composable
 private fun SettingsChevron(color: Color) {
-    Canvas(Modifier.size(20.dp)) {
+    Box(Modifier.size(20.dp).drawWithCache {
         val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
         val path = Path().apply {
             moveTo(size.width * 0.375f, size.height * 0.75f)
             lineTo(size.width * 0.625f, size.height * 0.5f)
             lineTo(size.width * 0.375f, size.height * 0.25f)
         }
-        drawPath(path, color = color, style = stroke)
-    }
+        onDrawBehind { drawPath(path, color = color, style = stroke) }
+    })
 }

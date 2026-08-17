@@ -4,12 +4,13 @@ import app.shelly.android.core.AgentState
 import app.shelly.android.core.MobileSession
 
 private val PromptOnlyTerminalLine = Regex("^[\\s\\u0024#>%❯➜λ›»❱→]+$")
+private val Whitespace = Regex("\\s+")
 
 internal fun filterSessions(sessions: List<MobileSession>, query: String): List<MobileSession> {
     val terms = query
         .trim()
         .lowercase()
-        .split(Regex("\\s+"))
+        .split(Whitespace)
         .filter { it.isNotEmpty() }
     if (terms.isEmpty()) return sessions
 

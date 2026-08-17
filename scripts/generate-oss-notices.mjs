@@ -52,18 +52,19 @@ function kotlinSource(items) {
 package app.shelly.android.features.settings
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import app.shelly.android.ui.components.HeroEscapeButton
+import app.shelly.android.ui.components.SettingsGlyph
+import app.shelly.android.ui.components.SettingsHeroBody
+import app.shelly.android.ui.components.SettingsListRow
+import app.shelly.android.ui.components.ShellyScreen
+import app.shelly.android.ui.theme.ShellyTheme
+import app.shelly.android.ui.theme.ShellyType
 
 private data class LicenseNotice(
     val name: String,
@@ -80,40 +81,38 @@ ${items
   .join("\n")}
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OpenSourceLicensesScreen(padding: PaddingValues, onBack: () -> Unit) {
-    Scaffold(
+    ShellyScreen(
         modifier = Modifier.padding(padding),
-        topBar = {
-            TopAppBar(
-                title = { Text("Open Source") },
-                actions = {
-                    HeroEscapeButton(
-                        onClick = onBack,
-                        modifier = Modifier.padding(end = 8.dp),
-                    )
-                },
+        hero = {
+            SettingsHeroBody(
+                eyebrow = "THE OPEN SOURCE\\nTHIS IS BUILT ON",
+                wordmark = "OSS",
+                status = "\${licenseNotices.size} notices",
+                statusGlyph = SettingsGlyph.Package,
+                onBack = onBack,
             )
         },
-    ) { innerPadding ->
-        LazyColumn(modifier = Modifier.padding(innerPadding)) {
-            item {
-                ListItem(
-                    headlineContent = { Text("Shelly is open source.") },
-                    supportingContent = {
-                        Text("This screen lists the primary open-source projects used by the Shelly Android app and shared Rust core.")
-                    },
-                )
+        content = {
+            LazyColumn(Modifier.fillMaxSize()) {
+                item {
+                    Text(
+                        text = "Shelly is open source. These are the primary projects used by the Android app and shared Rust core.",
+                        style = ShellyType.monoSmall,
+                        color = ShellyTheme.colors.textMuted,
+                    )
+                }
+                itemsIndexed(licenseNotices) { index, notice ->
+                    SettingsListRow(
+                        title = notice.name,
+                        value = notice.license,
+                        showDivider = index != licenseNotices.lastIndex,
+                    )
+                }
             }
-            items(licenseNotices) { notice ->
-                ListItem(
-                    headlineContent = { Text(notice.name) },
-                    supportingContent = { Text("\${notice.license}\\n\${notice.url}") },
-                )
-            }
-        }
-    }
+        },
+    )
 }
 `;
 }

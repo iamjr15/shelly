@@ -2,6 +2,8 @@
 Description=Shelly relay HTTP control plane
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=60s
+StartLimitBurst={{ shelly_relay_start_limit_burst }}
 
 [Service]
 Type=simple
@@ -13,6 +15,9 @@ Environment=SHELLY_RELAY_REQUIRE_TLS={{ shelly_relay_control_require_tls }}
 Environment=SHELLY_RELAY_DB_PATH={{ shelly_relay_db_path }}
 Environment=SHELLY_RELAY_METRICS_ADDR={{ shelly_relay_metrics_addr }}
 Environment=SHELLY_RELAY_TRUST_FORWARDED_FOR={{ shelly_relay_trust_forwarded_for }}
+Environment=SHELLY_RELAY_PRUNE_STALE_DAEMONS={{ shelly_relay_prune_stale_daemons }}
+Environment=SHELLY_RELAY_DAEMON_RETENTION_MS={{ shelly_relay_daemon_retention_ms }}
+Environment=SHELLY_RELAY_REGISTRATION_AUDIENCE={{ shelly_relay_registration_audience }}
 {% if shelly_relay_otlp_endpoint | length > 0 %}
 Environment=SHELLY_RELAY_OTLP_ENDPOINT={{ shelly_relay_otlp_endpoint }}
 Environment=SHELLY_RELAY_OTLP_SAMPLE_RATE={{ shelly_relay_otlp_sample_rate }}
@@ -43,10 +48,26 @@ LoadCredential=control-plane.key:{{ shelly_relay_control_tls_key }}
 ExecStart={{ shelly_relay_bin_dir }}/shelly-relay
 Restart=on-failure
 RestartSec=5
+MemoryMax={{ shelly_relay_control_memory_max }}
+TasksMax={{ shelly_relay_tasks_max }}
+LimitNOFILE={{ shelly_relay_limit_nofile }}
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 ReadWritePaths={{ shelly_relay_data_dir }}
 
 [Install]

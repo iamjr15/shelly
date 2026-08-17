@@ -149,9 +149,15 @@ shellyd="$cargo_target_dir/debug/shellyd"
 relay_bin="$cargo_target_dir/debug/shelly-relay"
 
 start_relay() {
+  # The v2-signed pair/publish binds the daemon's configured control URL as the
+  # request audience; the relay verifies it against its own registration
+  # audience (default https://relay.shelly.sh). In production these are
+  # configured to match — replicate that here so the signed publish verifies
+  # (first registration is unsigned TOFU, so it succeeds regardless).
   SHELLY_RELAY_ADDR="127.0.0.1:$relay_port" \
   SHELLY_RELAY_METRICS_ADDR="127.0.0.1:$relay_metrics_port" \
   SHELLY_RELAY_DB_PATH="$tmp/relay.db" \
+  SHELLY_RELAY_REGISTRATION_AUDIENCE="$relay_control_url" \
     "$relay_bin" >"$tmp/relay.log" 2>&1 &
   relay_pid=$!
   for _ in $(seq 1 100); do
@@ -170,13 +176,15 @@ start_relay() {
   exit 1
 }
 
-# Resolves a published pairing code through the relay rendezvous endpoint,
-# returning the opaque "sh1..." ticket blob. The hit is single-use, so each code
-# may be resolved at most once.
+# Reconstructs the compact "sh1..." pairing ticket for a published code. Under
+# the v2 pairing wire the relay stores only a reachability *rendezvous* under a
+# SHA-256 locator of the normalized code (no ticket blob), so we let the test
+# client resolve it: it hashes the code to the locator, fetches the single-use
+# rendezvous, and rebuilds the same ticket the QR encodes. The relay resolve is
+# single-use, so each code may be resolved at most once.
 resolve_ticket_blob() {
   local code="$1"
-  curl -fsS "$relay_control_url/v1/pair/resolve/$code" \
-    | sed -n 's/.*"ticket_blob"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+  "$shelly" pair-test --code "$code" --print-ticket 2>/dev/null
 }
 
 # Reads the aggregate count of pairing codes the relay has accepted via publish.
@@ -315,7 +323,11 @@ fi
 
 pair_start_s="$(date +%s)"
 publish_baseline_qr="$(relay_publish_count)"
-"$shelly" pair </dev/null >"$tmp/pair.log" 2>&1 &
+# Feed the SB-6 two-sided approval keypress: the desktop shows the SAS and reads
+# one byte, approving only on Y/y. The simulated phone verifies the same SAS, so
+# this models the human confirming a fingerprint match (stdin is not a TTY here,
+# so no raw mode; the single byte is consumed by the approval prompt).
+"$shelly" pair <<<"Y" >"$tmp/pair.log" 2>&1 &
 pair_pid=$!
 
 # The v2 `shelly pair` prints a compact QR plus a human pairing CODE; the raw
@@ -419,7 +431,8 @@ fi
 # end to end while the active desktop pairing command remains the local
 # authorization gate.
 publish_baseline="$(relay_publish_count)"
-"$shelly" pair </dev/null >"$tmp/pair-code.log" 2>&1 &
+# Approve the SB-6 SAS on the desktop (see the QR-path pairing above).
+"$shelly" pair <<<"Y" >"$tmp/pair-code.log" 2>&1 &
 pair_code_pid=$!
 
 typed_code="$(capture_pair_code "$tmp/pair-code.log" || true)"

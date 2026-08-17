@@ -5,7 +5,7 @@ use tracing::{
 use tracing_subscriber::{Layer, layer::Context};
 
 /// Drops any tracing event explicitly marked as containing user content.
-pub(crate) struct PrivacySanitizerLayer;
+pub struct PrivacySanitizerLayer;
 
 impl<S> Layer<S> for PrivacySanitizerLayer
 where

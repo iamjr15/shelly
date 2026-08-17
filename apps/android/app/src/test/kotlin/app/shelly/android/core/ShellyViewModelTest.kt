@@ -2,9 +2,16 @@ package app.shelly.android.core
 
 import android.content.Context
 import android.os.Looper
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -33,6 +40,7 @@ class ShellyViewModelTest {
     private companion object {
         const val TEST_PAIRING_TICKET = "sh1testpairingticket"
         const val TEST_PAIRING_TICKET_2 = "sh1secondtestpairingticket"
+        const val TEST_PAIRING_SAS = "84A9-FB21-1FC7-20DF-3B6E"
     }
 
     private lateinit var context: Context
@@ -121,6 +129,7 @@ class ShellyViewModelTest {
         assertEquals(1, fcmTokens.restorePrivacyDefaultCalls)
         assertEquals(1, fcmTokens.deleteCurrentTokenCalls)
         assertEquals(1, repository.clearCalls)
+        assertEquals(1, repository.unpairSelfCalls)
         assertNull(fcmTokens.pendingToken(context))
         assertFalse(viewModel.state.value.restoringPairing)
         assertFalse(viewModel.state.value.paired)
@@ -130,11 +139,17 @@ class ShellyViewModelTest {
 
     @Test
     fun unpairUnregistersPendingAndCurrentFcmTokensBeforeClearingRepository() {
+        val operations = mutableListOf<String>()
         val repository = FakeRepository(
             restoredPairing = testPairing(),
             onRegisterFcmToken = { throw IllegalStateException("offline during sync") },
+            operationLog = operations,
         )
-        val fcmTokens = FakeFcmTokenSource(pending = "queued-token", current = "current-token")
+        val fcmTokens = FakeFcmTokenSource(
+            pending = "queued-token",
+            current = "current-token",
+            operationLog = operations,
+        )
         val viewModel = testViewModel(repository, fcmTokens)
         viewModel.setUnlocked(true)
         drainMainLooper()
@@ -143,11 +158,28 @@ class ShellyViewModelTest {
         drainMainLooper()
 
         assertEquals(listOf("queued-token", "current-token"), repository.unregisteredFcmTokens)
+        assertEquals(listOf(listOf("queued-token", "current-token")), repository.persistedPushTombstones)
+        assertEquals(listOf("queued-token", "current-token"), repository.acknowledgedPushTokens)
         assertEquals(1, fcmTokens.clearAllCalls)
         assertEquals(1, fcmTokens.restorePrivacyDefaultCalls)
         assertEquals(1, fcmTokens.deleteCurrentTokenCalls)
         assertEquals(listOf(true, false), fcmTokens.currentTokenAutoInitRequests)
         assertEquals(1, repository.clearCalls)
+        assertEquals(
+            listOf(
+                "persist-tombstone",
+                "unregister:queued-token",
+                "ack:queued-token",
+                "unregister:current-token",
+                "ack:current-token",
+                "unpair-self",
+                "delete-local-token",
+                "restore-privacy-default",
+                "clear-pending-token",
+                "clear-repository",
+            ),
+            operations,
+        )
         assertNull(fcmTokens.pendingToken(context))
         assertFalse(viewModel.state.value.paired)
     }
@@ -167,6 +199,8 @@ class ShellyViewModelTest {
         drainMainLooper()
 
         assertEquals(listOf("current-token"), repository.unregisteredFcmTokens)
+        assertEquals(listOf(listOf("current-token")), repository.persistedPushTombstones)
+        assertEquals(emptyList<String>(), repository.acknowledgedPushTokens)
         assertEquals(1, fcmTokens.clearAllCalls)
         assertEquals(1, fcmTokens.restorePrivacyDefaultCalls)
         assertEquals(1, fcmTokens.deleteCurrentTokenCalls)
@@ -185,9 +219,46 @@ class ShellyViewModelTest {
         drainMainLooper()
 
         assertEquals(listOf("queued-token", "current-token"), repository.unregisteredFcmTokens)
+        assertEquals(listOf("queued-token", "current-token"), repository.acknowledgedPushTokens)
         assertEquals(1, fcmTokens.deleteCurrentTokenCalls)
         assertEquals(1, fcmTokens.restorePrivacyDefaultCalls)
+        assertEquals(1, fcmTokens.clearAllCalls)
         assertEquals(listOf(false), fcmTokens.currentTokenAutoInitRequests)
+    }
+
+    @Test
+    fun disablingPushWhileUnpairedStillDeletesAllLocalTokenState() {
+        val repository = FakeRepository(restoredPairing = null)
+        val fcmTokens = FakeFcmTokenSource(pending = "queued-token", current = "current-token")
+        val viewModel = testViewModel(repository, fcmTokens)
+
+        viewModel.setPushEnabled(false)
+        drainMainLooper()
+
+        assertEquals(emptyList<String>(), repository.unregisteredFcmTokens)
+        assertEquals(1, fcmTokens.deleteCurrentTokenCalls)
+        assertEquals(1, fcmTokens.restorePrivacyDefaultCalls)
+        assertEquals(1, fcmTokens.clearAllCalls)
+        assertNull(fcmTokens.pendingToken(context))
+    }
+
+    @Test
+    fun unauthorizedUnregisterAcknowledgesEncryptedTombstoneAsAlreadyRemoved() {
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            onUnregisterFcmToken = { throw ShellyException.Unauthorized("device removed") },
+        )
+        val fcmTokens = FakeFcmTokenSource(pending = null, current = "current-token")
+        val viewModel = testViewModel(repository, fcmTokens)
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+
+        viewModel.unpair()
+        drainMainLooper()
+
+        assertEquals(listOf(listOf("current-token")), repository.persistedPushTombstones)
+        assertEquals(listOf("current-token"), repository.acknowledgedPushTokens)
+        assertEquals(1, repository.clearCalls)
     }
 
     @Test
@@ -296,6 +367,32 @@ class ShellyViewModelTest {
         assertEquals(first.id, viewModel.state.value.activeTerminalSessionId)
         assertEquals(listOf(updated), viewModel.state.value.sessions)
         assertEquals(listOf(updated), viewModel.state.value.terminalTabs)
+    }
+
+    @Test
+    fun terminalTabsAndActiveSessionRestoreFromSavedStateHandle() {
+        val first = testSession(id = "018f0000-0000-7000-8000-0000000000d8")
+        val second = testSession(id = "018f0000-0000-7000-8000-0000000000d9")
+        val savedState = SavedStateHandle()
+        val firstViewModel = testViewModel(
+            repository = FakeRepository(restoredPairing = testPairing()),
+            savedStateHandle = savedState,
+        )
+        firstViewModel.openTerminalSession(first)
+        firstViewModel.openTerminalSession(second)
+
+        val restoredViewModel = testViewModel(
+            repository = FakeRepository(
+                restoredPairing = testPairing(),
+                sessions = listOf(first, second),
+            ),
+            savedStateHandle = savedState,
+        )
+        restoredViewModel.setUnlocked(true)
+        drainMainLooper()
+
+        assertEquals(listOf(first, second), restoredViewModel.state.value.terminalTabs)
+        assertEquals(second.id, restoredViewModel.state.value.activeTerminalSessionId)
     }
 
     @Test
@@ -509,6 +606,34 @@ class ShellyViewModelTest {
         waitForState { repository.subscribeCalls >= 2 }
         assertNull(viewModel.state.value.message)
         assertEquals(listOf(session), viewModel.state.value.sessions)
+    }
+
+    @Test
+    fun unauthorizedSessionSubscriptionClearsPairingAndRoutesToRevokedPairingState() {
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            subscriptionFailures = ArrayDeque<Throwable>().apply {
+                add(ShellyException.Unauthorized("device revoked"))
+            },
+        )
+        val fcmTokens = FakeFcmTokenSource(pending = "queued-token", current = "current-token")
+        val viewModel = testViewModel(repository, fcmTokens)
+
+        viewModel.setUnlocked(true)
+        drainMainLooper()
+        waitForState { viewModel.state.value.pairingRevoked }
+
+        assertFalse(viewModel.state.value.paired)
+        assertFalse(viewModel.state.value.restoringPairing)
+        assertTrue(viewModel.state.value.pairingRevoked)
+        assertEquals(
+            "This phone is no longer paired with your computer.",
+            viewModel.state.value.pairingError?.message,
+        )
+        assertNull(repository.savedPairing)
+        assertEquals(1, repository.clearCalls)
+        assertEquals(1, fcmTokens.deleteCurrentTokenCalls)
+        assertEquals(1, fcmTokens.clearAllCalls)
     }
 
     @Test
@@ -743,6 +868,11 @@ class ShellyViewModelTest {
         drainMainLooper()
 
         assertEquals(TEST_PAIRING_TICKET, repository.pairedPayload)
+        assertEquals(TEST_PAIRING_SAS, viewModel.state.value.pendingPairingSas)
+        assertNull(repository.savedPairing)
+
+        confirmPendingPairing(viewModel)
+
         assertEquals(true, viewModel.state.value.paired)
         assertFalse(viewModel.state.value.restoringPairing)
         assertEquals(pairing, viewModel.state.value.pairedDaemon)
@@ -763,11 +893,12 @@ class ShellyViewModelTest {
         val viewModel = testViewModel(repository)
 
         viewModel.setUnlocked(true)
-        viewModel.pairWithCode("AB12C")
+        viewModel.pairWithCode("AB12C34")
         drainMainLooper()
 
-        assertEquals("AB12C", repository.pairedCode)
+        assertEquals("AB12C34", repository.pairedCode)
         assertEquals(emptyList<String>(), repository.pairedPayloads)
+        confirmPendingPairing(viewModel)
         assertEquals(true, viewModel.state.value.paired)
         assertFalse(viewModel.state.value.restoringPairing)
         assertEquals(pairing, viewModel.state.value.pairedDaemon)
@@ -789,6 +920,7 @@ class ShellyViewModelTest {
         viewModel.setUnlocked(true)
         viewModel.pair(TEST_PAIRING_TICKET)
         drainMainLooper()
+        confirmPendingPairing(viewModel)
 
         assertEquals(listOf(session), viewModel.state.value.sessions)
         assertEquals(1, repository.subscribeCalls)
@@ -807,12 +939,40 @@ class ShellyViewModelTest {
 
         viewModel.pair(TEST_PAIRING_TICKET)
         drainMainLooper()
+        confirmPendingPairing(viewModel)
 
         assertEquals(true, viewModel.state.value.paired)
         assertFalse(viewModel.state.value.restoringPairing)
         assertEquals(emptyList<MobileSession>(), viewModel.state.value.sessions)
         assertEquals(0, repository.subscribeCalls)
         assertEquals(emptyList<String>(), repository.registeredFcmTokens)
+    }
+
+    @Test
+    fun cancelPendingPairingRejectsAttemptWithoutPersisting() {
+        val repository = FakeRepository(
+            restoredPairing = null,
+            pairResult = testPairing(),
+        )
+        val viewModel = testViewModel(repository)
+
+        viewModel.pair(TEST_PAIRING_TICKET)
+        waitForState { viewModel.state.value.pendingPairingSas == TEST_PAIRING_SAS }
+
+        viewModel.cancelPairing()
+        drainMainLooper()
+
+        assertEquals(1, repository.cancelledPairings)
+        assertNull(repository.savedPairing)
+        assertNull(viewModel.state.value.pendingPairingSas)
+        assertFalse(viewModel.state.value.paired)
+    }
+
+    @Test
+    fun versionMismatchPairingErrorPromptsForAnUpdate() {
+        val message = pairingErrorMessage(ShellyException.VersionMismatch("protocol v5 required"))
+
+        assertTrue(message.message.contains("Update Shelly"))
     }
 
     @Test
@@ -846,7 +1006,7 @@ class ShellyViewModelTest {
         )
         val viewModel = testViewModel(repository)
 
-        viewModel.pairWithCode("AB12C")
+        viewModel.pairWithCode("AB12C34")
         drainMainLooper()
 
         assertFalse(viewModel.state.value.loading)
@@ -873,7 +1033,7 @@ class ShellyViewModelTest {
         )
         val viewModel = testViewModel(repository)
 
-        viewModel.pairWithCode("AB12C")
+        viewModel.pairWithCode("AB12C34")
         drainMainLooper()
 
         assertFalse(viewModel.state.value.loading)
@@ -923,6 +1083,8 @@ class ShellyViewModelTest {
             assertEquals(listOf(TEST_PAIRING_TICKET), repository.pairedPayloads)
 
             releasePair.countDown()
+            waitForState { viewModel.state.value.pendingPairingSas == TEST_PAIRING_SAS }
+            viewModel.confirmPairing()
             waitForState { viewModel.state.value.paired && !viewModel.state.value.loading }
 
             assertEquals(listOf(TEST_PAIRING_TICKET), repository.pairedPayloads)
@@ -1110,6 +1272,45 @@ class ShellyViewModelTest {
     }
 
     @Test
+    fun clearingViewModelDetachesLiveControllersBeforeDestroyingRepositoryClient() = runBlocking {
+        val operations = mutableListOf<String>()
+        val attached = FakeAttachedSession(lastSeenSeq = 88UL, operationLog = operations)
+        val repository = FakeRepository(
+            restoredPairing = testPairing(),
+            attachedSessions = ArrayDeque(listOf(attached)),
+            operationLog = operations,
+        )
+        val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = ViewModelStore()
+        val owner = object : ViewModelStoreOwner {
+            override val viewModelStore: ViewModelStore = store
+        }
+        val factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = ShellyViewModel(
+                context,
+                repository,
+                FakeFcmTokenSource(pending = null, current = null),
+                restoreDispatcher = Dispatchers.Unconfined,
+                repositoryDispatcher = Dispatchers.Unconfined,
+                cleanupScope = cleanupScope,
+            ) as T
+        }
+        val viewModel = ViewModelProvider(owner, factory)[ShellyViewModel::class.java]
+        viewModel.createTerminalController(
+            testSession(id = "018f0000-0000-7000-8000-00000000000e"),
+            inputGate = { true },
+        )
+
+        store.clear()
+
+        assertEquals(1, attached.detachCalls)
+        assertEquals(1, attached.destroyCalls)
+        assertEquals(1, repository.destroyCalls)
+        assertEquals(listOf("detach-attachment", "destroy-attachment", "destroy-repository"), operations)
+    }
+
+    @Test
     fun pairCancelsPendingSavedPairingRestoreResultAndKeepsFreshRepositoryState() {
         val restoreStarted = CountDownLatch(1)
         val restoreRelease = CountDownLatch(1)
@@ -1133,6 +1334,8 @@ class ShellyViewModelTest {
 
         viewModel.pair(TEST_PAIRING_TICKET)
         drainMainLooper()
+        waitForState { viewModel.state.value.pendingPairingSas == TEST_PAIRING_SAS }
+        viewModel.confirmPairing()
         waitForState { viewModel.state.value.pairedDaemon == freshPairing }
 
         restoreRelease.countDown()
@@ -1180,6 +1383,8 @@ class ShellyViewModelTest {
             assertEquals(emptyList<String>(), repository.pairedPayloads)
 
             releaseUnregister.countDown()
+            waitForState { viewModel.state.value.pendingPairingSas == TEST_PAIRING_SAS }
+            viewModel.confirmPairing()
             waitForState { viewModel.state.value.paired && !viewModel.state.value.loading }
 
             assertEquals(listOf(TEST_PAIRING_TICKET), repository.pairedPayloads)
@@ -1193,6 +1398,12 @@ class ShellyViewModelTest {
 
     private fun drainMainLooper() {
         shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    private fun confirmPendingPairing(viewModel: ShellyViewModel) {
+        waitForState { viewModel.state.value.pendingPairingSas == TEST_PAIRING_SAS }
+        viewModel.confirmPairing()
+        waitForState { viewModel.state.value.paired && !viewModel.state.value.loading }
     }
 
     private fun waitForState(predicate: () -> Boolean) {
@@ -1209,6 +1420,7 @@ class ShellyViewModelTest {
     private fun testViewModel(
         repository: FakeRepository,
         fcmTokens: FakeFcmTokenSource = FakeFcmTokenSource(pending = null, current = null),
+        savedStateHandle: SavedStateHandle = SavedStateHandle(),
         sessionSubscriptionRetryDelayMillis: Long = 750L,
         backgroundDetachGraceMillis: Long = 5 * 60 * 1000L,
         maxRetryDelayMillis: Long = 30_000L,
@@ -1220,6 +1432,7 @@ class ShellyViewModelTest {
             context,
             repository,
             fcmTokens,
+            savedStateHandle = savedStateHandle,
             restoreDispatcher = Dispatchers.Unconfined,
             repositoryDispatcher = Dispatchers.Unconfined,
             sessionSubscriptionRetryDelayMillis = sessionSubscriptionRetryDelayMillis,
@@ -1266,6 +1479,7 @@ class ShellyViewModelTest {
     private class FakeFcmTokenSource(
         private var pending: String?,
         private val current: String?,
+        private val operationLog: MutableList<String>? = null,
     ) : FcmTokenSource {
         val clearedMatchingTokens = mutableListOf<String>()
         val currentTokenAutoInitRequests = mutableListOf<Boolean>()
@@ -1284,10 +1498,12 @@ class ShellyViewModelTest {
         }
 
         override fun restorePrivacyDefault(context: Context) {
+            operationLog?.add("restore-privacy-default")
             restorePrivacyDefaultCalls += 1
         }
 
         override suspend fun deleteCurrentToken(context: Context) {
+            operationLog?.add("delete-local-token")
             deleteCurrentTokenCalls += 1
         }
 
@@ -1299,6 +1515,7 @@ class ShellyViewModelTest {
         }
 
         override fun clearPendingToken(context: Context) {
+            operationLog?.add("clear-pending-token")
             clearAllCalls += 1
             pending = null
         }
@@ -1324,11 +1541,14 @@ class ShellyViewModelTest {
         private val onKill: ((String) -> Unit)? = null,
         private val killConfirmation: CompletableDeferred<Unit>? = null,
         private val killFailure: Throwable? = null,
+        private val operationLog: MutableList<String>? = null,
     ) : ShellyRepositoryClient {
         override var savedPairing: PairedDaemonRecord? = null
             private set
         val registeredFcmTokens = mutableListOf<String>()
         val unregisteredFcmTokens = mutableListOf<String>()
+        val persistedPushTombstones = mutableListOf<List<String>>()
+        val acknowledgedPushTokens = mutableListOf<String>()
         val createdNames = mutableListOf<String?>()
         val killedSessionIds = mutableListOf<String>()
         val pairedPayloads = mutableListOf<String>()
@@ -1341,6 +1561,12 @@ class ShellyViewModelTest {
             private set
         var subscribeCalls = 0
             private set
+        var retryPendingPushUnregisterCalls = 0
+            private set
+        var destroyCalls = 0
+            private set
+        var cancelledPairings = 0
+            private set
         private var subscriptionSink: ((List<MobileSession>) -> Unit)? = null
 
         override fun restore(): Boolean {
@@ -1351,18 +1577,30 @@ class ShellyViewModelTest {
             return restoredPairing != null
         }
 
-        override suspend fun pair(qrPayload: String) {
+        override suspend fun pair(qrPayload: String): PendingPairingClient {
             pairedPayloads += qrPayload
             pairedPayload = qrPayload
             onPair?.invoke(qrPayload)
-            savedPairing = pairResult
+            return fakePendingPairing()
         }
 
-        override suspend fun pairWithCode(code: String) {
+        override suspend fun pairWithCode(code: String): PendingPairingClient {
             pairedCodes += code
             pairedCode = code
             onPair?.invoke(code)
-            savedPairing = pairResult
+            return fakePendingPairing()
+        }
+
+        private fun fakePendingPairing(): PendingPairingClient = object : PendingPairingClient {
+            override val sas: String = TEST_PAIRING_SAS
+
+            override suspend fun confirm() {
+                savedPairing = pairResult
+            }
+
+            override suspend fun cancel() {
+                cancelledPairings += 1
+            }
         }
 
         override suspend fun listSessions(): List<MobileSession> {
@@ -1430,22 +1668,67 @@ class ShellyViewModelTest {
         }
 
         override suspend fun unregisterFcmToken(token: String) {
+            operationLog?.add("unregister:$token")
             unregisteredFcmTokens += token
             onUnregisterFcmToken?.invoke(token)
         }
 
+        var unpairSelfCalls = 0
+            private set
+
+        override suspend fun unpairSelf() {
+            operationLog?.add("unpair-self")
+            unpairSelfCalls += 1
+        }
+
+        override fun persistPushUnregisterTombstone(tokens: List<String>) {
+            operationLog?.add("persist-tombstone")
+            persistedPushTombstones += tokens
+        }
+
+        override fun acknowledgePushTokenUnregistered(token: String) {
+            operationLog?.add("ack:$token")
+            acknowledgedPushTokens += token
+        }
+
+        override suspend fun retryPendingPushUnregister() {
+            retryPendingPushUnregisterCalls += 1
+        }
+
         override fun clear() {
+            operationLog?.add("clear-repository")
             clearCalls += 1
             savedPairing = null
+        }
+
+        override fun clearRevokedPairing() {
+            clear()
+        }
+
+        override fun destroy() {
+            operationLog?.add("destroy-repository")
+            destroyCalls += 1
         }
     }
 
     private class FakeAttachedSession(
         private val lastSeenSeq: ULong,
+        private val operationLog: MutableList<String>? = null,
     ) : AttachedSession(NoHandle) {
-        override suspend fun detach() = Unit
+        var detachCalls = 0
+            private set
+        var destroyCalls = 0
+            private set
 
-        override fun destroy() = Unit
+        override suspend fun detach() {
+            operationLog?.add("detach-attachment")
+            detachCalls += 1
+        }
+
+        override fun destroy() {
+            operationLog?.add("destroy-attachment")
+            destroyCalls += 1
+        }
 
         override fun lastSeenSeq(): ULong = lastSeenSeq
 

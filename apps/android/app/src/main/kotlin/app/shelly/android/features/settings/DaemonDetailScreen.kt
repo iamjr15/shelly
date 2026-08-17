@@ -3,6 +3,8 @@ package app.shelly.android.features.settings
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import app.shelly.android.R
 import app.shelly.android.ui.components.SettingsFooterAction
 import app.shelly.android.ui.components.SettingsGlyph
 import app.shelly.android.ui.components.SettingsHeroBody
@@ -64,23 +66,7 @@ private fun DaemonDetailContent(
             SettingsListRow("Protocol", protocol, onClick = onOpenProtocol)
             SettingsListRow("Transport", transport, showDivider = false, onClick = onOpenTransport)
             Spacer(Modifier.weight(1f))
-            SettingsFooterAction("Unpair this device", onClick = onUnpair)
+            SettingsFooterAction(stringResource(R.string.unpair_this_device), onClick = onUnpair)
         },
-    )
-}
-
-@Composable
-internal fun DaemonDetailContentPreview() {
-    DaemonDetailContent(
-        onBack = {},
-        hostName = "dev-macbook",
-        pairedAge = "14d",
-        daemon = "shellyd 1.0.0",
-        protocol = "v3",
-        transport = "iroh QUIC",
-        onOpenDaemon = null,
-        onOpenProtocol = null,
-        onOpenTransport = null,
-        onUnpair = {},
     )
 }

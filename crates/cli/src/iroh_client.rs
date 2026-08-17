@@ -4,8 +4,9 @@ use iroh::{Endpoint, EndpointAddr, RelayMode, RelayUrl, SecretKey, TransportAddr
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use shelly_protocol::{
     AgentSource, AgentState, CONTRACT_VERSION, ClientKind, ClientSize, ClientToServerMsg,
-    ErrorCode, PairingTicket, ServerToClientMsg, SessionId, SessionSummary, max_frame_len,
-    normalize_code,
+    ErrorCode, MessagePackDecodeError, MessagePackFraming, PairingRendezvous, PairingTicket,
+    ReadFrameError, ServerToClientMsg, SessionId, SessionSummary, WriteFrameError, is_valid_code,
+    normalize_code, pairing_code_locator, pairing_sas, read_framed, write_framed,
 };
 use std::fs;
 use std::fs::OpenOptions;
@@ -36,6 +37,7 @@ pub(crate) struct PairTestOptions {
     pub(crate) expect_local_cli_forbidden: bool,
     pub(crate) expect_create_and_kill: bool,
     pub(crate) expect_forbidden_agent_event: bool,
+    pub(crate) print_ticket: bool,
 }
 
 pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
@@ -87,6 +89,17 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
             PairingTicket::decode(ticket_string.trim()).context("decode pairing ticket")?
         }
     };
+
+    // Resolve-only mode: reconstruct and print the compact ticket so a caller can
+    // reuse it across multiple probes without re-consuming the single-use relay
+    // rendezvous resolve (which forgets the code after the first hit).
+    if options.print_ticket {
+        println!(
+            "{}",
+            ticket.encode().context("encode resolved pairing ticket")?
+        );
+        return Ok(());
+    }
 
     let secret_key = load_or_create_secret_key(options.secret_key_path.as_deref())?;
     let endpoint = Endpoint::builder(presets::Minimal)
@@ -153,8 +166,27 @@ pub(crate) async fn pair_test(options: PairTestOptions) -> Result<()> {
         )
         .await?;
         match read_msg::<ServerToClientMsg>(&mut recv).await? {
-            ServerToClientMsg::PairingComplete { daemon_node_id } => {
-                println!("paired with daemon {daemon_node_id}");
+            ServerToClientMsg::PairingPending { sas } => {
+                let daemon_key: iroh::PublicKey = ticket
+                    .node_id
+                    .parse()
+                    .context("pairing ticket daemon node id is invalid")?;
+                let expected = pairing_sas(
+                    &ticket.code,
+                    daemon_key.as_bytes(),
+                    endpoint.id().as_bytes(),
+                );
+                if sas != expected {
+                    bail!("pairing SAS mismatch: daemon sent {sas}, expected {expected}");
+                }
+                println!("pairing SAS {sas}; waiting for desktop approval");
+                match read_msg::<ServerToClientMsg>(&mut recv).await? {
+                    ServerToClientMsg::PairingComplete { daemon_node_id } => {
+                        println!("paired with daemon {daemon_node_id}");
+                    }
+                    ServerToClientMsg::Error { message, .. } => bail!("{message}"),
+                    other => bail!("unexpected daemon response during pairing: {other:?}"),
+                }
             }
             ServerToClientMsg::Error { message, .. } => bail!("{message}"),
             other => bail!("unexpected daemon response during pairing: {other:?}"),
@@ -634,7 +666,7 @@ async fn wait_for_output_contract(
                 bytes,
             } if output_session_id == session_id => {
                 last_seen_seq = seq;
-                observed.extend(bytes);
+                observed.extend_from_slice(&bytes);
                 ensure_rejected_absent(&observed, rejected)?;
                 if output_contains_all(&observed, expected) {
                     println!("saw expected output: {}", expected.join(", "));
@@ -730,47 +762,37 @@ async fn read_msg<T>(reader: &mut RecvStream) -> Result<T>
 where
     T: DeserializeOwned,
 {
-    let mut len_bytes = [0_u8; 4];
-    reader
-        .read_exact(&mut len_bytes)
-        .await
-        .context("read iroh frame length")?;
-    let len = u32::from_be_bytes(len_bytes) as usize;
-    if len > max_frame_len() {
-        bail!("frame too large: {len}");
+    match read_framed::<MessagePackFraming, _, _>(reader).await {
+        Ok(message) => Ok(message),
+        Err(ReadFrameError::ReadLength(error)) => Err(error).context("read iroh frame length"),
+        Err(ReadFrameError::TooLarge(len)) => bail!("frame too large: {len}"),
+        Err(ReadFrameError::ReadPayload(error)) => Err(error).context("read iroh frame payload"),
+        Err(ReadFrameError::Decode(MessagePackDecodeError::Decode(error))) => {
+            Err(error).context("decode messagepack frame")
+        }
+        Err(ReadFrameError::Decode(MessagePackDecodeError::TrailingBytes(len))) => {
+            bail!("trailing bytes after messagepack payload: {len}")
+        }
     }
-    let mut payload = vec![0; len];
-    reader
-        .read_exact(&mut payload)
-        .await
-        .context("read iroh frame payload")?;
-    rmp_serde::from_slice(&payload).context("decode messagepack frame")
 }
 
 async fn write_msg<T>(writer: &mut SendStream, message: &T) -> Result<()>
 where
     T: Serialize,
 {
-    let payload = rmp_serde::to_vec_named(message).context("encode messagepack frame")?;
-    if payload.len() > max_frame_len() {
-        bail!("frame too large: {}", payload.len());
+    match write_framed::<MessagePackFraming, _, _>(writer, message).await {
+        Ok(()) => Ok(()),
+        Err(WriteFrameError::Encode(error)) => Err(error).context("encode messagepack frame"),
+        Err(WriteFrameError::TooLarge(len)) => bail!("frame too large: {len}"),
+        Err(WriteFrameError::WriteLength(error)) => Err(error).context("write iroh frame length"),
+        Err(WriteFrameError::WritePayload(error)) => Err(error).context("write iroh frame payload"),
     }
-    writer
-        .write_all(&(payload.len() as u32).to_be_bytes())
-        .await
-        .context("write iroh frame length")?;
-    writer
-        .write_all(&payload)
-        .await
-        .context("write iroh frame payload")?;
-    Ok(())
 }
 
-/// Relay rendezvous response carrying the opaque encoded [`PairingTicket`].
+/// Relay rendezvous response carrying code-free daemon reachability.
 #[derive(Deserialize)]
 struct ResolvePairingResponse {
-    /// `sh1`-prefixed ticket string published by the daemon under the code.
-    ticket_blob: String,
+    rendezvous: PairingRendezvous,
 }
 
 /// Resolves a typed pairing code into a [`PairingTicket`] via the relay.
@@ -780,6 +802,9 @@ struct ResolvePairingResponse {
 /// relay control URL from `--relay-control-url` or `SHELLY_RELAY_CONTROL_URL`.
 async fn resolve_code_ticket(code: &str, relay_control_url: Option<&str>) -> Result<PairingTicket> {
     let code = normalize_code(code);
+    if !is_valid_code(&code) {
+        bail!("pairing code must be 7 Crockford-base32 characters");
+    }
     let relay_control_url = relay_control_url
         .map(str::to_string)
         .or_else(|| std::env::var("SHELLY_RELAY_CONTROL_URL").ok())
@@ -787,7 +812,8 @@ async fn resolve_code_ticket(code: &str, relay_control_url: Option<&str>) -> Res
             "--code requires a relay control URL via --relay-control-url or SHELLY_RELAY_CONTROL_URL",
         )?;
     let relay_control_url = relay_control_url.trim_end_matches('/');
-    let url = format!("{relay_control_url}/v1/pair/resolve/{code}");
+    let locator = pairing_code_locator(&code);
+    let url = format!("{relay_control_url}/v1/pair/resolve/{locator}");
 
     crate::ensure_crypto_provider();
     let response = reqwest::Client::new()
@@ -805,7 +831,7 @@ async fn resolve_code_ticket(code: &str, relay_control_url: Option<&str>) -> Res
         .json()
         .await
         .context("decode relay resolve response")?;
-    PairingTicket::decode(resolved.ticket_blob.trim()).context("decode resolved pairing ticket")
+    Ok(resolved.rendezvous.into_ticket(code))
 }
 
 #[cfg(test)]
@@ -816,7 +842,7 @@ mod tests {
     #[test]
     fn decodes_pair_ticket_string_with_surrounding_whitespace() {
         let ticket = PairingTicket {
-            code: "ABC12".to_string(),
+            code: "ABC1234".to_string(),
             node_id: "n".to_string(),
             relay_url: None,
             addrs: vec![],

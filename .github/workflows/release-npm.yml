@@ -19,8 +19,24 @@ jobs:
     name: Publish npm packages
     if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
+    environment: npm-production
+    concurrency:
+      group: npm-publish
+      cancel-in-progress: false
     steps:
+      - name: Resolve expected release tag
+        id: release_tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ steps.release_tag.outputs.tag }}
+          persist-credentials: false
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
         with:
           version: 10.30.3
@@ -33,15 +49,6 @@ jobs:
 
       - name: Pin npm trusted-publishing client
         run: npm install --global npm@11.17.0
-
-      - name: Resolve expected release tag
-        id: release_tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Verify package version matches release tag
         run: |
@@ -112,5 +119,7 @@ jobs:
             tar -xzf "$archive" -C artifacts
           done < <(find artifacts -name '*.tar.gz')
       - run: node scripts/prepare-npm-artifacts.mjs
+      - name: Check npm publish readiness
+        run: node scripts/publish-npm-packages.mjs --check-ready
       - name: Publish through npm trusted publishing
         run: node scripts/publish-npm-packages.mjs

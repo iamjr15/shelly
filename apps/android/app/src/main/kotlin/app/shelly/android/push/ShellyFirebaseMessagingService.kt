@@ -6,6 +6,7 @@ import com.google.firebase.messaging.RemoteMessage
 class ShellyFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         FcmTokenRegistrar.queueToken(applicationContext, token)
+        FcmTokenRegistrationWorker.enqueue(applicationContext, token)
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

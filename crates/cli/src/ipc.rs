@@ -5,15 +5,15 @@ use interprocess::local_socket::{GenericFilePath, prelude::*, tokio::Stream};
 use serde::{Serialize, de::DeserializeOwned};
 use service_manager::ServiceStatus;
 use shelly_protocol::{
-    CONTRACT_VERSION, Capabilities, ClientKind, ClientToServerMsg, ServerToClientMsg,
-    decode_bincode, encode_bincode, max_frame_len,
+    BincodeFraming, CONTRACT_VERSION, Capabilities, ClientKind, ClientToServerMsg, ReadFrameError,
+    ServerToClientMsg, WriteFrameError, read_framed, write_framed,
 };
-use std::io::{IsTerminal, Read};
+use std::io::IsTerminal;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 const NON_INTERACTIVE_DAEMON_START_TIMEOUT: Duration = Duration::from_secs(15);
 const DAEMON_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -149,15 +149,7 @@ async fn wait_for_daemon(daemon: &mut Child) -> Result<Stream> {
         }
 
         if let Some(status) = daemon.try_wait().context("check shellyd startup status")? {
-            let detail = read_daemon_stderr(daemon);
-            bail!(
-                "shellyd exited before its control socket was ready ({status}){}",
-                if detail.is_empty() {
-                    String::new()
-                } else {
-                    format!(": {detail}")
-                }
-            );
+            bail!("shellyd exited before its control socket was ready ({status})");
         }
 
         let now = Instant::now();
@@ -187,21 +179,12 @@ fn spawn_daemon() -> Result<Child> {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::null())
         .current_dir("/")
         .process_group(0);
     command
         .spawn()
         .with_context(|| format!("spawn {}", daemon_path.display()))
-}
-
-fn read_daemon_stderr(daemon: &mut Child) -> String {
-    let Some(mut stderr) = daemon.stderr.take() else {
-        return String::new();
-    };
-    let mut detail = String::new();
-    let _ = stderr.read_to_string(&mut detail);
-    detail.trim().to_string()
 }
 
 #[cfg(target_os = "macos")]
@@ -261,16 +244,13 @@ where
     R: AsyncRead + Unpin,
     T: DeserializeOwned,
 {
-    let len = reader.read_u32().await.context("read frame length")? as usize;
-    if len > max_frame_len() {
-        bail!("frame too large: {len}");
+    match read_framed::<BincodeFraming, _, _>(reader).await {
+        Ok(message) => Ok(message),
+        Err(ReadFrameError::ReadLength(error)) => Err(error).context("read frame length"),
+        Err(ReadFrameError::TooLarge(len)) => bail!("frame too large: {len}"),
+        Err(ReadFrameError::ReadPayload(error)) => Err(error).context("read frame payload"),
+        Err(ReadFrameError::Decode(error)) => Err(error).context("decode frame"),
     }
-    let mut payload = vec![0; len];
-    reader
-        .read_exact(&mut payload)
-        .await
-        .context("read frame payload")?;
-    decode_bincode(&payload).context("decode frame")
 }
 
 pub async fn write_msg<W, T>(writer: &mut W, message: &T) -> Result<()>
@@ -278,18 +258,17 @@ where
     W: AsyncWrite + Unpin,
     T: Serialize,
 {
-    let payload = encode_bincode(message).context("encode frame")?;
-    if payload.len() > max_frame_len() {
-        bail!("frame too large: {}", payload.len());
+    match write_framed::<BincodeFraming, _, _>(writer, message).await {
+        Ok(()) => {}
+        Err(WriteFrameError::Encode(error)) => return Err(error).context("encode frame"),
+        Err(WriteFrameError::TooLarge(len)) => bail!("frame too large: {len}"),
+        Err(WriteFrameError::WriteLength(error)) => {
+            return Err(error).context("write frame length");
+        }
+        Err(WriteFrameError::WritePayload(error)) => {
+            return Err(error).context("write frame payload");
+        }
     }
-    writer
-        .write_u32(payload.len() as u32)
-        .await
-        .context("write frame length")?;
-    writer
-        .write_all(&payload)
-        .await
-        .context("write frame payload")?;
     writer.flush().await.context("flush frame")?;
     Ok(())
 }

@@ -53,9 +53,8 @@ function findCandidateRoots(rootDir, mapping) {
     if (!entry.isDirectory()) {
       return;
     }
-    const value = entry.path;
-    if (value.includes(mapping.key) || value.includes(mapping.target)) {
-      roots.push(value);
+    if (path.basename(entry.path) === `shelly-${mapping.key}`) {
+      roots.push(entry.path);
     }
   });
   return roots;

@@ -8,25 +8,25 @@ import org.junit.Test
 class PairingCodeInputTest {
     @Test
     fun normalizesLowercaseAndCrockfordAliases() {
-        assertEquals("101AB", normalizePairingCodeInput("ioLab"))
+        assertEquals("101AB23", normalizePairingCodeInput("ioLab23"))
     }
 
     @Test
     fun dropsCharactersOutsidePairingAlphabet() {
-        assertEquals("AB12C", normalizePairingCodeInput("a b-1_2+c!"))
+        assertEquals("AB12C34", normalizePairingCodeInput("a b-1_2+c!34"))
     }
 
     @Test
     fun capsAtPairingCodeLength() {
         assertEquals(PAIRING_CODE_LENGTH, normalizePairingCodeInput("abcdef12345").length)
-        assertEquals("ABCDE", normalizePairingCodeInput("abcdef12345"))
+        assertEquals("ABCDEF1", normalizePairingCodeInput("abcdef12345"))
     }
 
     @Test
     fun completeCodeRequiresLengthAndAlphabet() {
-        assertTrue(isCompletePairingCode("AB12C"))
-        assertFalse(isCompletePairingCode("AB12"))
-        assertFalse(isCompletePairingCode("AB12U"))
+        assertTrue(isCompletePairingCode("AB12C34"))
+        assertFalse(isCompletePairingCode("AB12C3"))
+        assertFalse(isCompletePairingCode("AB12C3U"))
     }
 
     @Test

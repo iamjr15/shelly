@@ -3,16 +3,13 @@ all-features = true
 
 [advisories]
 version = 2
-yanked = "warn"
+yanked = "deny"
 ignore = [
   # v1 local IPC and local encrypted/plaintext persistence are contractually
   # bincode. The protocol crate centralizes bincode 2 with legacy config to keep
   # the v1 wire layout stable; track removal only if PLAN.md changes the
   # protocol/storage contract.
   "RUSTSEC-2025-0141",
-  # Pulled by tattoy-wezterm-term through miniz_oxide 0.7. No safe upgrade is
-  # available from the terminal-state stack today.
-  "RUSTSEC-2025-0056",
   # Transitive through iroh's Linux network discovery stack and image codecs used
   # by QR/terminal dependencies. No direct Shelly usage.
   "RUSTSEC-2024-0436",
@@ -21,22 +18,11 @@ ignore = [
   # postcard --dry-run` currently has no compatible lockfile move, and
   # Shelly does not use atomic-polyfill APIs directly.
   "RUSTSEC-2023-0089",
-  # Two quick-xml advisories (unbounded namespace-resolver allocation, and
-  # quadratic duplicate-attribute checking) that only bite when parsing
-  # untrusted XML. Pulled transitively via plist (service-manager launchd
-  # plists, netdev's local network config) — Shelly only feeds plist local,
-  # trusted files, never attacker-controlled XML. Both are fixed in quick-xml
-  # >=0.41, but plist v1.9.0 pins ^0.39 so there is no compatible lockfile move;
-  # revisit when plist releases against quick-xml 0.41.
-  "RUSTSEC-2026-0194",
-  "RUSTSEC-2026-0195",
 ]
-# cargo audit also warns on RUSTSEC-2026-0002 for lru 0.12.5 through
-# tattoy-wezterm-term. cargo-deny treats it as a warning, not an ignored
-# advisory here. A dry-run update found no compatible lockfile move; track this
-# with the terminal-state stack. Shelly should not add direct lru
-# dependencies while the warning is accepted only as a transitive
-# terminal-state dependency.
+# The lru 0.12.5 advisories RUSTSEC-2026-0002/RUSTSEC-2026-0253 are transitive
+# through tattoy-wezterm-term. Cargo-deny keeps them warning-only; cargo-audit's
+# time-bounded acceptance lives in .cargo/audit.toml. Shelly must not add a
+# direct lru dependency while the terminal-state replacement remains pending.
 
 [licenses]
 version = 2

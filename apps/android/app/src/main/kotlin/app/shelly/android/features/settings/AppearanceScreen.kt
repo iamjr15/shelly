@@ -1,6 +1,8 @@
 package app.shelly.android.features.settings
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import app.shelly.android.R
 import app.shelly.android.ui.components.SettingsGlyph
 import app.shelly.android.ui.components.SettingsHeroBody
 import app.shelly.android.ui.components.SettingsListRow
@@ -37,6 +39,8 @@ private fun AppearanceContent(
     onOpenTextSize: () -> Unit,
     onToggleReduceMotion: () -> Unit,
 ) {
+    val onLabel = stringResource(R.string.state_on)
+    val offLabel = stringResource(R.string.state_off)
     ShellyScreen(
         hero = {
             SettingsHeroBody(
@@ -56,23 +60,11 @@ private fun AppearanceContent(
             SettingsListRow("Text size", textSizeLabel, onClick = onOpenTextSize)
             SettingsListRow(
                 "Reduce motion",
-                if (reduceMotionOn) "On" else "Off",
+                if (reduceMotionOn) onLabel else offLabel,
                 showDivider = false,
                 onClick = onToggleReduceMotion,
+                toggleState = reduceMotionOn,
             )
         },
-    )
-}
-
-@Composable
-internal fun AppearanceContentPreview() {
-    AppearanceContent(
-        onBack = {},
-        themeModeLabel = "System",
-        textSizeLabel = "Default",
-        reduceMotionOn = false,
-        onOpenTheme = {},
-        onOpenTextSize = {},
-        onToggleReduceMotion = {},
     )
 }

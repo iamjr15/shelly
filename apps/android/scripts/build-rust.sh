@@ -20,7 +20,7 @@ if [[ -z "${ANDROID_HOME:-}" ]]; then
 fi
 
 if [[ -z "${ANDROID_NDK_HOME:-}" && -n "${ANDROID_HOME:-}" && -d "$ANDROID_HOME/ndk" ]]; then
-  latest_ndk="$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
+  latest_ndk="$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
   if [[ -n "$latest_ndk" ]]; then
     export ANDROID_NDK_HOME="$latest_ndk"
   fi
@@ -36,22 +36,37 @@ if [[ -z "${ANDROID_NDK_HOME:-}" || ! -d "${ANDROID_NDK_HOME:-}" ]]; then
   exit 1
 fi
 
-rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+ndk_source_properties="$ANDROID_NDK_HOME/source.properties"
+ndk_revision=""
+if [[ -f "$ndk_source_properties" ]]; then
+  ndk_revision="$(sed -n 's/^Pkg\.Revision[[:space:]]*=[[:space:]]*//p' "$ndk_source_properties" | head -n 1)"
+fi
+ndk_major="${ndk_revision%%.*}"
+if [[ -z "$ndk_revision" || ! "$ndk_major" =~ ^[0-9]+$ || "$ndk_major" -lt 27 ]]; then
+  echo "Android NDK r27 or newer is required; found '${ndk_revision:-unknown}' at $ANDROID_NDK_HOME." >&2
+  exit 1
+fi
+
+rustup target add aarch64-linux-android x86_64-linux-android
 
 rm -rf "$jni_libs_dir"
-cargo ndk \
+android_rustflags="${RUSTFLAGS:-}"
+if [[ -n "$android_rustflags" ]]; then
+  android_rustflags+=" "
+fi
+android_rustflags+="-C link-arg=-Wl,-z,max-page-size=16384"
+RUSTFLAGS="$android_rustflags" cargo ndk \
   --manifest-path "$repo_root/Cargo.toml" \
   -t arm64-v8a \
-  -t armeabi-v7a \
   -t x86_64 \
   -o "$jni_libs_dir" \
-  build -p shelly-mobile-core --release
+  build --locked -p shelly-mobile-core --release
 
 find "$jni_libs_dir" -name '*.so' ! -name 'libshelly_mobile_core.so' -delete
 
 rm -rf "$out_dir"
 mkdir -p "$out_dir"
-cargo run -p shelly-mobile-core --bin uniffi-bindgen -- generate \
+cargo run --locked -p shelly-mobile-core --bin uniffi-bindgen -- generate \
   --library "$cargo_target_dir/aarch64-linux-android/release/libshelly_mobile_core.so" \
   --language kotlin \
   --out-dir "$out_dir"

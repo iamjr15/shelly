@@ -96,6 +96,15 @@ class AndroidBiometricGate(private val activity: FragmentActivity) {
         }
     }
 
+    fun isPermanentlyUnavailable(): Boolean {
+        if (debugBiometricBypassEnabled() || !biometricEnabled) {
+            return false
+        }
+        return biometricFailureIsPermanent(
+            BiometricManager.from(activity).canAuthenticate(ALLOWED_AUTHENTICATORS),
+        )
+    }
+
     suspend fun unlock(reason: String): Boolean {
         if (isFresh) return true
         if (debugBiometricBypassEnabled() || !biometricEnabled) {
@@ -134,4 +143,13 @@ class AndroidBiometricGate(private val activity: FragmentActivity) {
             prompt.authenticate(info)
         }
     }
+}
+
+internal fun biometricFailureIsPermanent(status: Int): Boolean = when (status) {
+    BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE,
+    BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED,
+    BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED,
+    BiometricManager.BIOMETRIC_ERROR_UNSUPPORTED,
+    -> true
+    else -> false
 }

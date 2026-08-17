@@ -1,0 +1,11 @@
+[package]
+name = "shelly-privacy-tracing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared privacy filtering for Shelly tracing subscribers."
+
+[dependencies]
+tracing.workspace = true
+tracing-subscriber.workspace = true

@@ -2,7 +2,10 @@ package app.shelly.android.features.pairing
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -37,6 +40,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -49,6 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -90,6 +95,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import app.shelly.android.BuildConfig
 import app.shelly.android.ui.components.BrandRow
 import app.shelly.android.ui.components.HeroBody
@@ -111,6 +118,7 @@ sealed interface PairingUiState {
     data object Idle : PairingUiState
     data object Connecting : PairingUiState
     data object CameraDenied : PairingUiState
+    data class ConfirmSas(val sas: String) : PairingUiState
     data class Error(
         val message: String = "That pairing code expired or was already used.",
         val detail: String = "Run `shelly pair` on your computer for a fresh code.",
@@ -123,10 +131,13 @@ fun PairingScreen(
     pairing: Boolean,
     onPair: (String) -> Unit,
     onPairWithCode: (String) -> Unit,
+    onConfirmPairing: () -> Unit = {},
     onCancelPairing: () -> Unit = {},
+    onRetryPairing: () -> Unit = {},
     uiState: PairingUiState = PairingUiState.Idle,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val debugCode = remember { debugPairingCode() }
     var code by remember {
         mutableStateOf(TextFieldValue(debugCode, selection = TextRange(debugCode.length)))
@@ -141,12 +152,25 @@ fun PairingScreen(
         cameraGranted = it
     }
 
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                cameraGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                    PackageManager.PERMISSION_GRANTED
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     LaunchedEffect(Unit) {
         if (!cameraGranted) launcher.launch(Manifest.permission.CAMERA)
     }
 
     val resolvedState = when {
+        uiState is PairingUiState.ConfirmSas -> uiState
         pairing -> PairingUiState.Connecting
+        uiState is PairingUiState.Error -> uiState
         !cameraGranted -> PairingUiState.CameraDenied
         else -> uiState
     }
@@ -162,17 +186,27 @@ fun PairingScreen(
         pairing = pairing,
         uiState = resolvedState,
         onCancelPairing = onCancelPairing,
+        onRetryPairing = onRetryPairing,
+        onOpenSettings = {
+            context.startActivity(
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:${context.packageName}"),
+                ),
+            )
+        },
         onPair = { payload ->
             val trimmed = payload.trim()
             if (!pairing && trimmed.isNotEmpty()) onPair(trimmed)
         },
         onPairWithCode = onPairWithCode,
+        onConfirmPairing = onConfirmPairing,
     )
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun PairingContent(
+internal fun PairingContent(
     code: TextFieldValue,
     onCodeChange: (TextFieldValue) -> Unit,
     cameraGranted: Boolean,
@@ -180,14 +214,22 @@ private fun PairingContent(
     pairing: Boolean,
     uiState: PairingUiState,
     onCancelPairing: () -> Unit,
+    onRetryPairing: () -> Unit,
+    onOpenSettings: () -> Unit,
     onPair: (String) -> Unit,
     onPairWithCode: (String) -> Unit,
+    onConfirmPairing: () -> Unit,
 ) {
     val c = ShellyTheme.colors
     val codeFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    val compactForIme = WindowInsets.ime.getBottom(LocalDensity.current) > 0 && !pairing
+    val density = LocalDensity.current
+    val imeInsets = WindowInsets.ime
+    val imeVisible by remember(imeInsets, density) {
+        derivedStateOf { imeInsets.getBottom(density) > 0 }
+    }
+    val compactForIme = imeVisible && !pairing && uiState !is PairingUiState.ConfirmSas
     val requestCodeFocus: () -> Unit = {
         codeFocusRequester.requestFocus()
         keyboardController?.show()
@@ -227,14 +269,14 @@ private fun PairingContent(
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
-                    "ENTER YOUR 5-CHAR CODE",
+                    "ENTER YOUR 7-CHAR CODE",
                     style = ShellyType.eyebrow,
                     color = c.textPrimary,
                 )
             } else {
                 Crossfade(
                     targetState = hero,
-                    animationSpec = ShellyMotion.standardTween(),
+                    animationSpec = ShellyMotion.standardSpec(),
                     label = "pairingHeroCrossfade",
                     modifier = Modifier.weight(1f),
                 ) { targetHero ->
@@ -267,13 +309,18 @@ private fun PairingContent(
             Spacer(Modifier.height(2.dp))
             Crossfade(
                 targetState = uiState,
-                animationSpec = ShellyMotion.standardTween(),
+                animationSpec = ShellyMotion.standardSpec(),
                 label = "pairingStateCrossfade",
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             ) { targetState ->
                 Column(Modifier.fillMaxSize()) {
                 when (targetState) {
                     PairingUiState.Connecting -> ConnectingBody(onCancelPairing)
+                    is PairingUiState.ConfirmSas -> SasConfirmationBody(
+                        sas = targetState.sas,
+                        onConfirm = onConfirmPairing,
+                        onCancel = onCancelPairing,
+                    )
                     PairingUiState.Idle -> ManualPairingBody(
                         code = code,
                         onCodeChange = onCodeChange,
@@ -283,6 +330,7 @@ private fun PairingContent(
                         cameraGranted = cameraGranted,
                         showCamera = showCamera,
                         onPair = onPair,
+                        onOpenSettings = onOpenSettings,
                         compactForIme = compactForIme,
                     )
                     PairingUiState.CameraDenied -> ManualPairingBody(
@@ -294,8 +342,9 @@ private fun PairingContent(
                         cameraGranted = false,
                         showCamera = false,
                         onPair = onPair,
+                        onOpenSettings = onOpenSettings,
                         viewport = PairingViewport.CameraDenied,
-                        codeLabel = "ENTER THE 5-CHAR CODE",
+                        codeLabel = "ENTER THE 7-CHAR CODE",
                         compactForIme = compactForIme,
                     )
                     is PairingUiState.Error -> ManualPairingBody(
@@ -307,9 +356,12 @@ private fun PairingContent(
                         cameraGranted = false,
                         showCamera = false,
                         onPair = onPair,
+                        onOpenSettings = onOpenSettings,
                         viewport = PairingViewport.Error(targetState.message, targetState.detail),
                         codeLabel = "ENTER THE NEW CODE",
                         compactForIme = compactForIme,
+                        onCancelError = onCancelPairing,
+                        onRetryError = onRetryPairing,
                     )
                 }
                 }
@@ -356,6 +408,11 @@ private fun pairingHeroSpec(uiState: PairingUiState): PairingHeroSpec = when (ui
         wordmark = "LINK",
         trailing = "PAIRING",
     )
+    is PairingUiState.ConfirmSas -> PairingHeroSpec(
+        eyebrow = "COMPARE THIS CODE WITH\nYOUR COMPUTER",
+        wordmark = "CHECK",
+        trailing = "STEP 2 / 2",
+    )
     PairingUiState.CameraDenied -> PairingHeroSpec(
         eyebrow = "CAMERA'S BLOCKED —\nTYPE THE CODE INSTEAD",
         wordmark = "PAIR",
@@ -363,8 +420,8 @@ private fun pairingHeroSpec(uiState: PairingUiState): PairingHeroSpec = when (ui
         showDesktopSetup = true,
     )
     is PairingUiState.Error -> PairingHeroSpec(
-        eyebrow = "THAT CODE EXPIRED —\nGET A FRESH ONE",
-        wordmark = "VOID",
+        eyebrow = "PAIRING NEEDS\nYOUR ATTENTION",
+        wordmark = "WAIT",
         trailing = "PAIRING",
     )
 }
@@ -386,14 +443,17 @@ private fun ColumnScope.ManualPairingBody(
     cameraGranted: Boolean,
     showCamera: Boolean,
     onPair: (String) -> Unit,
+    onOpenSettings: () -> Unit,
     viewport: PairingViewport = PairingViewport.Camera,
     codeLabel: String = "CAN'T SCAN? ENTER THE CODE",
     compactForIme: Boolean = false,
+    onCancelError: () -> Unit = {},
+    onRetryError: () -> Unit = {},
 ) {
     if (!compactForIme) {
         Crossfade(
             targetState = viewport,
-            animationSpec = ShellyMotion.standardTween(),
+            animationSpec = ShellyMotion.standardSpec(),
             label = "pairingViewportCrossfade",
         ) { targetViewport ->
             when (targetViewport) {
@@ -402,8 +462,16 @@ private fun ColumnScope.ManualPairingBody(
                     showCamera = showCamera,
                     onPayload = onPair,
                 )
-                PairingViewport.CameraDenied -> CameraDeniedViewport()
-                is PairingViewport.Error -> ErrorViewport(targetViewport.message, targetViewport.detail)
+                PairingViewport.CameraDenied -> CameraDeniedViewport(onOpenSettings)
+                is PairingViewport.Error -> ErrorViewport(
+                    message = targetViewport.message,
+                    detail = targetViewport.detail,
+                    onCancel = onCancelError,
+                    onRetry = {
+                        onRetryError()
+                        requestCodeFocus()
+                    },
+                )
             }
         }
         Spacer(Modifier.height(16.dp))
@@ -455,6 +523,54 @@ private fun ColumnScope.ConnectingBody(onCancelPairing: () -> Unit) {
 }
 
 @Composable
+private fun ColumnScope.SasConfirmationBody(
+    sas: String,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val c = ShellyTheme.colors
+    Spacer(Modifier.height(22.dp))
+    Text(
+        "SECURITY CODE",
+        style = ShellyType.microLabel,
+        color = c.textMuted,
+        modifier = Modifier.align(Alignment.CenterHorizontally),
+    )
+    Spacer(Modifier.height(12.dp))
+    Text(
+        sas,
+        style = ShellyType.mono.copy(
+            fontSize = 22.sp,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight(700),
+            letterSpacing = 0.02.em,
+        ),
+        color = c.accent,
+        textAlign = TextAlign.Center,
+        maxLines = 2,
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Pairing security code $sas" },
+    )
+    Spacer(Modifier.height(18.dp))
+    Text(
+        "Confirm only if this exact code is also shown by `shelly pair` on your computer.",
+        style = ShellyType.button.copy(
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight(400),
+        ),
+        color = c.textMuted,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+    )
+    Spacer(Modifier.weight(1f))
+    PairButton(label = "This matches my computer", onClick = onConfirm)
+    Spacer(Modifier.height(4.dp))
+    GhostPairingAction("Doesn't match / Cancel", onClick = onCancel)
+}
+
+@Composable
 private fun CameraViewport(
     cameraGranted: Boolean,
     showCamera: Boolean,
@@ -469,7 +585,7 @@ private fun CameraViewport(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
-                animation = androidx.compose.animation.core.tween(
+                animation = ShellyMotion.repeatingSpec(
                     durationMillis = 1900,
                     easing = ShellyMotion.Linear,
                 ),
@@ -481,7 +597,7 @@ private fun CameraViewport(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
-                animation = androidx.compose.animation.core.tween(
+                animation = ShellyMotion.repeatingSpec(
                     durationMillis = 2200,
                     easing = ShellyMotion.Linear,
                 ),
@@ -571,7 +687,7 @@ private fun Modifier.cameraGradient(): Modifier = this.then(
 
 @Composable
 private fun Reticle(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier) {
+    Box(modifier.drawWithCache {
         val strokeWidth = 2.5.dp.toPx()
         val inset = strokeWidth / 2f
         val arm = 26.dp.toPx()
@@ -583,19 +699,18 @@ private fun Reticle(color: Color, modifier: Modifier = Modifier) {
             join = StrokeJoin.Round,
         )
 
-        fun drawBracket(points: List<Offset>) {
-            val path = Path().apply {
-                moveTo(points.first().x, points.first().y)
-                points.drop(1).forEach { lineTo(it.x, it.y) }
-            }
-            drawPath(path, color = color, style = style)
+        fun bracket(points: List<Offset>) = Path().apply {
+            moveTo(points.first().x, points.first().y)
+            points.drop(1).forEach { lineTo(it.x, it.y) }
         }
-
-        drawBracket(listOf(Offset(inset, arm), Offset(inset, inset), Offset(arm, inset)))
-        drawBracket(listOf(Offset(w - arm, inset), Offset(w - inset, inset), Offset(w - inset, arm)))
-        drawBracket(listOf(Offset(inset, h - arm), Offset(inset, h - inset), Offset(arm, h - inset)))
-        drawBracket(listOf(Offset(w - arm, h - inset), Offset(w - inset, h - inset), Offset(w - inset, h - arm)))
-    }
+        val brackets = listOf(
+            bracket(listOf(Offset(inset, arm), Offset(inset, inset), Offset(arm, inset))),
+            bracket(listOf(Offset(w - arm, inset), Offset(w - inset, inset), Offset(w - inset, arm))),
+            bracket(listOf(Offset(inset, h - arm), Offset(inset, h - inset), Offset(arm, h - inset))),
+            bracket(listOf(Offset(w - arm, h - inset), Offset(w - inset, h - inset), Offset(w - inset, h - arm))),
+        )
+        onDrawBehind { brackets.forEach { drawPath(it, color = color, style = style) } }
+    })
 }
 
 @Composable
@@ -628,7 +743,7 @@ private fun ConnectingSummary() {
 }
 
 @Composable
-private fun CameraDeniedViewport() {
+private fun CameraDeniedViewport(onOpenSettings: () -> Unit) {
     PairingStatusViewport(gap = 12.dp) {
         CameraOffGlyph(Modifier.size(46.dp))
         Text(
@@ -641,12 +756,17 @@ private fun CameraDeniedViewport() {
             ),
             color = Color(0xFFF0EDE6),
         )
-        PairingStatusPill("ENABLE IN SETTINGS")
+        PairingStatusPill("ENABLE IN SETTINGS", onClick = onOpenSettings)
     }
 }
 
 @Composable
-private fun ErrorViewport(message: String, detail: String) {
+private fun ErrorViewport(
+    message: String,
+    detail: String,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit,
+) {
     PairingStatusViewport(gap = 12.dp) {
         ErrorClockGlyph(Modifier.size(44.dp))
         Text(
@@ -671,6 +791,10 @@ private fun ErrorViewport(message: String, detail: String) {
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 20.dp),
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PairingStatusPill("RETRY", onClick = onRetry)
+            PairingStatusPill("CANCEL", onClick = onCancel)
+        }
     }
 }
 
@@ -705,7 +829,7 @@ private fun ProgressRing(modifier: Modifier = Modifier) {
             initialValue = 0f,
             targetValue = 360f,
             animationSpec = infiniteRepeatable(
-                animation = androidx.compose.animation.core.tween(
+                animation = ShellyMotion.repeatingSpec(
                     durationMillis = 1050,
                     easing = ShellyMotion.Linear,
                 ),
@@ -744,7 +868,7 @@ private fun ProgressRing(modifier: Modifier = Modifier) {
 @Composable
 private fun CameraOffGlyph(modifier: Modifier = Modifier) {
     val accent = ShellyTheme.colors.accent
-    Canvas(modifier) {
+    Box(modifier.drawWithCache {
         val sx = size.width / 24f
         val sy = size.height / 24f
         val stroke = Stroke(
@@ -758,28 +882,24 @@ private fun CameraOffGlyph(modifier: Modifier = Modifier) {
             lineTo(23f * sx, 17f * sy)
             close()
         }
-        drawPath(videoPath, color = accent, style = stroke)
-        drawRoundRect(
-            color = accent,
-            topLeft = Offset(1f * sx, 5f * sy),
-            size = androidx.compose.ui.geometry.Size(15f * sx, 14f * sy),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f * sx, 2f * sy),
-            style = stroke,
-        )
-        drawLine(
-            color = accent,
-            start = Offset(2f * sx, 2f * sy),
-            end = Offset(22f * sx, 22f * sy),
-            strokeWidth = 1.8f * sx,
-            cap = StrokeCap.Round,
-        )
-    }
+        onDrawBehind {
+            drawPath(videoPath, color = accent, style = stroke)
+            drawRoundRect(
+                color = accent,
+                topLeft = Offset(1f * sx, 5f * sy),
+                size = androidx.compose.ui.geometry.Size(15f * sx, 14f * sy),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f * sx, 2f * sy),
+                style = stroke,
+            )
+            drawLine(accent, Offset(2f * sx, 2f * sy), Offset(22f * sx, 22f * sy), 1.8f * sx, StrokeCap.Round)
+        }
+    })
 }
 
 @Composable
 private fun ErrorClockGlyph(modifier: Modifier = Modifier) {
     val accent = ShellyTheme.colors.accent
-    Canvas(modifier) {
+    Box(modifier.drawWithCache {
         val sx = size.width / 24f
         val sy = size.height / 24f
         val stroke = Stroke(
@@ -788,29 +908,28 @@ private fun ErrorClockGlyph(modifier: Modifier = Modifier) {
             join = StrokeJoin.Round,
         )
         val center = Offset(12f * sx, 12f * sy)
-        drawCircle(
-            color = accent,
-            radius = 10f * sx,
-            center = center,
-            style = stroke,
-        )
         val hand = Path().apply {
             moveTo(12f * sx, 7f * sy)
             lineTo(12f * sx, 12f * sy)
             lineTo(15f * sx, 14f * sy)
         }
-        drawPath(hand, color = accent, style = stroke)
-    }
+        onDrawBehind {
+            drawCircle(color = accent, radius = 10f * sx, center = center, style = stroke)
+            drawPath(hand, color = accent, style = stroke)
+        }
+    })
 }
 
 @Composable
-private fun PairingStatusPill(text: String) {
+private fun PairingStatusPill(text: String, onClick: () -> Unit) {
     val c = ShellyTheme.colors
     Row(
         Modifier
+            .sizeIn(minHeight = 48.dp)
             .clip(RoundedCornerShape(999.dp))
             .background(c.accent.copy(alpha = 0.16f))
             .border(1.dp, c.accent, RoundedCornerShape(999.dp))
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -865,7 +984,7 @@ private fun LinkChecklistRow(
             initialValue = 1f,
             targetValue = 0.45f,
             animationSpec = infiniteRepeatable(
-                animation = androidx.compose.animation.core.tween(
+                animation = ShellyMotion.repeatingSpec(
                     durationMillis = 900,
                     easing = ShellyMotion.EmphasizedEasing,
                 ),
@@ -922,54 +1041,56 @@ private fun LinkChecklistDivider() {
 @Composable
 private fun ChecklistStatusIcon(state: PairingStepState, pulse: Float) {
     val c = ShellyTheme.colors
-    Canvas(Modifier.size(22.dp)) {
+    Box(Modifier.size(22.dp).drawWithCache {
         val sx = size.width / 24f
         val sy = size.height / 24f
-        when (state) {
-            PairingStepState.Complete -> {
-                drawCircle(
-                    color = c.textPrimary,
-                    radius = 10f * sx,
-                    center = Offset(12f * sx, 12f * sy),
-                )
-                val check = Path().apply {
-                    moveTo(8f * sx, 12f * sy)
-                    lineTo(11f * sx, 15f * sy)
-                    lineTo(16f * sx, 9f * sy)
+        val check = Path().apply {
+            moveTo(8f * sx, 12f * sy)
+            lineTo(11f * sx, 15f * sy)
+            lineTo(16f * sx, 9f * sy)
+        }
+        onDrawBehind {
+            when (state) {
+                PairingStepState.Complete -> {
+                    drawCircle(
+                        color = c.textPrimary,
+                        radius = 10f * sx,
+                        center = Offset(12f * sx, 12f * sy),
+                    )
+                    drawPath(
+                        path = check,
+                        color = c.accent,
+                        style = Stroke(
+                            width = 2.2f * sx,
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round,
+                        ),
+                    )
                 }
-                drawPath(
-                    path = check,
-                    color = c.accent,
-                    style = Stroke(
-                        width = 2.2f * sx,
-                        cap = StrokeCap.Round,
-                        join = StrokeJoin.Round,
-                    ),
-                )
-            }
-            PairingStepState.Active -> {
-                drawCircle(
-                    color = c.accent,
-                    radius = 10f * sx,
-                    center = Offset(12f * sx, 12f * sy),
-                    style = Stroke(width = 2.2f * sx),
-                )
-                drawCircle(
-                    color = c.accent.copy(alpha = pulse),
-                    radius = 4f * sx,
-                    center = Offset(12f * sx, 12f * sy),
-                )
-            }
-            PairingStepState.Pending -> {
-                drawCircle(
-                    color = c.textMuted.copy(alpha = 0.34f),
-                    radius = 10f * sx,
-                    center = Offset(12f * sx, 12f * sy),
-                    style = Stroke(width = 1.7f * sx),
-                )
+                PairingStepState.Active -> {
+                    drawCircle(
+                        color = c.accent,
+                        radius = 10f * sx,
+                        center = Offset(12f * sx, 12f * sy),
+                        style = Stroke(width = 2.2f * sx),
+                    )
+                    drawCircle(
+                        color = c.accent.copy(alpha = pulse),
+                        radius = 4f * sx,
+                        center = Offset(12f * sx, 12f * sy),
+                    )
+                }
+                PairingStepState.Pending -> {
+                    drawCircle(
+                        color = c.textMuted.copy(alpha = 0.34f),
+                        radius = 10f * sx,
+                        center = Offset(12f * sx, 12f * sy),
+                        style = Stroke(width = 1.7f * sx),
+                    )
+                }
             }
         }
-    }
+    })
 }
 
 @Composable
@@ -1054,7 +1175,10 @@ private fun PairingCodeCells(
         keyboardActions = KeyboardActions(onDone = { submit() }),
         modifier = Modifier
             .fillMaxWidth()
-            .focusRequester(focusRequester),
+            .focusRequester(focusRequester)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Pairing code, $PAIRING_CODE_LENGTH characters"
+            },
         decorationBox = { innerTextField ->
             Box(Modifier.fillMaxWidth()) {
                 Row(
@@ -1073,7 +1197,7 @@ private fun PairingCodeCells(
                         )
                     }
                 }
-                Box(Modifier.size(0.dp)) {
+                Box(Modifier.matchParentSize()) {
                     innerTextField()
                 }
             }
@@ -1090,8 +1214,10 @@ private fun PairingCodeCell(
     val c = ShellyTheme.colors
     val target = PairingCodeCellState(active = active, filled = char != null)
     val transition = updateTransition(targetState = target, label = "pairingCodeCell")
+    val borderColorSpec = ShellyMotion.standardSpec<Color>()
+    val borderWidthSpec = ShellyMotion.standardSpec<androidx.compose.ui.unit.Dp>()
     val borderColor by transition.animateColor(
-        transitionSpec = { ShellyMotion.standardTween() },
+        transitionSpec = { borderColorSpec },
         label = "pairingCodeCellBorder",
     ) { state ->
         when {
@@ -1101,7 +1227,7 @@ private fun PairingCodeCell(
         }
     }
     val borderWidth by transition.animateDp(
-        transitionSpec = { ShellyMotion.standardTween() },
+        transitionSpec = { borderWidthSpec },
         label = "pairingCodeCellBorderWidth",
     ) { state ->
         if (state.active) 2.dp else 1.5.dp
@@ -1112,7 +1238,7 @@ private fun PairingCodeCell(
             initialValue = 1f,
             targetValue = 0.2f,
             animationSpec = infiniteRepeatable(
-                animation = androidx.compose.animation.core.tween(
+                animation = ShellyMotion.repeatingSpec(
                     durationMillis = 760,
                     easing = ShellyMotion.EmphasizedEasing,
                 ),
@@ -1191,7 +1317,11 @@ private fun MonitorGlyph(color: Color) {
 }
 
 @Composable
-private fun PairButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun PairButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    label: String = "Pair this phone",
+) {
     val c = ShellyTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val scale = shellyPressScale(interactionSource, pressedScale = 0.975f)
@@ -1207,6 +1337,7 @@ private fun PairButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Button,
                 onClick = onClick,
             )
             .padding(horizontal = 16.dp, vertical = 18.dp),
@@ -1220,7 +1351,7 @@ private fun PairButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             modifier = Modifier.size(20.dp),
         )
         Text(
-            "Pair this phone",
+            label,
             style = ShellyType.button.copy(
                 fontSize = 18.sp,
                 lineHeight = 24.sp,
@@ -1229,47 +1360,6 @@ private fun PairButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             color = c.onButtonPrimary,
         )
     }
-}
-
-@Composable
-internal fun PairingContentPreview(uiState: PairingUiState = PairingUiState.Idle) {
-    var code by remember {
-        mutableStateOf(TextFieldValue("K29", selection = TextRange(3)))
-    }
-    PairingContent(
-        code = code,
-        onCodeChange = { value ->
-            val normalized = normalizePairingCodeInput(value.text)
-            code = TextFieldValue(normalized, selection = TextRange(normalized.length))
-        },
-        cameraGranted = false,
-        showCamera = false,
-        pairing = false,
-        uiState = uiState,
-        onPair = {},
-        onPairWithCode = {},
-        onCancelPairing = {},
-    )
-}
-
-@Composable
-internal fun PairingConnectingContentPreview() {
-    PairingContentPreview(uiState = PairingUiState.Connecting)
-}
-
-@Composable
-internal fun PairingCameraDeniedContentPreview() {
-    PairingContentPreview(uiState = PairingUiState.CameraDenied)
-}
-
-@Composable
-internal fun PairingErrorContentPreview() {
-    PairingContentPreview(
-        uiState = PairingUiState.Error(
-            message = "That pairing code expired or was already used.",
-            detail = "Run `shelly pair` on your computer for a fresh code.",
-        ),
-    )
 }
 
 private fun debugPairingCode(): String =

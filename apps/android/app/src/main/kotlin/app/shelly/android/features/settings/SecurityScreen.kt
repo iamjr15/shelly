@@ -3,6 +3,8 @@ package app.shelly.android.features.settings
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import app.shelly.android.R
 import app.shelly.android.ui.components.SettingsGlyph
 import app.shelly.android.ui.components.SettingsHeroBody
 import app.shelly.android.ui.components.SettingsListRow
@@ -45,6 +47,8 @@ private fun SecurityContent(
     onToggleBlockOnBackground: () -> Unit,
     onToggleTelemetry: () -> Unit,
 ) {
+    val onLabel = stringResource(R.string.state_on)
+    val offLabel = stringResource(R.string.state_off)
     ShellyScreen(
         hero = {
             SettingsHeroBody(
@@ -56,31 +60,17 @@ private fun SecurityContent(
             )
         },
         content = {
-            SettingsListRow("Biometric lock", if (biometricLockOn) "On" else "Off", onClick = onToggleBiometricLock)
+            SettingsListRow("Biometric lock", if (biometricLockOn) onLabel else offLabel, onClick = onToggleBiometricLock, toggleState = biometricLockOn)
             SettingsListRow("Auto-lock", autoLockLabel, onClick = onCycleAutoLock)
-            SettingsListRow("Block on background", if (blockOnBackgroundOn) "On" else "Off", onClick = onToggleBlockOnBackground)
+            SettingsListRow("Block on background", if (blockOnBackgroundOn) onLabel else offLabel, onClick = onToggleBlockOnBackground, toggleState = blockOnBackgroundOn)
             SettingsListRow(
                 "Telemetry",
-                if (telemetryEnabled) "On" else "Off",
+                if (telemetryEnabled) onLabel else offLabel,
                 showDivider = false,
                 onClick = onToggleTelemetry,
+                toggleState = telemetryEnabled,
             )
             Spacer(Modifier.weight(1f))
         },
-    )
-}
-
-@Composable
-internal fun SecurityContentPreview() {
-    SecurityContent(
-        onBack = {},
-        telemetryEnabled = false,
-        biometricLockOn = true,
-        autoLockLabel = "5 min",
-        blockOnBackgroundOn = true,
-        onToggleBiometricLock = {},
-        onCycleAutoLock = {},
-        onToggleBlockOnBackground = {},
-        onToggleTelemetry = {},
     )
 }

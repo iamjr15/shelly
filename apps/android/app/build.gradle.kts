@@ -22,7 +22,8 @@ fun escapedBuildConfigString(value: String): String = value.replace("\\", "\\\\"
 val debugBiometricBypass = System.getenv("SHELLY_ANDROID_BIOMETRIC_BYPASS") == "true"
 val debugPairingCode = escapedBuildConfigString(System.getenv("SHELLY_ANDROID_PAIRING_CODE").orEmpty())
 val relayControlUrl = escapedBuildConfigString(System.getenv("SHELLY_RELAY_CONTROL_URL").orEmpty())
-val shellyAbiFilter = providers.gradleProperty("shelly.android.abiFilter").orNull?.trim().orEmpty()
+val shellyAndroidVersionCode = System.getenv("SHELLY_ANDROID_VERSION_CODE")?.toIntOrNull() ?: 1
+val shellyAndroidVersionName = System.getenv("SHELLY_ANDROID_VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "1.0"
 val repoRoot = rootProject.projectDir.parentFile.parentFile
 val buildRustMobileCore = tasks.register<Exec>("buildRustMobileCore") {
     group = "build"
@@ -41,20 +42,35 @@ val buildRustMobileCore = tasks.register<Exec>("buildRustMobileCore") {
 android {
     namespace = "app.shelly.android"
     compileSdk = 36
+    ndkVersion = "27.1.12297006"
+
+    lint {
+        // Adopt Lint on a previously-unlinted codebase: the baseline grandfathers the
+        // current issues (generated-uniffi Cleaner NewApi calls that are runtime-guarded,
+        // pre-existing manifest/permission nits) so new regressions still fail the build.
+        baseline = file("lint-baseline.xml")
+        abortOnError = true
+        // The UniFFI bindings are generated into ../generated (a srcDir outside this
+        // module). With a baseline configured, lintVitalRelease's partial-results
+        // serialization throws "Path variable ... not provided to serialization" for
+        // that external source root (an AGP bug), crashing `bundleRelease`. Lint still
+        // runs via the explicit `:app:lintDebug` CI step against the baseline, so skip
+        // the redundant release-time vital pass rather than lint generated code.
+        checkReleaseBuilds = false
+    }
 
     defaultConfig {
         applicationId = "app.shelly.android"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = shellyAndroidVersionCode
+        versionName = shellyAndroidVersionName
         buildConfigField("boolean", "SHELLY_BIOMETRIC_BYPASS", "false")
         buildConfigField("String", "SHELLY_DEBUG_PAIRING_CODE", "\"\"")
         buildConfigField("String", "SHELLY_RELAY_CONTROL_URL", "\"$relayControlUrl\"")
-        if (shellyAbiFilter.isNotEmpty()) {
-            ndk {
-                abiFilters += shellyAbiFilter
-            }
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+            debugSymbolLevel = "FULL"
         }
     }
 
@@ -133,7 +149,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-savedstate:2.10.0")
     implementation("androidx.navigation:navigation-compose:2.9.7")
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("androidx.biometric:biometric-ktx:1.4.0-alpha02")
     implementation(platform("com.google.firebase:firebase-bom:34.13.0"))
@@ -145,7 +163,7 @@ dependencies {
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     implementation("org.connectbot:termlib:0.1.0")
-    implementation("net.java.dev.jna:jna:5.15.0@aar")
+    implementation("net.java.dev.jna:jna:5.19.1@aar")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

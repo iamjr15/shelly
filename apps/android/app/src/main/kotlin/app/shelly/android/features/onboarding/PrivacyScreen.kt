@@ -1,9 +1,12 @@
 package app.shelly.android.features.onboarding
 
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import app.shelly.android.ui.components.ShellyScreen
+
+private val PrivacySteps = listOf(
+    OnboardingStepContent("Keys never leave", "Generated on-device, kept in the Android Keystore"),
+    OnboardingStepContent("The relay is blind", "It forwards sealed packets — never your terminal bytes"),
+    OnboardingStepContent("Revoke in one command", "shelly devices remove cuts a phone off instantly"),
+)
 
 @Composable
 fun PrivacyScreen(
@@ -11,50 +14,18 @@ fun PrivacyScreen(
     onSkip: () -> Unit = {},
     inSettings: Boolean = false,
 ) {
-    ShellyScreen(
-        hero = {
-            OnboardingHero(
-                eyebrow = "WHERE YOUR KEYS AND\nBYTES ACTUALLY LIVE",
-                wordmark = "SAFE",
-                trailing = if (inSettings) "Settings" else "SKIP",
-                onTrailingClick = onSkip,
-                trailingAsEscape = inSettings,
-                status = OnboardingStatus(
-                    icon = OnboardingStatusIcon.Lock,
-                    text = "end-to-end encrypted",
-                ),
-            )
-        },
-        content = {
-            OnboardingStepRow(
-                number = 1,
-                title = "Keys never leave",
-                detail = "Generated on-device, kept in the Android Keystore",
-                showDivider = true,
-            )
-            OnboardingStepRow(
-                number = 2,
-                title = "The relay is blind",
-                detail = "It forwards sealed packets — never your terminal bytes",
-                showDivider = true,
-            )
-            OnboardingStepRow(
-                number = 3,
-                title = "Revoke in one command",
-                detail = "shelly devices remove cuts a phone off instantly",
-                showDivider = false,
-            )
-            Spacer(Modifier.weight(1f))
-            OnboardingFooterLink(
-                label = if (inSettings) "Done" else "Got it",
-                onClick = onContinue,
-                strongDivider = true,
-            )
-        },
+    OnboardingStepsScreen(
+        eyebrow = "WHERE YOUR KEYS AND\nBYTES ACTUALLY LIVE",
+        wordmark = "SAFE",
+        trailing = if (inSettings) "Settings" else "SKIP",
+        onTrailingClick = onSkip,
+        trailingAsEscape = inSettings,
+        status = OnboardingStatus(
+            icon = OnboardingStatusIcon.Lock,
+            text = "end-to-end encrypted",
+        ),
+        steps = PrivacySteps,
+        footerLabel = if (inSettings) "Done" else "Got it",
+        onContinue = onContinue,
     )
-}
-
-@Composable
-internal fun PrivacyContentPreview() {
-    PrivacyScreen()
 }

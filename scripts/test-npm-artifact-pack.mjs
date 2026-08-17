@@ -40,9 +40,23 @@ try {
     "must be a native Mach-O or ELF binary before publish",
   );
 
+  writeNativeHeaderFixtures();
+  run(process.execPath, ["scripts/publish-npm-packages.mjs", "--check-ready"]);
+  writeNativeHeader(path.join(nativeBinDir("darwin-arm64"), "shelly"), "darwin-x64");
+  expectFailure(
+    process.execPath,
+    ["scripts/publish-npm-packages.mjs", "--check-ready"],
+    {},
+    "expected arm64 (0x0100000c)",
+  );
+
   const missingPlatformRoot = fs.mkdtempSync(path.join(os.tmpdir(), "shelly-native-package-missing-"));
   try {
     createFixtureArtifacts(missingPlatformRoot, ["darwin-arm64"]);
+    const decoyDir = path.join(missingPlatformRoot, "untrusted-shelly-darwin-x64-wrapper");
+    fs.mkdirSync(decoyDir, { recursive: true });
+    writeExecutable(path.join(decoyDir, "shelly"), "#!/bin/sh\nexit 0\n");
+    writeExecutable(path.join(decoyDir, "shellyd"), "#!/bin/sh\nexit 0\n");
     expectFailure(process.execPath, ["scripts/prepare-npm-artifacts.mjs"], {
       env: { ...process.env, SHELLY_ARTIFACT_DIR: missingPlatformRoot },
     }, "missing extracted artifact directory for darwin-x64");
@@ -135,6 +149,30 @@ function filesByPath(packs) {
 
 function writeExecutable(file, contents) {
   fs.writeFileSync(file, contents);
+  fs.chmodSync(file, 0o755);
+}
+
+function writeNativeHeaderFixtures() {
+  for (const platform of platforms) {
+    const binDir = nativeBinDir(platform);
+    fs.mkdirSync(binDir, { recursive: true });
+    writeNativeHeader(path.join(binDir, "shelly"), platform);
+    writeNativeHeader(path.join(binDir, "shellyd"), platform);
+  }
+}
+
+function writeNativeHeader(file, platform) {
+  const header = Buffer.alloc(64);
+  if (platform === "darwin-arm64" || platform === "darwin-x64") {
+    header.set([0xcf, 0xfa, 0xed, 0xfe]);
+    header.writeUInt32LE(platform === "darwin-arm64" ? 0x0100000c : 0x01000007, 4);
+  } else {
+    header.set([0x7f, 0x45, 0x4c, 0x46]);
+    header[4] = 2;
+    header[5] = 1;
+    header.writeUInt16LE(platform === "linux-arm64" ? 183 : 62, 18);
+  }
+  fs.writeFileSync(file, header);
   fs.chmodSync(file, 0o755);
 }
 

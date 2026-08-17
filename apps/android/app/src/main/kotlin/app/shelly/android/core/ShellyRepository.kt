@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import app.shelly.android.BuildConfig
+import kotlinx.coroutines.CancellationException
 import uniffi.shelly_mobile_core.AgentStateFfi
 import uniffi.shelly_mobile_core.AttachedSession
 import uniffi.shelly_mobile_core.ClientConfig
@@ -11,15 +12,17 @@ import uniffi.shelly_mobile_core.DaemonConfig
 import uniffi.shelly_mobile_core.DaemonInfo
 import uniffi.shelly_mobile_core.ShellyClient
 import uniffi.shelly_mobile_core.MobilePlatform
+import uniffi.shelly_mobile_core.PendingPairing
 import uniffi.shelly_mobile_core.PushPlatform
 import uniffi.shelly_mobile_core.SessionListSink
 import uniffi.shelly_mobile_core.SessionSummaryFfi
+import uniffi.shelly_mobile_core.ShellyException
 
 internal interface ShellyRepositoryClient {
     val savedPairing: PairedDaemonRecord?
     fun restore(): Boolean
-    suspend fun pair(qrPayload: String)
-    suspend fun pairWithCode(code: String)
+    suspend fun pair(qrPayload: String): PendingPairingClient
+    suspend fun pairWithCode(code: String): PendingPairingClient
     suspend fun listSessions(): List<MobileSession>
     suspend fun subscribeSessions(onUpdate: (List<MobileSession>) -> Unit)
 
@@ -35,7 +38,19 @@ internal interface ShellyRepositoryClient {
     fun recordLastSeenSeq(sessionId: String, seq: ULong)
     suspend fun registerFcmToken(token: String)
     suspend fun unregisterFcmToken(token: String)
+    suspend fun unpairSelf()
+    fun persistPushUnregisterTombstone(tokens: List<String>)
+    fun acknowledgePushTokenUnregistered(token: String)
+    suspend fun retryPendingPushUnregister()
     fun clear()
+    fun clearRevokedPairing()
+    fun destroy()
+}
+
+interface PendingPairingClient {
+    val sas: String
+    suspend fun confirm()
+    suspend fun cancel()
 }
 
 class ShellyRepository(context: Context) : ShellyRepositoryClient {
@@ -67,20 +82,55 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
         return savedPairing != null
     }
 
-    override suspend fun pair(qrPayload: String) {
+    override suspend fun pair(qrPayload: String): PendingPairingClient {
         val freshClient = createClient(null)
         replaceClient(freshClient)
-        val info = freshClient.pairWithQr(qrPayload)
-        debugLog("pair completed")
-        persistPairing(info)
+        return try {
+            RepositoryPendingPairing(freshClient.pairWithQr(qrPayload), freshClient)
+        } catch (error: Throwable) {
+            discardPairingClient(freshClient)
+            throw error
+        }
     }
 
-    override suspend fun pairWithCode(code: String) {
+    override suspend fun pairWithCode(code: String): PendingPairingClient {
         val freshClient = createClient(null)
         replaceClient(freshClient)
-        val info = freshClient.pairWithCode(code)
-        debugLog("pairWithCode completed")
-        persistPairing(info)
+        return try {
+            RepositoryPendingPairing(freshClient.pairWithCode(code), freshClient)
+        } catch (error: Throwable) {
+            discardPairingClient(freshClient)
+            throw error
+        }
+    }
+
+    private inner class RepositoryPendingPairing(
+        private val pending: PendingPairing,
+        private val pairingClient: ShellyClient,
+    ) : PendingPairingClient {
+        override val sas: String = pending.sas()
+
+        override suspend fun confirm() {
+            try {
+                val info = pending.confirm()
+                debugLog("pairing confirmed")
+                persistPairing(info)
+            } catch (error: Throwable) {
+                discardPairingClient(pairingClient)
+                throw error
+            } finally {
+                pending.destroy()
+            }
+        }
+
+        override suspend fun cancel() {
+            try {
+                pending.cancel()
+            } finally {
+                discardPairingClient(pairingClient)
+                pending.destroy()
+            }
+        }
     }
 
     private fun persistPairing(info: DaemonInfo) {
@@ -160,14 +210,93 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
         requireClient().unregisterPushToken(PushPlatform.FCM, token)
     }
 
+    override suspend fun unpairSelf() {
+        requireClient().unpairSelf()
+    }
+
+    override fun persistPushUnregisterTombstone(tokens: List<String>) {
+        val pairing = savedPairing ?: return
+        val normalizedTokens = tokens.map(String::trim).filter(String::isNotEmpty).distinct()
+        if (normalizedTokens.isEmpty()) {
+            return
+        }
+        store.savePushUnregisterTombstone(
+            PushUnregisterTombstone(
+                daemonNodeId = pairing.daemonNodeId,
+                relayUrl = pairing.relayUrl,
+                addrs = pairing.addrs,
+                deviceNodeId = pairing.deviceNodeId,
+                deviceSecretKey = pairing.deviceSecretKey,
+                tokens = normalizedTokens.map { token ->
+                    PushTokenMetadata(
+                        platform = PUSH_PLATFORM_FCM,
+                        token = token,
+                        createdAtMillis = System.currentTimeMillis(),
+                    )
+                },
+            ),
+        )
+    }
+
+    override fun acknowledgePushTokenUnregistered(token: String) {
+        store.acknowledgePushToken(token)
+    }
+
+    override suspend fun retryPendingPushUnregister() {
+        val tombstone = store.loadPushUnregisterTombstone() ?: return
+        val retryClient = runCatching { createClient(tombstone) }
+            .onFailure { debugLog("could not rebuild client for push unregister retry", it) }
+            .getOrNull() ?: return
+        try {
+            tombstone.tokens.forEach { metadata ->
+                if (metadata.platform != PUSH_PLATFORM_FCM) {
+                    debugLog("unknown push tombstone platform ${metadata.platform}")
+                    return@forEach
+                }
+                try {
+                    retryClient.unregisterPushToken(PushPlatform.FCM, metadata.token)
+                    store.acknowledgePushToken(metadata.token)
+                } catch (error: ShellyException.Unauthorized) {
+                    // Idempotency: the original unregister/unpair may have landed and only its ack
+                    // was lost. A now-invalid device credential is terminal success for cleanup.
+                    debugLog("push unregister retry already unauthorized; acknowledging tombstone")
+                    store.acknowledgePushToken(metadata.token)
+                } catch (error: Throwable) {
+                    if (error is CancellationException) {
+                        throw error
+                    }
+                    debugLog("push unregister retry deferred", error)
+                }
+            }
+        } finally {
+            retryClient.destroy()
+        }
+    }
+
     override fun clear() {
-        val clearedClient = createClient(null)
         store.clear()
         val previous = synchronized(stateLock) {
             lastSeenSeqBySession.clear()
             savedPairing = null
             val old = client
-            client = clearedClient
+            client = null
+            old
+        }
+        previous?.destroy()
+    }
+
+    override fun clearRevokedPairing() {
+        // Unauthorized is definitive: no retry credential is useful, so remove every encrypted
+        // copy of the device secret rather than retaining the normal offline-cleanup tombstone.
+        store.clearPushUnregisterTombstone()
+        clear()
+    }
+
+    override fun destroy() {
+        val previous = synchronized(stateLock) {
+            lastSeenSeqBySession.clear()
+            val old = client
+            client = null
             old
         }
         previous?.destroy()
@@ -219,18 +348,55 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
         }
     }
 
+    private fun discardPairingClient(pairingClient: ShellyClient) {
+        val discarded = synchronized(stateLock) {
+            if (client === pairingClient) {
+                client = null
+                true
+            } else {
+                false
+            }
+        }
+        if (discarded) {
+            pairingClient.destroy()
+        }
+    }
+
     private fun createClient(record: PairedDaemonRecord?): ShellyClient {
+        return createClient(
+            deviceSecretKey = record?.deviceSecretKey,
+            daemonNodeId = record?.daemonNodeId,
+            relayUrl = record?.relayUrl,
+            addrs = record?.addrs.orEmpty(),
+        )
+    }
+
+    private fun createClient(tombstone: PushUnregisterTombstone): ShellyClient {
+        return createClient(
+            deviceSecretKey = tombstone.deviceSecretKey,
+            daemonNodeId = tombstone.daemonNodeId,
+            relayUrl = tombstone.relayUrl,
+            addrs = tombstone.addrs,
+        )
+    }
+
+    private fun createClient(
+        deviceSecretKey: ByteArray?,
+        daemonNodeId: String?,
+        relayUrl: String?,
+        addrs: List<String>,
+    ): ShellyClient {
         ShellyNative.installAndroidContext(appContext)
         return ShellyClient(
             ClientConfig(
                 deviceName = Build.MODEL ?: "Android",
                 platform = MobilePlatform.ANDROID,
-                deviceSecretKey = record?.deviceSecretKey,
-                pairedDaemon = record?.let {
+                deviceSecretKey = deviceSecretKey,
+                pairedDaemon = daemonNodeId?.let {
                     DaemonConfig(
-                        daemonNodeId = it.daemonNodeId,
-                        relayUrl = it.relayUrl,
-                        addrs = it.addrs,
+                        daemonNodeId = it,
+                        relayUrl = relayUrl,
+                        addrs = addrs,
                     )
                 },
                 relayControlUrl = BuildConfig.SHELLY_RELAY_CONTROL_URL.ifBlank { null },
@@ -239,11 +405,17 @@ class ShellyRepository(context: Context) : ShellyRepositoryClient {
     }
 }
 
-private fun debugLog(message: String) {
+internal fun debugLog(message: String, error: Throwable? = null, tag: String = "ShellyRepository") {
     if (BuildConfig.DEBUG) {
-        Log.d("ShellyRepository", message)
+        if (error == null) {
+            Log.d(tag, message)
+        } else {
+            Log.d(tag, message, error)
+        }
     }
 }
+
+private const val PUSH_PLATFORM_FCM = "fcm"
 
 private fun toMobileSession(summary: SessionSummaryFfi): MobileSession {
     return MobileSession(

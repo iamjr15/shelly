@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/protocol",
+    "crates/privacy-tracing",
     "crates/daemon",
     "crates/cli",
     "crates/relay",
@@ -11,6 +12,7 @@ resolver = "3"
 [workspace.package]
 version = "1.0.6"
 edition = "2024"
+rust-version = "1.94"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/iamjr15/shelly"
 authors = ["Shelly contributors"]
@@ -34,9 +36,12 @@ ed25519-dalek = "2"
 figment = { version = "0.10", features = ["env"] }
 garde = { version = "0.22", features = ["derive", "regex"] }
 interprocess = { version = "2.2", features = ["tokio"] }
-iroh = { version = "=1.0.0-rc.0", features = ["platform-verifier"] }
-iroh-relay = { version = "=1.0.0-rc.0", features = ["server", "platform-verifier"] }
+# Exact to keep the validated daemon, mobile, and relay API surface reproducible.
+iroh = { version = "=1.0.3", features = ["platform-verifier"] }
+# Keep the relay crate on the same tested stable release as iroh's endpoint APIs.
+iroh-relay = { version = "=1.0.3", features = ["server", "platform-verifier"] }
 jni = "0.22.4"
+# Exact because keyring patch releases can change native backend behavior and persistence semantics.
 keyring = { version = "=3.6.2", features = ["apple-native", "linux-native-sync-persistent", "vendored"] }
 libc = "0.2"
 insta = { version = "1", features = ["yaml"] }
@@ -46,9 +51,9 @@ ndk-context = "0.1.1"
 portable-pty = "0.9"
 postcard = { version = "1", features = ["use-std"] }
 p256 = "0.13"
-opentelemetry = { version = "0.31", default-features = false, features = ["trace"] }
-opentelemetry-otlp = { version = "0.31", default-features = false, features = ["http-proto", "reqwest-blocking-client", "reqwest-rustls", "trace"] }
-opentelemetry_sdk = { version = "0.31", default-features = false, features = ["trace"] }
+opentelemetry = { version = "0.32.0", default-features = false, features = ["trace"] }
+opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["http-proto", "reqwest-blocking-client", "reqwest-rustls", "trace"] }
+opentelemetry_sdk = { version = "0.32.0", default-features = false, features = ["trace"] }
 proptest = "1"
 qrcode = "0.14"
 redb = "2"
@@ -58,7 +63,7 @@ rmp-serde = "1"
 rusqlite = { version = "0.37", features = ["bundled"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 semver = "1"
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 service-manager = "0.11.0"
 sha2 = "0.10"
@@ -69,12 +74,25 @@ toml = "0.9"
 tower = { version = "0.5", features = ["util"] }
 tracing = "0.1"
 tracing-appender = "0.2"
-tracing-opentelemetry = { version = "0.32", default-features = false }
+tracing-opentelemetry = { version = "0.33.0", default-features = false }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Exact because 0.31.2 regresses the library-mode binding generator used by the Android build.
 uniffi = { version = "=0.31.1", features = ["tokio"] }
 unicode-width = "0.2"
 uuid = { version = "1", features = ["serde", "v7"] }
 vt100 = "0.16.2"
 webpki-roots = "1"
-wezterm-term = { package = "tattoy-wezterm-term", version = "=0.1.0-fork.5" }
+alacritty_terminal = "=0.26.0"
 whoami = "1.5"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+# uniffi's `--library` binding generator reads interface metadata from the
+# cdylib's symbols, so `shelly-mobile-core` must keep them or `uniffi-bindgen`
+# emits no Kotlin. This only affects the build-time artifact; AGP strips the
+# packaged `.so` at APK time and `debugSymbolLevel=FULL` handles symbolication.
+[profile.release.package.shelly-mobile-core]
+strip = false

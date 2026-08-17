@@ -8,4 +8,7 @@
     <string name="notification_session_crashed_body">A session stopped unexpectedly.</string>
     <string name="notification_build_finished_title">Shelly</string>
     <string name="notification_build_finished_body">A build finished.</string>
+    <string name="state_on">On</string>
+    <string name="state_off">Off</string>
+    <string name="unpair_this_device">Unpair this device</string>
 </resources>

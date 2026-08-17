@@ -141,9 +141,9 @@ const TICKET_PREFIX: &str = "sh1";
 /// short pairing code that must still be approved on the desktop.
 ///
 /// The QR path encodes the whole ticket so a scan yields reachability *and*
-/// the code with no typing. The typed-code path resolves the code to this same
-/// ticket via the relay rendezvous endpoint. Serialize with [`Self::encode`]
-/// for transport and recover with [`Self::decode`].
+/// the code with no typing. The typed-code path keeps its locally entered code
+/// and resolves only [`PairingRendezvous`] through the relay. Serialize QR
+/// tickets with [`Self::encode`] and recover them with [`Self::decode`].
 pub struct PairingTicket {
     /// Short pairing code; the credential authorized by the active desktop pairing command.
     pub code: String,
@@ -158,6 +158,17 @@ pub struct PairingTicket {
 }
 
 impl PairingTicket {
+    /// Returns the code-free reachability record safe to publish through the
+    /// typed-code relay rendezvous.
+    pub fn rendezvous(&self) -> PairingRendezvous {
+        PairingRendezvous {
+            node_id: self.node_id.clone(),
+            relay_url: self.relay_url.clone(),
+            addrs: self.addrs.clone(),
+            expires_at: self.expires_at,
+        }
+    }
+
     /// Encodes the ticket as `sh1<base32>`: postcard bytes wrapped in
     /// unpadded base32 behind the human-readable [`TICKET_PREFIX`].
     pub fn encode(&self) -> Result<String, TicketError> {
@@ -175,7 +186,42 @@ impl PairingTicket {
             .strip_prefix(TICKET_PREFIX)
             .ok_or(TicketError::MissingPrefix)?;
         let bytes = BASE32_NOPAD.decode(body.to_ascii_uppercase().as_bytes())?;
-        Ok(postcard::from_bytes(&bytes)?)
+        let (ticket, trailing) = postcard::take_from_bytes(&bytes)?;
+        if !trailing.is_empty() {
+            return Err(TicketError::TrailingBytes(trailing.len()));
+        }
+        Ok(ticket)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+/// Code-free daemon reachability published for the typed-code pairing path.
+///
+/// The relay stores this record under `sha256(normalized_code)`. That digest is
+/// only an offline-enumerable locator for a low-entropy code; it does not make
+/// the code confidential and must never be treated as an authentication secret.
+pub struct PairingRendezvous {
+    /// Daemon iroh node id.
+    pub node_id: String,
+    /// Relay URL advertised by the daemon's iroh endpoint, when available.
+    pub relay_url: Option<String>,
+    /// Direct socket addresses advertised for local-network connection attempts.
+    pub addrs: Vec<String>,
+    /// UTC deadline in milliseconds after which the rendezvous is invalid.
+    pub expires_at: u64,
+}
+
+impl PairingRendezvous {
+    /// Combines this reachability record with the code retained by the typing
+    /// client, reconstructing the same connection target carried by a QR ticket.
+    pub fn into_ticket(self, code: String) -> PairingTicket {
+        PairingTicket {
+            code,
+            node_id: self.node_id,
+            relay_url: self.relay_url,
+            addrs: self.addrs,
+            expires_at: self.expires_at,
+        }
     }
 }
 
@@ -191,6 +237,9 @@ pub enum TicketError {
     /// Postcard failed to serialize or deserialize the ticket payload.
     #[error(transparent)]
     Postcard(#[from] postcard::Error),
+    /// The postcard payload decoded successfully but did not consume the input.
+    #[error("ticket postcard payload has {0} trailing byte(s)")]
+    TrailingBytes(usize),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -230,4 +279,28 @@ pub fn now_ms() -> u64 {
         .as_millis()
         .try_into()
         .unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pairing_ticket_decode_rejects_trailing_postcard_bytes() {
+        let ticket = PairingTicket {
+            code: "ABC1234".to_string(),
+            node_id: "daemon-node-a-1234567890".to_string(),
+            relay_url: Some("https://relay.shelly.sh".to_string()),
+            addrs: vec!["127.0.0.1:7777".to_string()],
+            expires_at: 42,
+        };
+        let mut bytes = postcard::to_stdvec(&ticket).unwrap();
+        bytes.push(0);
+        let encoded = format!("{TICKET_PREFIX}{}", BASE32_NOPAD.encode(&bytes));
+
+        assert!(matches!(
+            PairingTicket::decode(&encoded),
+            Err(TicketError::TrailingBytes(1))
+        ));
+    }
 }

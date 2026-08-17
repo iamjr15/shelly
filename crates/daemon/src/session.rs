@@ -10,19 +10,63 @@ use shelly_protocol::{
     now_ms,
 };
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::fmt;
+use std::io;
+use std::os::fd::RawFd;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex, Weak, mpsc};
 use std::time::Duration;
 use tokio::sync::broadcast;
 
 const RING_CAPACITY: usize = 256 * 1024;
 const IDLE_AFTER_MS: u64 = 2_000;
 const RESIZE_DEBOUNCE_MS: u64 = 100;
+const PTY_WRITE_QUEUE_CAPACITY: usize = 64;
+const PTY_POLL_TIMEOUT_MS: i32 = 100;
 // Minimum continuous time in Working before a Working->Idle edge counts as a
 // finished build worth a push; shorter bursts are trivial quick commands.
 const BUILD_FINISHED_MIN_WORKING_MS: u64 = 5_000;
+
+#[derive(Clone)]
+pub(crate) struct PtyWriteSender {
+    tx: mpsc::SyncSender<Vec<u8>>,
+}
+
+impl PtyWriteSender {
+    fn new(tx: mpsc::SyncSender<Vec<u8>>) -> Self {
+        Self { tx }
+    }
+
+    pub(crate) fn try_send(&self, bytes: &[u8]) -> std::result::Result<(), PtyWriteError> {
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        self.tx
+            .try_send(bytes.to_vec())
+            .map_err(|error| match error {
+                mpsc::TrySendError::Full(_) => PtyWriteError::Backpressure,
+                mpsc::TrySendError::Disconnected(_) => PtyWriteError::Closed,
+            })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PtyWriteError {
+    Backpressure,
+    Closed,
+}
+
+impl fmt::Display for PtyWriteError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Backpressure => formatter.write_str("PTY input queue is full"),
+            Self::Closed => formatter.write_str("PTY input channel is closed"),
+        }
+    }
+}
+
+impl std::error::Error for PtyWriteError {}
 
 pub struct Session {
     id: SessionId,
@@ -39,7 +83,10 @@ pub struct Session {
     ring: Mutex<PtyRingBuffer>,
     child: Mutex<Box<dyn Child + Send + Sync>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
-    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    writer: PtyWriteSender,
+    io_shutdown: AtomicBool,
+    io_thread_running: Arc<AtomicBool>,
+    process_group: Option<libc::pid_t>,
     terminal: Mutex<TerminalProjection>,
     attached_sizes: Mutex<HashMap<ClientId, ClientSize>>,
     subscribers: broadcast::Sender<ServerToClientMsg>,
@@ -95,15 +142,19 @@ impl Session {
             .context("spawn PTY command")?;
         drop(pair.slave);
 
-        let reader = pair.master.try_clone_reader().context("clone PTY reader")?;
-        let writer = Arc::new(Mutex::new(
-            pair.master.take_writer().context("take PTY writer")?,
-        ));
+        let pty_fd = pair
+            .master
+            .as_raw_fd()
+            .context("PTY master does not expose a file descriptor")?;
+        set_nonblocking(pty_fd).context("set PTY master non-blocking")?;
+        let process_group = pair.master.process_group_leader();
+        let (writer_tx, writer_rx) = mpsc::sync_channel(PTY_WRITE_QUEUE_CAPACITY);
+        let writer = PtyWriteSender::new(writer_tx);
         let (subscribers, _) = broadcast::channel(1024);
         let (summary_updates, _) = broadcast::channel(128);
         let (resize_tx, resize_rx) = mpsc::channel();
         let terminal =
-            TerminalProjection::new(size, Box::new(PtyResponseWriter::new(Arc::clone(&writer))));
+            TerminalProjection::new(size, Box::new(PtyResponseWriter::new(writer.clone())));
         let session = Arc::new(Self {
             id,
             name,
@@ -120,6 +171,9 @@ impl Session {
             child: Mutex::new(child),
             master: Mutex::new(pair.master),
             writer,
+            io_shutdown: AtomicBool::new(false),
+            io_thread_running: Arc::new(AtomicBool::new(true)),
+            process_group,
             terminal: Mutex::new(terminal),
             attached_sizes: Mutex::new(HashMap::new()),
             subscribers,
@@ -131,11 +185,11 @@ impl Session {
             resize_tx,
         });
 
-        session.persist();
-        Self::start_reader(Arc::clone(&session), reader)?;
-        Self::start_idle_loop(Arc::clone(&session))?;
-        Self::start_persistence_loop(Arc::clone(&session))?;
-        Self::start_resize_loop(Arc::clone(&session), resize_rx)?;
+        Self::start_pty_io(Arc::clone(&session), pty_fd, writer_rx)?;
+        Self::start_idle_loop(Arc::downgrade(&session))?;
+        Self::start_resize_loop(Arc::downgrade(&session), resize_rx)?;
+        session.persist_dirty.store(true, Ordering::Release);
+        Self::start_persistence_loop(Arc::downgrade(&session))?;
         Ok(session)
     }
 
@@ -143,7 +197,18 @@ impl Session {
         self.id
     }
 
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
     pub fn summary(&self) -> SessionSummary {
+        if let Some(line) = self.materialize_terminal_last_line() {
+            *self.last_line.lock().expect("last_line lock poisoned") = Some(line);
+        }
+        self.cached_summary()
+    }
+
+    fn cached_summary(&self) -> SessionSummary {
         SessionSummary {
             id: self.id,
             name: self.name.clone(),
@@ -173,23 +238,23 @@ impl Session {
     }
 
     pub fn attach_bytes(&self, last_seen_seq: Option<u64>) -> (u64, Vec<u8>) {
-        let (end_seq, raw_scrollback) = {
+        let (end_seq, raw_scrollback, snapshot) = {
             let ring = self.ring.lock().expect("ring lock poisoned");
             if let Some(seq) = last_seen_seq
                 && let Some((start_seq, replay)) = ring.replay_from(seq)
             {
                 return (start_seq.saturating_add(replay.len() as u64), replay);
             }
-            let end_seq = ring.end_seq();
             let (_, raw_scrollback) = ring.snapshot();
-            (end_seq, raw_scrollback)
+            let mut terminal = self
+                .terminal
+                .lock()
+                .expect("terminal projection lock poisoned");
+            let snapshot = terminal.snapshot();
+            let end_seq = ring.end_seq();
+            (end_seq, raw_scrollback, snapshot)
         };
 
-        let snapshot = self
-            .terminal
-            .lock()
-            .expect("terminal projection lock poisoned")
-            .snapshot();
         match snapshot {
             Ok(snapshot) => (end_seq, snapshot),
             Err(failure) => {
@@ -247,13 +312,8 @@ impl Session {
         *self.exit_code.lock().expect("exit_code lock poisoned")
     }
 
-    pub fn write_input(&self, bytes: &[u8]) -> Result<()> {
-        let mut writer = self
-            .writer
-            .lock()
-            .map_err(|_| anyhow!("PTY writer lock poisoned"))?;
-        writer.write_all(bytes).context("write input to PTY")?;
-        writer.flush().context("flush input to PTY")?;
+    pub fn write_input(&self, bytes: &[u8]) -> std::result::Result<(), PtyWriteError> {
+        self.writer.try_send(bytes)?;
         if self.exit_code().is_none() {
             self.set_state(AgentState::Working, None);
         }
@@ -286,22 +346,21 @@ impl Session {
     }
 
     pub fn kill(&self) -> Result<()> {
-        let mut child = self
-            .child
-            .lock()
-            .map_err(|_| anyhow!("PTY child lock poisoned"))?;
-        if child
-            .try_wait()
-            .context("check PTY child status")?
-            .is_none()
-        {
-            child.kill().context("kill PTY child")?;
-        }
-        // Publish the explicit-kill state while still holding the child lock. The
-        // reader cannot reap and persist an exit between successful termination
-        // and this flag becoming visible.
         self.killed.store(true, Ordering::Release);
-        Ok(())
+        let primary_result = match self.child.lock() {
+            Ok(mut child) => match child.try_wait().context("check PTY child status") {
+                Ok(Some(_)) => Ok(()),
+                Ok(None) => child.kill().context("kill PTY child"),
+                Err(error) => Err(error),
+            },
+            Err(_) => Err(anyhow!("PTY child lock poisoned")),
+        };
+        // portable-pty creates the child as a new session/process-group leader.
+        // Signal the whole group after the primary child kill so grandchildren
+        // cannot keep the PTY open and strand the I/O thread.
+        self.signal_process_group();
+        self.io_shutdown.store(true, Ordering::Release);
+        primary_result
     }
 
     pub fn apply_agent_state_event(
@@ -339,6 +398,10 @@ impl Session {
         let last_line = last_line.map(|line| line.chars().take(80).collect::<String>());
         if let Some(line) = last_line.clone() {
             *self.last_line.lock().expect("last_line lock poisoned") = Some(line.clone());
+            self.terminal
+                .lock()
+                .expect("terminal projection lock poisoned")
+                .cache_last_non_empty_line(line, 80);
         }
         self.set_state(state, last_line);
         self.persist_dirty.store(true, Ordering::Release);
@@ -349,27 +412,25 @@ impl Session {
             .clone())
     }
 
-    fn start_reader(session: Arc<Self>, mut reader: Box<dyn Read + Send>) -> Result<()> {
-        std::thread::Builder::new()
+    fn start_pty_io(
+        session: Arc<Self>,
+        pty_fd: RawFd,
+        writer_rx: mpsc::Receiver<Vec<u8>>,
+    ) -> Result<()> {
+        let running = Arc::clone(&session.io_thread_running);
+        let running_on_spawn_failure = Arc::clone(&running);
+        if let Err(error) = std::thread::Builder::new()
             .name(format!("shelly-pty-{}", session.id))
-            .spawn(move || {
-                let mut buf = [0_u8; 8192];
-                loop {
-                    match reader.read(&mut buf) {
-                        Ok(0) => {
-                            session.mark_exited(session.reap_exit_code(0));
-                            break;
-                        }
-                        Ok(n) => session.record_output(&buf[..n]),
-                        Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-                        Err(_) => {
-                            session.mark_exited(session.reap_exit_code(1));
-                            break;
-                        }
-                    }
-                }
-            })
-            .context("spawn PTY reader thread")?;
+            .spawn(move || run_pty_io(session, pty_fd, writer_rx, running))
+        {
+            // The flag is set before spawning so tests cannot race a very short-lived child.
+            // Clear it if the OS rejected the thread creation.
+            //
+            // The receiver is dropped with the failed closure, causing subsequent writes to
+            // report a typed Closed error rather than blocking.
+            running_on_spawn_failure.store(false, Ordering::Release);
+            return Err(error).context("spawn PTY I/O thread");
+        }
         Ok(())
     }
 
@@ -392,12 +453,19 @@ impl Session {
         fallback
     }
 
-    fn start_idle_loop(session: Arc<Self>) -> Result<()> {
+    fn start_idle_loop(session: Weak<Self>) -> Result<()> {
+        let session_id = session
+            .upgrade()
+            .context("session dropped before idle loop")?
+            .id;
         std::thread::Builder::new()
-            .name(format!("shelly-idle-{}", session.id))
+            .name(format!("shelly-idle-{session_id}"))
             .spawn(move || {
                 loop {
                     std::thread::sleep(Duration::from_millis(500));
+                    let Some(session) = session.upgrade() else {
+                        break;
+                    };
                     if session.exit_code().is_some() {
                         break;
                     }
@@ -420,36 +488,50 @@ impl Session {
         Ok(())
     }
 
-    fn start_persistence_loop(session: Arc<Self>) -> Result<()> {
-        if session.persistence.is_none() {
+    fn start_persistence_loop(session: Weak<Self>) -> Result<()> {
+        let Some(initial) = session.upgrade() else {
+            return Ok(());
+        };
+        if initial.persistence.is_none() {
             return Ok(());
         }
+        let session_id = initial.id;
+        drop(initial);
 
         std::thread::Builder::new()
-            .name(format!("shelly-persist-{}", session.id))
+            .name(format!("shelly-persist-{session_id}"))
             .spawn(move || {
                 loop {
-                    std::thread::sleep(Duration::from_secs(30));
-                    if session.persist_dirty.swap(false, Ordering::AcqRel) {
-                        session.persist();
-                    }
+                    let Some(session) = session.upgrade() else {
+                        break;
+                    };
+                    session.flush_dirty_persistence();
                     if session.exit_code().is_some() {
                         break;
                     }
+                    drop(session);
+                    std::thread::sleep(Duration::from_secs(30));
                 }
             })
             .context("spawn persistence thread")?;
         Ok(())
     }
 
-    fn start_resize_loop(session: Arc<Self>, rx: mpsc::Receiver<()>) -> Result<()> {
+    fn start_resize_loop(session: Weak<Self>, rx: mpsc::Receiver<()>) -> Result<()> {
+        let session_id = session
+            .upgrade()
+            .context("session dropped before resize loop")?
+            .id;
         std::thread::Builder::new()
-            .name(format!("shelly-resize-{}", session.id))
+            .name(format!("shelly-resize-{session_id}"))
             .spawn(move || {
                 loop {
                     match rx.recv_timeout(Duration::from_millis(500)) {
                         Ok(()) => {}
                         Err(mpsc::RecvTimeoutError::Timeout) => {
+                            let Some(session) = session.upgrade() else {
+                                break;
+                            };
                             if session.exit_code().is_some() {
                                 break;
                             }
@@ -461,6 +543,9 @@ impl Session {
                         .recv_timeout(Duration::from_millis(RESIZE_DEBOUNCE_MS))
                         .is_ok()
                     {}
+                    let Some(session) = session.upgrade() else {
+                        break;
+                    };
                     if session.exit_code().is_some() {
                         break;
                     }
@@ -478,29 +563,26 @@ impl Session {
     }
 
     fn record_output(&self, bytes: &[u8]) {
-        let seq = {
+        let (seq, projection_update) = {
             let mut ring = self.ring.lock().expect("ring lock poisoned");
-            ring.push(bytes).saturating_add(bytes.len() as u64)
-        };
-        // The terminal model is a derived projection. Raw capture and fan-out must
-        // continue even if a TUI exposes a parser bug in that projection.
-        let projection_update = {
             let mut terminal = self
                 .terminal
                 .lock()
                 .expect("terminal projection lock poisoned");
-            terminal.ingest(bytes)
+            let seq = ring.push(bytes).saturating_add(bytes.len() as u64);
+            (seq, terminal.ingest(bytes))
         };
-        let last_line = match projection_update {
-            Ok(last_line) => last_line,
+        // The terminal model is a derived projection. Raw capture and fan-out must
+        // continue even if a TUI exposes a parser bug in that projection.
+        match projection_update {
+            Ok(()) => {}
             Err(failure) => {
                 self.log_projection_failure(failure, "ingest PTY output");
-                failure
-                    .invalidated_model()
-                    .then(|| self.rebuild_terminal_projection_from_ring())
-                    .flatten()
+                if failure.invalidated_model() {
+                    self.rebuild_terminal_projection_from_ring();
+                }
             }
-        };
+        }
         *self
             .last_activity
             .lock()
@@ -508,6 +590,9 @@ impl Session {
 
         // Any PTY output means the child produced bytes, so default to Working.
         let mut inferred_state = AgentState::Working;
+        let last_line = (self.command_kind != CommandKind::Unknown)
+            .then(|| self.materialize_terminal_last_line())
+            .flatten();
         if let Some(line) = &last_line {
             *self.last_line.lock().expect("last_line lock poisoned") = Some(line.clone());
             match self.command_kind {
@@ -532,31 +617,44 @@ impl Session {
         let _ = self.subscribers.send(ServerToClientMsg::Output {
             session_id: self.id,
             seq,
-            bytes: bytes.to_vec(),
+            bytes: Arc::from(bytes),
         });
         self.persist_dirty.store(true, Ordering::Release);
     }
 
-    fn rebuild_terminal_projection_from_ring(&self) -> Option<String> {
-        let (_, scrollback) = self.ring.lock().expect("ring lock poisoned").snapshot();
-        self.rebuild_terminal_projection(&scrollback)
+    fn materialize_terminal_last_line(&self) -> Option<String> {
+        match self
+            .terminal
+            .lock()
+            .expect("terminal projection lock poisoned")
+            .last_non_empty_line(80)
+        {
+            Ok(last_line) => last_line,
+            Err(failure) => {
+                self.log_projection_failure(failure, "inspect terminal last line");
+                None
+            }
+        }
     }
 
-    fn rebuild_terminal_projection(&self, scrollback: &[u8]) -> Option<String> {
-        let writer = Box::new(PtyResponseWriter::new(Arc::clone(&self.writer)));
+    fn rebuild_terminal_projection_from_ring(&self) {
+        let (_, scrollback) = self.ring.lock().expect("ring lock poisoned").snapshot();
+        self.rebuild_terminal_projection(&scrollback);
+    }
+
+    fn rebuild_terminal_projection(&self, scrollback: &[u8]) {
+        let writer = Box::new(PtyResponseWriter::new(self.writer.clone()));
         match self
             .terminal
             .lock()
             .expect("terminal projection lock poisoned")
             .rebuild(scrollback, writer)
         {
-            Ok(last_line) => {
+            Ok(()) => {
                 tracing::info!(session_id = %self.id, "rebuilt terminal projection from raw scrollback");
-                last_line
             }
             Err(failure) => {
                 self.log_projection_failure(failure, "rebuild terminal projection");
-                None
             }
         }
     }
@@ -610,7 +708,12 @@ impl Session {
     }
 
     fn mark_exited(&self, exit_code: i32) {
-        *self.exit_code.lock().expect("exit_code lock poisoned") = Some(exit_code);
+        let mut stored_exit_code = self.exit_code.lock().expect("exit_code lock poisoned");
+        if stored_exit_code.is_some() {
+            return;
+        }
+        *stored_exit_code = Some(exit_code);
+        drop(stored_exit_code);
         *self.state.lock().expect("state lock poisoned") = if exit_code == 0 {
             AgentState::Idle
         } else {
@@ -620,7 +723,6 @@ impl Session {
             session_id: self.id,
             exit_code,
         });
-        let _ = self.summary_updates.send(true);
         // A non-zero exit is a crash/failure worth a push; a clean exit (code 0) is
         // a normal logout, and an explicit kill must not masquerade as a crash.
         if exit_code != 0
@@ -629,19 +731,33 @@ impl Session {
         {
             push.session_crashed(self.id, self.name.clone());
         }
-        self.persist();
+        self.persist_dirty.store(false, Ordering::Release);
+        if !self.persist() {
+            self.persist_dirty.store(true, Ordering::Release);
+        }
+        // Persistence and the final StoredSession snapshot must be complete before
+        // the registry observer evicts the live ring and terminal projection.
+        let _ = self.summary_updates.send(true);
     }
 
-    fn persist(&self) {
+    fn persist(&self) -> bool {
         if self.killed.load(Ordering::Acquire) {
-            return;
+            return true;
         }
         let Some(persistence) = &self.persistence else {
-            return;
+            return true;
         };
         let snapshot = self.stored_snapshot();
         if let Err(error) = persistence.save_session(&snapshot) {
             tracing::warn!(%error, session_id = %self.id, "failed to persist session");
+            return false;
+        }
+        true
+    }
+
+    pub(crate) fn flush_dirty_persistence(&self) {
+        if self.persist_dirty.swap(false, Ordering::AcqRel) && !self.persist() {
+            self.persist_dirty.store(true, Ordering::Release);
         }
     }
 
@@ -649,11 +765,46 @@ impl Session {
         let (scrollback_start_seq, scrollback) =
             self.ring.lock().expect("ring lock poisoned").snapshot();
         StoredSession {
-            summary: self.summary(),
+            summary: self.cached_summary(),
             scrollback_start_seq,
             scrollback,
             exit_code: self.exit_code(),
         }
+    }
+
+    pub(crate) fn capture_stored(&self) -> StoredSession {
+        self.stored_snapshot()
+    }
+
+    pub(crate) fn was_killed(&self) -> bool {
+        self.killed.load(Ordering::Acquire)
+    }
+
+    fn signal_process_group(&self) {
+        let Some(process_group) = self.process_group.filter(|pid| *pid > 0) else {
+            return;
+        };
+        let result = unsafe { libc::kill(-process_group, libc::SIGKILL) };
+        if result == -1 {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() != Some(libc::ESRCH) {
+                tracing::warn!(%error, process_group, session_id = %self.id, "failed to signal PTY process group");
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pty_fd_for_test(&self) -> RawFd {
+        self.master
+            .lock()
+            .expect("PTY master lock poisoned")
+            .as_raw_fd()
+            .expect("test PTY master fd")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn io_thread_running_for_test(&self) -> bool {
+        self.io_thread_running.load(Ordering::Acquire)
     }
 
     fn detach_client(self: &Arc<Self>, client_id: ClientId) {
@@ -689,6 +840,166 @@ impl Session {
     }
 }
 
+fn set_nonblocking(fd: RawFd) -> io::Result<()> {
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+struct IoThreadRunningGuard(Arc<AtomicBool>);
+
+impl Drop for IoThreadRunningGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+fn run_pty_io(
+    session: Arc<Session>,
+    pty_fd: RawFd,
+    writer_rx: mpsc::Receiver<Vec<u8>>,
+    running: Arc<AtomicBool>,
+) {
+    let _running_guard = IoThreadRunningGuard(running);
+    let mut pending_write: Option<(Vec<u8>, usize)> = None;
+
+    loop {
+        if session.io_shutdown.load(Ordering::Acquire) {
+            session.mark_exited(session.reap_exit_code(0));
+            break;
+        }
+
+        if pending_write.is_none()
+            && let Ok(bytes) = writer_rx.try_recv()
+        {
+            pending_write = Some((bytes, 0));
+        }
+
+        if let Some(exit_code) = try_child_exit_code(&session) {
+            let _ = drain_pty_output(&session, pty_fd);
+            session.mark_exited(exit_code);
+            break;
+        }
+
+        let mut poll_fd = libc::pollfd {
+            fd: pty_fd,
+            events: libc::POLLIN
+                | if pending_write.is_some() {
+                    libc::POLLOUT
+                } else {
+                    0
+                },
+            revents: 0,
+        };
+        let poll_result = unsafe { libc::poll(&mut poll_fd, 1, PTY_POLL_TIMEOUT_MS) };
+        if poll_result == -1 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            tracing::warn!(%error, session_id = %session.id, "PTY poll failed");
+            session.mark_exited(session.reap_exit_code(1));
+            break;
+        }
+        if poll_result == 0 {
+            continue;
+        }
+
+        let read_events = libc::POLLIN | libc::POLLHUP | libc::POLLERR | libc::POLLNVAL;
+        if poll_fd.revents & read_events != 0
+            && drain_pty_output(&session, pty_fd) == PtyReadState::Closed
+        {
+            session.mark_exited(session.reap_exit_code(0));
+            break;
+        }
+
+        if poll_fd.revents & libc::POLLOUT != 0
+            && let Some((bytes, offset)) = pending_write.as_mut()
+        {
+            let remaining = &bytes[*offset..];
+            let written = unsafe {
+                libc::write(
+                    pty_fd,
+                    remaining.as_ptr().cast::<libc::c_void>(),
+                    remaining.len(),
+                )
+            };
+            if written > 0 {
+                *offset += written as usize;
+                if *offset == bytes.len() {
+                    pending_write = None;
+                }
+            } else if written == -1 {
+                let error = io::Error::last_os_error();
+                if !matches!(
+                    error.kind(),
+                    io::ErrorKind::Interrupted | io::ErrorKind::WouldBlock
+                ) {
+                    tracing::debug!(%error, session_id = %session.id, "PTY write failed");
+                    session.mark_exited(session.reap_exit_code(1));
+                    break;
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum PtyReadState {
+    Open,
+    Closed,
+}
+
+fn drain_pty_output(session: &Session, pty_fd: RawFd) -> PtyReadState {
+    let mut buffer = [0_u8; 8192];
+    // Bound each readiness turn so a continuously-chatty child cannot starve queued input.
+    for _ in 0..64 {
+        let read = unsafe {
+            libc::read(
+                pty_fd,
+                buffer.as_mut_ptr().cast::<libc::c_void>(),
+                buffer.len(),
+            )
+        };
+        if read > 0 {
+            session.record_output(&buffer[..read as usize]);
+            continue;
+        }
+        if read == 0 {
+            return PtyReadState::Closed;
+        }
+
+        let error = io::Error::last_os_error();
+        match error.kind() {
+            io::ErrorKind::Interrupted => continue,
+            io::ErrorKind::WouldBlock => return PtyReadState::Open,
+            _ => return PtyReadState::Closed,
+        }
+    }
+    PtyReadState::Open
+}
+
+fn try_child_exit_code(session: &Session) -> Option<i32> {
+    match session
+        .child
+        .lock()
+        .expect("PTY child lock poisoned")
+        .try_wait()
+    {
+        Ok(Some(status)) => Some(status.exit_code() as i32),
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(%error, session_id = %session.id, "failed to query PTY child status");
+            Some(1)
+        }
+    }
+}
+
 pub struct AttachedClient {
     session: Arc<Session>,
     client_id: ClientId,
@@ -709,7 +1020,7 @@ fn min_client_size(sizes: impl IntoIterator<Item = ClientSize>) -> Option<Client
 
 #[cfg(test)]
 mod handoff_tests {
-    use super::{BUILD_FINISHED_MIN_WORKING_MS, Session};
+    use super::{BUILD_FINISHED_MIN_WORKING_MS, PtyWriteError, Session};
     use shelly_protocol::{
         AgentSource, AgentState, ClientId, ClientSize, ServerToClientMsg, now_ms,
     };
@@ -770,6 +1081,102 @@ mod handoff_tests {
             second_output
                 .windows(b"shared-input".len())
                 .any(|window| window == b"shared-input")
+        );
+    }
+
+    #[tokio::test]
+    async fn stuck_child_backpressures_without_blocking_or_false_exit_and_releases_pty() {
+        let cwd = tempfile::tempdir().expect("tempdir");
+        let size = ClientSize { cols: 80, rows: 24 };
+        let stuck = Session::spawn(
+            "stuck-reader".to_string(),
+            vec![
+                "/bin/sh".to_string(),
+                "-c".to_string(),
+                "trap '' HUP TERM; while :; do sleep 60; done".to_string(),
+            ],
+            cwd.path().to_path_buf(),
+            HashMap::new(),
+            size,
+            None,
+            None,
+        )
+        .expect("spawn child that never reads PTY input");
+        let responsive = Session::spawn(
+            "responsive-reader".to_string(),
+            vec![
+                "/bin/sh".to_string(),
+                "-c".to_string(),
+                "while IFS= read -r line; do printf 'responsive:%s\\n' \"$line\"; done".to_string(),
+            ],
+            cwd.path().to_path_buf(),
+            HashMap::new(),
+            size,
+            None,
+            None,
+        )
+        .expect("spawn responsive session");
+        let _responsive_kill = KillOnDrop(Arc::clone(&responsive));
+
+        let payload = vec![b'x'; 32 * 1024];
+        let mut saw_backpressure = false;
+        for _ in 0..10_000 {
+            match stuck.write_input(&payload) {
+                Ok(()) => {}
+                Err(PtyWriteError::Backpressure) => {
+                    saw_backpressure = true;
+                    break;
+                }
+                Err(error) => panic!("unexpected stuck-child write error: {error}"),
+            }
+        }
+        assert!(
+            saw_backpressure,
+            "bounded PTY queue never reported backpressure"
+        );
+
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        assert_eq!(
+            stuck.exit_code(),
+            None,
+            "EWOULDBLOCK must not be mistaken for PTY exit"
+        );
+        assert!(stuck.io_thread_running_for_test());
+
+        let mut responsive_rx = responsive.subscribe();
+        responsive
+            .write_input(b"still-live\n")
+            .expect("another session remains writable");
+        let output = collect_until_marker(&mut responsive_rx, b"responsive:still-live").await;
+        assert!(
+            output
+                .windows(b"responsive:still-live".len())
+                .any(|window| window == b"responsive:still-live")
+        );
+
+        let pty_fd = stuck.pty_fd_for_test();
+        let weak_stuck = Arc::downgrade(&stuck);
+        stuck.kill().expect("kill stuck PTY process group");
+        timeout(Duration::from_secs(5), async {
+            while stuck.io_thread_running_for_test() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("PTY I/O thread should stop after kill");
+        drop(stuck);
+        timeout(Duration::from_secs(2), async {
+            while weak_stuck.upgrade().is_some() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("stuck session should release its PTY owner");
+
+        assert_eq!(unsafe { libc::fcntl(pty_fd, libc::F_GETFD) }, -1);
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::EBADF)
         );
     }
 
@@ -1121,7 +1528,7 @@ mod handoff_tests {
             let mut output = Vec::new();
             loop {
                 match rx.recv().await.expect("session subscriber alive") {
-                    ServerToClientMsg::Output { bytes, .. } => output.extend(bytes),
+                    ServerToClientMsg::Output { bytes, .. } => output.extend_from_slice(&bytes),
                     ServerToClientMsg::SessionExited { exit_code, .. } => {
                         panic!("session exited before marker with code {exit_code}");
                     }

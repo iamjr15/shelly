@@ -6,7 +6,6 @@ mod logging;
 mod pairing;
 mod paths;
 mod persistence;
-mod privacy_tracing;
 mod push;
 mod ring;
 mod session;
@@ -15,6 +14,7 @@ mod terminal_model;
 mod transport_iroh;
 
 use anyhow::Result;
+use std::sync::Arc;
 
 pub(crate) const SERVICE: &str = "app.shelly";
 
@@ -32,9 +32,35 @@ async fn main() -> Result<()> {
     }
 
     let config = config::Config::load()?;
-    let _logging = logging::init(&config)?;
+    let logging = logging::init(&config)?;
+    let state = Arc::new(ipc::AppState::open(&config)?);
 
-    ipc::serve(config).await
+    let result = tokio::select! {
+        result = ipc::serve(Arc::clone(&state)) => result,
+        signal = shutdown_signal() => {
+            let signal = signal?;
+            tracing::info!(signal, "shutting down daemon");
+            state.flush_dirty_sessions().await
+        }
+    };
+    drop(logging);
+    result
+}
+
+#[cfg(unix)]
+async fn shutdown_signal() -> Result<&'static str> {
+    let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    tokio::select! {
+        _ = interrupt.recv() => Ok("SIGINT"),
+        _ = terminate.recv() => Ok("SIGTERM"),
+    }
+}
+
+#[cfg(not(unix))]
+async fn shutdown_signal() -> Result<&'static str> {
+    tokio::signal::ctrl_c().await?;
+    Ok("interrupt")
 }
 
 #[cfg(unix)]

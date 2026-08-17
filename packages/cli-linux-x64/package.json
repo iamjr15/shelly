@@ -8,6 +8,9 @@
   "cpu": [
     "x64"
   ],
+  "libc": [
+    "glibc"
+  ],
   "files": [
     "bin/shelly",
     "bin/shellyd",

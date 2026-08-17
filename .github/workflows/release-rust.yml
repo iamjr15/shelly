@@ -56,11 +56,11 @@ jobs:
 
       - name: Build Darwin
         if: matrix.build == 'cargo'
-        run: cargo build --release --target ${{ matrix.target }} -p shelly-cli -p shelly-daemon -p shelly-relay
+        run: cargo build --locked --release --target ${{ matrix.target }} -p shelly-cli -p shelly-daemon -p shelly-relay
 
       - name: Build Linux
         if: matrix.build == 'zigbuild'
-        run: cargo zigbuild --release --target ${{ matrix.target }} -p shelly-cli -p shelly-daemon -p shelly-relay
+        run: cargo zigbuild --locked --release --target ${{ matrix.target }} -p shelly-cli -p shelly-daemon -p shelly-relay
 
       - name: Ad-hoc sign Darwin CLI and daemon
         if: startsWith(matrix.target, 'aarch64-apple') || startsWith(matrix.target, 'x86_64-apple')

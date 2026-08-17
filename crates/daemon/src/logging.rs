@@ -1,5 +1,6 @@
-use crate::{config::Config, privacy_tracing::PrivacySanitizerLayer};
+use crate::config::Config;
 use anyhow::{Context, Result};
+use shelly_privacy_tracing::PrivacySanitizerLayer;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use tracing_appender::non_blocking::WorkerGuard;
@@ -14,9 +15,8 @@ pub struct LoggingGuard {
 pub fn init(config: &Config) -> Result<LoggingGuard> {
     let log_dir = config.log_dir.clone().unwrap_or_else(default_log_dir);
     std::fs::create_dir_all(&log_dir).context("create daemon log directory")?;
-    prune_old_log_files(&log_dir, SystemTime::now()).context("prune old daemon logs")?;
 
-    let file_appender = tracing_appender::rolling::daily(log_dir, "daemon.log");
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "daemon.log");
     let (writer, guard) = tracing_appender::non_blocking(file_appender);
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_writer(writer)
@@ -27,6 +27,7 @@ pub fn init(config: &Config) -> Result<LoggingGuard> {
         .with(fmt_layer)
         .with(PrivacySanitizerLayer)
         .init();
+    prune_old_log_files(&log_dir, SystemTime::now());
 
     Ok(LoggingGuard { _guard: guard })
 }
@@ -47,14 +48,25 @@ fn default_log_dir() -> PathBuf {
     home.join(".local").join("state").join("shelly")
 }
 
-fn prune_old_log_files(log_dir: &Path, now: SystemTime) -> Result<()> {
+fn prune_old_log_files(log_dir: &Path, now: SystemTime) {
     let cutoff = now
         .checked_sub(LOG_RETENTION)
         .unwrap_or(SystemTime::UNIX_EPOCH);
-    for entry in
-        std::fs::read_dir(log_dir).with_context(|| format!("read {}", log_dir.display()))?
-    {
-        let entry = entry?;
+    let entries = match std::fs::read_dir(log_dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            tracing::warn!(%error, path = %log_dir.display(), "failed to scan old daemon logs");
+            return;
+        }
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                tracing::warn!(%error, path = %log_dir.display(), "failed to read daemon log directory entry");
+                continue;
+            }
+        };
         let path = entry.path();
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
@@ -62,15 +74,29 @@ fn prune_old_log_files(log_dir: &Path, now: SystemTime) -> Result<()> {
         if !name.starts_with("daemon.log") {
             continue;
         }
-        let metadata = entry.metadata()?;
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                tracing::warn!(%error, path = %path.display(), "failed to read daemon log metadata");
+                continue;
+            }
+        };
         if !metadata.is_file() {
             continue;
         }
-        if metadata.modified()? < cutoff {
-            std::fs::remove_file(&path).with_context(|| format!("remove {}", path.display()))?;
+        let modified = match metadata.modified() {
+            Ok(modified) => modified,
+            Err(error) => {
+                tracing::warn!(%error, path = %path.display(), "failed to read daemon log modification time");
+                continue;
+            }
+        };
+        if modified < cutoff
+            && let Err(error) = std::fs::remove_file(&path)
+        {
+            tracing::warn!(%error, path = %path.display(), "failed to prune old daemon log");
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -101,7 +127,7 @@ mod tests {
         set_modified(&exact_boundary, now - LOG_RETENTION);
         set_modified(&other, now - Duration::from_secs(8 * 24 * 60 * 60));
 
-        prune_old_log_files(dir.path(), now).unwrap();
+        prune_old_log_files(dir.path(), now);
 
         assert!(!expired.exists());
         assert!(retained.exists());

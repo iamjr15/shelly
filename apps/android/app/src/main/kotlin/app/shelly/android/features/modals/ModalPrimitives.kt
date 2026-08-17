@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -54,7 +56,6 @@ import app.shelly.android.ui.theme.mutedInk
 import app.shelly.android.ui.theme.shellyPressScale
 
 private val PaperDanger = Color(0xFFA12E27)
-private const val PaperScrimAlpha = 0.7019608f
 
 private val ModalLineBox = LineHeightStyle(
     alignment = LineHeightStyle.Alignment.Center,
@@ -148,6 +149,7 @@ internal fun ShellyModalCard(
 
     Column(
         modifier
+            .navigationBarsPadding()
             .padding(horizontal = 16.dp)
             .widthIn(max = 356.dp)
             .fillMaxWidth()
@@ -214,6 +216,7 @@ internal fun ShellyModalCard(
                 .clickable(
                     interactionSource = primaryInteractionSource,
                     indication = null,
+                    role = Role.Button,
                     onClick = onConfirm,
                 )
                 .padding(horizontal = 16.dp),
@@ -239,6 +242,7 @@ internal fun ShellyModalCard(
                 .clickable(
                     interactionSource = secondaryInteractionSource,
                     indication = null,
+                    role = Role.Button,
                     onClick = onDismiss,
                 ),
             contentAlignment = Alignment.Center,
@@ -249,27 +253,6 @@ internal fun ShellyModalCard(
                 color = mutedInk.copy(alpha = 0.65f),
                 maxLines = 1,
             )
-        }
-    }
-}
-
-@Composable
-internal fun ModalPreviewScaffold(content: @Composable () -> Unit) {
-    Box(Modifier.fillMaxSize().background(ShellyTheme.colors.screen)) {
-        ModalBackdrop()
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(Color(0xFF0B0D0C).copy(alpha = PaperScrimAlpha)),
-        )
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 28.dp),
-        ) {
-            content()
         }
     }
 }
@@ -350,27 +333,4 @@ internal fun TrashIcon(color: Color, modifier: Modifier = Modifier) {
             lineTo(18f * sx, 6f * sy)
         }
     }
-}
-
-@Composable
-private fun ModalBackdrop() {
-    ShellyScreen(
-        hero = {
-            SettingsHeroBody(
-                eyebrow = "YOUR PREFERENCES\nLIVE ON THIS DEVICE",
-                wordmark = "PREFS",
-                status = "paired with dev-macbook",
-                statusGlyph = SettingsGlyph.Monitor,
-                onBack = {},
-            )
-        },
-        content = {
-            SettingsListRow("Appearance", "SYSTEM", glyph = SettingsGlyph.Sun, onClick = {})
-            SettingsListRow("Notifications", "ON", glyph = SettingsGlyph.Bell, onClick = {})
-            SettingsListRow("Security", "5 MIN", glyph = SettingsGlyph.Lock, onClick = {})
-            SettingsListRow("About", "V1.0", glyph = SettingsGlyph.Info, showDivider = false, onClick = {})
-            Spacer(Modifier.weight(1f))
-            SettingsFooterAction("Unpair this device", onClick = {})
-        },
-    )
 }

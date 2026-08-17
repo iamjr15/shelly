@@ -537,6 +537,41 @@ class TerminalControllerTest {
     }
 
     @Test
+    fun detachDuringReconnectNeverTouchesDestroyedUniFfiAttachment() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val reattachStarted = CompletableDeferred<Unit>()
+        val releaseReattach = CompletableDeferred<Unit>()
+        val destroyedAttachment = FakeAttachedSession(
+            lastSeenSeq = 19UL,
+            throwAfterDestroy = true,
+        )
+        val controller = TerminalController(
+            session = testSession(),
+            initialAttachedSession = destroyedAttachment,
+            scope = scope,
+            inputGate = { true },
+            reattach = {
+                reattachStarted.complete(Unit)
+                releaseReattach.await()
+                error("reattach stopped after detach")
+            },
+            recordLastSeenSeq = {},
+            recordTelemetryExperience = {},
+            terminalWriterForTests = {},
+        )
+
+        controller.onLag(1UL)
+        withTimeout(1_000) { reattachStarted.await() }
+
+        controller.detach()
+        releaseReattach.complete(Unit)
+
+        assertEquals(1, destroyedAttachment.detachCalls)
+        assertEquals(1, destroyedAttachment.destroyCalls)
+        scope.cancel()
+    }
+
+    @Test
     fun detachedControllerIgnoresStaleInputAndStreamCallbacks() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val attached = FakeAttachedSession(lastSeenSeq = 13UL)
@@ -625,7 +660,9 @@ class TerminalControllerTest {
         private val sendInputFailure: Throwable? = null,
         private val resizeFailure: Throwable? = null,
         private val onSubscribe: (suspend () -> Unit)? = null,
+        private val throwAfterDestroy: Boolean = false,
     ) : AttachedSession(NoHandle) {
+        private var destroyed = false
         var detachCalls = 0
             private set
         var destroyCalls = 0
@@ -637,29 +674,43 @@ class TerminalControllerTest {
             private set
 
         override suspend fun detach() {
+            ensureAlive()
             detachCalls += 1
         }
 
         override fun destroy() {
             destroyCalls += 1
+            destroyed = true
         }
 
-        override fun lastSeenSeq(): ULong = lastSeenSeq
+        override fun lastSeenSeq(): ULong {
+            ensureAlive()
+            return lastSeenSeq
+        }
 
         override suspend fun resize(cols: UShort, rows: UShort) {
+            ensureAlive()
             resizeFailure?.let { throw it }
             resizeCalls += cols to rows
         }
 
         override suspend fun sendInput(bytes: ByteArray) {
+            ensureAlive()
             sendInputFailure?.let { throw it }
             lastInput = bytes
         }
 
         override suspend fun subscribe(sink: ByteStreamSink) {
+            ensureAlive()
             subscribeCalls += 1
             onSubscribe?.invoke()
             subscribeFailure?.let { throw it }
+        }
+
+        private fun ensureAlive() {
+            if (throwAfterDestroy && destroyed) {
+                throw IllegalStateException("UniFFI handle used after destroy")
+            }
         }
     }
 }

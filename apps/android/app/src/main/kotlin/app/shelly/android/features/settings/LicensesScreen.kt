@@ -80,14 +80,3 @@ private fun LicensesContent(
         },
     )
 }
-
-@Composable
-internal fun LicensesContentPreview() {
-    LicensesContent(
-        onBack = {},
-        dependencyCount = licenseDependencyCount,
-        appLicense = "AGPL-3.0-or-later",
-        rows = defaultLicenseRows,
-        onOpenLicense = {},
-    )
-}

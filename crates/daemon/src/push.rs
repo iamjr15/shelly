@@ -12,7 +12,10 @@ use ed25519_dalek::{Signer, SigningKey};
 use reqwest::StatusCode;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use shelly_protocol::{PushPlatform, SessionId, canonical_request, now_ms};
+use shelly_protocol::{
+    PairingRendezvous, PushPlatform, SessionId, SignatureVersion, canonical_request_v2, now_ms,
+    signature_header,
+};
 use std::{error::Error as StdError, fmt, future::Future, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 use tokio::time::{Instant, sleep, timeout_at};
@@ -86,25 +89,23 @@ impl PushDispatcher {
         self.send(PushCommand::RegisterToken { platform, token });
     }
 
-    /// Best-effort publish of a pairing code and its opaque reachability blob to
-    /// the relay rendezvous endpoint so the typed-code path can resolve it.
+    /// Best-effort publish of a code-free reachability record under its SHA-256
+    /// locator so the typed-code path can resolve it.
     ///
     /// No-op (with a debug log) when the relay control URL is unset; any relay
     /// failure is logged as a warning and dropped so the QR path keeps working.
-    pub(crate) fn publish_pairing_code(
+    pub(crate) fn publish_pairing_rendezvous(
         &self,
-        code: String,
-        ticket_blob: String,
-        expires_at_ms: u64,
+        locator: String,
+        rendezvous: PairingRendezvous,
     ) {
         if self.tx.is_none() {
-            debug!("relay control URL unset; skipping pairing-code publish");
+            debug!("relay control URL unset; skipping pairing rendezvous publish");
             return;
         }
-        self.send(PushCommand::PublishPairingCode {
-            code,
-            ticket_blob,
-            expires_at_ms,
+        self.send(PushCommand::PublishPairingRendezvous {
+            locator,
+            rendezvous,
         });
     }
 
@@ -161,10 +162,9 @@ pub(crate) enum PushCommand {
     UnregisterToken {
         token: String,
     },
-    PublishPairingCode {
-        code: String,
-        ticket_blob: String,
-        expires_at_ms: u64,
+    PublishPairingRendezvous {
+        locator: String,
+        rendezvous: PairingRendezvous,
     },
     AwaitingInput {
         session_id: SessionId,
@@ -246,14 +246,10 @@ impl PushWorker {
                     self.register_token(platform, token).await
                 }
                 PushCommand::UnregisterToken { token } => self.unregister_token(token).await,
-                PushCommand::PublishPairingCode {
-                    code,
-                    ticket_blob,
-                    expires_at_ms,
-                } => {
-                    self.publish_pairing_code(code, ticket_blob, expires_at_ms)
-                        .await
-                }
+                PushCommand::PublishPairingRendezvous {
+                    locator,
+                    rendezvous,
+                } => self.publish_pairing_rendezvous(locator, rendezvous).await,
                 PushCommand::AwaitingInput {
                     session_id,
                     session_name,
@@ -360,26 +356,24 @@ impl PushWorker {
         .await
     }
 
-    async fn publish_pairing_code(
+    async fn publish_pairing_rendezvous(
         &mut self,
-        code: String,
-        ticket_blob: String,
-        expires_at_ms: u64,
+        locator: String,
+        rendezvous: PairingRendezvous,
     ) -> Result<()> {
         let daemon_node_id = self.ensure_daemon_registered().await?;
         let worker = &*self;
-        retry_relay_operation(self.retry, "publish pairing code", || {
+        retry_relay_operation(self.retry, "publish pairing rendezvous", || {
             let daemon_node_id = daemon_node_id.clone();
-            let code = code.clone();
-            let ticket_blob = ticket_blob.clone();
+            let locator = locator.clone();
+            let rendezvous = rendezvous.clone();
             async move {
                 let nonce = nonce();
                 let ts_ms = now_ms();
-                let body = PublishPairingCodeRequest {
+                let body = PublishPairingRendezvousRequest {
                     daemon_node_id,
-                    code,
-                    ticket_blob,
-                    expires_at_ms,
+                    locator,
+                    rendezvous,
                     nonce: nonce.clone(),
                     ts_ms,
                 };
@@ -394,7 +388,7 @@ impl PushWorker {
     async fn dispatch_session_event(
         &mut self,
         session_id: SessionId,
-        session_name: &str,
+        _session_name: &str,
         event_type: RelayPushEventType,
     ) -> Result<()> {
         let daemon_node_id = self.ensure_daemon_registered().await?;
@@ -413,13 +407,11 @@ impl PushWorker {
         let mut first_error = None;
         for (platform, recipient_token) in tokens {
             let session_id_hash = hash_for_push(&session_id.to_string());
-            let session_name_hash = hash_for_push(session_name);
             let worker = &*self;
             let result = retry_relay_operation(self.retry, event_type.dispatch_operation(), || {
                 let daemon_node_id = daemon_node_id.clone();
                 let recipient_token = recipient_token.clone();
                 let session_id_hash = session_id_hash.clone();
-                let session_name_hash = session_name_hash.clone();
                 async move {
                     let nonce = nonce();
                     let ts_ms = now_ms();
@@ -428,7 +420,6 @@ impl PushWorker {
                         recipient_token,
                         platform: platform.into(),
                         session_id_hash,
-                        session_name_hash,
                         event_type,
                         nonce: nonce.clone(),
                         ts_ms,
@@ -478,7 +469,14 @@ impl PushWorker {
         ts_ms: u64,
     ) -> Result<()> {
         let body = serde_json::to_vec(body).context("encode push relay request")?;
-        let signature = sign(&self.signing_key, path, &body, nonce, ts_ms);
+        let signature = sign(
+            &self.signing_key,
+            &self.relay_url,
+            path,
+            &body,
+            nonce,
+            ts_ms,
+        );
         let response = self
             .client
             .post(self.url(path))
@@ -625,11 +623,10 @@ struct UnregisterTokenRequest {
 }
 
 #[derive(Serialize)]
-struct PublishPairingCodeRequest {
+struct PublishPairingRendezvousRequest {
     daemon_node_id: String,
-    code: String,
-    ticket_blob: String,
-    expires_at_ms: u64,
+    locator: String,
+    rendezvous: PairingRendezvous,
     nonce: String,
     ts_ms: u64,
 }
@@ -640,7 +637,6 @@ struct PushRequest {
     recipient_token: String,
     platform: RelayPushPlatform,
     session_id_hash: String,
-    session_name_hash: String,
     event_type: RelayPushEventType,
     nonce: String,
     ts_ms: u64,
@@ -681,9 +677,22 @@ impl RelayPushEventType {
     }
 }
 
-fn sign(key: &SigningKey, path: &str, body: &[u8], nonce: &str, ts_ms: u64) -> String {
-    let canonical = canonical_request("POST", path, body, nonce, ts_ms);
-    BASE64.encode(key.sign(canonical.as_bytes()).to_bytes())
+fn sign(
+    key: &SigningKey,
+    relay_audience: &str,
+    path: &str,
+    body: &[u8],
+    nonce: &str,
+    ts_ms: u64,
+) -> String {
+    // Clients switch directly to v2 only after the dual-stack relay is live.
+    // Do not add a v1 retry: an old relay must reject this cleanly so rollout
+    // ordering mistakes cannot silently remove the audience binding.
+    let canonical = canonical_request_v2(relay_audience, "POST", path, body, nonce, ts_ms);
+    signature_header(
+        SignatureVersion::V2,
+        &BASE64.encode(key.sign(&canonical).to_bytes()),
+    )
 }
 
 fn hash_for_push(value: &str) -> String {
@@ -760,6 +769,7 @@ mod tests {
         routing::post,
     };
     use ed25519_dalek::{Signature, Verifier};
+    use shelly_protocol::split_signature_header;
     use std::sync::Mutex;
     use tokio::time::{Duration, sleep, timeout};
 
@@ -772,20 +782,72 @@ mod tests {
     }
 
     #[test]
-    fn signed_request_matches_relay_canonical_form() {
+    fn signed_request_emits_v2_and_matches_relay_canonical_form() {
         let key = SigningKey::from_bytes(&[9; 32]);
         let body = br#"{"nonce":"nonce-for-signature","ts_ms":42}"#;
-        let signature = sign(&key, "/v1/push", body, "nonce-for-signature", 42);
-        let signature = Signature::from_slice(&BASE64.decode(signature).unwrap()).unwrap();
-        let canonical = canonical_request("POST", "/v1/push", body, "nonce-for-signature", 42);
-
-        assert_eq!(
-            canonical,
-            "POST\n/v1/push\n{\"nonce\":\"nonce-for-signature\",\"ts_ms\":42}\nnonce-for-signature\n42"
+        let audience = "https://relay.shelly.sh";
+        let signature = sign(&key, audience, "/v1/push", body, "nonce-for-signature", 42);
+        let (version, encoded_signature) = split_signature_header(&signature).unwrap();
+        let signature = Signature::from_slice(&BASE64.decode(encoded_signature).unwrap()).unwrap();
+        let canonical = canonical_request_v2(
+            audience,
+            "POST",
+            "/v1/push",
+            body,
+            "nonce-for-signature",
+            42,
         );
-        key.verifying_key()
-            .verify(canonical.as_bytes(), &signature)
-            .unwrap();
+
+        assert_eq!(version, SignatureVersion::V2);
+        key.verifying_key().verify(&canonical, &signature).unwrap();
+    }
+
+    #[tokio::test]
+    async fn new_daemon_v2_fails_cleanly_against_v1_only_relay() {
+        let request_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let app = Router::new()
+            .route("/v1/push/register-token", post(v1_only_relay))
+            .with_state(Arc::clone(&request_count));
+        let Some(listener) = bind_loopback_for_test().await else {
+            return;
+        };
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let (_tx, rx) = mpsc::unbounded_channel();
+        let worker = PushWorker {
+            client: relay_http_client().unwrap(),
+            relay_url: format!("http://{addr}"),
+            signing_key: SigningKey::from_bytes(&[9; 32]),
+            daemon_node_id: Some("daemon-node-a-1234567890".to_string()),
+            daemon_registered: true,
+            retry: RelayRetry::for_tests(),
+            devices: Arc::new(DashMap::new()),
+            rx,
+        };
+        let nonce = "nonce-v2-old-relay-failure";
+        let body = RegisterTokenRequest {
+            daemon_node_id: "daemon-node-a-1234567890".to_string(),
+            platform: RelayPushPlatform::Apns,
+            push_token: "apns-token-for-device-a".to_string(),
+            nonce: nonce.to_string(),
+            ts_ms: now_ms(),
+        };
+
+        let error = worker
+            .post_signed_json_once("/v1/push/register-token", &body, nonce, body.ts_ms)
+            .await
+            .unwrap_err();
+        let http = error.downcast_ref::<RelayHttpError>().unwrap();
+
+        assert_eq!(http.status, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            request_count.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "v2 rejection must not trigger a v1 fallback"
+        );
     }
 
     #[test]
@@ -929,7 +991,12 @@ mod tests {
             .iter()
             .find(|request| request.path == "/v1/push/register-token")
             .expect("token registration request");
-        assert!(token_registration.signature.is_some());
+        assert!(
+            token_registration
+                .signature
+                .as_deref()
+                .is_some_and(|signature| signature.starts_with("v2="))
+        );
         assert_eq!(token_registration.body["platform"], "apns");
         assert_eq!(
             token_registration.body["push_token"],
@@ -940,11 +1007,14 @@ mod tests {
             .iter()
             .find(|request| request.path == "/v1/push")
             .expect("push request");
-        assert!(push.signature.is_some());
+        assert!(
+            push.signature
+                .as_deref()
+                .is_some_and(|signature| signature.starts_with("v2="))
+        );
         assert_eq!(push.body["event_type"], "awaiting_input");
         assert_eq!(push.body["recipient_token"], "apns-token-for-device-a");
         assert_lowercase_hex_hash(push.body["session_id_hash"].as_str().unwrap());
-        assert_lowercase_hex_hash(push.body["session_name_hash"].as_str().unwrap());
         assert!(!push.body.to_string().contains("secret project shell"));
     }
 
@@ -1004,7 +1074,12 @@ mod tests {
             .iter()
             .find(|request| request.path == "/v1/push/unregister-token")
             .expect("token unregistration request");
-        assert!(unregister.signature.is_some());
+        assert!(
+            unregister
+                .signature
+                .as_deref()
+                .is_some_and(|signature| signature.starts_with("v2="))
+        );
         assert_eq!(
             unregister.body["push_token"],
             "apns-token-for-removed-device"
@@ -1224,6 +1299,24 @@ mod tests {
             _ => StatusCode::NOT_FOUND,
         };
         (status, axum::Json(serde_json::json!({ "ok": true })))
+    }
+
+    async fn v1_only_relay(
+        State(request_count): State<Arc<std::sync::atomic::AtomicUsize>>,
+        headers: HeaderMap,
+    ) -> impl IntoResponse {
+        request_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let is_bare_v1_signature = headers
+            .get("x-shelly-signature")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| BASE64.decode(value).ok())
+            .and_then(|bytes| Signature::from_slice(&bytes).ok())
+            .is_some();
+        if is_bare_v1_signature {
+            (StatusCode::CREATED, "")
+        } else {
+            (StatusCode::UNAUTHORIZED, "v1 signature required")
+        }
     }
 
     async fn capture_request_with_push_failure(

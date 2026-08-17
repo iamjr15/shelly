@@ -22,6 +22,8 @@ const DEVICES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("device
 const PLAINTEXT_PREFIX: &[u8] = b"FWP1\0";
 const DB_OPEN_LOCK_RETRY_ATTEMPTS: usize = 200;
 const DB_OPEN_LOCK_RETRY_DELAY: Duration = Duration::from_millis(100);
+pub(crate) const MAX_STORED_SESSIONS: usize = 256;
+const SESSION_RETENTION_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StoredSession {
@@ -232,6 +234,57 @@ impl Persistence {
         }
         sessions.sort_by_key(|session| session.summary.created_at);
         Ok(sessions)
+    }
+
+    /// Removes expired sessions and then retains only the newest bounded set.
+    /// `last_activity` mirrors a log file's modification time for the seven-day
+    /// retention window while preserving long-running sessions that are still active.
+    pub fn prune_sessions(&self, now: u64) -> Result<usize> {
+        self.prune_sessions_with_limit(now, MAX_STORED_SESSIONS)
+    }
+
+    fn prune_sessions_with_limit(&self, now: u64, max_sessions: usize) -> Result<usize> {
+        let cutoff = now.saturating_sub(SESSION_RETENTION_MS);
+        let write = self.db().begin_write().context("begin session prune")?;
+        let removed = {
+            let mut table = write
+                .open_table(SESSIONS_TABLE)
+                .context("open sessions table for prune")?;
+            let mut rows = Vec::new();
+            for row in table.iter().context("iterate sessions for prune")? {
+                let (key, value) = row.context("read session row for prune")?;
+                let last_activity = self
+                    .decode_payload(value.value())
+                    .and_then(|plaintext| {
+                        decode_bincode::<StoredSession>(&plaintext)
+                            .context("decode stored session for prune")
+                    })
+                    .ok()
+                    .map(|session| session.summary.last_activity);
+                rows.push((key.value().to_string(), last_activity));
+            }
+            rows.sort_by_key(|(_, last_activity)| std::cmp::Reverse(*last_activity));
+
+            let mut remove = Vec::new();
+            let mut retained = 0_usize;
+            for (key, last_activity) in rows {
+                let should_retain =
+                    last_activity.is_some_and(|value| value >= cutoff) && retained < max_sessions;
+                if should_retain {
+                    retained += 1;
+                } else {
+                    remove.push(key);
+                }
+            }
+            for key in &remove {
+                table
+                    .remove(key.as_str())
+                    .context("remove pruned session")?;
+            }
+            remove.len()
+        };
+        write.commit().context("commit session prune")?;
+        Ok(removed)
     }
 }
 
@@ -535,7 +588,10 @@ fn default_devices_db_path() -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEVICES_TABLE, Persistence, SESSIONS_TABLE, StoredDevice, StoredSession};
+    use super::{
+        DEVICES_TABLE, Persistence, SESSION_RETENTION_MS, SESSIONS_TABLE, StoredDevice,
+        StoredSession,
+    };
     use shelly_protocol::{AgentState, SessionId, SessionSummary, now_ms};
     use std::fs;
     use std::os::unix::fs::{PermissionsExt, symlink};
@@ -606,6 +662,48 @@ mod tests {
 
         let reopened = Persistence::open_with_key(&path, [16; 32]).expect("reopen persistence");
         assert!(reopened.load_sessions().unwrap().is_empty());
+    }
+
+    #[test]
+    fn pruning_sessions_applies_seven_day_age_and_newest_count_caps() {
+        let tmp = tempfile::tempdir().unwrap();
+        let persistence = Persistence::open_with_key(tmp.path().join("sessions.redb"), [24; 32])
+            .expect("open persistence");
+        let now = now_ms();
+        let sessions = [
+            stored_session_at("expired", now.saturating_sub(SESSION_RETENTION_MS + 1)),
+            stored_session_at("older-retained", now - 3_000),
+            stored_session_at("newer-retained", now - 2_000),
+            stored_session_at("newest-retained", now - 1_000),
+        ];
+        for session in &sessions {
+            persistence.save_session(session).unwrap();
+        }
+
+        assert_eq!(persistence.prune_sessions_with_limit(now, 2).unwrap(), 2);
+        let loaded = persistence.load_sessions().unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].summary.name, "newer-retained");
+        assert_eq!(loaded[1].summary.name, "newest-retained");
+    }
+
+    fn stored_session_at(name: &str, last_activity: u64) -> StoredSession {
+        StoredSession {
+            summary: SessionSummary {
+                id: SessionId::new(),
+                name: name.to_string(),
+                command: vec!["bash".to_string()],
+                cwd: PathBuf::from("/tmp"),
+                created_at: last_activity,
+                last_activity,
+                state: AgentState::Idle,
+                last_line: None,
+                model: None,
+            },
+            scrollback_start_seq: 0,
+            scrollback: Vec::new(),
+            exit_code: Some(0),
+        }
     }
 
     #[test]

@@ -133,6 +133,8 @@ object ShellyPushNotifications {
         }
         ensureChannels(context)
         val sessionIdHash = data[EXTRA_SESSION_ID_HASH]?.takeIf(::isSessionIdHash) ?: return
+        val eventType = data[DATA_EVENT_TYPE] ?: return
+        val notificationId = notificationId(sessionIdHash, eventType)
         val intent = Intent(context, MainActivity::class.java).apply {
             action = ACTION_OPEN_SESSION
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -140,7 +142,7 @@ object ShellyPushNotifications {
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
-            notificationId(sessionIdHash),
+            notificationId,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -154,7 +156,7 @@ object ShellyPushNotifications {
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
             .build()
-        NotificationManagerCompat.from(context).notify(notificationId(sessionIdHash), notification)
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
     }
 
     private fun canPostNotifications(context: Context): Boolean {
@@ -163,8 +165,8 @@ object ShellyPushNotifications {
             PackageManager.PERMISSION_GRANTED
     }
 
-    private fun notificationId(sessionIdHash: String): Int {
-        return sessionIdHash.hashCode()
+    internal fun notificationId(sessionIdHash: String, eventType: String): Int {
+        return "$eventType:$sessionIdHash".hashCode()
     }
 
     internal fun isSessionIdHash(value: String): Boolean {

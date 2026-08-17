@@ -1,15 +1,18 @@
 package app.shelly.android.core
 
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.shelly.android.push.FcmTokenRegistrar
 import app.shelly.android.push.ShellyPushNotifications
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,12 +20,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import uniffi.shelly_mobile_core.AttachedSession
+import uniffi.shelly_mobile_core.ShellyException
 
 data class ShellyUiState(
     val unlocked: Boolean = false,
@@ -32,12 +41,14 @@ data class ShellyUiState(
     val loading: Boolean = false,
     val message: ShellyAlertMessage? = null,
     val pairingError: PairingErrorMessage? = null,
+    val pendingPairingSas: String? = null,
     val pairedDaemon: PairedDaemonRecord? = null,
     val targetSession: MobileSession? = null,
     val terminalTabs: List<MobileSession> = emptyList(),
     val activeTerminalSessionId: String? = null,
     val telemetryConsentPromptVisible: Boolean = false,
     val connectionState: ConnectionState = ConnectionState.Connected,
+    val pairingRevoked: Boolean = false,
 )
 
 internal interface FcmTokenSource {
@@ -63,8 +74,10 @@ class ShellyViewModel internal constructor(
     context: Context,
     private val repository: ShellyRepositoryClient,
     private val fcmTokens: FcmTokenSource,
+    private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
     private val restoreDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val repositoryDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val cleanupScope: CoroutineScope = ANDROID_CLEANUP_SCOPE,
     private val sessionSubscriptionRetryDelayMillis: Long = 750L,
     private val backgroundDetachGraceMillis: Long = 5 * 60 * 1000L,
     private val maxRetryDelayMillis: Long = 30_000L,
@@ -72,7 +85,12 @@ class ShellyViewModel internal constructor(
     private val unreachableRetryIntervalMillis: Long = 15_000L,
     private val now: () -> Long = { System.currentTimeMillis() },
 ) : ViewModel() {
-    constructor(context: Context) : this(context, ShellyRepository(context), AndroidFcmTokenSource)
+    constructor(context: Context, savedStateHandle: SavedStateHandle = SavedStateHandle()) : this(
+        context,
+        ShellyRepository(context),
+        AndroidFcmTokenSource,
+        savedStateHandle,
+    )
 
     private val appContext = context.applicationContext
     private val _state = MutableStateFlow(ShellyUiState())
@@ -83,9 +101,15 @@ class ShellyViewModel internal constructor(
     private val retrySignal = Channel<Unit>(Channel.RENDEZVOUS)
     private var restoreJob: Job? = null
     private var pairJob: Job? = null
+    private var pendingPairing: PendingPairingClient? = null
     private var unpairJob: Job? = null
     private var backgroundDetachJob: Job? = null
     private var restoreGeneration = 0
+    private val liveControllers = ConcurrentHashMap.newKeySet<TerminalController>()
+    private var restoredTerminalSessionIds =
+        savedStateHandle.get<ArrayList<String>>(SAVED_TERMINAL_SESSION_IDS)?.toList().orEmpty()
+    private var restoredActiveTerminalSessionId =
+        savedStateHandle.get<String>(SAVED_ACTIVE_TERMINAL_SESSION_ID)
     val state: StateFlow<ShellyUiState> = _state.asStateFlow()
 
     init {
@@ -106,6 +130,7 @@ class ShellyViewModel internal constructor(
         if (!unlocked) {
             if (previous.unlocked) {
                 stopSessionSubscription()
+                persistTerminalState(emptyList(), null)
             }
             return
         }
@@ -124,8 +149,8 @@ class ShellyViewModel internal constructor(
         runPairing { repository.pairWithCode(code) }
     }
 
-    private fun runPairing(pairAction: suspend () -> Unit) {
-        if (_state.value.loading) {
+    private fun runPairing(pairAction: suspend () -> PendingPairingClient) {
+        if (_state.value.loading || pendingPairing != null) {
             return
         }
         restoreGeneration += 1
@@ -137,28 +162,26 @@ class ShellyViewModel internal constructor(
                 loading = true,
                 message = null,
                 pairingError = null,
+                pendingPairingSas = null,
+                pairingRevoked = false,
             )
         }
         pairJob = viewModelScope.launch {
             try {
                 unpairJob?.join()
                 unpairJob = null
-                withContext(repositoryDispatcher) {
+                val pending = withContext(repositoryDispatcher) {
                     pairAction()
                 }
-                val pairedDaemon = repository.savedPairing
+                pendingPairing = pending
                 _state.update {
                     it.copy(
-                        paired = true,
-                        pairedDaemon = pairedDaemon,
+                        loading = false,
+                        pendingPairingSas = pending.sas,
                         message = null,
                         pairingError = null,
+                        pairingRevoked = false,
                     )
-                }
-                if (_state.value.unlocked) {
-                    startSessionSubscription()
-                    loadSessions()
-                    syncFcmToken()
                 }
             } catch (error: Throwable) {
                 if (error is CancellationException) {
@@ -168,6 +191,60 @@ class ShellyViewModel internal constructor(
                     it.copy(
                         message = null,
                         pairingError = pairingErrorMessage(error),
+                        pendingPairingSas = null,
+                    )
+                }
+            } finally {
+                _state.update { it.copy(loading = false) }
+            }
+        }
+    }
+
+    fun confirmPairing() {
+        val pending = pendingPairing ?: return
+        if (_state.value.loading) {
+            return
+        }
+        _state.update {
+            it.copy(
+                loading = true,
+                pendingPairingSas = null,
+                message = null,
+                pairingError = null,
+            )
+        }
+        pairJob = viewModelScope.launch {
+            try {
+                withContext(repositoryDispatcher) {
+                    pending.confirm()
+                }
+                pendingPairing = null
+                val pairedDaemon = repository.savedPairing
+                    ?: error("confirmed pairing was not persisted by the repository")
+                _state.update {
+                    it.copy(
+                        paired = true,
+                        pairedDaemon = pairedDaemon,
+                        message = null,
+                        pairingError = null,
+                        pairingRevoked = false,
+                    )
+                }
+                if (_state.value.unlocked) {
+                    startSessionSubscription()
+                    loadSessions()
+                    syncFcmToken()
+                }
+            } catch (error: Throwable) {
+                pendingPairing = null
+                if (error is CancellationException) {
+                    throw error
+                }
+                _state.update {
+                    it.copy(
+                        message = null,
+                        pairingError = pairingErrorMessage(error),
+                        pendingPairingSas = null,
                     )
                 }
             } finally {
@@ -179,7 +256,23 @@ class ShellyViewModel internal constructor(
     fun cancelPairing() {
         pairJob?.cancel()
         pairJob = null
-        _state.update { it.copy(loading = false, pairingError = null) }
+        val pending = pendingPairing
+        pendingPairing = null
+        _state.update {
+            it.copy(
+                loading = false,
+                pairingError = null,
+                pendingPairingSas = null,
+            )
+        }
+        if (pending != null) {
+            pairJob = viewModelScope.launch {
+                withContext(repositoryDispatcher) {
+                    runCatching { pending.cancel() }
+                        .onFailure { debugLog("could not close cancelled pairing", it, VIEW_MODEL_LOG_TAG) }
+                }
+            }
+        }
     }
 
     fun refreshSessions() {
@@ -240,7 +333,8 @@ class ShellyViewModel internal constructor(
             val attached = withContext(repositoryDispatcher) {
                 repository.attach(session.id).also { pendingAttach.set(it) }
             }
-            return TerminalController(
+            lateinit var controller: TerminalController
+            controller = TerminalController(
                 session = session,
                 initialAttachedSession = attached,
                 scope = viewModelScope,
@@ -252,11 +346,16 @@ class ShellyViewModel internal constructor(
                 },
                 recordLastSeenSeq = { seq -> repository.recordLastSeenSeq(session.id, seq) },
                 recordTelemetryExperience = ::recordTelemetryExperience,
-            ).also { it.start() }
+                detachScope = cleanupScope,
+                onDetached = { liveControllers.remove(controller) },
+            )
+            liveControllers += controller
+            return controller.also { it.start() }
         } catch (error: CancellationException) {
             pendingAttach.get()?.let { attached ->
                 withContext(NonCancellable + repositoryDispatcher) {
                     runCatching { attached.detach() }
+                        .onFailure { debugLog("canceled attach cleanup failed", it, VIEW_MODEL_LOG_TAG) }
                     attached.destroy()
                 }
             }
@@ -267,7 +366,6 @@ class ShellyViewModel internal constructor(
     fun unpair() {
         val wasPaired = _state.value.paired
         val wasUnlocked = _state.value.unlocked
-        val pendingToken = fcmTokens.pendingToken(appContext)
         restoreGeneration += 1
         restoreJob?.cancel()
         restoreJob = null
@@ -277,21 +375,32 @@ class ShellyViewModel internal constructor(
             unlocked = wasUnlocked,
             restoringPairing = false,
         )
+        persistTerminalState(emptyList(), null)
         unpairJob = viewModelScope.launch {
             try {
-                if (wasPaired && wasUnlocked) {
-                    withTimeoutOrNull(5_000L) {
-                        val tokens = listOfNotNull(pendingToken, currentFcmTokenOrNull()).distinct()
-                        for (token in tokens) {
-                            unregisterFcmTokenQuietly(token)
+                if (wasPaired) {
+                    withContext(repositoryDispatcher) {
+                        val tokens = listOfNotNull(
+                            fcmTokens.pendingToken(appContext),
+                            currentFcmTokenOrNull(),
+                        ).distinct()
+                        repository.persistPushUnregisterTombstone(tokens)
+                        withTimeoutOrNull(PUSH_CLEANUP_TIMEOUT_MILLIS) {
+                            for (token in tokens) {
+                                unregisterPersistedFcmToken(token)
+                            }
+                            unpairSelfBestEffort()
                         }
-                        fcmTokens.deleteCurrentToken(appContext)
                     }
                 }
             } finally {
-                fcmTokens.restorePrivacyDefault(appContext)
-                fcmTokens.clearPendingToken(appContext)
-                repository.clear()
+                withContext(NonCancellable + repositoryDispatcher) {
+                    runCatching { fcmTokens.deleteCurrentToken(appContext) }
+                        .onFailure { debugLog("could not delete FCM token during unpair", it, VIEW_MODEL_LOG_TAG) }
+                    fcmTokens.restorePrivacyDefault(appContext)
+                    fcmTokens.clearPendingToken(appContext)
+                    repository.clear()
+                }
             }
         }
     }
@@ -328,6 +437,7 @@ class ShellyViewModel internal constructor(
                 activeTerminalSessionId = session.id,
             )
         }
+        persistCurrentTerminalState()
     }
 
     fun closeTerminalTab(sessionId: String) {
@@ -349,6 +459,7 @@ class ShellyViewModel internal constructor(
                 activeTerminalSessionId = nextActiveId,
             )
         }
+        persistCurrentTerminalState()
     }
 
     fun closeTerminalSession() {
@@ -358,6 +469,7 @@ class ShellyViewModel internal constructor(
                 activeTerminalSessionId = null,
             )
         }
+        persistTerminalState(emptyList(), null)
     }
 
     fun onAppBackgrounded() {
@@ -381,15 +493,13 @@ class ShellyViewModel internal constructor(
         if (!_state.value.paired || !_state.value.unlocked) {
             return
         }
-        viewModelScope.launch {
+        viewModelScope.launch(repositoryDispatcher) {
             val pendingToken = fcmTokens.pendingToken(appContext)
             val tokens = listOfNotNull(pendingToken, fcmTokens.currentToken(appContext, enableAutoInit = true))
                 .distinct()
             for (token in tokens) {
                 try {
-                    withContext(repositoryDispatcher) {
-                        repository.registerFcmToken(token)
-                    }
+                    repository.registerFcmToken(token)
                     if (token == pendingToken) {
                         fcmTokens.clearPendingToken(appContext, token)
                     }
@@ -397,6 +507,7 @@ class ShellyViewModel internal constructor(
                     if (error is CancellationException) {
                         throw error
                     }
+                    debugLog("FCM token registration deferred", error, VIEW_MODEL_LOG_TAG)
                 }
             }
         }
@@ -410,19 +521,28 @@ class ShellyViewModel internal constructor(
             syncFcmToken()
             return
         }
-        if (!_state.value.paired) {
-            return
-        }
-        val pendingToken = fcmTokens.pendingToken(appContext)
+        val wasPaired = _state.value.paired
         viewModelScope.launch {
             try {
-                val tokens = listOfNotNull(pendingToken, currentFcmTokenOrNull()).distinct()
-                for (token in tokens) {
-                    unregisterFcmTokenQuietly(token)
+                withContext(repositoryDispatcher) {
+                    val tokens = listOfNotNull(
+                        fcmTokens.pendingToken(appContext),
+                        currentFcmTokenOrNull(),
+                    ).distinct()
+                    if (wasPaired) {
+                        repository.persistPushUnregisterTombstone(tokens)
+                        for (token in tokens) {
+                            unregisterPersistedFcmToken(token)
+                        }
+                    }
                 }
-                fcmTokens.deleteCurrentToken(appContext)
             } finally {
-                fcmTokens.restorePrivacyDefault(appContext)
+                withContext(NonCancellable + repositoryDispatcher) {
+                    runCatching { fcmTokens.deleteCurrentToken(appContext) }
+                        .onFailure { debugLog("could not delete disabled FCM token", it, VIEW_MODEL_LOG_TAG) }
+                    fcmTokens.restorePrivacyDefault(appContext)
+                    fcmTokens.clearPendingToken(appContext)
+                }
             }
         }
     }
@@ -438,19 +558,39 @@ class ShellyViewModel internal constructor(
             if (error is CancellationException) {
                 throw error
             }
+            debugLog("could not read current FCM token", error, VIEW_MODEL_LOG_TAG)
             null
         }
     }
 
-    private suspend fun unregisterFcmTokenQuietly(token: String) {
+    private suspend fun unregisterPersistedFcmToken(token: String) {
         try {
-            withContext(repositoryDispatcher) {
-                repository.unregisterFcmToken(token)
-            }
+            repository.unregisterFcmToken(token)
+            repository.acknowledgePushTokenUnregistered(token)
+        } catch (error: ShellyException.Unauthorized) {
+            // The request may have landed and only the acknowledgement was lost. Either way this
+            // credential can no longer receive pushes, so retaining it would retry forever.
+            repository.acknowledgePushTokenUnregistered(token)
+            debugLog("push unregister already unauthorized; tombstone acknowledged", error, VIEW_MODEL_LOG_TAG)
         } catch (error: Throwable) {
             if (error is CancellationException) {
                 throw error
             }
+            debugLog("push unregister deferred", error, VIEW_MODEL_LOG_TAG)
+        }
+    }
+
+    private suspend fun unpairSelfBestEffort() {
+        try {
+            repository.unpairSelf()
+        } catch (error: ShellyException.Unauthorized) {
+            // Idempotent success: the daemon already has no paired record for this credential.
+            debugLog("authoritative unpair already completed", error, VIEW_MODEL_LOG_TAG)
+        } catch (error: Throwable) {
+            if (error is CancellationException) {
+                throw error
+            }
+            debugLog("authoritative unpair could not reach the daemon", error, VIEW_MODEL_LOG_TAG)
         }
     }
 
@@ -470,6 +610,7 @@ class ShellyViewModel internal constructor(
     private suspend fun restoreSavedPairing(generation: Int) {
         runCatching {
             withContext(restoreDispatcher) {
+                repository.retryPendingPushUnregister()
                 repository.restore()
             }
         }.onSuccess { paired ->
@@ -532,14 +673,14 @@ class ShellyViewModel internal constructor(
         sessionSubscriptionJob = viewModelScope.launch(repositoryDispatcher) {
             // Fresh run: optimistically assume connected until the first drop. Clears any stale
             // reconnecting/unreachable state left from a prior lock or background cycle.
-            var attempt = 0
-            var droppedAtMillis = 0L
+            val attempt = AtomicInteger(0)
+            val droppedAtMillis = AtomicLong(0L)
             _state.update { it.copy(connectionState = ConnectionState.Connected) }
             while (_state.value.unlocked && _state.value.paired) {
                 // Refresh the daemon info once per (re)connection: the live handshake values
                 // (version + host name) can differ from the snapshot stored at pairing if the
                 // daemon was upgraded or the laptop renamed since.
-                var infoRefreshed = false
+                val infoRefreshed = AtomicBoolean(false)
                 try {
                     repository.subscribeSessions { sessions ->
                         if (!_state.value.unlocked) {
@@ -547,22 +688,26 @@ class ShellyViewModel internal constructor(
                         }
                         // The call blocks while healthy, so any session-list callback is the
                         // authoritative "we're connected" edge — reset the reconnect machine.
-                        attempt = 0
-                        droppedAtMillis = 0L
+                        attempt.set(0)
+                        droppedAtMillis.set(0L)
                         if (_state.value.connectionState != ConnectionState.Connected) {
                             _state.update { it.copy(connectionState = ConnectionState.Connected) }
                         }
                         applySessions(sessions)
                         resolvePendingPushTarget(sessions)
-                        if (!infoRefreshed) {
-                            infoRefreshed = true
+                        if (infoRefreshed.compareAndSet(false, true)) {
                             viewModelScope.launch(repositoryDispatcher) { refreshDaemonInfo() }
                         }
                     }
+                } catch (error: ShellyException.Unauthorized) {
+                    debugLog("session subscription pairing revoked", error, VIEW_MODEL_LOG_TAG)
+                    handleRevokedPairing()
+                    return@launch
                 } catch (error: Throwable) {
                     if (error is CancellationException) {
                         throw error
                     }
+                    debugLog("session subscription dropped", error, VIEW_MODEL_LOG_TAG)
                 }
                 if (!_state.value.unlocked || !_state.value.paired) {
                     return@launch
@@ -570,21 +715,20 @@ class ShellyViewModel internal constructor(
                 // subscribeSessions returned or threw → the tunnel dropped. Advance the reconnect
                 // state machine (keeping the held sessions on screen), then wait before retrying.
                 val nowMillis = now()
-                attempt += 1
-                if (droppedAtMillis == 0L) {
-                    droppedAtMillis = nowMillis
-                }
+                val currentAttempt = attempt.incrementAndGet()
+                droppedAtMillis.compareAndSet(0L, nowMillis)
+                val currentDroppedAtMillis = droppedAtMillis.get()
                 val backoff = sessionRetryBackoffMillis(
-                    attempt = attempt,
+                    attempt = currentAttempt,
                     baseMillis = sessionSubscriptionRetryDelayMillis,
                     capMillis = maxRetryDelayMillis,
                 )
-                val waitMillis = if (nowMillis - droppedAtMillis < unreachableAfterMillis) {
+                val waitMillis = if (nowMillis - currentDroppedAtMillis < unreachableAfterMillis) {
                     _state.update {
                         it.copy(
                             connectionState = ConnectionState.Reconnecting(
-                                droppedAtMillis = droppedAtMillis,
-                                attempt = attempt,
+                                droppedAtMillis = currentDroppedAtMillis,
+                                attempt = currentAttempt,
                                 nextRetryAtMillis = nowMillis + backoff,
                             ),
                         )
@@ -594,8 +738,8 @@ class ShellyViewModel internal constructor(
                     _state.update {
                         it.copy(
                             connectionState = ConnectionState.Unreachable(
-                                droppedAtMillis = droppedAtMillis,
-                                attempt = attempt,
+                                droppedAtMillis = currentDroppedAtMillis,
+                                attempt = currentAttempt,
                                 retryIntervalMillis = unreachableRetryIntervalMillis,
                                 nextRetryAtMillis = nowMillis + unreachableRetryIntervalMillis,
                             ),
@@ -624,6 +768,28 @@ class ShellyViewModel internal constructor(
         sessionSubscriptionJob = null
     }
 
+    private suspend fun handleRevokedPairing() {
+        val wasUnlocked = _state.value.unlocked
+        pendingPushSessionIdHash = null
+        val detachJobs = liveControllers.toList().mapNotNull(TerminalController::detach)
+        liveControllers.clear()
+        withContext(NonCancellable + repositoryDispatcher) {
+            detachJobs.joinAll()
+            runCatching { fcmTokens.deleteCurrentToken(appContext) }
+                .onFailure { debugLog("could not delete FCM token after revocation", it, VIEW_MODEL_LOG_TAG) }
+            fcmTokens.restorePrivacyDefault(appContext)
+            fcmTokens.clearPendingToken(appContext)
+            repository.clearRevokedPairing()
+        }
+        persistTerminalState(emptyList(), null)
+        _state.value = ShellyUiState(
+            unlocked = wasUnlocked,
+            restoringPairing = false,
+            pairingError = revokedPairingMessage(),
+            pairingRevoked = true,
+        )
+    }
+
     private suspend fun runLoading(block: suspend () -> Unit) {
         _state.update { it.copy(loading = true, message = null) }
         try {
@@ -648,10 +814,18 @@ class ShellyViewModel internal constructor(
     private fun applySessions(sessions: List<MobileSession>) {
         _state.update { state ->
             val sessionsById = sessions.associateBy(MobileSession::id)
-            val updatedTabs = state.terminalTabs.map { tab -> sessionsById[tab.id] ?: tab }
+            val updatedTabs = if (state.terminalTabs.isEmpty() && state.unlocked) {
+                restoredTerminalSessionIds.mapNotNull(sessionsById::get)
+            } else {
+                state.terminalTabs.map { tab -> sessionsById[tab.id] ?: tab }
+            }
+            val activeTerminalSessionId = state.activeTerminalSessionId
+                ?: restoredActiveTerminalSessionId?.takeIf { restoredId ->
+                    updatedTabs.any { it.id == restoredId }
+                }
             state.copy(
                 sessions = sessions,
-                activeTerminalSessionId = state.activeTerminalSessionId?.takeIf { id ->
+                activeTerminalSessionId = activeTerminalSessionId?.takeIf { id ->
                     updatedTabs.any { it.id == id }
                 },
                 terminalTabs = updatedTabs,
@@ -659,10 +833,57 @@ class ShellyViewModel internal constructor(
         }
     }
 
+    private fun persistCurrentTerminalState() {
+        val current = _state.value
+        persistTerminalState(current.terminalTabs, current.activeTerminalSessionId)
+    }
+
+    private fun persistTerminalState(tabs: List<MobileSession>, activeSessionId: String?) {
+        restoredTerminalSessionIds = tabs.map(MobileSession::id)
+        restoredActiveTerminalSessionId = activeSessionId
+        savedStateHandle[SAVED_TERMINAL_SESSION_IDS] = ArrayList(restoredTerminalSessionIds)
+        savedStateHandle[SAVED_ACTIVE_TERMINAL_SESSION_ID] = activeSessionId
+    }
+
     private fun recordTelemetryExperience() {
         if (MobileTelemetry.shouldShowConsentPrompt(appContext)) {
             _state.update { it.copy(telemetryConsentPromptVisible = true) }
         }
+    }
+
+    override fun onCleared() {
+        val pendingPairingToCancel = pendingPairing
+        pendingPairing = null
+        val scopedJobs = viewModelScope.coroutineContext[Job]?.children?.toList().orEmpty()
+        val lifecycleJobs = (
+            listOfNotNull(
+                restoreJob,
+                pairJob,
+                unpairJob,
+                backgroundDetachJob,
+                sessionSubscriptionJob,
+            ) + scopedJobs
+        ).distinct()
+        lifecycleJobs.forEach { it.cancel() }
+        restoreJob = null
+        pairJob = null
+        unpairJob = null
+        backgroundDetachJob = null
+        sessionSubscriptionJob = null
+        val detachJobs = liveControllers.toList().mapNotNull(TerminalController::detach)
+        liveControllers.clear()
+        cleanupScope.launch {
+            lifecycleJobs.joinAll()
+            detachJobs.joinAll()
+            withContext(repositoryDispatcher) {
+                pendingPairingToCancel?.let { pending ->
+                    runCatching { pending.cancel() }
+                        .onFailure { debugLog("pending pairing cleanup failed", it, VIEW_MODEL_LOG_TAG) }
+                }
+                repository.destroy()
+            }
+        }
+        super.onCleared()
     }
 }
 
@@ -697,3 +918,9 @@ private fun sha256Hex(value: String): String {
 }
 
 private val HEX = "0123456789abcdef".toCharArray()
+
+private const val PUSH_CLEANUP_TIMEOUT_MILLIS = 5_000L
+private const val SAVED_TERMINAL_SESSION_IDS = "terminal_session_ids"
+private const val SAVED_ACTIVE_TERMINAL_SESSION_ID = "active_terminal_session_id"
+private const val VIEW_MODEL_LOG_TAG = "ShellyViewModel"
+private val ANDROID_CLEANUP_SCOPE = CoroutineScope(SupervisorJob() + Dispatchers.IO)

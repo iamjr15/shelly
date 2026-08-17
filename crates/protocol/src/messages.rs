@@ -5,6 +5,7 @@ use crate::types::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 /// Messages sent by CLI or mobile clients to the daemon.
@@ -15,7 +16,8 @@ pub enum ClientToServerMsg {
         client_kind: ClientKind,
         /// Client package version for diagnostics.
         client_version: String,
-        /// Protocol contract version; must match [`crate::CONTRACT_VERSION`].
+        /// Protocol contract version. Remote daemons may temporarily accept an
+        /// older paired-session version during a coordinated migration.
         protocol_version: u32,
     },
     /// Requests the current dashboard session list.
@@ -128,6 +130,11 @@ pub enum ClientToServerMsg {
         /// Opaque provider token to remove from local daemon state and relay ownership.
         token: String,
     },
+    /// Removes the authenticated iroh peer's own paired-device record.
+    ///
+    /// Unlike [`Self::RemoveDevice`], this message never accepts a target and
+    /// cannot remove any other identity. It requires contract v5.
+    UnpairSelf,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -179,7 +186,7 @@ pub enum ServerToClientMsg {
         /// Monotonic byte offset after this output chunk.
         seq: u64,
         /// Raw PTY bytes.
-        bytes: Vec<u8>,
+        bytes: Arc<[u8]>,
     },
     /// Inferred agent state changed.
     AgentStateChanged {
@@ -207,12 +214,13 @@ pub enum ServerToClientMsg {
         /// messages, not bytes. Renaming would break paired mobile clients.
         skipped_bytes: u64,
     },
-    /// Pairing ticket is ready for QR display and relay publication.
+    /// Pairing ticket is ready for local QR display; only its code-free
+    /// reachability projection may be published to the relay.
     PairingStarted {
         /// Compact pairing ticket carrying reachability and the short code.
         ticket: PairingTicket,
     },
-    /// A remote device supplied the active code and awaits desktop-command acknowledgement.
+    /// A remote device supplied the active code and awaits explicit desktop SAS approval.
     PairingApprovalRequested {
         /// Request id to pass to [`ClientToServerMsg::ApprovePairing`].
         request_id: ClientId,
@@ -220,8 +228,10 @@ pub enum ServerToClientMsg {
         device_name: String,
         /// Authenticated iroh node id of the remote client.
         device_node_id: String,
+        /// Transcript SAS to compare with the value displayed by the phone.
+        sas: String,
     },
-    /// Pairing succeeded and the daemon id is confirmed.
+    /// Pairing succeeded after desktop SAS approval and the daemon id is confirmed.
     PairingComplete {
         /// Paired daemon iroh node id.
         daemon_node_id: String,
@@ -243,13 +253,22 @@ pub enum ServerToClientMsg {
         /// Human-readable diagnostic.
         message: String,
     },
+    /// A v5 pairing request is waiting for explicit desktop approval.
+    PairingPending {
+        /// Transcript SAS to display on the phone before completion.
+        sas: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
 /// Stable error classes used in [`ServerToClientMsg::Error`].
 pub enum ErrorCode {
-    /// Client and daemon contract versions differ.
-    ProtocolMismatch,
+    /// The client's contract version cannot perform the requested operation.
+    ///
+    /// The released serde spelling is retained so v4 clients can decode the
+    /// update-required response during the dual-stack rollout.
+    #[serde(rename = "ProtocolMismatch")]
+    VersionMismatch,
     /// Client identity is not paired or no longer authorized.
     Unauthorized,
     /// Client kind is authenticated but lacks the requested capability.
@@ -260,4 +279,10 @@ pub enum ErrorCode {
     InvalidRequest,
     /// Daemon failed while handling an otherwise valid request.
     Internal,
+}
+
+impl ErrorCode {
+    /// Source-compatibility alias for clients that still use the v4 Rust name.
+    #[allow(non_upper_case_globals)]
+    pub const ProtocolMismatch: Self = Self::VersionMismatch;
 }

@@ -41,6 +41,16 @@ class ShellyPushNotificationsTest {
     }
 
     @Test
+    fun notificationIdIncludesEventType() {
+        val hash = "0123456789abcdef".repeat(4)
+
+        assertTrue(
+            ShellyPushNotifications.notificationId(hash, ShellyPushNotifications.EVENT_AWAITING_INPUT) !=
+                ShellyPushNotifications.notificationId(hash, ShellyPushNotifications.EVENT_SESSION_CRASHED),
+        )
+    }
+
+    @Test
     fun awaitingInputNotificationUsesFixedGenericCopy() {
         val context = RuntimeEnvironment.getApplication().applicationContext
         val hash = "0123456789abcdef".repeat(4)

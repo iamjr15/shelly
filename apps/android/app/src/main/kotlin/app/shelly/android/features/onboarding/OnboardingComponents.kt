@@ -15,16 +15,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -34,6 +37,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,9 +45,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.shelly.android.BuildConfig
+import app.shelly.android.core.UiTestClock
 import app.shelly.android.ui.components.DoubleChevronGlyph
 import app.shelly.android.ui.components.HeroEscapeButton
 import app.shelly.android.ui.components.ShellyLogo
+import app.shelly.android.ui.components.ShellyScreen
 import app.shelly.android.ui.components.wordmarkFootprint
 import app.shelly.android.ui.theme.ShellyTheme
 import app.shelly.android.ui.theme.ShellyType
@@ -57,11 +63,11 @@ private val WordmarkSize = 96.sp
 
 @Composable
 internal fun ColumnScope.WelcomeHero(
-    onDateClick: () -> Unit = {},
+    onDateClick: (() -> Unit)? = null,
 ) {
     val heroForeground = onboardingHeroForeground()
     val heroMuted = onboardingHeroMuted()
-    val now = remember { Date() }
+    val now = remember { Date(UiTestClock.nowMillis()) }
     val date = remember(now) { SimpleDateFormat("MMM d", Locale.getDefault()).format(now) }
     val day = remember(now) { SimpleDateFormat("EEE", Locale.getDefault()).format(now) }
 
@@ -78,7 +84,13 @@ internal fun ColumnScope.WelcomeHero(
                         letterSpacing = 0.em,
                     ),
                     color = heroForeground,
-                    modifier = Modifier.clickable(onClick = onDateClick),
+                    modifier = if (onDateClick != null) {
+                        Modifier
+                            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                            .clickable(role = Role.Button, onClick = onDateClick)
+                    } else {
+                        Modifier
+                    },
                 )
                 Text(
                     text = day,
@@ -116,7 +128,7 @@ internal fun ColumnScope.OnboardingHero(
     eyebrow: String,
     wordmark: String,
     trailing: String,
-    onTrailingClick: () -> Unit,
+    onTrailingClick: (() -> Unit)?,
     trailingAsEscape: Boolean = false,
     status: OnboardingStatus? = null,
 ) {
@@ -127,7 +139,7 @@ internal fun ColumnScope.OnboardingHero(
         modifier = Modifier.padding(bottom = if (trailingAsEscape) 28.dp else 60.dp),
         trailing = {
             if (trailingAsEscape) {
-                HeroEscapeButton(onClick = onTrailingClick)
+                HeroEscapeButton(onClick = requireNotNull(onTrailingClick))
             } else {
                 Text(
                     text = trailing,
@@ -136,7 +148,13 @@ internal fun ColumnScope.OnboardingHero(
                         letterSpacing = 0.04.em,
                     ),
                     color = heroMuted,
-                    modifier = Modifier.clickable(onClick = onTrailingClick),
+                    modifier = if (onTrailingClick != null) {
+                        Modifier
+                            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                            .clickable(role = Role.Button, onClick = onTrailingClick)
+                    } else {
+                        Modifier
+                    },
                 )
             }
         },
@@ -216,6 +234,55 @@ internal enum class OnboardingStatusIcon {
     Lock,
     Phone,
     Scanner,
+}
+
+@Immutable
+internal data class OnboardingStepContent(
+    val title: String,
+    val detail: String,
+)
+
+/** Shared structure for the three numbered onboarding steps. */
+@Composable
+internal fun OnboardingStepsScreen(
+    eyebrow: String,
+    wordmark: String,
+    trailing: String,
+    onTrailingClick: (() -> Unit)?,
+    status: OnboardingStatus? = null,
+    trailingAsEscape: Boolean = false,
+    steps: List<OnboardingStepContent>,
+    footerLabel: String,
+    onContinue: () -> Unit,
+) {
+    ShellyScreen(
+        hero = {
+            OnboardingHero(
+                eyebrow = eyebrow,
+                wordmark = wordmark,
+                trailing = trailing,
+                onTrailingClick = onTrailingClick,
+                trailingAsEscape = trailingAsEscape,
+                status = status,
+            )
+        },
+        content = {
+            steps.forEachIndexed { index, step ->
+                OnboardingStepRow(
+                    number = index + 1,
+                    title = step.title,
+                    detail = step.detail,
+                    showDivider = index != steps.lastIndex,
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            OnboardingFooterLink(
+                label = footerLabel,
+                onClick = onContinue,
+                strongDivider = true,
+            )
+        },
+    )
 }
 
 @Composable
@@ -298,40 +365,40 @@ private fun LockIcon(color: Color) {
 
 @Composable
 private fun ScannerIcon(color: Color) {
-    Canvas(Modifier.size(18.dp)) {
+    Box(Modifier.size(18.dp).drawWithCache {
         val sx = size.width / 24f
         val sy = size.height / 24f
         val stroke = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-        fun path(block: Path.() -> Unit) {
-            drawPath(Path().apply(block), color = color, style = stroke)
+        val paths = listOf(
+            Path().apply {
+                moveTo(4f * sx, 9f * sy)
+                lineTo(4f * sx, 6f * sy)
+                quadraticTo(4f * sx, 4f * sy, 6f * sx, 4f * sy)
+                lineTo(9f * sx, 4f * sy)
+            },
+            Path().apply {
+                moveTo(15f * sx, 4f * sy)
+                lineTo(18f * sx, 4f * sy)
+                quadraticTo(20f * sx, 4f * sy, 20f * sx, 6f * sy)
+                lineTo(20f * sx, 9f * sy)
+            },
+            Path().apply {
+                moveTo(20f * sx, 15f * sy)
+                lineTo(20f * sx, 18f * sy)
+                quadraticTo(20f * sx, 20f * sy, 18f * sx, 20f * sy)
+                lineTo(15f * sx, 20f * sy)
+            },
+            Path().apply {
+                moveTo(9f * sx, 20f * sy)
+                lineTo(6f * sx, 20f * sy)
+                quadraticTo(4f * sx, 20f * sy, 4f * sx, 18f * sy)
+                lineTo(4f * sx, 15f * sy)
+            },
+        )
+        onDrawBehind {
+            paths.forEach { path -> drawPath(path, color = color, style = stroke) }
         }
-
-        path {
-            moveTo(4f * sx, 9f * sy)
-            lineTo(4f * sx, 6f * sy)
-            quadraticTo(4f * sx, 4f * sy, 6f * sx, 4f * sy)
-            lineTo(9f * sx, 4f * sy)
-        }
-        path {
-            moveTo(15f * sx, 4f * sy)
-            lineTo(18f * sx, 4f * sy)
-            quadraticTo(20f * sx, 4f * sy, 20f * sx, 6f * sy)
-            lineTo(20f * sx, 9f * sy)
-        }
-        path {
-            moveTo(20f * sx, 15f * sy)
-            lineTo(20f * sx, 18f * sy)
-            quadraticTo(20f * sx, 20f * sy, 18f * sx, 20f * sy)
-            lineTo(15f * sx, 20f * sy)
-        }
-        path {
-            moveTo(9f * sx, 20f * sy)
-            lineTo(6f * sx, 20f * sy)
-            quadraticTo(4f * sx, 20f * sy, 4f * sx, 18f * sy)
-            lineTo(4f * sx, 15f * sy)
-        }
-    }
+    })
 }
 
 @Composable
@@ -342,7 +409,8 @@ internal fun WelcomeMenuRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .sizeIn(minHeight = 48.dp)
+            .clickable(role = Role.Button, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -363,7 +431,7 @@ internal fun WelcomeMenuRow(
 
 @Composable
 private fun BranchIcon(color: Color) {
-    Canvas(Modifier.size(20.dp)) {
+    Box(Modifier.size(20.dp).drawWithCache {
         val sx = size.width / 24f
         val sy = size.height / 24f
         val strokeWidth = 1.8.dp.toPx()
@@ -372,12 +440,9 @@ private fun BranchIcon(color: Color) {
             lineTo(9f * sx, 14f * sy)
             lineTo(20f * sx, 14f * sy)
         }
-        drawPath(
-            path = path,
-            color = color,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
-        )
-    }
+        val style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        onDrawBehind { drawPath(path = path, color = color, style = style) }
+    })
 }
 
 @Composable
@@ -487,7 +552,8 @@ private fun FooterClickRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .sizeIn(minHeight = 48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(top = topPadding.dp, bottom = bottomPadding.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,

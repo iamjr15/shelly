@@ -2,7 +2,7 @@ package app.shelly.android.features.pairing
 
 /** Crockford base32 alphabet shared with the daemon/protocol, excluding confusable letters. */
 internal const val PAIRING_CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-internal const val PAIRING_CODE_LENGTH = 5
+internal const val PAIRING_CODE_LENGTH = 7
 internal const val PAIRING_CAMERA_DENIED_BODY =
     "Camera access is off. Enter the pairing code from your computer instead."
 internal const val PAIRING_CAMERA_DENIED_ACTION = "Enter code instead"
