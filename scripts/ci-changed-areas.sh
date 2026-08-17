@@ -7,19 +7,17 @@ output_file="${GITHUB_OUTPUT:-/dev/stdout}"
 
 core=false
 macos=false
-supply=false
 packaging=false
-site=false
-infra=false
+terraform=false
+ansible=false
 workflow=false
 
 select_all() {
   core=true
   macos=true
-  supply=true
   packaging=true
-  site=true
-  infra=true
+  terraform=true
+  ansible=true
   workflow=true
 }
 
@@ -44,7 +42,6 @@ else
       Cargo.toml | Cargo.lock | rust-toolchain.toml | deny.toml | .cargo/audit.toml)
         core=true
         macos=true
-        supply=true
         packaging=true
         ;;
       crates/*)
@@ -57,10 +54,17 @@ else
         packaging=true
         ;;
       site/*)
-        site=true
+        # There is no deployed Shelly website yet.
+        ;;
+      infra/lightsail/terraform/*)
+        terraform=true
+        ;;
+      infra/relay/ansible/*)
+        ansible=true
         ;;
       infra/*)
-        infra=true
+        terraform=true
+        ansible=true
         ;;
       .github/workflows/* | .github/dependabot.yml | .pre-commit-config.yaml)
         workflow=true
@@ -75,7 +79,7 @@ else
         workflow=true
         ;;
       scripts/check-infra-terraform.sh)
-        infra=true
+        terraform=true
         workflow=true
         ;;
       scripts/* | apps/android/scripts/*)
@@ -99,9 +103,8 @@ fi
 {
   printf 'core=%s\n' "$core"
   printf 'macos=%s\n' "$macos"
-  printf 'supply=%s\n' "$supply"
   printf 'packaging=%s\n' "$packaging"
-  printf 'site=%s\n' "$site"
-  printf 'infra=%s\n' "$infra"
+  printf 'terraform=%s\n' "$terraform"
+  printf 'ansible=%s\n' "$ansible"
   printf 'workflow=%s\n' "$workflow"
 } | tee -a "$output_file"
