@@ -11,6 +11,7 @@ packaging=false
 terraform=false
 ansible=false
 workflow=false
+relay=false
 
 select_all() {
   core=true
@@ -19,6 +20,7 @@ select_all() {
   terraform=true
   ansible=true
   workflow=true
+  relay=true
 }
 
 if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]] || ! git cat-file -e "$base_sha^{commit}" 2>/dev/null; then
@@ -43,11 +45,13 @@ else
         core=true
         macos=true
         packaging=true
+        relay=true
         ;;
       crates/*)
         core=true
         macos=true
         packaging=true
+        relay=true
         ;;
       packages/* | package.json | pnpm-lock.yaml | .changeset/*)
         macos=true
@@ -61,10 +65,15 @@ else
         ;;
       infra/relay/ansible/*)
         ansible=true
+        relay=true
         ;;
       infra/*)
         terraform=true
         ansible=true
+        ;;
+      .github/workflows/deploy-relay.yml | scripts/smoke-hosted-relay-rendezvous.sh)
+        workflow=true
+        relay=true
         ;;
       .github/workflows/* | .github/dependabot.yml | .pre-commit-config.yaml)
         workflow=true
@@ -107,4 +116,5 @@ fi
   printf 'terraform=%s\n' "$terraform"
   printf 'ansible=%s\n' "$ansible"
   printf 'workflow=%s\n' "$workflow"
+  printf 'relay=%s\n' "$relay"
 } | tee -a "$output_file"

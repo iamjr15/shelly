@@ -24,6 +24,7 @@ jobs:
       terraform: ${{ steps.filter.outputs.terraform }}
       ansible: ${{ steps.filter.outputs.ansible }}
       workflow: ${{ steps.filter.outputs.workflow }}
+      relay: ${{ steps.filter.outputs.relay }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -195,3 +196,17 @@ jobs:
         run: |
           jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS_JSON"
           jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<< "$NEEDS_JSON" >/dev/null
+
+  deploy-relay:
+    name: Deploy Relay
+    needs:
+      - changes
+      - gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.relay == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy-relay.yml
+    with:
+      deploy_sha: ${{ github.sha }}
+    secrets: inherit
