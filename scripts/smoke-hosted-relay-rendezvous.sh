@@ -180,7 +180,10 @@ if [[ -z "$session_id" ]]; then
   exit 1
 fi
 
-"$shelly" pair </dev/null >"$tmp/pair.log" 2>&1 &
+# Contract v5 requires both sides to confirm the displayed SAS. The simulated
+# phone derives and verifies the same SAS; feed the desktop's explicit approval
+# byte just as the hermetic local pairing smoke does.
+"$shelly" pair <<<"Y" >"$tmp/pair.log" 2>&1 &
 pair_pid=$!
 
 pair_code="$(capture_pair_code "$tmp/pair.log" || true)"
