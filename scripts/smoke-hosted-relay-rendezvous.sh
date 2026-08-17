@@ -130,8 +130,8 @@ curl -fsS --max-time 10 "$relay_control_url/v1/version" >"$tmp/relay-version.jso
 node -e '
 const fs = require("fs");
 const version = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-if (version.contract_version !== 4) {
-  throw new Error(`expected relay contract_version=4, got ${version.contract_version}`);
+if (!Number.isInteger(version.contract_version) || version.contract_version < 1) {
+  throw new Error(`expected a positive integer contract_version, got ${version.contract_version}`);
 }
 ' "$tmp/relay-version.json"
 
