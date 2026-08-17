@@ -51,6 +51,13 @@ android {
         // pre-existing manifest/permission nits) so new regressions still fail the build.
         baseline = file("lint-baseline.xml")
         abortOnError = true
+        // The UniFFI bindings are generated into ../generated (a srcDir outside this
+        // module). With a baseline configured, lintVitalRelease's partial-results
+        // serialization throws "Path variable ... not provided to serialization" for
+        // that external source root (an AGP bug), crashing `bundleRelease`. Lint still
+        // runs via the explicit `:app:lintDebug` CI step against the baseline, so skip
+        // the redundant release-time vital pass rather than lint generated code.
+        checkReleaseBuilds = false
     }
 
     defaultConfig {
