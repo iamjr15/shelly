@@ -391,6 +391,107 @@ h3 {
   margin-top: 2rem;
 }
 
+.policy-page {
+  max-width: 76rem;
+  margin: 0 auto;
+}
+
+.policy-hero h1 {
+  max-width: 10ch;
+}
+
+.policy-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem 1.25rem;
+  margin-top: 2rem;
+  color: var(--muted);
+  font-family: Menlo, Consolas, Monaco, Liberation Mono, monospace;
+  font-size: 0.78rem;
+}
+
+.policy-callout {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.35fr) minmax(0, 1fr);
+  gap: 2rem;
+  margin: 4rem 0 1rem;
+  padding: 1.5rem;
+  border: 1px solid rgba(140, 227, 111, 0.45);
+  border-radius: 8px;
+  background: rgba(140, 227, 111, 0.07);
+}
+
+.policy-callout strong {
+  color: var(--green);
+  font-size: 1.05rem;
+}
+
+.policy-callout p {
+  max-width: 48rem;
+  margin: 0;
+  color: var(--ink);
+}
+
+.policy-grid {
+  margin-top: 3rem;
+  border-top: 1px solid var(--line);
+}
+
+.policy-section {
+  display: grid;
+  grid-template-columns: 4rem minmax(0, 1fr);
+  gap: 1.5rem;
+  padding: 2.25rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.policy-section > div {
+  max-width: 48rem;
+}
+
+.policy-section h2 {
+  margin-bottom: 1rem;
+  font-size: 2rem;
+}
+
+.policy-section p,
+.policy-list {
+  color: var(--muted);
+}
+
+.policy-number {
+  color: var(--amber);
+  font-family: Menlo, Consolas, Monaco, Liberation Mono, monospace;
+  font-size: 0.78rem;
+}
+
+.policy-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.policy-list strong {
+  color: var(--ink);
+}
+
+.policy-contact {
+  margin-top: 4rem;
+  padding: 2rem;
+  border-radius: 8px;
+  color: #13160f;
+  background: #f4efe2;
+}
+
+.policy-contact .eyebrow {
+  color: #9c591a;
+}
+
+.policy-contact h2 {
+  max-width: 14ch;
+}
+
 @media (max-width: 860px) {
   .site-header {
     position: static;
@@ -434,5 +535,19 @@ h3 {
   .site-footer {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .policy-callout,
+  .policy-section {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .policy-callout {
+    margin-top: 3rem;
+  }
+
+  .policy-section {
+    padding: 1.75rem 0;
   }
 }
