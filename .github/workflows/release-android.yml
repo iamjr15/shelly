@@ -141,13 +141,11 @@ jobs:
             {
               echo "track=production"
               echo "status=draft"
-              echo "changes_not_sent_for_review=true"
             } >> "$GITHUB_OUTPUT"
           else
             {
               echo "track=internal"
               echo "status=completed"
-              echo "changes_not_sent_for_review=false"
             } >> "$GITHUB_OUTPUT"
           fi
       - name: Upload signed AAB to Play
@@ -158,9 +156,8 @@ jobs:
           serviceAccountJsonPlainText: ${{ env.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: app.shelly.android
           releaseFiles: apps/android/app/build/outputs/bundle/release/app-release.aab
-          track: ${{ steps.play-destination.outputs.track }}
+          tracks: ${{ steps.play-destination.outputs.track }}
           status: ${{ steps.play-destination.outputs.status }}
-          changesNotSentForReview: ${{ steps.play-destination.outputs.changes_not_sent_for_review }}
       - name: Clean Android release secrets
         if: always()
         run: rm -f apps/android/app/google-services.json apps/android/app/release.keystore apps/android/keystore.properties
