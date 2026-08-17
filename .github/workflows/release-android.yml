@@ -7,15 +7,15 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: android-internal
+  group: android-release
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  internal-track:
-    name: Build and upload Play internal track
+  play-upload:
+    name: ${{ github.event_name == 'workflow_dispatch' && 'Build and upload Play production draft' || 'Build and upload Play internal track' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: android-internal
@@ -131,10 +131,22 @@ jobs:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
-            echo "PLAY_SERVICE_ACCOUNT_JSON is required for Play internal-track upload."
+            echo "PLAY_SERVICE_ACCOUNT_JSON is required for Play upload."
             exit 1
           fi
-      - name: Upload to Play internal track
+      - name: Resolve Play destination
+        id: play-destination
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "track=production" >> "$GITHUB_OUTPUT"
+            echo "status=draft" >> "$GITHUB_OUTPUT"
+            echo "changes_not_sent_for_review=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "track=internal" >> "$GITHUB_OUTPUT"
+            echo "status=completed" >> "$GITHUB_OUTPUT"
+            echo "changes_not_sent_for_review=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload signed AAB to Play
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
@@ -142,7 +154,9 @@ jobs:
           serviceAccountJsonPlainText: ${{ env.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: app.shelly.android
           releaseFiles: apps/android/app/build/outputs/bundle/release/app-release.aab
-          track: internal
+          track: ${{ steps.play-destination.outputs.track }}
+          status: ${{ steps.play-destination.outputs.status }}
+          changesNotSentForReview: ${{ steps.play-destination.outputs.changes_not_sent_for_review }}
       - name: Clean Android release secrets
         if: always()
         run: rm -f apps/android/app/google-services.json apps/android/app/release.keystore apps/android/keystore.properties
