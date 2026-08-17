@@ -1,0 +1,9 @@
+.astro/
+.dev.vars*
+.env*
+.next/
+.open-next/
+.wrangler/
+dist/
+node_modules/
+*.tsbuildinfo

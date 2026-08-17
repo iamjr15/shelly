@@ -1,0 +1,129 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy",
+  description:
+    "How Shelly handles pairing data, terminal sessions, push notifications, device identifiers, and deletion requests.",
+};
+
+export default function PrivacyPage() {
+  return (
+    <section className="page policy-page">
+      <header className="page-copy policy-hero">
+        <p className="eyebrow">Privacy policy</p>
+        <h1>Your terminal is yours.</h1>
+        <p className="lede">
+          Shelly connects your Android phone to terminal sessions running on your
+          computer. It does not require an account, sell personal data, or use
+          terminal content for advertising or analytics.
+        </p>
+        <div className="policy-meta" aria-label="Policy details">
+          <span>Effective August 17, 2026</span>
+          <span>Operated by Jigyansu Rout</span>
+          <a href="mailto:jigyanshu15@gmail.com">jigyanshu15@gmail.com</a>
+        </div>
+      </header>
+
+      <div className="policy-callout">
+        <strong>The short version</strong>
+        <p>
+          Terminal input and output travel through encrypted connections between
+          your paired devices. Shelly&apos;s relay and push systems never receive
+          terminal text, keystrokes, commands, file paths, or session names.
+        </p>
+      </div>
+
+      <div className="policy-grid">
+        <article className="policy-section">
+          <p className="policy-number">01</p>
+          <div>
+            <h2>Information Shelly handles</h2>
+            <p>Shelly handles only the information needed to connect and operate the app:</p>
+            <ul className="policy-list">
+              <li><strong>Pairing and device information.</strong> Device public identifiers, encrypted device credentials, relay or direct network addresses, and a short-lived pairing code.</li>
+              <li><strong>Push identifiers.</strong> If notifications are enabled, an FCM registration token and Firebase installation identifier are used to deliver generic notifications. Core terminal features work without push notifications.</li>
+              <li><strong>Connection metadata.</strong> Network infrastructure necessarily processes IP addresses, timing, and byte counts to route encrypted traffic. Shelly does not add this information to product analytics.</li>
+            </ul>
+          </div>
+        </article>
+
+        <article className="policy-section">
+          <p className="policy-number">02</p>
+          <div>
+            <h2>Information Shelly does not collect</h2>
+            <p>Shelly infrastructure cannot read the terminal content exchanged by your paired devices. It does not collect terminal output, keystrokes, commands, file paths, session names, contacts, location, photos, audio, financial information, or advertising identifiers.</p>
+            <p>QR camera frames are processed on your phone for pairing and are not uploaded. Biometric verification is performed by Android; Shelly never receives or stores your biometric data.</p>
+          </div>
+        </article>
+
+        <article className="policy-section">
+          <p className="policy-number">03</p>
+          <div>
+            <h2>How information is used</h2>
+            <p>Information handled by Shelly is used only to:</p>
+            <ul className="policy-list">
+              <li>pair your phone with a computer you approve;</li>
+              <li>connect, display, and control your terminal sessions;</li>
+              <li>deliver generic notifications when a session needs attention;</li>
+              <li>prevent abuse, replay, and unauthorized pairing attempts; and</li>
+              <li>maintain the security and reliability of Shelly&apos;s relay service.</li>
+            </ul>
+          </div>
+        </article>
+
+        <article className="policy-section">
+          <p className="policy-number">04</p>
+          <div>
+            <h2>Service providers and sharing</h2>
+            <p>Shelly does not sell personal data, show ads, or share data with data brokers. Google Firebase Cloud Messaging processes push identifiers when notifications are enabled. Hosting and network providers may process limited connection information to operate Shelly&apos;s infrastructure. These providers act only to deliver their services to Shelly.</p>
+            <p>Push messages contain fixed generic text, an event type, and an opaque session hash. They never contain terminal output, commands, paths, or session names.</p>
+          </div>
+        </article>
+
+        <article className="policy-section">
+          <p className="policy-number">05</p>
+          <div>
+            <h2>Storage and retention</h2>
+            <ul className="policy-list">
+              <li>Pairing codes expire after five minutes and are consumed after successful use.</li>
+              <li>Pairing records and queued push identifiers are encrypted in app-private storage and removed when you unpair or clear the app&apos;s data.</li>
+              <li>Relay push-token bindings remain only while needed to deliver notifications and are removed when a device is unpaired, revoked, or deleted on request.</li>
+              <li>Terminal scrollback remains on your computer and is encrypted locally when persistence is enabled.</li>
+            </ul>
+          </div>
+        </article>
+
+        <article className="policy-section">
+          <p className="policy-number">06</p>
+          <div>
+            <h2>Your choices and deletion</h2>
+            <p>You can disable notifications in Shelly or Android, unpair your phone, revoke a paired device from your computer, clear the app&apos;s storage, or uninstall the app. Shelly has no user accounts.</p>
+            <p>To request removal of a relay-side push identifier or ask a privacy question, email <a href="mailto:jigyanshu15@gmail.com">jigyanshu15@gmail.com</a>. Include enough information to identify the paired device, but never send terminal content, secrets, or private keys.</p>
+          </div>
+        </article>
+
+        <article className="policy-section">
+          <p className="policy-number">07</p>
+          <div>
+            <h2>Security</h2>
+            <p>Shelly uses encrypted transport between paired devices, encrypted local pairing records, short-lived pairing codes, OS-protected key material, and Android&apos;s biometric gate. No security measure can eliminate every risk, so you should keep your phone and computer updated and revoke devices you no longer use.</p>
+          </div>
+        </article>
+
+        <article className="policy-section">
+          <p className="policy-number">08</p>
+          <div>
+            <h2>Age limits and policy changes</h2>
+            <p>Shelly is intended for adults and is not directed to children under 18. We may update this policy when the product or legal requirements change. The effective date at the top of this page will identify the latest version.</p>
+          </div>
+        </article>
+      </div>
+
+      <div className="policy-contact">
+        <p className="eyebrow">Questions or deletion requests</p>
+        <h2>Talk directly to Shelly.</h2>
+        <a className="button primary" href="mailto:jigyanshu15@gmail.com">jigyanshu15@gmail.com</a>
+      </div>
+    </section>
+  );
+}

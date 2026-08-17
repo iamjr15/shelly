@@ -3,14 +3,29 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
-    "dev": "astro dev",
-    "build": "ASTRO_TELEMETRY_DISABLED=1 astro build",
-    "check": "ASTRO_TELEMETRY_DISABLED=1 astro check && ASTRO_TELEMETRY_DISABLED=1 astro build"
+    "dev": "next dev",
+    "build": "next build",
+    "check": "eslint . && next typegen && tsc --noEmit && next build",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+  },
+  "dependencies": {
+    "next": "16.3.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.9",
-    "astro": "^6.3.3",
-    "typescript": "^6.0.3"
+    "@opennextjs/cloudflare": "1.20.2",
+    "@types/node": "26.2.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.1",
+    "typescript": "6.0.3",
+    "wrangler": "4.123.0"
   }
 }

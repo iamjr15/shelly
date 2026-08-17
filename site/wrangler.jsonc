@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "shelly-site",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-08-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets"
+  },
+  "routes": [
+    {
+      "pattern": "shelly.sh",
+      "custom_domain": true
+    }
+  ]
+}
