@@ -40,6 +40,4 @@ apps/android/.gradle/
 apps/android/.kotlin/
 apps/android/build/
 apps/android/app/build/
-apps/android/screenshots/*
-!apps/android/screenshots/goldens/
-!apps/android/screenshots/goldens/*.png
+apps/android/screenshots/

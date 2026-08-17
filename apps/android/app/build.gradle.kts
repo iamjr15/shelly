@@ -6,7 +6,6 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("io.github.takahirom.roborazzi")
 }
 
 if (file("google-services.json").exists()) {
@@ -141,14 +140,6 @@ android {
     }
 }
 
-roborazzi {
-    // Baselines are source artifacts; diffs/reports remain under build/.
-    outputDir.set(rootProject.file("screenshots/goldens"))
-    compare {
-        outputDir.set(layout.buildDirectory.dir("outputs/roborazzi-comparison"))
-    }
-}
-
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.03.01"))
     implementation("androidx.activity:activity-compose:1.13.0")
@@ -178,7 +169,6 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.70.0")
     testImplementation(platform("androidx.compose:compose-bom:2026.03.01"))
     testImplementation("androidx.compose.ui:ui-test-junit4")
 }

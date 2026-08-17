@@ -200,17 +200,6 @@
     </issue>
 
     <issue
-        id="NewerVersionAvailable"
-        message="A newer version of io.github.takahirom.roborazzi:roborazzi than 1.70.0 is available: 1.72.0"
-        errorLine1="    testImplementation(&quot;io.github.takahirom.roborazzi:roborazzi:1.70.0&quot;)"
-        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
-            line="174"
-            column="24"/>
-    </issue>
-
-    <issue
         id="VisibleForTests"
         message="This method should only be accessed from tests or within private scope"
         errorLine1="    private val savedStateHandle: SavedStateHandle = SavedStateHandle(),"

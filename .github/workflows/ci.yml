@@ -222,10 +222,5 @@ jobs:
         run: apps/android/gradlew --no-daemon bundleRelease
       - name: Run Android Lint
         run: apps/android/gradlew --no-daemon :app:lintDebug
-      - name: Run Android unit tests and record screenshot goldens
-        run: apps/android/gradlew --no-daemon :app:recordRoborazziDebug
-      - name: Upload Linux-recorded goldens
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: linux-goldens
-          path: apps/android/screenshots/goldens/
+      - name: Run Android unit tests
+        run: apps/android/gradlew --no-daemon :app:testDebugUnitTest
