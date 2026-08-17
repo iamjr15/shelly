@@ -3,7 +3,14 @@ name: Version Packages
 on:
   push:
     branches: [main]
+    paths:
+      - ".changeset/**"
+      - ".github/workflows/version-packages.yml"
   workflow_dispatch:
+
+concurrency:
+  group: version-packages
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -13,6 +20,7 @@ jobs:
   changesets:
     name: Open Changesets version PR
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8

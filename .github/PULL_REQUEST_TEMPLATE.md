@@ -4,11 +4,8 @@
 
 ## Verification
 
-- [ ] `cargo fmt --check`
-- [ ] `cargo clippy --workspace -- -D warnings`
-- [ ] `cargo nextest run --workspace`
-- [ ] `cargo test --workspace --doc`
-- [ ] Relevant npm/static checks, mobile builds, or smoke tests for touched areas
+- [ ] `CI Gate` passes
+- [ ] I manually tested behavior that CI cannot cover
 
 ## v1 Boundaries
 
@@ -20,6 +17,6 @@
 ## External Gates
 
 List any checks that require credentials, provider accounts, signing assets,
-hosted infrastructure, or physical devices.
+hosted infrastructure, a release build, or physical devices.
 
 -

@@ -19,6 +19,7 @@ jobs:
     name: Publish npm packages
     if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     environment: npm-production
     concurrency:
       group: npm-publish
@@ -36,6 +37,7 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ steps.release_tag.outputs.tag }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
         with:
@@ -52,6 +54,8 @@ jobs:
 
       - name: Verify package version matches release tag
         run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/main
           node scripts/sync-release-version.mjs --check
           tag="${{ steps.release_tag.outputs.tag }}"
           case "$tag" in

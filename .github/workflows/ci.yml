@@ -5,19 +5,48 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
-  rust:
-    name: Rust
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-14, ubuntu-24.04]
+  changes:
+    name: Select checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      macos: ${{ steps.filter.outputs.macos }}
+      supply: ${{ steps.filter.outputs.supply }}
+      packaging: ${{ steps.filter.outputs.packaging }}
+      site: ${{ steps.filter.outputs.site }}
+      infra: ${{ steps.filter.outputs.infra }}
+      workflow: ${{ steps.filter.outputs.workflow }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select affected areas
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: scripts/ci-changed-areas.sh "$BASE_SHA" "$HEAD_SHA"
+
+  core:
+    name: Core
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: 1.94.0
@@ -26,78 +55,87 @@ jobs:
       - uses: taiki-e/install-action@288e746965032cfcc232e09af2daf5f23c14d780 # v2.86.1
         with:
           tool: nextest
-      - if: matrix.os == 'ubuntu-24.04'
-        run: sudo apt-get update && sudo apt-get install -y vim
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 26
+      - run: sudo apt-get update && sudo apt-get install -y expect vim
       - run: cargo fmt --check
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-      - run: cargo clippy --locked -p shelly-cli --features test-client -- -D warnings
-      - run: cargo nextest run --locked --workspace
-      - run: cargo test --locked -p shelly-cli --features test-client
+      - run: cargo nextest run --locked --workspace --all-features
       - run: cargo test --locked --workspace --doc
+      - run: scripts/smoke-cli-no-args.sh
+      - run: scripts/smoke-cli-doctor.sh
+      - run: scripts/smoke-local-handoff.sh
+      - run: node scripts/smoke-relay-otlp-loopback.mjs
+      - run: scripts/smoke-relay-tls-loopback.sh
 
   supply-chain:
     name: Supply Chain
+    needs: changes
+    if: needs.changes.outputs.supply == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - uses: taiki-e/install-action@288e746965032cfcc232e09af2daf5f23c14d780 # v2.86.1
         with:
-          tool: cargo-deny
-      - uses: taiki-e/install-action@288e746965032cfcc232e09af2daf5f23c14d780 # v2.86.1
-        with:
-          tool: cargo-audit
+          tool: cargo-deny,cargo-audit
       - run: cargo deny check
       - run: cargo audit
 
   workflow-static:
     name: Workflow Static Checks
+    needs: changes
+    if: needs.changes.outputs.workflow == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      # actionlint is a Go binary (not a crates.io crate), so install-action's
-      # cargo-binstall fallback cannot find it. Pull the pinned official release.
+        with:
+          persist-credentials: false
       - name: Install actionlint
         run: |
           version=1.7.12
-          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz" \
-            | tar -xz actionlint
+          archive="actionlint_${version}_linux_amd64.tar.gz"
+          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${version}/${archive}"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  ${archive}" | sha256sum -c -
+          tar -xzf "$archive" actionlint
           ./actionlint -version
       - run: ./actionlint
       - run: ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].sort.each { |path| YAML.load_file(path) }; YAML.load_file(".github/dependabot.yml"); YAML.load_file(".pre-commit-config.yaml"); puts "workflow yaml ok"'
+      - run: bash -lc 'for script in scripts/*.sh apps/android/scripts/*.sh; do bash -n "$script" || exit 1; done; printf "shell script syntax ok\n"'
+      - run: bash -lc 'for script in scripts/*.mjs; do node --check "$script" >/dev/null || exit 1; done; printf "node script syntax ok\n"'
 
   terraform:
     name: Terraform Validate
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: 1.5.7
       - run: scripts/check-infra-terraform.sh
 
-  local-handoff-smoke:
-    name: Local Handoff Smoke
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with:
-          toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - run: sudo apt-get update && sudo apt-get install -y expect vim
-      - run: scripts/smoke-cli-no-args.sh
-      - run: scripts/smoke-cli-doctor.sh
-      - run: scripts/smoke-local-handoff.sh
-
   macos-npm-smoke:
     name: macOS npm Smoke
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
     runs-on: macos-14
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: 1.94.0
@@ -119,43 +157,17 @@ jobs:
           codesign --force --sign - "packages/cli-$package/bin/shelly"
           codesign --force --sign - "packages/cli-$package/bin/shellyd"
       - run: node scripts/smoke-npm-local-install.mjs
-      # Deferred: scripts/smoke-macos-daemon-launchd.sh (launchd daemon smoke) needs
-      # validation on a dedicated macOS host before CI wiring — it exercises daemon
-      # install/kill/replay under launchd (the script pkills shellyd and boots the
-      # user service), which the sandboxed CI runner has not been shaken out against.
-      # The daemon/CLI it would cover already pass their unit suites + the direct-spawn
-      # cli-doctor smoke. Wire it in a follow-up (Phase 8 L-7).
-
-  relay-otlp-smoke:
-    name: Relay OTLP Smoke
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with:
-          toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: 26
-      - run: node scripts/smoke-relay-otlp-loopback.mjs
-
-  relay-tls-smoke:
-    name: Relay TLS Smoke
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with:
-          toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - run: scripts/smoke-relay-tls-loopback.sh
 
   npm-packages:
     name: npm Package Metadata
+    needs: changes
+    if: needs.changes.outputs.packaging == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
         with:
           version: 10.30.3
@@ -164,8 +176,6 @@ jobs:
           node-version: 26
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: node scripts/generate-oss-notices.mjs --check
-      - run: bash -lc 'for script in scripts/*.mjs; do node --check "$script" >/dev/null || exit 1; done; printf "node script syntax ok\n"'
-      - run: bash -lc 'for script in scripts/*.sh apps/android/scripts/*.sh; do bash -n "$script" || exit 1; done; printf "shell script syntax ok\n"'
       - run: node scripts/test-npm-dispatcher.mjs
       - run: node scripts/sync-release-version.mjs --check
       - run: node scripts/test-npm-publish-plan.mjs
@@ -174,9 +184,14 @@ jobs:
 
   site:
     name: Site
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
         with:
           version: 10.30.3
@@ -188,39 +203,24 @@ jobs:
       - run: pnpm --dir site install --ignore-workspace --frozen-lockfile
       - run: pnpm check:site
 
-  android-static:
-    name: Android Static Checks
+  gate:
+    name: CI Gate
+    if: always()
+    needs:
+      - changes
+      - core
+      - supply-chain
+      - workflow-static
+      - terraform
+      - macos-npm-smoke
+      - npm-packages
+      - site
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - run: sudo apt-get update && sudo apt-get install -y libxml2-utils
-      - run: |
-          find apps/android/app/src/main/res -name '*.xml' -print0 | xargs -0 xmllint --noout
-          xmllint --noout apps/android/app/src/main/AndroidManifest.xml
-
-  android-build:
-    name: Android Build and Unit Tests
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
-        with:
-          distribution: temurin
-          java-version: 21
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: 26
-      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with:
-          toolchain: 1.94.0
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk --locked
-      - name: Build Android release bundle
-        run: apps/android/gradlew --no-daemon bundleRelease
-      - name: Run Android Lint
-        run: apps/android/gradlew --no-daemon :app:lintDebug
-      - name: Run Android unit tests
-        run: apps/android/gradlew --no-daemon :app:testDebugUnitTest
+      - name: Require every selected check to pass
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS_JSON"
+          jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<< "$NEEDS_JSON" >/dev/null

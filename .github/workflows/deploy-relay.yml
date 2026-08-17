@@ -16,8 +16,8 @@ env:
   RELAY_CONTROL_URL: https://relay.shelly.sh
 
 jobs:
-  select-revision:
-    name: Select deploy revision
+  deploy:
+    name: Deploy dock relay
     if: >-
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
@@ -28,114 +28,10 @@ jobs:
        github.ref == 'refs/heads/main' &&
        github.event.repository.full_name == github.repository)
     runs-on: ubuntu-24.04
-    permissions:
-      actions: read
-      contents: read
-    outputs:
-      deploy_sha: ${{ steps.changes.outputs.deploy_sha }}
-      should_deploy: ${{ steps.changes.outputs.should_deploy }}
-    steps:
-      - name: Check out successful CI revision
-        if: github.event_name == 'workflow_run'
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Check out manually selected revision
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Check deploy-relevant changes
-        id: changes
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            echo "deploy_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
-            echo "Manual main-branch deployment requested; deploy-relevant path filtering is intentionally bypassed."
-            exit 0
-          fi
-
-          echo "deploy_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          runs_json="$(
-            gh api \
-              "/repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=completed&per_page=100"
-          )"
-          previous_sha="$(
-            jq -r --argjson current "$WORKFLOW_RUN_ID" '
-              [.workflow_runs[] | select(.id != $current and .conclusion == "success")][0].head_sha // empty
-            ' <<< "$runs_json"
-          )"
-
-          if [[ -z "$previous_sha" ]]; then
-            echo "No earlier successful main CI run was found; deploying conservatively."
-            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if ! git merge-base --is-ancestor "$previous_sha" "$HEAD_SHA"; then
-            echo "The previous successful CI revision is not an ancestor; deploying conservatively."
-            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          git diff --name-only --diff-filter=ACDMRTUXB "$previous_sha" "$HEAD_SHA" > "$RUNNER_TEMP/relay-changed-files.txt"
-          echo "Changed files since successful CI revision $previous_sha:"
-          sed 's/^/  /' "$RUNNER_TEMP/relay-changed-files.txt"
-
-          should_deploy=false
-          while IFS= read -r path; do
-            case "$path" in
-              .github/workflows/deploy-relay.yml | \
-              Cargo.lock | \
-              Cargo.toml | \
-              crates/protocol/* | \
-              crates/relay/* | \
-              infra/lightsail/* | \
-              infra/relay/* | \
-              rust-toolchain.toml | \
-              scripts/check-infra-terraform.sh | \
-              scripts/smoke-hosted-relay-rendezvous.sh)
-                should_deploy=true
-                break
-                ;;
-            esac
-          done < "$RUNNER_TEMP/relay-changed-files.txt"
-
-          echo "should_deploy=$should_deploy" >> "$GITHUB_OUTPUT"
-          if [[ "$should_deploy" != "true" ]]; then
-            echo "No deploy-relevant files changed; production deployment will be skipped."
-          fi
-
-  deploy:
-    name: Deploy dock relay
-    needs: select-revision
-    if: >-
-      needs.select-revision.outputs.should_deploy == 'true' &&
-      (
-        (github.event_name == 'workflow_run' &&
-         github.event.workflow_run.conclusion == 'success' &&
-         github.event.workflow_run.event == 'push' &&
-         github.event.workflow_run.head_branch == 'main' &&
-         github.event.workflow_run.head_repository.full_name == github.repository) ||
-        (github.event_name == 'workflow_dispatch' &&
-         github.ref == 'refs/heads/main' &&
-         github.event.repository.full_name == github.repository)
-      )
-    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
-    # Required reviewers on this Environment are the human deployment gate.
-    # That setting is not represented in the repository and must be confirmed in GitHub.
     environment: relay-production
     steps:
       - name: Check out successful CI revision
@@ -154,7 +50,7 @@ jobs:
 
       - name: Verify exact deploy revision
         env:
-          DEPLOY_SHA: ${{ needs.select-revision.outputs.deploy_sha }}
+          DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
 
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable

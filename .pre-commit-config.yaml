@@ -6,28 +6,16 @@ repos:
         entry: cargo fmt --check
         language: system
         pass_filenames: false
-        always_run: true
-      - id: cargo-clippy-workspace
-        name: cargo clippy --workspace --all-targets --all-features -- -D warnings
-        entry: cargo clippy --workspace --all-targets --all-features -- -D warnings
-        language: system
-        pass_filenames: false
-        always_run: true
-      - id: cargo-nextest-workspace
-        name: cargo nextest run --workspace --no-fail-fast
-        entry: cargo nextest run --workspace --no-fail-fast
-        language: system
-        pass_filenames: false
-        always_run: true
+        files: ^(Cargo\.(toml|lock)|rust-toolchain\.toml|crates/.*\.rs)$
       - id: shelly-npm-dispatcher
         name: node scripts/test-npm-dispatcher.mjs
         entry: node scripts/test-npm-dispatcher.mjs
         language: system
         pass_filenames: false
-        always_run: true
+        files: ^(package\.json|packages/|scripts/(test-npm-dispatcher|sync-release-version)\.mjs)
       - id: shelly-npm-publish-plan
         name: node scripts/test-npm-publish-plan.mjs
         entry: node scripts/test-npm-publish-plan.mjs
         language: system
         pass_filenames: false
-        always_run: true
+        files: ^(package\.json|packages/|scripts/(test-npm-publish-plan|publish-npm-packages|sync-release-version)\.mjs)

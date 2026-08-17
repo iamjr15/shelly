@@ -1,5 +1,11 @@
 # shellykit
 
+## 1.0.7
+
+### Patch Changes
+
+- Ship the production-readiness release: protocol v5 pairing and signing, safer terminal handoff and replay, hardened relay and daemon behavior, more reliable mobile reconnects, improved npm daemon startup, and streamlined release automation.
+
 ## 1.0.6
 
 ### Patch Changes
